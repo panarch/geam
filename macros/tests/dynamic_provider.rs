@@ -27,8 +27,14 @@ pub struct Component;
 
 #[geam_macros::module(path = "dynamic_provider/declarations", crate_path = geam_core)]
 mod declarations {
-    use super::StringValue;
+    use super::{BigInt, StringValue};
     use geam_core::provider::advanced::External;
+
+    #[geam_macros::custom(input = CountInput)]
+    #[allow(dead_code)]
+    pub enum Count {
+        Count(BigInt),
+    }
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
@@ -79,6 +85,7 @@ mod declarations {
 
 #[geam_macros::module(path = "dynamic_provider", crate_path = geam_core)]
 mod dynamic_provider {
+    use super::declarations;
     use super::declarations::Token;
     use super::{
         BigInt, Call, DynamicKind, Equality, Hashing, Index0, Inspection, List, Retained,
@@ -93,6 +100,36 @@ mod dynamic_provider {
     #[geam_macros::external(name = "Snapshot", retained)]
     struct Snapshot {
         value: Retained<Snapshot, Index0>,
+    }
+
+    #[geam_macros::custom(input = EnvelopeInput)]
+    #[allow(dead_code)]
+    enum Envelope {
+        Count(declarations::Count),
+    }
+
+    #[geam_macros::function]
+    fn restore_envelope(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: &Dynamic,
+    ) -> Result<BigInt, ()> {
+        let EnvelopeInput::Count(declarations::CountInput::Count(number)) = call
+            .restore_dynamic::<Envelope, Dynamic>(&value.value)
+            .ok_or(())?;
+        Ok(number)
+    }
+
+    #[geam_macros::function]
+    fn restore_envelope_list(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: &Dynamic,
+    ) -> Result<BigInt, ()> {
+        let values = call
+            .restore_dynamic::<List<Envelope>, Dynamic>(&value.value)
+            .ok_or(())?;
+        let EnvelopeInput::Count(declarations::CountInput::Count(number)) =
+            values.get(1).ok_or(())?;
+        Ok(number)
     }
 
     #[geam_macros::external(name = "Box", parameters = [Item], input = BoxInput)]

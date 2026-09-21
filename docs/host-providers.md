@@ -154,6 +154,23 @@ The `await` marker returns the completed result through the ordinary Gleam
 call. Without this marker, a Rust `async fn` returns an explicit source Future
 instead, as shown next.
 
+## Return a Rust-created function
+
+A provider can return a function with immutable captures. Declare its private
+body with `#[geam::callable(factory = Add)]`, mark captures with
+`#[geam::capture]`, and give the creating function a `#[geam::factory]`
+`Factory<Add>` parameter. `call.create(&factory, (offset,))` returns a typed
+`Callback<fn(BigInt) -> BigInt>` that Gleam can store and call normally.
+The private body does not need a Gleam external declaration.
+
+The [callables example](../examples/provider/callables) includes the complete
+Rust/Gleam pair, a generic constant factory, a wrapper whose argument and result
+types differ, and a callback stored in a custom `Reply(item)`. Each function
+instance keeps its captures and original execution. Aliases retain identity;
+repeated construction creates distinct functions. See the
+[reference](reference/provider-boundary.md#rust-created-function-values) for
+signature, construction, and lifetime rules.
+
 ## Return async Rust work
 
 An async provider function returns explicit work to Gleam. Its source

@@ -29,6 +29,15 @@ impl Types<'_> {
         self.input_inhabited(type_, arguments, &mut HashSet::new(), &mut HashSet::new())
     }
 
+    /// The metadata must already match an admitted value type. Its nominal
+    /// references then share the validated definition graph, like stored shapes.
+    pub(in crate::plan::execution::prepared::admission) fn matched_metadata_inhabited(
+        &self,
+        type_: &TypeMetadata,
+    ) -> bool {
+        self.template_inhabited(type_, &[], &mut HashSet::new(), &mut HashSet::new())
+    }
+
     pub(in crate::plan::execution::prepared::admission) fn inhabited(
         &self,
         shape: &ValueShapeDescriptor,

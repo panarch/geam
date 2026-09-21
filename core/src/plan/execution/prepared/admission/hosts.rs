@@ -1,3 +1,4 @@
+mod callable;
 mod contract;
 mod link;
 
@@ -54,13 +55,32 @@ pub(super) enum ContractError {
     TypeArguments,
     Parameters,
     Captures,
+    Callable,
     Construction,
     Native,
     Callback,
 }
 
+impl<Profile: HostProfile> NativeFunctions<'_, Profile> {
+    pub(super) fn library_callables(
+        &self,
+        entries: &[crate::plan::execution::LibraryNativeConstruction],
+        catalog: &super::catalog::Catalog<'_>,
+        types: &super::type_::Types<'_>,
+    ) -> Result<(), NativeError> {
+        callable::library(self, entries, catalog, types)
+    }
+}
+
 impl<Profile: HostProfile> Hosts<HostedExecutionProfile> for NativeFunctions<'_, Profile> {
     type Error = NativeError;
+
+    fn callables(
+        &self,
+        context: &Instructions<'_, '_, HostedExecutionGraph>,
+    ) -> Result<(), NativeError> {
+        callable::admit(self, context)
+    }
 
     fn tables(
         &self,
@@ -135,7 +155,13 @@ impl<Profile: HostProfile> Hosts<HostedExecutionProfile> for NativeFunctions<'_,
                 }
                 return_
                     .admit(declaration.return_, context.types)
-                    .map_err(|error| NativeError::Call(ContractError::Type(error)))
+                    .map_err(|error| NativeError::Call(ContractError::Type(error)))?;
+                if let Some(entry) = metadata.callable_entry {
+                    self.callable_bindings
+                        .borrow_mut()
+                        .insert(entry, (true, *index));
+                }
+                Ok(())
             }
             HostedFunctionTarget::Never(target) => self.never(target, declaration, context),
         }
@@ -157,7 +183,13 @@ impl<Profile: HostProfile> Hosts<HostedExecutionProfile> for NativeFunctions<'_,
             declaration,
             context.types,
         )
-        .map_err(NativeError::Call)
+        .map_err(NativeError::Call)?;
+        if let Some(entry) = metadata.callable_entry {
+            self.callable_bindings
+                .borrow_mut()
+                .insert(entry, (false, target.0));
+        }
+        Ok(())
     }
 }
 
@@ -678,6 +710,16 @@ pub fn main() {
                     &context
                 ),
                 Err(NativeError::MissingNever(999)),
+            );
+            let mut changed = common.main.resolve(&catalog, &types).unwrap();
+            changed.return_type = &crate::plan::execution::type_::ValueType::Bool;
+            assert_eq!(
+                linked.never(
+                    &crate::plan::execution::host::HostNeverFunctionId(0),
+                    &changed,
+                    &context
+                ),
+                Err(NativeError::Call(ContractError::Signature)),
             );
             drop(linked);
             let mut invalid = nevers;

@@ -16,6 +16,7 @@ pub(super) struct Entry<'data> {
     pub family: FunctionReturnFamily,
     pub function: Function<'data>,
     pub inputs: &'data LibraryInputConstructions,
+    pub callables: &'data [crate::plan::execution::LibraryCallable],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -58,6 +59,7 @@ pub(super) enum ExportError {
     NarrowedInput { index: usize },
     ReturnType,
     Input(InputError),
+    Callable(super::callables::CallableError),
 }
 
 pub(super) fn main<Graph: ExecutionGraphProfile>(
@@ -90,10 +92,18 @@ pub(super) fn all<'data, Graph: ExecutionGraphProfile>(
     exports: &[Export],
     catalog: &Catalog<'data>,
     types: &Types<'data>,
-) -> Result<Vec<&'data LibraryInputConstructions>, EntryError>
+) -> Result<
+    (
+        Vec<&'data LibraryInputConstructions>,
+        Vec<&'data [crate::plan::execution::LibraryCallable]>,
+    ),
+    EntryError,
+>
 where
     Graph::ExternalFunctionId: Target,
     Graph::ExternalListFunctionId: Target,
+    Graph::RuntimeFunctionFunctionId: Target,
+    Graph::InvocableFunctionFunctionId: Target,
 {
     let Some(first) = exports.first() else {
         return Err(EntryError::Empty);
@@ -101,22 +111,16 @@ where
     let mut names = HashSet::new();
     let mut slots = HashSet::new();
     let mut inputs = Vec::with_capacity(exports.len());
+    let mut callables = Vec::with_capacity(exports.len());
     for (index, export) in exports.iter().enumerate() {
         if !names.insert(export.name.as_str()) {
             return Err(EntryError::DuplicateName { index });
         }
         let checked = resolve(entries, export, catalog, types)
             .map_err(|error| EntryError::Export { index, error })?;
-        signature(&export.signature, &checked.function, types)
-            .map_err(|error| EntryError::Export { index, error })?;
-        input::admit(checked.inputs, types).map_err(|error| EntryError::Export {
-            index,
-            error: ExportError::Input(error),
-        })?;
-        if !slots.insert((checked.family, export.slot)) {
-            return Err(EntryError::DuplicateSlot { index });
-        }
+        admit_export(index, export, &checked, types, &mut slots)?;
         inputs.push(checked.inputs);
+        callables.push(checked.callables);
     }
     if !main_matches(main, entries, first, types).map_err(EntryError::MainType)? {
         return Err(EntryError::Main);
@@ -133,6 +137,7 @@ where
         nils,
         tuples,
         lists,
+        functions,
     } = entries;
     for (family, length) in [
         (FunctionReturnFamily::Int, ints.len()),
@@ -146,6 +151,7 @@ where
         (FunctionReturnFamily::Nil, nils.len()),
         (FunctionReturnFamily::Tuple, tuples.len()),
         (FunctionReturnFamily::List, lists.len()),
+        (FunctionReturnFamily::Function, functions.len()),
     ] {
         let claimed = slots.iter().filter(|(kind, _)| *kind == family).count();
         if claimed != length {
@@ -155,7 +161,31 @@ where
             });
         }
     }
-    Ok(inputs)
+    Ok((inputs, callables))
+}
+
+// Target resolution depends on the graph profile. The resolved export's
+// signature, input views and callable permissions share one admission contract.
+fn admit_export(
+    index: usize,
+    export: &Export,
+    checked: &Entry<'_>,
+    types: &Types<'_>,
+    slots: &mut HashSet<(FunctionReturnFamily, usize)>,
+) -> Result<(), EntryError> {
+    signature(&export.signature, &checked.function, types)
+        .map_err(|error| EntryError::Export { index, error })?;
+    input::admit(checked.inputs, types).map_err(|error| EntryError::Export {
+        index,
+        error: ExportError::Input(error),
+    })?;
+    if !slots.insert((checked.family, export.slot)) {
+        return Err(EntryError::DuplicateSlot { index });
+    }
+    super::callables::admit(checked.callables, types).map_err(|error| EntryError::Export {
+        index,
+        error: ExportError::Callable(error),
+    })
 }
 
 fn main_matches<Graph: ExecutionGraphProfile>(
@@ -218,6 +248,12 @@ fn main_matches<Graph: ExecutionGraphProfile>(
                     &crate::plan::execution::type_::ValueType::Tuple(return_type.clone()),
                 )?
         }
+        (TypeMetadata::Function(_), Runtime::Core(Core::Function { id, return_type })) => {
+            entries.functions.get(export.slot).is_some_and(|entry| {
+                &Graph::function_value_target(&entry.function.function) == id
+                    && &entry.function.type_ == return_type
+            })
+        }
         _ => false,
     })
 }
@@ -231,6 +267,8 @@ pub(super) fn resolve<'data, Graph: ExecutionGraphProfile>(
 where
     Graph::ExternalFunctionId: Target,
     Graph::ExternalListFunctionId: Target,
+    Graph::RuntimeFunctionFunctionId: Target,
+    Graph::InvocableFunctionFunctionId: Target,
 {
     let slot = export.slot;
     match export.signature.return_.as_ref() {
@@ -311,7 +349,14 @@ where
             catalog,
             types,
         ),
-        TypeMetadata::Parameter(_) | TypeMetadata::Function(_) => Err(ExportError::ReturnFamily),
+        TypeMetadata::Function(_) => entry(
+            &entries.functions,
+            slot,
+            FunctionReturnFamily::Function,
+            catalog,
+            types,
+        ),
+        TypeMetadata::Parameter(_) => Err(ExportError::ReturnFamily),
     }
 }
 
@@ -330,6 +375,7 @@ fn entry<'data, Id: Target>(
             .resolve(catalog, types)
             .map_err(ExportError::Target)?,
         inputs: &entry.inputs,
+        callables: &entry.callables,
     })
 }
 
@@ -385,6 +431,26 @@ where
     }
 }
 
+impl<Graph: ExecutionGraphProfile> Target for crate::plan::execution::LibraryCallableEntry<Graph>
+where
+    Graph::InvocableFunctionFunctionId: Target,
+{
+    fn resolve<'data>(
+        &self,
+        catalog: &Catalog<'data>,
+        types: &Types<'data>,
+    ) -> Result<Function<'data>, CallError> {
+        types.function_type(&self.type_).map_err(CallError::Type)?;
+        let function = self.function.resolve(catalog, types)?;
+        match function.return_type {
+            crate::plan::execution::type_::ValueType::Function(type_) if *type_ == self.type_ => {
+                Ok(function)
+            }
+            _ => Err(CallError::ReturnType),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -394,6 +460,189 @@ mod tests {
     use crate::embedding::{BigInt, FunctionDeclaration, List, ModuleBuilder};
     use crate::plan::execution::prepared::PreparedModule;
     use crate::plan::{FunctionType, ValueType};
+
+    #[test]
+    fn prepared_callable_roots_validate_main_identity_and_nested_view_metadata() {
+        use super::super::tests::owned_mut;
+        use crate::plan::execution::function::{
+            ProfiledCoreRuntimeFunctionId as Core, ProfiledRuntimeFunctionId as Runtime,
+        };
+        use crate::plan::execution::type_::{CustomTypeId, ValueType as RuntimeType};
+        use crate::plan::{LibraryCallableSignature, LibraryEntry, LibraryValueType};
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() { fn(value: Int) { value + 1 } }",
+                )],
+            )],
+            crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let plan = crate::planner::plan_host_library_program(typed).unwrap();
+        let main = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "main")
+            .unwrap()
+            .signature()
+            .id();
+        let callback = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let declaration = LibraryCallableSignature {
+            type_: callback.clone(),
+            input_variants: vec![],
+            input_lists: vec![],
+            callables: vec![],
+        };
+        let (program, _, mut entries, _) = crate::plan::execution::lowering::lower_hosted_library(
+            plan,
+            LibraryEntry::new(
+                main,
+                LibraryValueType::Function(callback.clone()),
+                vec![],
+                vec![],
+            )
+            .with_callables(vec![declaration]),
+            vec![],
+        )
+        .unwrap();
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let export = Export::new(
+            "main".into(),
+            FunctionType::new(vec![], ValueType::Function(Box::new(callback))),
+            0,
+        );
+        assert_eq!(
+            all(
+                &common.main,
+                &entries,
+                std::slice::from_ref(&export),
+                &catalog,
+                &types
+            )
+            .map(|_| ()),
+            Ok(())
+        );
+        let wrong_main = Runtime::Core(Core::Function {
+            id: <crate::plan::execution::function::HostedExecutionGraph as crate::plan::execution::function::ExecutionGraphProfile>::function_value_target(
+                &entries.functions[0].function.function,
+            ),
+            return_type: crate::plan::execution::type_::FunctionType::new(
+                vec![RuntimeType::Bool],
+                RuntimeType::Int,
+            ),
+        });
+        assert_eq!(
+            super::main_matches(&wrong_main, &entries, &export, &types),
+            Ok(false)
+        );
+        let callables = &mut owned_mut(&mut entries.functions)[0].callables;
+        assert_eq!(callables.len(), 1);
+        owned_mut(callables)[0].type_.arguments =
+            vec![RuntimeType::Custom(CustomTypeId(999))].into();
+        assert_eq!(
+            all(&common.main, &entries, &[export], &catalog, &types).err(),
+            Some(EntryError::Export {
+                index: 0,
+                error: ExportError::Callable(super::super::callables::CallableError::Type(
+                    TypeError::MissingCustom { index: 999 }
+                )),
+            })
+        );
+    }
+
+    #[test]
+    fn callable_entry_links_require_the_exact_returned_signature_and_a_valid_target() {
+        use super::super::call::{CallError, Target};
+        use super::super::catalog::CatalogError;
+        use crate::plan::execution::LibraryCallableEntry;
+        use crate::plan::execution::function::{
+            FunctionTableFamily, IntFunctionFunctionId, ProfiledFunctionFunctionId,
+            RuntimeFunctionFunctionTarget,
+        };
+        use crate::plan::execution::type_::{CustomTypeId, FunctionType, ValueType};
+
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new(
+                    "main",
+                    "src/main.gleam",
+                    "pub fn main() { fn(value: Int) { value + 1 } }",
+                )],
+            )],
+            crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let (program, _) = crate::plan::execution::lowering::lower_hosted(
+            crate::plan_host_program(typed).unwrap(),
+        )
+        .unwrap();
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let entry: LibraryCallableEntry = LibraryCallableEntry {
+            function: RuntimeFunctionFunctionTarget::Core(ProfiledFunctionFunctionId::Int(
+                IntFunctionFunctionId(0),
+            )),
+            type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        };
+        let function = entry.resolve(&catalog, &types).unwrap();
+        assert_eq!(function.family, FunctionTableFamily::IntFunction);
+        assert_eq!(function.parameters.len(), 0);
+        assert_eq!(
+            function.return_type,
+            &ValueType::Function(entry.type_.clone())
+        );
+        let mut wrong_type = entry.clone();
+        wrong_type.type_ =
+            FunctionType::new(vec![ValueType::Int], ValueType::Custom(CustomTypeId(999)));
+        assert_eq!(
+            wrong_type.resolve(&catalog, &types).err(),
+            Some(CallError::Type(TypeError::MissingCustom { index: 999 }))
+        );
+        let mut missing = entry.clone();
+        missing.function = RuntimeFunctionFunctionTarget::Core(ProfiledFunctionFunctionId::Int(
+            IntFunctionFunctionId(999),
+        ));
+        assert_eq!(
+            missing.resolve(&catalog, &types).err(),
+            Some(CallError::Catalog(CatalogError::MissingFunction {
+                family: FunctionTableFamily::IntFunction,
+                index: 999
+            }))
+        );
+        let mut different = entry;
+        different.type_ = FunctionType::new(vec![ValueType::Bool], ValueType::Int);
+        assert_eq!(
+            different.resolve(&catalog, &types).err(),
+            Some(CallError::ReturnType)
+        );
+    }
 
     #[test]
     fn standalone_main_uses_the_actual_callable_target_without_library_export_restrictions() {
@@ -633,7 +882,7 @@ mod tests {
                 &types,
             )
             .unwrap();
-            let inputs = all(
+            let (inputs, callables) = all(
                 &common.main,
                 &prepared.entries,
                 &prepared.exports,
@@ -642,6 +891,8 @@ mod tests {
             )
             .unwrap();
             assert_eq!(inputs.len(), 1);
+            assert_eq!(callables.len(), 1);
+            assert!(callables[0].is_empty());
             let resolved =
                 resolve(&prepared.entries, &prepared.exports[0], &catalog, &types).unwrap();
             assert_eq!(resolved.family, expected_family);
@@ -681,6 +932,7 @@ mod tests {
                 TypeMetadata::Int,
                 |entries, inputs| {
                     entries.ints = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: IntFunctionId(0),
                         inputs,
                     }]
@@ -693,6 +945,7 @@ mod tests {
                 TypeMetadata::Float,
                 |entries, inputs| {
                     entries.floats = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: FloatFunctionId(0),
                         inputs,
                     }]
@@ -705,6 +958,7 @@ mod tests {
                 TypeMetadata::String,
                 |entries, inputs| {
                     entries.strings = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: StringFunctionId(0),
                         inputs,
                     }]
@@ -717,6 +971,7 @@ mod tests {
                 TypeMetadata::BitArray,
                 |entries, inputs| {
                     entries.bit_arrays = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: BitArrayFunctionId(0),
                         inputs,
                     }]
@@ -729,6 +984,7 @@ mod tests {
                 TypeMetadata::UtfCodepoint,
                 |entries, inputs| {
                     entries.utf_codepoints = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: UtfCodepointFunctionId(0),
                         inputs,
                     }]
@@ -746,6 +1002,7 @@ mod tests {
                 }),
                 |entries, inputs| {
                     entries.customs = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: CustomFunctionId {
                             index: 0,
                             return_shape: crate::plan::execution::type_::CustomValueShape {
@@ -764,6 +1021,7 @@ mod tests {
                 TypeMetadata::Bool,
                 |entries, inputs| {
                     entries.bools = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: BoolFunctionId(0),
                         inputs,
                     }]
@@ -776,6 +1034,7 @@ mod tests {
                 TypeMetadata::Nil,
                 |entries, inputs| {
                     entries.nils = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: NilFunctionId(0),
                         inputs,
                     }]
@@ -788,6 +1047,7 @@ mod tests {
                 TypeMetadata::Tuple(vec![TypeMetadata::Bool, TypeMetadata::Int].into()),
                 |entries, inputs| {
                     entries.tuples = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: TupleFunctionId(0),
                         inputs,
                     }]
@@ -800,6 +1060,7 @@ mod tests {
                 TypeMetadata::List(Node::Static(&TypeMetadata::Int)),
                 |entries, inputs| {
                     entries.lists = vec![LibraryFunctionEntry {
+                        callables: Vec::new().into(),
                         function: LibraryListFunctionId::Int(IntListFunctionId::new(
                             0,
                             crate::plan::execution::type_::IntListTypeId {
@@ -830,6 +1091,7 @@ mod tests {
             let inputs = LibraryInputConstructions {
                 variants: Table::Static(&[]),
                 lists: LibraryListConstructions {
+                    functions: Vec::new().into(),
                     ints: Table::Static(&[]),
                     floats: Table::Static(&[]),
                     strings: Table::Static(&[]),
@@ -844,6 +1106,7 @@ mod tests {
                 },
             };
             let mut entries: LibraryFunctionEntries = LibraryFunctionEntries {
+                functions: Vec::new().into(),
                 ints: Table::Static(&[]),
                 floats: Table::Static(&[]),
                 strings: Table::Static(&[]),
@@ -865,7 +1128,7 @@ mod tests {
                     return_: Node::Owned(Box::new(signature)),
                 },
             };
-            let inputs = all(
+            let (inputs, callables) = all(
                 &common.main,
                 &entries,
                 std::slice::from_ref(&export),
@@ -874,11 +1137,14 @@ mod tests {
             )
             .unwrap();
             assert_eq!(inputs.len(), 1);
+            assert_eq!(callables.len(), 1);
+            assert!(callables[0].is_empty());
             let entry = resolve(&entries, &export, &catalog, &types).unwrap();
             assert_eq!(entry.family, expected_family);
             assert!(std::ptr::eq(inputs[0], entry.inputs));
             let mut invalid_entries = entries.clone();
             invalid_entries.ints = vec![LibraryFunctionEntry {
+                callables: Vec::new().into(),
                 function: IntFunctionId(999),
                 inputs: entry.inputs.clone(),
             }]
@@ -930,12 +1196,18 @@ mod tests {
                 ),
                 Ok(false)
             );
-            for signature in [
-                TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
-                TypeMetadata::Function(FunctionMetadata {
-                    arguments: Table::Static(&[]),
-                    return_: Node::Static(&TypeMetadata::Int),
-                }),
+            for (signature, expected) in [
+                (
+                    TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                    ExportError::ReturnFamily,
+                ),
+                (
+                    TypeMetadata::Function(FunctionMetadata {
+                        arguments: Table::Static(&[]),
+                        return_: Node::Static(&TypeMetadata::Int),
+                    }),
+                    ExportError::MissingSlot { slot: 0 },
+                ),
             ] {
                 let invalid = Export {
                     name: "main".into(),
@@ -947,14 +1219,14 @@ mod tests {
                 };
                 assert_eq!(
                     resolve(&entries, &invalid, &catalog, &types).err(),
-                    Some(ExportError::ReturnFamily)
+                    Some(expected)
                 );
             }
         }
     }
 
     #[test]
-    fn rejects_function_and_unbound_parameter_exports() {
+    fn rejects_missing_function_slots_and_unbound_parameter_exports() {
         use crate::plan::execution::storage::{Node, Table};
         let prepared = prepare();
         let common = &prepared.program.common;
@@ -971,12 +1243,18 @@ mod tests {
             &types,
         )
         .unwrap();
-        for return_ in [
-            TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
-            TypeMetadata::Function(FunctionMetadata {
-                arguments: Table::Static(&[]),
-                return_: Node::Static(&TypeMetadata::Int),
-            }),
+        for (return_, expected) in [
+            (
+                TypeMetadata::Parameter(crate::plan::TypeParameterId(0)),
+                ExportError::ReturnFamily,
+            ),
+            (
+                TypeMetadata::Function(FunctionMetadata {
+                    arguments: Table::Static(&[]),
+                    return_: Node::Static(&TypeMetadata::Int),
+                }),
+                ExportError::MissingSlot { slot: 0 },
+            ),
         ] {
             let export = Export {
                 name: "unsupported".into(),
@@ -988,7 +1266,7 @@ mod tests {
             };
             assert_eq!(
                 resolve(&prepared.entries, &export, &catalog, &types).err(),
-                Some(ExportError::ReturnFamily)
+                Some(expected)
             );
             assert_eq!(
                 super::main_matches(&common.main, &prepared.entries, &export, &types),
@@ -1034,6 +1312,7 @@ pub fn main() { key() }
             return_type: ExternalTypeId(0),
         };
         let mut entries: LibraryFunctionEntries = LibraryFunctionEntries {
+            functions: Vec::new().into(),
             ints: Table::Static(&[]),
             floats: Table::Static(&[]),
             strings: Table::Static(&[]),
@@ -1041,10 +1320,12 @@ pub fn main() { key() }
             utf_codepoints: Table::Static(&[]),
             customs: Table::Static(&[]),
             externals: vec![LibraryFunctionEntry {
+                callables: Vec::new().into(),
                 function: target,
                 inputs: LibraryInputConstructions {
                     variants: Table::Static(&[]),
                     lists: LibraryListConstructions {
+                        functions: Vec::new().into(),
                         ints: Table::Static(&[]),
                         floats: Table::Static(&[]),
                         strings: Table::Static(&[]),
@@ -1100,6 +1381,7 @@ pub fn main() { key() }
                 &types
             )
             .unwrap()
+            .0
             .len(),
             1
         );

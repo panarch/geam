@@ -1,7 +1,6 @@
 use super::custom_value::{
     CustomModel, custom_input_model, custom_output_type, custom_output_type_with_index,
 };
-use super::list::validate_list_return;
 use super::list_model::register_list_decoder;
 use super::signature::{
     callback_codec_type, callback_input_signature_type, callback_output_signature_type,
@@ -16,9 +15,9 @@ use super::type_syntax::{
 };
 use super::{
     CallAccess, CallbackType, ClassifiedGenericHostType, CollectionType, DeclaredInput,
-    ExternalArguments, ExternalModel, ExternalSemantics, FunctionArgumentType, FunctionArguments,
-    FunctionCallAccess, FunctionCallParameter, FunctionInputType, FunctionInputValueType,
-    FunctionModel, FunctionOutputCollectionType, FunctionOutputLeafType, FunctionOutputValueType,
+    ExternalArguments, ExternalModel, ExternalSemantics, FunctionArguments, FunctionCallAccess,
+    FunctionCallParameter, FunctionInputType, FunctionInputValueType, FunctionModel,
+    FunctionOutputCollectionType, FunctionOutputLeafType, FunctionOutputValueType,
     FunctionParameter, FunctionProfile, FunctionReturnType, FunctionRootOutputValueType,
     FunctionSourceParameter, GenericExternalModel, GenericExternalStorage, GenericExternalType,
     GenericHostType, GenericInputSource, GenericParameterScope, GenericValueType, InputOwnership,
@@ -38,20 +37,20 @@ use syn::{
     PathArguments, ReturnType, Token, Type, TypePath,
 };
 
-pub(super) fn component_for_self(component: &Type) -> Type {
-    struct Rewriter;
+pub(super) fn component_in_profile(component: &Type, profile: Ident) -> Type {
+    struct Rewriter(Ident);
     impl VisitMut for Rewriter {
         fn visit_path_mut(&mut self, path: &mut Path) {
             if let Some(first) = path.segments.first_mut()
                 && first.ident == "Profile"
             {
-                first.ident = Ident::new("Self", first.ident.span());
+                first.ident = self.0.clone();
             }
             syn::visit_mut::visit_path_mut(self, path);
         }
     }
     let mut component = component.clone();
-    Rewriter.visit_type_mut(&mut component);
+    Rewriter(profile).visit_type_mut(&mut component);
     component
 }
 
@@ -352,7 +351,8 @@ pub(super) fn take_function_marker(
     let mut retained = Vec::with_capacity(attributes.len());
     let mut found = None;
     for attribute in std::mem::take(attributes) {
-        if !is_marker(&attribute, "function") {
+        let callable = is_marker(&attribute, "callable");
+        if !is_marker(&attribute, "function") && !callable {
             retained.push(attribute);
             continue;
         }
@@ -362,14 +362,18 @@ pub(super) fn take_function_marker(
                 "duplicate `#[geam::function]` attribute",
             ));
         }
-        let arguments = match &attribute.meta {
-            Meta::Path(_) => FunctionArguments::default(),
-            Meta::List(_) => attribute.parse_args::<FunctionArguments>()?,
-            Meta::NameValue(_) => {
-                return Err(syn::Error::new_spanned(
-                    attribute,
-                    "`#[geam::function]` accepts only `await` and `profile = Name` arguments",
-                ));
+        let arguments = if callable {
+            super::callable::parse_arguments(&attribute)?
+        } else {
+            match &attribute.meta {
+                Meta::Path(_) => FunctionArguments::default(),
+                Meta::List(_) => attribute.parse_args::<FunctionArguments>()?,
+                Meta::NameValue(_) => {
+                    return Err(syn::Error::new_spanned(
+                        attribute,
+                        "`#[geam::function]` accepts only `await` and `profile = Name` arguments",
+                    ));
+                }
             }
         };
         found = Some(arguments);
@@ -721,9 +725,9 @@ pub(super) fn retained_parameter_accessor(parameter: &Ident) -> Ident {
 
 pub(super) struct FunctionValidationContext<'a> {
     module_profile: Option<&'a Path>,
-    externals: &'a [ExternalModel],
-    customs: &'a [CustomModel],
-    support: &'a TokenStream,
+    pub(super) externals: &'a [ExternalModel],
+    pub(super) customs: &'a [CustomModel],
+    pub(super) support: &'a TokenStream,
 }
 
 impl<'a> FunctionValidationContext<'a> {
@@ -779,7 +783,38 @@ pub(super) fn validate_function(
             "provider functions must use the ordinary Rust ABI",
         ));
     }
-    let mut generic_scope = GenericParameterScope::new(&function.sig.generics)?;
+    let mut generic_scope =
+        GenericParameterScope::new(&function.sig.generics, &function.sig.ident)?;
+    struct NominalUse<'a> {
+        customs: &'a [CustomModel],
+        externals: &'a [ExternalModel],
+        opaque: bool,
+        found: bool,
+    }
+    impl syn::visit::Visit<'_> for NominalUse<'_> {
+        fn visit_type(&mut self, type_: &Type) {
+            let opaque = self.opaque;
+            self.opaque |= is_type_application_named(type_, "Value");
+            self.found |= super::custom_value::generic_custom_index(type_, self.customs).is_some()
+                || super::type_syntax::is_qualified_generic_declaration(type_)
+                || (self.opaque && is_generic_external_application(type_, self.externals));
+            syn::visit::visit_type(self, type_);
+            self.opaque = opaque;
+        }
+    }
+    let mut nominal = NominalUse {
+        customs,
+        externals,
+        opaque: false,
+        found: false,
+    };
+    syn::visit::Visit::visit_signature(&mut nominal, &function.sig);
+    let has_factories = function.sig.inputs.iter().any(|argument| matches!(argument,
+        FnArg::Typed(argument) if argument.attrs.iter().any(|attribute| is_marker(attribute, "factory"))
+    ));
+    generic_scope.nominal = nominal.found || arguments.callable.is_some() || has_factories;
+    generic_scope.declared_hosts = generic_scope.nominal;
+
     let profile = match (arguments.profile, module_profile) {
         (None, _) => None,
         (Some(ident), Some(_)) => Some(FunctionProfile { ident }),
@@ -802,28 +837,22 @@ pub(super) fn validate_function(
         .as_ref()
         .map(|(value, _)| value.clone())
         .unwrap_or_else(|| declared_return_type.clone());
-    reject_unwrapped_generic(&rust_return_type, &generic_scope, externals)?;
+    reject_unwrapped_generic(&rust_return_type, &generic_scope, externals, customs)?;
     if matches!(&rust_return_type, Type::Tuple(tuple) if tuple.elems.is_empty()) {
         function
             .attrs
             .push(syn::parse_quote!(#[allow(clippy::unused_unit)]));
     }
-    let return_ = classify_return(
-        &rust_return_type,
-        externals,
-        customs,
-        list_decoders,
-        &mut generic_scope,
-        support,
-    )?;
-
     let mut call = if async_ {
         FunctionCallAccess::Owned(OwnedCallAccess::None)
     } else {
         FunctionCallAccess::Immediate(CallAccess::None)
     };
     let mut parameters = Vec::new();
-    let mut arguments = Vec::new();
+    let callable_factory = arguments.callable;
+    let mut factories = Vec::new();
+    let mut captures = Vec::new();
+    let mut argument_count = 0;
     for (index, argument) in function.sig.inputs.iter_mut().enumerate() {
         let FnArg::Typed(argument) = argument else {
             return Err(syn::Error::new_spanned(
@@ -832,6 +861,20 @@ pub(super) fn validate_function(
             ));
         };
         let is_call = take_marker(&mut argument.attrs, "call")?;
+        let is_factory = take_marker(&mut argument.attrs, "factory")?;
+        let is_capture = take_marker(&mut argument.attrs, "capture")?;
+        if usize::from(is_call) + usize::from(is_factory) + usize::from(is_capture) > 1 {
+            return Err(syn::Error::new_spanned(
+                argument,
+                "call, factory and capture parameters are distinct",
+            ));
+        }
+        if is_capture && callable_factory.is_none() {
+            return Err(syn::Error::new_spanned(
+                argument,
+                "`#[geam::capture]` requires a callable declaration",
+            ));
+        }
         if is_call {
             if index != 0 {
                 return Err(syn::Error::new_spanned(
@@ -861,6 +904,22 @@ pub(super) fn validate_function(
                 }
                 call = FunctionCallAccess::Immediate(CallAccess::Shared);
             }
+        } else if is_factory {
+            if !call.is_mutable() || argument_count != 0 {
+                return Err(syn::Error::new_spanned(
+                    argument,
+                    "factory parameters must follow a mutable Call and precede source arguments",
+                ));
+            }
+            let declaration = super::callable::factory_parameter(&argument.ty)?;
+            if factories.contains(&declaration) {
+                return Err(syn::Error::new_spanned(
+                    argument,
+                    "duplicate factory declaration parameter",
+                ));
+            }
+            factories.push(declaration);
+            parameters.push(FunctionParameter::Factory(argument.clone()));
         } else {
             if is_call_type(&argument.ty) {
                 return Err(syn::Error::new_spanned(
@@ -868,45 +927,86 @@ pub(super) fn validate_function(
                     "Call<State> parameters require `#[geam::call]`",
                 ));
             }
-            let callback_index = arguments.len();
-            let type_ = if let Some(callback) = callback_type(
-                &argument.ty,
-                &function.sig.ident,
-                callback_index,
-                externals,
-                customs,
-                list_decoders,
-                &mut generic_scope,
-                support,
-            )? {
-                FunctionArgumentType::Callback(Box::new(callback))
-            } else {
-                reject_unwrapped_generic(&argument.ty, &generic_scope, externals)?;
-                FunctionArgumentType::Input(classify_input(
-                    &argument.ty,
-                    externals,
-                    customs,
-                    list_decoders,
-                    &mut generic_scope,
-                    support,
-                    false,
-                )?)
-            };
             parameters.push(FunctionParameter::Source(FunctionSourceParameter {
                 syntax: argument.clone(),
-                value: type_.clone(),
+                index: argument_count,
             }));
-            arguments.push(type_);
+            if is_capture {
+                captures.push(argument_count);
+            }
+            argument_count += 1;
         }
     }
-    if arguments.len() > 7 {
+    if argument_count - captures.len() > 7 {
         return Err(syn::Error::new_spanned(
             &function.sig.inputs,
             "provider functions support at most seven source arguments",
         ));
     }
 
-    let declared_generics = generic_scope.declared.clone();
+    let callable = callable_factory
+        .map(|factory| {
+            super::callable::CallableParser {
+                list_decoders,
+                generics: &mut generic_scope,
+                context,
+            }
+            .model(
+                function,
+                factory,
+                captures,
+                &parameters,
+                completion,
+                &rust_return_type,
+            )
+        })
+        .transpose()?;
+    if callable.is_some() && function.sig.inputs.len() > 7 {
+        function
+            .attrs
+            .push(syn::parse_quote!(#[allow(clippy::too_many_arguments)]));
+    }
+    // Roles own the source ordering. Classify the factory interface from raw
+    // syntax before the body view, so each directional parser owns its errors.
+    let return_ = classify_return(
+        &rust_return_type,
+        externals,
+        customs,
+        list_decoders,
+        &mut generic_scope,
+        support,
+    )?;
+
+    let arguments = parameters
+        .iter()
+        .filter_map(|parameter| match parameter {
+            FunctionParameter::Source(source) => Some(&source.syntax.ty),
+            _ => None,
+        })
+        .map(|type_| {
+            if let Some(callback) = callback_type(
+                type_,
+                externals,
+                customs,
+                list_decoders,
+                &mut generic_scope,
+                support,
+            )? {
+                Ok(FunctionInputType::Callback(Box::new(callback)))
+            } else {
+                reject_unwrapped_generic(type_, &generic_scope, externals, customs)?;
+                classify_input(
+                    type_,
+                    externals,
+                    customs,
+                    list_decoders,
+                    &mut generic_scope,
+                    support,
+                    false,
+                )
+            }
+        })
+        .collect::<syn::Result<Vec<_>>>()?;
     let generics = generic_scope.finish()?;
     let model = FunctionModel {
         ident: function.sig.ident.clone(),
@@ -915,30 +1015,65 @@ pub(super) fn validate_function(
         return_,
         host_result: host_result.is_some(),
         profile: profile.is_some(),
+        factories,
+        callable,
     };
-    if !async_ && function_contains_callback(&model) {
-        return Err(syn::Error::new_spanned(
-            &function.sig,
-            "Callback arguments require an async function; use #[geam::function(await)] for an ordinary Gleam result",
-        ));
-    }
-    if function_contains_callback(&model) && !call.is_mutable() {
-        return Err(syn::Error::new_spanned(
-            &function.sig.inputs,
-            "Callback arguments require a first `#[geam::call]` parameter using `&mut Call<State>`",
-        ));
-    }
-    validate_list_return(&model)?;
 
     Ok(ValidatedFunction {
         model,
         completion,
         call,
         parameters,
-        declared_generics,
         host_result: host_result.map(|(_, path)| path),
         profile,
     })
+}
+
+struct SignatureForms<'profile> {
+    profile: Option<&'profile TokenStream>,
+    customs: &'profile [CustomModel],
+}
+
+impl syn::visit_mut::VisitMut for SignatureForms<'_> {
+    fn visit_path_segment_mut(&mut self, segment: &mut syn::PathSegment) {
+        if segment.ident == "ProviderContextualValueForms" {
+            if let Some(profile) = self.profile {
+                segment.arguments =
+                    syn::PathArguments::AngleBracketed(syn::parse_quote!(<#profile>));
+            } else {
+                segment.ident = syn::Ident::new("ProviderValueForms", segment.ident.span());
+                segment.arguments = syn::PathArguments::None;
+            }
+        } else if segment.ident == "ProviderTypedValue" {
+            if let PathArguments::AngleBracketed(arguments) = &mut segment.arguments {
+                if let Some(profile) = self.profile {
+                    if let Some(argument) = arguments.args.first_mut() {
+                        *argument = syn::parse_quote!(#profile);
+                    }
+                } else {
+                    segment.ident = Ident::new("ProviderValue", segment.ident.span());
+                    arguments.args = arguments.args.iter().skip(1).cloned().collect();
+                    if arguments.args.is_empty() {
+                        segment.arguments = PathArguments::None;
+                    }
+                }
+            }
+            syn::visit_mut::visit_path_segment_mut(self, segment);
+        } else if self.profile.is_some()
+            && self.customs.iter().any(|custom| {
+                custom.schema == segment.ident
+                    && super::custom_context::has_profile(custom, self.customs)
+            })
+        {
+            let profile = self.profile;
+            segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#profile>));
+        } else if segment.ident == "HostWorkSchema" && self.profile.is_some() {
+            let profile = self.profile;
+            segment.arguments = syn::PathArguments::AngleBracketed(syn::parse_quote!(<#profile>));
+        } else {
+            syn::visit_mut::visit_path_segment_mut(self, segment);
+        }
+    }
 }
 
 pub(super) fn apply_function_signature(
@@ -949,6 +1084,16 @@ pub(super) fn apply_function_signature(
     support: &TokenStream,
 ) {
     let model = &validated.model;
+    for generic in model.generics.iter().filter(|generic| generic.nominal) {
+        let ident = &generic.ident;
+        function
+            .sig
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#ident: #support::ProviderValue + 'static));
+    }
+
     let call = validated.call;
     let host_return = host_return_type(&model.return_, customs, support);
     let active_profile = validated
@@ -959,6 +1104,8 @@ pub(super) fn apply_function_signature(
             quote!(#ident)
         })
         .unwrap_or_else(|| quote!(__GeamProfile));
+    let factory_bindings = super::callable::bindings_type(model, &active_profile);
+    let factory_context = (!model.factories.is_empty()).then(|| quote!(#factory_bindings,));
 
     function.sig.inputs = validated
         .parameters
@@ -976,6 +1123,7 @@ pub(super) fn apply_function_signature(
                                     #active_profile,
                                     __GeamProvider,
                                     #host_return,
+                                    #factory_context
                                 >
                             },
                             InputOwnership::Owned => {
@@ -983,7 +1131,8 @@ pub(super) fn apply_function_signature(
                                     super::SourceCompletion::Ordinary => quote!(#support::ProviderExecutionCall),
                                     super::SourceCompletion::Work => quote!(#support::ProviderFutureCall),
                                 };
-                                syn::parse_quote!(#context<'__geam_call, #active_profile, __GeamProvider>)
+                                let observation = (validated.completion == super::SourceCompletion::Ordinary && !model.factories.is_empty()).then(|| quote!((),));
+                                syn::parse_quote!(#context<'__geam_call, #active_profile, __GeamProvider, #observation #factory_context>)
                             }
                         }
                     } else {
@@ -999,18 +1148,19 @@ pub(super) fn apply_function_signature(
                     };
                     argument
                 }
+                FunctionParameter::Factory(argument) => argument.clone(),
                 FunctionParameter::Source(source) => {
                     let mut argument = source.syntax.clone();
-                    match &source.value {
-                        FunctionArgumentType::Input(FunctionInputType::List(list)) => {
+                    match &model.arguments[source.index] {
+                        FunctionInputType::List(list) => {
                             argument.ty =
-                                Box::new(list_signature_type(list, customs, support, flavor));
+                                Box::new(list_signature_type(list, customs, support, flavor, &active_profile));
                         }
-                        FunctionArgumentType::Input(FunctionInputType::Generic(value)) => {
+                        FunctionInputType::Generic(value) => {
                             argument.ty =
                                 Box::new(generic_value_signature_type(value, customs, support));
                         }
-                        FunctionArgumentType::Input(FunctionInputType::Future(value)) => {
+                        FunctionInputType::Future(value) => {
                             argument.ty = Box::new(super::signature::future_input_signature_type(
                                 value,
                                 customs,
@@ -1018,7 +1168,7 @@ pub(super) fn apply_function_signature(
                                 &active_profile,
                             ));
                         }
-                        FunctionArgumentType::Input(FunctionInputType::External(external)) => {
+                        FunctionInputType::External(external) => {
                             argument.ty = Box::new(generic_external_input_signature_type(
                                 external,
                                 customs,
@@ -1027,18 +1177,18 @@ pub(super) fn apply_function_signature(
                                 flavor,
                             ));
                         }
-                        FunctionArgumentType::Callback(callback) => {
+                        FunctionInputType::Callback(callback) => {
                             argument.ty = Box::new(callback_signature_type(
                                 callback,
-                                &validated.declared_generics,
+                                customs,
                                 &active_profile,
                                 support,
                             ));
                         }
-                        FunctionArgumentType::Input(FunctionInputType::Value(value)) => {
+                        FunctionInputType::Value(value) => {
                             let value = provider_value_from_input_root(value);
                             argument.ty = Box::new(provider_input_signature_type(
-                                &value, customs, support, flavor,
+                                &value, customs, support, flavor, &active_profile,
                             ));
                         }
                     }
@@ -1052,14 +1202,15 @@ pub(super) fn apply_function_signature(
         })
         .collect();
 
-    let output = callback_output_signature_type(&model.return_, customs, support, flavor);
+    let output =
+        callback_output_signature_type(&model.return_, customs, support, flavor, &active_profile);
     let output = wrap_host_result_type(output, validated.host_result.as_ref(), flavor, support);
     function.sig.output =
         ReturnType::Type(Token![->](proc_macro2::Span::call_site()), Box::new(output));
-    if !call.is_none() || function_contains_callback(model) {
+    if !call.is_none() || function_contains_callback(model, customs) {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
-    if matches!(flavor, InputOwnership::Owned) && function_contains_callback(model) {
+    if matches!(flavor, InputOwnership::Owned) && function_contains_callback(model, customs) {
         for generic in &model.generics {
             let ident = &generic.ident;
             function
@@ -1085,7 +1236,12 @@ pub(super) fn apply_function_signature(
             .predicates
             .push(syn::parse_quote!(#ident: #bound));
     }
-    if (call.is_mutable() || function_contains_future_input(model)) && validated.profile.is_none() {
+    if (call.is_mutable()
+        || function_contains_future_input(model, customs)
+        || function_contains_callback(model, customs)
+        || function_uses_contextual_forms(model, customs, support))
+        && validated.profile.is_none()
+    {
         function
             .sig
             .generics
@@ -1106,7 +1262,9 @@ pub(super) fn apply_function_signature(
                 .push(syn::parse_quote! {
                     <__GeamProfile as #support::HostProfile>::RunState: ::core::marker::Send
                 });
-            if function_contains_callback(model) {
+            if function_contains_callback(model, customs)
+                || function_uses_contextual_forms(model, customs, support)
+            {
                 function
                     .sig
                     .generics
@@ -1119,7 +1277,9 @@ pub(super) fn apply_function_signature(
             }
         }
     }
-    if function_contains_future_input(model) {
+    if (validated.completion == super::SourceCompletion::Work && call.is_mutable())
+        || function_contains_future_input(model, customs)
+    {
         function
             .sig
             .generics
@@ -1127,24 +1287,25 @@ pub(super) fn apply_function_signature(
             .predicates
             .push(syn::parse_quote!(#active_profile: #support::HostWorkProfile));
     }
-    if function_contains_callback(model) {
-        for callback in model
-            .arguments
-            .iter()
-            .filter_map(|argument| match argument {
-                FunctionArgumentType::Callback(callback) => Some(callback.as_ref()),
-                FunctionArgumentType::Input(_) => None,
-            })
-        {
+    if !model.factories.is_empty() {
+        let capture_mode = super::callable::capture_mode(flavor, support);
+        function
+            .sig
+            .generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(
+                #factory_bindings: #support::ProviderFactoryBindings<CaptureMode = #capture_mode>
+            ));
+    }
+    if function_contains_callback(model, customs) {
+        for callback in super::callback::callbacks(model, customs) {
             let codec = callback_codec_type(
                 &callback.codec,
-                model
+                callback
                     .generics
                     .iter()
-                    .map(|generic| {
-                        let ident = &generic.ident;
-                        quote!(#ident)
-                    })
+                    .map(|ident| quote!(#ident))
                     .collect(),
             );
             let callback_arguments = callback
@@ -1156,6 +1317,7 @@ pub(super) fn apply_function_signature(
                         customs,
                         support,
                         InputOwnership::Owned,
+                        &active_profile,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -1166,6 +1328,14 @@ pub(super) fn apply_function_signature(
                 InputOwnership::Owned,
                 &active_profile,
             );
+            let host_arguments =
+                super::signature::callback_host_arguments(callback, customs, support);
+            let host_return = super::signature::host_input_type(
+                &callback.return_,
+                customs,
+                support,
+                &active_profile,
+            );
             let predicate = syn::parse_quote! {
                     #codec: #support::ProviderCallbackCodec<
                         #active_profile,
@@ -1173,6 +1343,8 @@ pub(super) fn apply_function_signature(
                         (),
                         Arguments = (#(#callback_arguments,)*),
                         Returned = #callback_return,
+                        HostArguments = #host_arguments,
+                        HostReturn = #host_return,
                     >
             };
             function
@@ -1183,62 +1355,159 @@ pub(super) fn apply_function_signature(
                 .push(predicate);
         }
     }
+    let contextual_signature = validated.profile.is_some()
+        || call.is_mutable()
+        || function_contains_future_input(model, customs)
+        || function_contains_callback(model, customs)
+        || function_uses_contextual_forms(model, customs, support);
+    let mut forms = SignatureForms {
+        profile: contextual_signature.then_some(&active_profile),
+        customs,
+    };
+    syn::visit_mut::VisitMut::visit_signature_mut(&mut forms, &mut function.sig);
 }
 
 pub(super) fn resolve_function_value_forms(
     function: &mut FunctionModel,
     support: &TokenStream,
+    customs: &[CustomModel],
     flavor: InputOwnership,
 ) {
     for argument in &mut function.arguments {
-        let FunctionArgumentType::Callback(callback) = argument else {
-            continue;
-        };
-        for argument in &mut callback.arguments {
-            rewrite_function_return_type(argument, support, flavor);
+        rewrite_input_callbacks(argument, support, customs);
+    }
+    rewrite_function_return_type(&mut function.return_, support, customs, flavor);
+    if let Some(callable) = &mut function.callable {
+        rewrite_callback(&mut callable.capture_encoder, support, customs);
+        for argument in &mut callable.borrowed_capture_encoder.arguments {
+            rewrite_function_return_type(argument, support, customs, InputOwnership::Borrowed);
+        }
+        rewrite_callback(&mut callable.returned, support, customs);
+    }
+}
+
+pub(super) fn rewrite_callback(
+    callback: &mut CallbackType,
+    support: &TokenStream,
+    customs: &[CustomModel],
+) {
+    for argument in &mut callback.arguments {
+        rewrite_function_return_type(argument, support, customs, InputOwnership::Owned);
+    }
+    rewrite_input_callbacks(&mut callback.return_, support, customs);
+}
+
+fn rewrite_input_callbacks(
+    input: &mut FunctionInputType,
+    support: &TokenStream,
+    customs: &[CustomModel],
+) {
+    match input {
+        FunctionInputType::Callback(callback) => rewrite_callback(callback, support, customs),
+        FunctionInputType::Future(future) => {
+            rewrite_input_callbacks(&mut future.value, support, customs)
+        }
+        FunctionInputType::Value(value) => match value.as_mut() {
+            FunctionInputValueType::Tuple(elements) => {
+                for element in elements {
+                    rewrite_value_callbacks(element, support, customs);
+                }
+            }
+            FunctionInputValueType::Result { success, failure } => {
+                rewrite_value_callbacks(success, support, customs);
+                rewrite_value_callbacks(failure, support, customs);
+            }
+            FunctionInputValueType::Option { value } => {
+                rewrite_value_callbacks(value, support, customs)
+            }
+            FunctionInputValueType::Scalar(_)
+            | FunctionInputValueType::Declared { .. }
+            | FunctionInputValueType::External { .. }
+            | FunctionInputValueType::Custom { .. } => {}
+        },
+        FunctionInputType::List(list) => {
+            rewrite_static_callbacks(&mut list.collection.value, support, customs)
+        }
+        FunctionInputType::Generic(_) | FunctionInputType::External(_) => {}
+    }
+}
+
+fn rewrite_value_callbacks(
+    value: &mut ProviderValueType,
+    support: &TokenStream,
+    customs: &[CustomModel],
+) {
+    match value {
+        ProviderValueType::Future(future) => {
+            rewrite_input_callbacks(&mut future.value, support, customs)
+        }
+        ProviderValueType::Callback(callback) => rewrite_callback(callback, support, customs),
+        ProviderValueType::Tuple(elements) => {
+            for element in elements {
+                rewrite_value_callbacks(element, support, customs);
+            }
+        }
+        ProviderValueType::Result { success, failure } => {
+            rewrite_value_callbacks(success, support, customs);
+            rewrite_value_callbacks(failure, support, customs);
+        }
+        ProviderValueType::Option { value } => rewrite_value_callbacks(value, support, customs),
+        ProviderValueType::Scalar(_)
+        | ProviderValueType::Generic(_)
+        | ProviderValueType::Declared { .. }
+        | ProviderValueType::External { .. }
+        | ProviderValueType::Custom { .. } => {}
+        ProviderValueType::List(list) => {
+            rewrite_static_callbacks(&mut list.collection.value, support, customs)
         }
     }
-    rewrite_function_return_type(&mut function.return_, support, flavor);
 }
 
 fn rewrite_function_return_type(
     type_: &mut FunctionReturnType,
     support: &TokenStream,
+    customs: &[CustomModel],
     flavor: InputOwnership,
 ) {
     match type_ {
         FunctionReturnType::Value(value) => {
-            rewrite_root_output_value_type(value, support, flavor);
+            rewrite_root_output_value_type(value, support, customs, flavor);
         }
-        FunctionReturnType::List(_)
-        | FunctionReturnType::Generic(_)
-        | FunctionReturnType::External(_) => {}
+        FunctionReturnType::Callback(callback) => rewrite_callback(callback, support, customs),
+        FunctionReturnType::Future(future) => {
+            rewrite_input_callbacks(&mut future.value, support, customs)
+        }
+        FunctionReturnType::List(list) => {
+            rewrite_static_callbacks(&mut list.collection.value, support, customs)
+        }
+        FunctionReturnType::Generic(_) | FunctionReturnType::External(_) => {}
     }
 }
 
 fn rewrite_root_output_value_type(
     type_: &mut FunctionRootOutputValueType,
     support: &TokenStream,
+    customs: &[CustomModel],
     flavor: InputOwnership,
 ) {
     match type_ {
         FunctionRootOutputValueType::Value(value) => {
-            rewrite_output_leaf_type(value, support, flavor);
+            rewrite_output_leaf_type(value, support, customs, flavor);
         }
         FunctionRootOutputValueType::Tuple(elements) => {
             for element in elements {
-                rewrite_output_value_type(element, support, flavor);
+                rewrite_output_value_type(element, support, customs, flavor);
             }
         }
         FunctionRootOutputValueType::Result { success, failure } => {
-            rewrite_output_value_type(success, support, flavor);
-            rewrite_output_value_type(failure, support, flavor);
+            rewrite_output_value_type(success, support, customs, flavor);
+            rewrite_output_value_type(failure, support, customs, flavor);
         }
         FunctionRootOutputValueType::Option { value } => {
-            rewrite_output_value_type(value, support, flavor);
+            rewrite_output_value_type(value, support, customs, flavor);
         }
         FunctionRootOutputValueType::Vec(collection) => {
-            rewrite_output_value_type(&mut collection.value, support, flavor);
+            rewrite_output_value_type(&mut collection.value, support, customs, flavor);
         }
     }
 }
@@ -1246,26 +1515,31 @@ fn rewrite_root_output_value_type(
 fn rewrite_output_value_type(
     type_: &mut FunctionOutputValueType,
     support: &TokenStream,
+    customs: &[CustomModel],
     flavor: InputOwnership,
 ) {
     match type_ {
+        FunctionOutputValueType::Future(future) => {
+            rewrite_input_callbacks(&mut future.value, support, customs)
+        }
+        FunctionOutputValueType::Callback(callback) => rewrite_callback(callback, support, customs),
         FunctionOutputValueType::Value(value) => {
-            rewrite_output_leaf_type(value, support, flavor);
+            rewrite_output_leaf_type(value, support, customs, flavor);
         }
         FunctionOutputValueType::Tuple(elements) => {
             for element in elements {
-                rewrite_output_value_type(element, support, flavor);
+                rewrite_output_value_type(element, support, customs, flavor);
             }
         }
         FunctionOutputValueType::Result { success, failure } => {
-            rewrite_output_value_type(success, support, flavor);
-            rewrite_output_value_type(failure, support, flavor);
+            rewrite_output_value_type(success, support, customs, flavor);
+            rewrite_output_value_type(failure, support, customs, flavor);
         }
         FunctionOutputValueType::Option { value } => {
-            rewrite_output_value_type(value, support, flavor);
+            rewrite_output_value_type(value, support, customs, flavor);
         }
         FunctionOutputValueType::Vec(collection) => {
-            rewrite_output_value_type(&mut collection.value, support, flavor);
+            rewrite_output_value_type(&mut collection.value, support, customs, flavor);
         }
         FunctionOutputValueType::Generic(_) => {}
     }
@@ -1274,32 +1548,76 @@ fn rewrite_output_value_type(
 fn rewrite_output_leaf_type(
     type_: &mut FunctionOutputLeafType,
     support: &TokenStream,
+    customs: &[CustomModel],
     flavor: InputOwnership,
 ) {
     match type_ {
-        FunctionOutputLeafType::Declared { type_, .. }
-        | FunctionOutputLeafType::Custom { rust: type_, .. } => {
-            rewrite_declared_output_type(type_, support, flavor);
+        FunctionOutputLeafType::Declared { type_, .. } => {
+            rewrite_declared_output_type(type_, support, flavor)
+        }
+        FunctionOutputLeafType::Custom { index, rust } => {
+            let source = &customs[*index].ident;
+            let forms =
+                super::custom_context::forms(*index, customs, support, &quote!(__GeamProfile));
+            *rust = syn::parse_quote!(<#source as #forms>::Output);
         }
         FunctionOutputLeafType::Scalar(_) | FunctionOutputLeafType::External { .. } => {}
     };
 }
 
 fn rewrite_declared_output_type(type_: &mut Type, support: &TokenStream, flavor: InputOwnership) {
+    if let Type::Path(path) = type_
+        && path.qself.is_some()
+        && path.path.segments.iter().any(|segment| {
+            segment.ident == "ProviderValueForms" || segment.ident == "ProviderContextualValueForms"
+        })
+    {
+        return;
+    }
     if !is_type_application_named(type_, "External") {
         let source = type_.clone();
-        *type_ = syn::parse_quote!(<#source as #support::ProviderValueForms>::Output);
+        *type_ = syn::parse_quote!(<#source as #support::ProviderContextualValueForms<__GeamProfile>>::Output);
         return;
     }
     let source = type_.clone();
     *type_ = match flavor {
         InputOwnership::Borrowed => syn::parse_quote! {
-            <#source as #support::ProviderValueForms>::ImmediateInput
+            <#source as #support::ProviderContextualValueForms<__GeamProfile>>::ImmediateInput
         },
         InputOwnership::Owned => syn::parse_quote! {
-            <#source as #support::ProviderValueForms>::OwnedInput
+            <#source as #support::ProviderContextualValueForms<__GeamProfile>>::OwnedInput
         },
     };
+}
+
+pub(super) fn rewrite_static_callbacks(
+    value: &mut StaticValueType,
+    support: &TokenStream,
+    customs: &[CustomModel],
+) {
+    match value {
+        StaticValueType::Future(future) => {
+            rewrite_input_callbacks(&mut future.value, support, customs)
+        }
+        StaticValueType::Callback(callback) => rewrite_callback(callback, support, customs),
+        StaticValueType::List(list) => {
+            rewrite_static_callbacks(&mut list.collection.value, support, customs)
+        }
+        StaticValueType::Tuple(elements) => {
+            for value in elements {
+                rewrite_static_callbacks(value, support, customs);
+            }
+        }
+        StaticValueType::Result { success, failure } => {
+            rewrite_static_callbacks(success, support, customs);
+            rewrite_static_callbacks(failure, support, customs);
+        }
+        StaticValueType::Option { value } => rewrite_static_callbacks(value, support, customs),
+        StaticValueType::Scalar(_)
+        | StaticValueType::Declared { .. }
+        | StaticValueType::External { .. }
+        | StaticValueType::Custom { .. } => {}
+    }
 }
 
 fn prepend_function_lifetime(generics: &mut syn::Generics, lifetime: syn::LifetimeParam) {
@@ -1319,7 +1637,9 @@ fn provider_value_nested_generic_source(value: &ProviderValueType) -> Option<&Ty
                 .or_else(|| provider_value_nested_generic_source(failure))
         }
         ProviderValueType::Option { value } => provider_value_nested_generic_source(value),
-        ProviderValueType::Scalar(_)
+        ProviderValueType::Future(_)
+        | ProviderValueType::Callback(_)
+        | ProviderValueType::Scalar(_)
         | ProviderValueType::Declared { .. }
         | ProviderValueType::External { .. }
         | ProviderValueType::Custom { .. }
@@ -1344,21 +1664,109 @@ fn function_input_nested_generic_source(value: &FunctionInputValueType) -> Optio
     }
 }
 
-pub(super) fn function_contains_future_input(function: &FunctionModel) -> bool {
-    function.arguments.iter().any(|argument| match argument {
-        FunctionArgumentType::Input(FunctionInputType::Future(_)) => true,
-        FunctionArgumentType::Callback(callback) => {
-            matches!(&*callback.return_, FunctionInputType::Future(_))
-        }
-        _ => false,
-    })
+pub(super) fn function_contains_future_input(
+    function: &FunctionModel,
+    customs: &[CustomModel],
+) -> bool {
+    super::callback::function_codecs(function, customs)
+        .iter()
+        .any(|codec| codec.requires_work(customs))
 }
 
-fn function_contains_callback(function: &FunctionModel) -> bool {
-    function
-        .arguments
-        .iter()
-        .any(|argument| matches!(argument, FunctionArgumentType::Callback(_)))
+pub(super) fn function_contains_callback(
+    function: &FunctionModel,
+    customs: &[CustomModel],
+) -> bool {
+    !super::callback::callbacks(function, customs).is_empty()
+}
+
+// Local declarations expose their contextual fields to this expansion. Preserve
+// that context for forwarding without changing ordinary qualified helper calls;
+// qualified contextual declarations use the explicit Call or profile parameter.
+pub(super) fn function_uses_contextual_forms(
+    function: &FunctionModel,
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> bool {
+    struct ProfiledHost<'model> {
+        customs: &'model [CustomModel],
+        found: bool,
+    }
+    impl VisitMut for ProfiledHost<'_> {
+        fn visit_type_path_mut(&mut self, path: &mut TypePath) {
+            if path.qself.is_some()
+                && path
+                    .path
+                    .segments
+                    .iter()
+                    .any(|segment| segment.ident == "ProviderContextualValueForms")
+                && path
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|segment| segment.ident == "Host")
+            {
+                self.found = true;
+            }
+            if let Some(owner) = &path.qself
+                && path.path.segments.last().is_some_and(|segment| {
+                    segment.ident == "ImmediateInput" || segment.ident == "OwnedInput"
+                })
+                && let Type::Path(source) = &*owner.ty
+                && let Some(name) = source.path.get_ident()
+            {
+                self.found |= self.customs.iter().any(|custom| {
+                    (&custom.ident == name
+                        || custom
+                            .input
+                            .as_ref()
+                            .is_some_and(|input| &input.ident == name))
+                        && super::custom_context::has_profile(custom, self.customs)
+                });
+            }
+            syn::visit_mut::visit_type_path_mut(self, path);
+        }
+        fn visit_path_segment_mut(&mut self, segment: &mut syn::PathSegment) {
+            self.found |= segment.ident == "ProviderTypedValue"
+                || self.customs.iter().any(|custom| {
+                    custom.schema == segment.ident
+                        && super::custom_context::has_profile(custom, self.customs)
+                });
+            syn::visit_mut::visit_path_segment_mut(self, segment);
+        }
+    }
+    let mut visitor = ProfiledHost {
+        customs,
+        found: false,
+    };
+    let profile = quote!(__GeamProfile);
+    for argument in &function.arguments {
+        let mut type_ = super::signature::callback_input_signature_type(
+            argument,
+            customs,
+            support,
+            InputOwnership::Borrowed,
+            &profile,
+        );
+        visitor.visit_type_mut(&mut type_);
+    }
+    visitor.visit_type_mut(&mut callback_output_signature_type(
+        &function.return_,
+        customs,
+        support,
+        InputOwnership::Borrowed,
+        &profile,
+    ));
+    visitor.found
+        || super::callback::codecs(function, customs)
+            .iter()
+            .any(|codec| {
+                let super::callback::InputCodec::Declared(type_) = codec else {
+                    return false;
+                };
+                super::custom_value::generic_custom_index(type_, customs)
+                    .is_some_and(|(index, _)| super::custom_context::is_contextual(index, customs))
+            })
 }
 
 fn call_parameter(type_: &Type) -> syn::Result<(bool, Type, TypePath)> {
@@ -1437,11 +1845,30 @@ fn reject_unwrapped_generic(
     type_: &Type,
     generics: &GenericParameterScope,
     externals: &[ExternalModel],
+    customs: &[CustomModel],
 ) -> syn::Result<()> {
-    if is_generic_external_application(type_, externals) {
-        return Ok(());
+    struct NominalArguments<'models> {
+        customs: &'models [CustomModel],
+        externals: &'models [ExternalModel],
     }
-    if let Some(ident) = find_unwrapped_generic(type_, generics) {
+    impl syn::visit_mut::VisitMut for NominalArguments<'_> {
+        fn visit_type_mut(&mut self, type_: &mut Type) {
+            if super::custom_value::generic_custom_index(type_, self.customs).is_some()
+                || is_generic_external_application(type_, self.externals)
+                || super::type_syntax::is_qualified_generic_declaration(type_)
+            {
+                *type_ = syn::parse_quote!(());
+            } else {
+                syn::visit_mut::visit_type_mut(self, type_);
+            }
+        }
+    }
+    let mut checked = type_.clone();
+    syn::visit_mut::VisitMut::visit_type_mut(
+        &mut NominalArguments { customs, externals },
+        &mut checked,
+    );
+    if let Some(ident) = find_unwrapped_generic(&checked, generics) {
         return Err(syn::Error::new_spanned(
             type_,
             format!("generic source type `{ident}` must be written as Value<{ident}>",),
@@ -1519,7 +1946,7 @@ pub(super) fn find_unwrapped_generic(
     None
 }
 
-fn generic_value_type(
+pub(super) fn generic_value_type(
     type_: &Type,
     generics: &mut GenericParameterScope,
     externals: &[ExternalModel],
@@ -1540,6 +1967,7 @@ fn generic_value_type(
     };
     let classified = classify_generic_host_type(&source, generics, externals, customs, support)?;
     if !generic_host_contains_parameter(&classified.host)
+        && find_unwrapped_generic(&source, generics).is_none()
         && !matches!(classified.host, GenericHostType::Function { .. })
     {
         return Err(syn::Error::new_spanned(
@@ -1556,10 +1984,8 @@ fn generic_value_type(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn callback_type(
+pub(super) fn callback_type(
     type_: &Type,
-    function: &Ident,
-    argument_index: usize,
     externals: &[ExternalModel],
     customs: &[CustomModel],
     list_decoders: &mut Vec<ListDecoderModel>,
@@ -1600,37 +2026,16 @@ fn callback_type(
         ));
     }
 
-    // Source function parameters are indexed from the return shape first.
-    let return_type = match &signature.output {
-        ReturnType::Default => syn::parse_quote!(()),
-        ReturnType::Type(_, type_) => (**type_).clone(),
-    };
-    if is_collection(&return_type, "Callback") {
-        return Err(syn::Error::new_spanned(
-            &return_type,
-            "callbacks returned by a callback are opaque values; use Value<fn(...) -> ...>",
-        ));
-    }
-    reject_unwrapped_generic(&return_type, generics, externals)?;
-    let return_ = classify_input(
-        &return_type,
-        externals,
-        customs,
-        list_decoders,
-        generics,
-        support,
-        true,
-    )?;
+    let codec = format_ident!(
+        "__GeamCallbackCodec_{}_{}",
+        generics.callback_owner.unraw(),
+        generics.callback_count
+    );
+    generics.callback_count += 1;
 
     let mut arguments = Vec::with_capacity(signature.inputs.len());
     for argument in &signature.inputs {
-        if is_collection(&argument.ty, "Callback") {
-            return Err(syn::Error::new_spanned(
-                &argument.ty,
-                "callback arguments that are functions must use Value<fn(...) -> ...>",
-            ));
-        }
-        reject_unwrapped_generic(&argument.ty, generics, externals)?;
+        reject_unwrapped_generic(&argument.ty, generics, externals, customs)?;
         arguments.push(classify_return(
             &argument.ty,
             externals,
@@ -1641,16 +2046,29 @@ fn callback_type(
         )?);
     }
 
+    // Nested function values visit their arguments before their return shape.
+    let return_type = match &signature.output {
+        ReturnType::Default => syn::parse_quote!(()),
+        ReturnType::Type(_, type_) => (**type_).clone(),
+    };
+    reject_unwrapped_generic(&return_type, generics, externals, customs)?;
+    let return_ = classify_input(
+        &return_type,
+        externals,
+        customs,
+        list_decoders,
+        generics,
+        support,
+        true,
+    )?;
+
     Ok(Some(CallbackType {
         signature,
         path,
         arguments,
         return_: Box::new(return_),
-        codec: format_ident!(
-            "__GeamCallbackCodec_{}_{}",
-            function.unraw(),
-            argument_index,
-        ),
+        codec,
+        generics: generics.declared.clone(),
     }))
 }
 
@@ -1664,8 +2082,31 @@ fn classify_generic_host_type(
     if let Some(ident) = generics.declared_ident(type_) {
         let index = generics.parameter_index(ident);
         return Ok(ClassifiedGenericHostType {
-            host: GenericHostType::Parameter { index },
-            instantiated: syn::parse_quote!(#support::HostTypeParameter<#index>),
+            host: if generics.declared_hosts {
+                GenericHostType::SourceParameter(type_.clone())
+            } else {
+                GenericHostType::Parameter { index }
+            },
+            instantiated: if generics.declared_hosts {
+                type_.clone()
+            } else {
+                syn::parse_quote!(#support::HostTypeParameter<#index>)
+            },
+        });
+    }
+    if let Some((_, input)) = super::custom_value::generic_custom_index(type_, customs) {
+        generic_custom_application(type_, input, generics, externals, customs, support)?;
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Declared(type_.clone()),
+            instantiated: type_.clone(),
+        });
+    }
+    if generic_external_type(type_, false, externals, generics, customs, support)?.is_some()
+        || generic_external_type(type_, true, externals, generics, customs, support)?.is_some()
+    {
+        return Ok(ClassifiedGenericHostType {
+            host: GenericHostType::Declared(type_.clone()),
+            instantiated: type_.clone(),
         });
     }
     if let Type::Reference(_) = type_ {
@@ -1761,12 +2202,6 @@ fn classify_generic_host_type(
                 "opaque source function shapes must use safe non-variadic Rust fn syntax",
             ));
         }
-        let return_type = match &function.output {
-            ReturnType::Default => syn::parse_quote!(()),
-            ReturnType::Type(_, type_) => (**type_).clone(),
-        };
-        let return_type =
-            classify_generic_host_type(&return_type, generics, externals, customs, support)?;
         let mut host_arguments = Vec::with_capacity(function.inputs.len());
         let mut instantiated_arguments = Vec::with_capacity(function.inputs.len());
         for argument in &function.inputs {
@@ -1775,6 +2210,12 @@ fn classify_generic_host_type(
             host_arguments.push(argument.host);
             instantiated_arguments.push(argument.instantiated);
         }
+        let return_type = match &function.output {
+            ReturnType::Default => syn::parse_quote!(()),
+            ReturnType::Type(_, type_) => (**type_).clone(),
+        };
+        let return_type =
+            classify_generic_host_type(&return_type, generics, externals, customs, support)?;
         let instantiated_return = &return_type.instantiated;
         return Ok(ClassifiedGenericHostType {
             host: GenericHostType::Function {
@@ -1796,11 +2237,16 @@ fn classify_generic_host_type(
         && path.segments.len() > 1
     {
         for segment in &path.segments {
-            if !matches!(segment.arguments, PathArguments::None) {
-                return Err(syn::Error::new_spanned(
-                    type_,
-                    "generic declared source types are not supported inside generic source shapes",
-                ));
+            if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                for argument in &arguments.args {
+                    let GenericArgument::Type(argument) = argument else {
+                        return Err(syn::Error::new_spanned(
+                            argument,
+                            "generic declared arguments must be source types",
+                        ));
+                    };
+                    classify_generic_host_type(argument, generics, externals, customs, support)?;
+                }
             }
         }
         return Ok(ClassifiedGenericHostType {
@@ -1816,7 +2262,7 @@ fn classify_generic_host_type(
 
 fn generic_host_contains_parameter(type_: &GenericHostType) -> bool {
     match type_ {
-        GenericHostType::Parameter { .. } => true,
+        GenericHostType::Parameter { .. } | GenericHostType::SourceParameter(_) => true,
         GenericHostType::Tuple(elements) => {
             for element in elements {
                 if generic_host_contains_parameter(element) {
@@ -1846,7 +2292,7 @@ fn generic_host_contains_parameter(type_: &GenericHostType) -> bool {
     }
 }
 
-fn classify_input(
+pub(super) fn classify_input(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
@@ -1855,23 +2301,14 @@ fn classify_input(
     support: &TokenStream,
     allow_nested_generic: bool,
 ) -> syn::Result<FunctionInputType> {
-    if let Some((source, path)) = collection_item_with_path(type_, "Future")? {
-        let value = classify_input(
-            &source,
-            externals,
-            customs,
-            list_decoders,
-            generics,
-            support,
-            true,
-        )?;
-        return Ok(FunctionInputType::Future(Box::new(
-            super::FutureInputType {
-                source,
-                path,
-                value: Box::new(value),
-            },
-        )));
+    if let Some(callback) =
+        callback_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionInputType::Callback(Box::new(callback)));
+    }
+    if let Some(future) = future_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionInputType::Future(Box::new(future)));
     }
     if let Some(external) =
         generic_external_type(type_, true, externals, generics, customs, support)?
@@ -1948,12 +2385,16 @@ fn classify_input(
         return Ok(FunctionInputType::Generic(Box::new(value)));
     }
     if let Some(item) = collection_item(type_, "List")? {
-        let value = classify_collection_input_item(&item, externals, customs, "List")?;
-        let collection = CollectionType {
-            source: type_.clone(),
-
-            value,
-        };
+        let value = classify_collection_input_item(
+            &item,
+            externals,
+            customs,
+            "List",
+            list_decoders,
+            generics,
+            support,
+        )?;
+        let collection = CollectionType { value };
         let decoder = register_list_decoder(&collection, list_decoders);
         return Ok(FunctionInputType::List(Box::new(ListType {
             collection,
@@ -2068,7 +2509,9 @@ fn classify_function_input_value(
             ),
         ));
     }
-    if is_declared_provider_type(type_)? {
+    if generic_custom_application(type_, true, generics, externals, customs, support)?
+        || is_declared_provider_type(type_)?
+    {
         return Ok(FunctionInputValueType::Declared {
             type_: type_.clone(),
             input: DeclaredInput::Owned,
@@ -2085,6 +2528,15 @@ fn classify_argument_value(
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<ProviderValueType> {
+    if let Some(future) = future_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(ProviderValueType::Future(Box::new(future)));
+    }
+    if let Some(callback) =
+        callback_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(ProviderValueType::Callback(Box::new(callback)));
+    }
     if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
         return Ok(ProviderValueType::Generic(Box::new(value)));
     }
@@ -2116,12 +2568,16 @@ fn classify_argument_value(
         ));
     }
     if let Some(item) = collection_item(type_, "List")? {
-        let value = classify_collection_input_item(&item, externals, customs, "List")?;
-        let collection = CollectionType {
-            source: type_.clone(),
-
-            value,
-        };
+        let value = classify_collection_input_item(
+            &item,
+            externals,
+            customs,
+            "List",
+            list_decoders,
+            generics,
+            support,
+        )?;
+        let collection = CollectionType { value };
         let decoder = register_list_decoder(&collection, list_decoders);
         return Ok(ProviderValueType::List(Box::new(ListType {
             collection,
@@ -2217,7 +2673,9 @@ fn classify_argument_value(
             ),
         ));
     }
-    if is_declared_provider_type(type_)? {
+    if generic_custom_application(type_, true, generics, externals, customs, support)?
+        || is_declared_provider_type(type_)?
+    {
         return Ok(ProviderValueType::Declared {
             type_: type_.clone(),
             input: DeclaredInput::Owned,
@@ -2226,7 +2684,42 @@ fn classify_argument_value(
     Ok(ProviderValueType::Scalar(type_.clone()))
 }
 
-fn classify_return(
+pub(super) fn future_type(
+    type_: &Type,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<Option<super::FutureInputType>> {
+    if let Some((source, path)) = collection_item_with_path(type_, "Future")? {
+        let value = classify_input(
+            &source,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+            true,
+        )?;
+        let codec = format_ident!(
+            "__GeamFutureCodec_{}_{}",
+            generics.callback_owner.unraw(),
+            generics.callback_count
+        );
+        generics.callback_count += 1;
+        return Ok(Some(super::FutureInputType {
+            codec,
+            generics: generics.declared.clone(),
+            source,
+            path,
+            value: Box::new(value),
+        }));
+    }
+    Ok(None)
+}
+
+pub(super) fn classify_return(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
@@ -2234,6 +2727,15 @@ fn classify_return(
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionReturnType> {
+    if let Some(future) = future_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionReturnType::Future(Box::new(future)));
+    }
+    if let Some(callback) =
+        callback_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionReturnType::Callback(Box::new(callback)));
+    }
     if let Some(external) =
         generic_external_type(type_, false, externals, generics, customs, support)?
     {
@@ -2287,12 +2789,16 @@ fn classify_return(
         ));
     }
     if let Some(item) = collection_item(type_, "List")? {
-        let value = classify_collection_input_item(&item, externals, customs, "List")?;
-        let collection = CollectionType {
-            source: type_.clone(),
-
-            value,
-        };
+        let value = classify_collection_input_item(
+            &item,
+            externals,
+            customs,
+            "List",
+            list_decoders,
+            generics,
+            support,
+        )?;
+        let collection = CollectionType { value };
         let decoder = register_list_decoder(&collection, list_decoders);
         return Ok(FunctionReturnType::List(Box::new(ListType {
             collection,
@@ -2300,7 +2806,14 @@ fn classify_return(
         })));
     }
     if let Some(item) = collection_item(type_, "Vec")? {
-        let value = classify_function_output_value(&item, externals, customs, generics, support)?;
+        let value = classify_function_output_value(
+            &item,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+        )?;
         return Ok(FunctionReturnType::Value(FunctionRootOutputValueType::Vec(
             FunctionOutputCollectionType {
                 value: Box::new(value),
@@ -2308,7 +2821,14 @@ fn classify_return(
         )));
     }
     Ok(FunctionReturnType::Value(
-        classify_function_root_output_value(type_, externals, customs, generics, support)?,
+        classify_function_root_output_value(
+            type_,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+        )?,
     ))
 }
 
@@ -2316,6 +2836,7 @@ fn classify_function_root_output_value(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionRootOutputValueType> {
@@ -2325,17 +2846,32 @@ fn classify_function_root_output_value(
         } => {
             return Ok(FunctionRootOutputValueType::Result {
                 success: Box::new(classify_function_output_value(
-                    success, externals, customs, generics, support,
+                    success,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
                 failure: Box::new(classify_function_output_value(
-                    failure, externals, customs, generics, support,
+                    failure,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
         SourceWrapper::Option { value, .. } => {
             return Ok(FunctionRootOutputValueType::Option {
                 value: Box::new(classify_function_output_value(
-                    value, externals, customs, generics, support,
+                    value,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
@@ -2347,13 +2883,18 @@ fn classify_function_root_output_value(
         let mut elements = Vec::with_capacity(tuple.elems.len());
         for element in &tuple.elems {
             elements.push(classify_function_output_value(
-                element, externals, customs, generics, support,
+                element,
+                externals,
+                customs,
+                list_decoders,
+                generics,
+                support,
             )?);
         }
         return Ok(FunctionRootOutputValueType::Tuple(elements));
     }
     Ok(FunctionRootOutputValueType::Value(Box::new(
-        classify_function_output_leaf(type_, externals, customs)?,
+        classify_function_output_leaf(type_, externals, customs, generics, support)?,
     )))
 }
 
@@ -2361,9 +2902,19 @@ fn classify_function_output_value(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
     generics: &mut GenericParameterScope,
     support: &TokenStream,
 ) -> syn::Result<FunctionOutputValueType> {
+    if let Some(future) = future_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionOutputValueType::Future(Box::new(future)));
+    }
+    if let Some(callback) =
+        callback_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(FunctionOutputValueType::Callback(Box::new(callback)));
+    }
     if let Some(value) = generic_value_type(type_, generics, externals, customs, support)? {
         return Ok(FunctionOutputValueType::Generic(Box::new(value)));
     }
@@ -2389,7 +2940,14 @@ fn classify_function_output_value(
         ));
     }
     if let Some(item) = collection_item(type_, "Vec")? {
-        let value = classify_function_output_value(&item, externals, customs, generics, support)?;
+        let value = classify_function_output_value(
+            &item,
+            externals,
+            customs,
+            list_decoders,
+            generics,
+            support,
+        )?;
         return Ok(FunctionOutputValueType::Vec(FunctionOutputCollectionType {
             value: Box::new(value),
         }));
@@ -2400,17 +2958,32 @@ fn classify_function_output_value(
         } => {
             return Ok(FunctionOutputValueType::Result {
                 success: Box::new(classify_function_output_value(
-                    success, externals, customs, generics, support,
+                    success,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
                 failure: Box::new(classify_function_output_value(
-                    failure, externals, customs, generics, support,
+                    failure,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
         SourceWrapper::Option { value, .. } => {
             return Ok(FunctionOutputValueType::Option {
                 value: Box::new(classify_function_output_value(
-                    value, externals, customs, generics, support,
+                    value,
+                    externals,
+                    customs,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
@@ -2422,13 +2995,18 @@ fn classify_function_output_value(
         let mut elements = Vec::with_capacity(tuple.elems.len());
         for element in &tuple.elems {
             elements.push(classify_function_output_value(
-                element, externals, customs, generics, support,
+                element,
+                externals,
+                customs,
+                list_decoders,
+                generics,
+                support,
             )?);
         }
         return Ok(FunctionOutputValueType::Tuple(elements));
     }
     Ok(FunctionOutputValueType::Value(Box::new(
-        classify_function_output_leaf(type_, externals, customs)?,
+        classify_function_output_leaf(type_, externals, customs, generics, support)?,
     )))
 }
 
@@ -2436,6 +3014,8 @@ fn classify_function_output_leaf(
     type_: &Type,
     externals: &[ExternalModel],
     customs: &[CustomModel],
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<FunctionOutputLeafType> {
     if let Some(external) = external_type(type_, externals) {
         return Ok(FunctionOutputLeafType::External {
@@ -2458,7 +3038,9 @@ fn classify_function_output_leaf(
             ),
         ));
     }
-    if is_declared_provider_type(type_)? {
+    if generic_custom_application(type_, false, generics, externals, customs, support)?
+        || is_declared_provider_type(type_)?
+    {
         return Ok(FunctionOutputLeafType::Declared {
             type_: type_.clone(),
             input: DeclaredInput::Owned,
@@ -2472,7 +3054,20 @@ fn classify_collection_input_item(
     externals: &[ExternalModel],
     customs: &[CustomModel],
     collection: &str,
+    list_decoders: &mut Vec<ListDecoderModel>,
+    generics: &mut GenericParameterScope,
+    support: &TokenStream,
 ) -> syn::Result<StaticValueType> {
+    if let Some(future) = future_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(StaticValueType::Future(Box::new(future)));
+    }
+    if let Some(callback) =
+        callback_type(type_, externals, customs, list_decoders, generics, support)?
+    {
+        return Ok(StaticValueType::Callback(Box::new(callback)));
+    }
+
     if is_type_application_named(type_, "Value") {
         return Err(syn::Error::new_spanned(
             type_,
@@ -2502,10 +3097,27 @@ fn classify_collection_input_item(
             format!("{collection} items must be owned values"),
         ));
     }
-    if is_collection(type_, "List") || is_collection(type_, "Vec") {
+    if let Some(item) = collection_item(type_, "List")? {
+        let value = classify_collection_input_item(
+            &item,
+            externals,
+            customs,
+            collection,
+            list_decoders,
+            generics,
+            support,
+        )?;
+        let collection = CollectionType { value };
+        let decoder = register_list_decoder(&collection, list_decoders);
+        return Ok(StaticValueType::List(Box::new(ListType {
+            collection,
+            decoder,
+        })));
+    }
+    if is_collection(type_, "Vec") {
         return Err(syn::Error::new_spanned(
             type_,
-            "nested List and Vec item values are not supported",
+            "Vec items are not supported; use List for retained nested lists",
         ));
     }
     match source_wrapper(type_)? {
@@ -2514,17 +3126,35 @@ fn classify_collection_input_item(
         } => {
             return Ok(StaticValueType::Result {
                 success: Box::new(classify_collection_input_item(
-                    success, externals, customs, collection,
+                    success,
+                    externals,
+                    customs,
+                    collection,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
                 failure: Box::new(classify_collection_input_item(
-                    failure, externals, customs, collection,
+                    failure,
+                    externals,
+                    customs,
+                    collection,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
         SourceWrapper::Option { value, .. } => {
             return Ok(StaticValueType::Option {
                 value: Box::new(classify_collection_input_item(
-                    value, externals, customs, collection,
+                    value,
+                    externals,
+                    customs,
+                    collection,
+                    list_decoders,
+                    generics,
+                    support,
                 )?),
             });
         }
@@ -2561,11 +3191,23 @@ fn classify_collection_input_item(
         let elements = tuple
             .elems
             .iter()
-            .map(|element| classify_collection_input_item(element, externals, customs, collection))
+            .map(|element| {
+                classify_collection_input_item(
+                    element,
+                    externals,
+                    customs,
+                    collection,
+                    list_decoders,
+                    generics,
+                    support,
+                )
+            })
             .collect::<syn::Result<Vec<_>>>()?;
         return Ok(StaticValueType::Tuple(elements));
     }
-    if is_qualified_type_path(type_) {
+    if generic_custom_application(type_, true, generics, externals, customs, support)?
+        || is_qualified_type_path(type_)
+    {
         return Ok(StaticValueType::Declared {
             type_: type_.clone(),
         });
@@ -2573,7 +3215,71 @@ fn classify_collection_input_item(
     Ok(StaticValueType::Scalar(type_.clone()))
 }
 
-fn generic_external_type(
+pub(super) fn generic_custom_application(
+    type_: &Type,
+    input: bool,
+    generics: &mut GenericParameterScope,
+    externals: &[ExternalModel],
+    customs: &[CustomModel],
+    support: &TokenStream,
+) -> syn::Result<bool> {
+    let Type::Path(path) = type_ else {
+        return Ok(false);
+    };
+    let Some((index, is_input)) = super::custom_value::generic_custom_index(type_, customs) else {
+        if super::type_syntax::is_qualified_generic_declaration(type_) {
+            classify_generic_host_type(type_, generics, externals, customs, support)?;
+            generics.nominal = true;
+            return Ok(true);
+        }
+        return Ok(false);
+    };
+    let custom = &customs[index];
+    if is_input != input {
+        return Err(syn::Error::new_spanned(
+            type_,
+            if input {
+                "generic custom source arguments require the generated input type"
+            } else {
+                "generic custom returns require the output declaration"
+            },
+        ));
+    }
+    let segment = &path.path.segments[0];
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic custom `{}` requires exactly {} type arguments",
+                segment.ident,
+                custom.parameters.len()
+            ),
+        ));
+    };
+    if arguments.args.len() != custom.parameters.len() {
+        return Err(syn::Error::new_spanned(
+            type_,
+            format!(
+                "generic custom `{}` requires exactly {} type arguments",
+                segment.ident,
+                custom.parameters.len()
+            ),
+        ));
+    }
+    for argument in &arguments.args {
+        let syn::GenericArgument::Type(argument) = argument else {
+            return Err(syn::Error::new_spanned(
+                argument,
+                "generic custom arguments must be source types",
+            ));
+        };
+        classify_generic_host_type(argument, generics, externals, customs, support)?;
+    }
+    generics.nominal = true;
+    Ok(true)
+}
+
+pub(super) fn generic_external_type(
     type_: &Type,
     input: bool,
     externals: &[ExternalModel],
@@ -2649,6 +3355,257 @@ mod tests {
     use crate::module::{ExternalArguments, GenericParameterScope, ModuleArguments};
     use quote::quote;
     use syn::{ItemFn, Type};
+
+    #[test]
+    fn qualified_signature_forms_preserve_source_types_and_rewrite_only_the_profile() {
+        use syn::visit_mut::VisitMut;
+        let profile = quote!(SelectedProfile);
+        for (input, with_profile, without_profile) in [
+            (
+                "<Item as support::ProviderTypedValue<>>::Host"
+                    .parse()
+                    .unwrap(),
+                "<Item as support::ProviderTypedValue<>>::Host"
+                    .parse()
+                    .unwrap(),
+                quote!(<Item as support::ProviderValue>::Host),
+            ),
+            (
+                quote!(<Item as support::ProviderTypedValue>::Host),
+                quote!(<Item as support::ProviderTypedValue>::Host),
+                quote!(<Item as support::ProviderTypedValue>::Host),
+            ),
+            (
+                quote!(<Item as support::ProviderTypedValue<Original, bool>>::Host),
+                quote!(<Item as support::ProviderTypedValue<SelectedProfile, bool>>::Host),
+                quote!(<Item as support::ProviderValue<bool>>::Host),
+            ),
+            (
+                quote!(<Item as support::ProviderTypedValue<Original>>::Host),
+                quote!(<Item as support::ProviderTypedValue<SelectedProfile>>::Host),
+                quote!(<Item as support::ProviderValue>::Host),
+            ),
+            (
+                quote!(<Item as support::ProviderContextualValueForms<Original>>::Output),
+                quote!(<Item as support::ProviderContextualValueForms<SelectedProfile>>::Output),
+                quote!(<Item as support::ProviderValueForms>::Output),
+            ),
+        ] {
+            for (profile, expected) in [(Some(&profile), with_profile), (None, without_profile)] {
+                let mut type_: Type = syn::parse2(input.clone()).unwrap();
+                super::SignatureForms {
+                    profile,
+                    customs: &[],
+                }
+                .visit_type_mut(&mut type_);
+                assert_eq!(type_, syn::parse2::<Type>(expected).unwrap());
+            }
+        }
+    }
+
+    #[test]
+    fn declared_output_rewriting_is_idempotent_for_both_input_ownerships() {
+        for flavor in [
+            crate::module::InputOwnership::Borrowed,
+            crate::module::InputOwnership::Owned,
+        ] {
+            for input in [
+                quote!(<Item as support::ProviderValueForms>::Output),
+                quote!(<Item as support::ProviderContextualValueForms<Profile>>::Output),
+            ] {
+                let mut type_: Type = syn::parse2(input.clone()).unwrap();
+                super::rewrite_declared_output_type(&mut type_, &quote!(support), flavor);
+                assert_eq!(type_, syn::parse2::<Type>(input).unwrap());
+            }
+        }
+    }
+    #[test]
+    fn recursive_callable_and_work_shapes_expand_at_every_directional_position() {
+        for leaf in [quote!(Future<bool>), quote!(Callback<fn(bool) -> bool>)] {
+            for (input, output) in [
+                (leaf.clone(), leaf.clone()),
+                (quote!((bool, #leaf)), quote!((bool, #leaf))),
+                (quote!(List<#leaf>), quote!(Vec<#leaf>)),
+                (quote!(List<List<#leaf>>), quote!(List<List<#leaf>>)),
+            ] {
+                let expanded = crate::module::expand(
+                    quote!(path = "native", crate_path = geam_core),
+                    quote! {
+                        mod native {
+                            #[geam::function]
+                            fn preserve(input: #input) -> #output { todo!() }
+                            #[geam::function(await)]
+                            async fn invoke(
+                                #[geam::call] call: &mut Call<()>,
+                                callback: Callback<fn(#output) -> #input>,
+                            ) -> bool { true }
+                        }
+                    },
+                )
+                .unwrap();
+                let module = syn::parse2::<syn::ItemMod>(expanded).unwrap();
+                let functions = module
+                    .content
+                    .unwrap()
+                    .1
+                    .into_iter()
+                    .filter_map(|item| {
+                        if let syn::Item::Fn(function) = item {
+                            Some(function.sig.ident.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                assert!(functions.iter().any(|name| name == "preserve"));
+                assert!(functions.iter().any(|name| name == "invoke"));
+            }
+        }
+    }
+
+    #[test]
+    fn nested_nominal_arguments_preserve_their_exact_authoring_diagnostics() {
+        let declarations = quote! {
+            #[geam::custom(input = MessageInput)]
+            enum Message<Item> { Message(Value<Item>) }
+            #[geam::external(name = "Box", parameters = [Item], input = BoxInput)]
+            struct BoxValue<Item> { #[geam::stored] value: Stored<Item> }
+        };
+        for (input, expected) in [
+            (
+                quote!(Value<Message>),
+                "generic custom `Message` requires exactly 1 type arguments",
+            ),
+            (
+                quote!(Value<BoxValue>),
+                "generic external `BoxValue` requires exactly 1 type arguments",
+            ),
+            (
+                quote!(Value<BoxInput>),
+                "generic external `BoxInput` requires exactly 1 type arguments",
+            ),
+            (
+                quote!(Value<remote::Message<&bool>>),
+                "generic source shapes must not contain Rust references",
+            ),
+            (
+                quote!((bool, MessageInput<&bool>)),
+                "generic source shapes must not contain Rust references",
+            ),
+            (
+                quote!(List<Message<&bool>>),
+                "generic custom source arguments require the generated input type",
+            ),
+            (
+                quote!(List<MessageInput<&bool>>),
+                "generic source shapes must not contain Rust references",
+            ),
+            (
+                quote!(List<List<bool, bool>>),
+                "List requires exactly one type argument",
+            ),
+            (
+                quote!(List<Result<bool, List<bool, bool>>>),
+                "List requires exactly one type argument",
+            ),
+            (
+                quote!(List<Result<List<bool, bool>, bool>>),
+                "List requires exactly one type argument",
+            ),
+            (
+                quote!(List<List<Future<bool, bool>>>),
+                "Future requires exactly one type argument",
+            ),
+            (
+                quote!(List<Result<bool, Future<bool, bool>>>),
+                "Future requires exactly one type argument",
+            ),
+            (
+                quote!(List<Option<Future<bool, bool>>>),
+                "Future requires exactly one type argument",
+            ),
+        ] {
+            let result = crate::module::expand(
+                quote!(path = "native", crate_path = geam_core),
+                quote! { mod native { #declarations #[geam::function] fn consume(input: #input) -> bool { true } } },
+            );
+            assert_eq!(result.unwrap_err().to_string(), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn opaque_nominal_arguments_preserve_custom_external_and_phantom_data_views() {
+        let expanded = crate::module::expand(
+            quote!(path = "native", crate_path = geam_core),
+            quote! {
+                mod native {
+                    #[geam::custom]
+                    enum Tagged<Item> { Tagged(bool) }
+                    #[geam::external(name = "Box", parameters = [Item], input = BoxInput)]
+                    struct BoxValue<Item> { #[geam::stored] value: Stored<Item> }
+                    #[geam::custom]
+                    enum Envelope<Item> {
+                        Envelope(Value<Tagged<Item>>, Value<BoxValue<Item>>)
+                    }
+                    #[geam::function]
+                    fn wrap<Item>(
+                        tag: Value<Tagged<Item>>,
+                        boxed: Value<BoxValue<Item>>,
+                    ) -> Envelope<Item> { Envelope::Envelope(tag, boxed) }
+                }
+            },
+        )
+        .unwrap()
+        .to_string();
+        assert!(expanded.contains("type Output = Tagged < Item , bool , >"));
+        assert!(expanded.contains("HostCustomTypeArgument"));
+        assert!(expanded.contains("HostExternalType"));
+    }
+
+    #[test]
+    fn nested_callable_and_work_declarations_preserve_the_original_type_error() {
+        for (bad, expected) in [
+            (
+                quote!(Future<bool, bool>),
+                "Future requires exactly one type argument",
+            ),
+            (
+                quote!(Callback<bool>),
+                "Callback<T> requires a safe non-variadic Rust fn signature",
+            ),
+        ] {
+            for output in [bad.clone(), quote!((bool, #bad)), quote!(Vec<#bad>)] {
+                let result = crate::module::expand(
+                    quote!(path = "native", crate_path = geam_core),
+                    quote! {
+                        mod native {
+                            #[geam::function]
+                            fn output() -> #output { todo!() }
+                        }
+                    },
+                );
+                assert_eq!(result.unwrap_err().to_string(), expected);
+            }
+            for input in [
+                bad.clone(),
+                quote!((bool, #bad)),
+                quote!(List<#bad>),
+                quote!(Callback<fn() -> #bad>),
+            ] {
+                let result = crate::module::expand(
+                    quote!(path = "native", crate_path = geam_core),
+                    quote! {
+                        mod native {
+                            #[geam::function]
+                            fn input(value: #input) -> bool { true }
+                        }
+                    },
+                );
+                assert_eq!(result.unwrap_err().to_string(), expected);
+            }
+        }
+    }
+
     #[test]
     fn module_arguments_require_one_path_and_reject_unknown_fields() {
         assert_eq!(
@@ -2803,7 +3760,7 @@ mod tests {
         let function: ItemFn = syn::parse_quote! {
             fn identity<Item>() {}
         };
-        let generics = GenericParameterScope::new(&function.sig.generics)
+        let generics = GenericParameterScope::new(&function.sig.generics, &function.sig.ident)
             .expect("ordinary type generics should define a scan scope");
         let types: [Type; 4] = [
             syn::parse_quote!(fn()),

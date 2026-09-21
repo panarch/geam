@@ -1,6 +1,6 @@
 use super::{FrontendError, ModuleSource, PackageSource};
 use crate::host::{
-    HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor,
+    HostFunctionSchema, HostProfile, HostProviderSet, HostTypeDescriptor, RegisteredHostBindings,
     RegisteredHostImplementations, RegisteredHostModule, RegisteredHostProviderModule,
 };
 use camino::{Utf8Path, Utf8PathBuf};
@@ -36,8 +36,21 @@ pub struct TypedProgram {
 pub struct HostedTypedProgram<Profile: HostProfile> {
     program: HostedProgram,
     implementations: RegisteredHostImplementations<Profile>,
+    callables: Vec<crate::host::RegisteredHostCallable>,
     pub(super) package_resources: BTreeMap<EcoString, std::path::PathBuf>,
 }
+
+/// A typed source program with complete native declarations and no Rust bodies.
+///
+/// This owner can only be used for preparation. Loading the emitted artifact
+/// requires a fresh, complete provider implementation set.
+pub struct DeclaredTypedProgram {
+    program: HostedProgram,
+    implementations: DeclaredImplementations,
+    callables: Vec<crate::host::RegisteredHostCallable>,
+}
+
+type DeclaredImplementations = RegisteredHostBindings<crate::host::HostFunctionBinding<(), ()>>;
 
 struct HostedProgram {
     root_package: EcoString,
@@ -131,15 +144,7 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
         mut self,
         mut map: impl FnMut(&str, &str, &Utf8Path) -> Utf8PathBuf,
     ) -> Self {
-        for module in &mut self.program.modules {
-            if let HostedTypedProgramModule::Source(module) = module {
-                module.path = map(
-                    &module.module.type_info.package,
-                    &module.module.name,
-                    &module.path,
-                );
-            }
-        }
+        self.program.map_source_paths(&mut map);
         self
     }
 
@@ -153,15 +158,115 @@ impl<Profile: HostProfile> HostedTypedProgram<Profile> {
         usize,
         Vec<HostedTypedProgramModule>,
         Vec<RegisteredHostProviderModule>,
+        Vec<crate::host::RegisteredHostCallable>,
         RegisteredHostImplementations<Profile>,
     ) {
         (
             self.program.root_index,
             self.program.modules,
             self.program.providers,
+            self.callables,
             self.implementations,
         )
     }
+}
+
+impl HostedProgram {
+    fn map_source_paths(&mut self, map: &mut impl FnMut(&str, &str, &Utf8Path) -> Utf8PathBuf) {
+        for module in &mut self.modules {
+            if let HostedTypedProgramModule::Source(module) = module {
+                module.path = map(
+                    &module.module.type_info.package,
+                    &module.module.name,
+                    &module.path,
+                );
+            }
+        }
+    }
+}
+
+impl DeclaredTypedProgram {
+    /// Remaps diagnostic source paths without changing native declarations.
+    pub fn map_source_paths(
+        mut self,
+        mut map: impl FnMut(&str, &str, &Utf8Path) -> Utf8PathBuf,
+    ) -> Self {
+        self.program.map_source_paths(&mut map);
+        self
+    }
+
+    pub fn root_package(&self) -> &EcoString {
+        &self.program.root_package
+    }
+
+    pub fn root_module(&self) -> &EcoString {
+        &self.program.root_module
+    }
+
+    pub(crate) fn root_public_functions(&self) -> impl Iterator<Item = &EcoString> {
+        self.program.root_public_functions.iter()
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        usize,
+        Vec<HostedTypedProgramModule>,
+        Vec<RegisteredHostProviderModule>,
+        Vec<crate::host::RegisteredHostCallable>,
+        DeclaredImplementations,
+    ) {
+        (
+            self.program.root_index,
+            self.program.modules,
+            self.program.providers,
+            self.callables,
+            self.implementations,
+        )
+    }
+}
+
+/// Compiles a source program for preparation using only native declarations.
+pub fn compile_declared_host_program(
+    root_package: impl Into<EcoString>,
+    root_module: impl Into<EcoString>,
+    packages: impl IntoIterator<Item = PackageSource>,
+    declarations: crate::HostDeclarations,
+) -> Result<DeclaredTypedProgram, FrontendError> {
+    let root_package = root_package.into();
+    let warnings = WarningEmitter::null();
+    let parsed_modules =
+        parse_package_sources(&root_package, packages.into_iter().collect(), &warnings)?;
+    compile_parsed_declared_program(
+        root_package,
+        root_module.into(),
+        parsed_modules,
+        declarations,
+        warnings,
+    )
+}
+
+pub(super) fn compile_parsed_declared_program(
+    root_package: EcoString,
+    root_module: EcoString,
+    parsed_modules: Vec<ParsedModule>,
+    declarations: crate::HostDeclarations,
+    warnings: WarningEmitter,
+) -> Result<DeclaredTypedProgram, FrontendError> {
+    let (modules, providers, callables, implementations) = declarations.into_registered();
+    compile_parsed_host_program(
+        root_package,
+        root_module,
+        parsed_modules,
+        modules,
+        providers,
+        warnings,
+    )
+    .map(|program| DeclaredTypedProgram {
+        program,
+        callables,
+        implementations,
+    })
 }
 
 pub fn compile_typed_module(
@@ -251,7 +356,7 @@ pub(super) fn compile_parsed_host_package_program<Profile: HostProfile>(
     hosts: HostProviderSet<Profile>,
     warnings: WarningEmitter,
 ) -> Result<HostedTypedProgram<Profile>, FrontendError> {
-    let (host_modules, providers, implementations) = hosts.into_registered();
+    let (host_modules, providers, callables, implementations) = hosts.into_registered();
     compile_parsed_host_program(
         root_package,
         root_module,
@@ -262,6 +367,7 @@ pub(super) fn compile_parsed_host_package_program<Profile: HostProfile>(
     )
     .map(|program| HostedTypedProgram {
         program,
+        callables,
         implementations,
         package_resources: BTreeMap::new(),
     })
@@ -825,6 +931,30 @@ mod tests {
     use num_bigint::BigInt;
 
     #[test]
+    fn declaration_only_compilation_preserves_source_parse_diagnostics() {
+        let error = super::compile_declared_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "declared/main.gleam",
+                    "pub fn main() { ) }",
+                )],
+            )],
+            crate::HostDeclarations::new([]).unwrap(),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "failed to parse Gleam module declared/main.gleam"
+        );
+    }
+
+    #[test]
     fn maps_source_diagnostics_without_changing_modules_or_resources() {
         let source = "pub fn main() { 42 }";
         let mut program = compile_typed_package_program(
@@ -986,7 +1116,7 @@ mod tests {
             )
             .expect("host function should be valid")])
         .expect("host modules should be unique");
-        let (mut modules, providers, _) = hosts.into_registered();
+        let (mut modules, providers, _, _) = hosts.into_registered();
         assert!(providers.is_empty());
         let host = modules.pop().expect("host module should exist");
         let ids = UniqueIdGenerator::new();

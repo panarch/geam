@@ -96,7 +96,7 @@ pub(crate) trait HostArgument: super::super::HostAbiType + Sized {
     fn read(arguments: &dyn HostCallArguments, slot: Self::Slot) -> Self;
 }
 
-pub(super) trait HostScopedArgument: HostAbiType {
+pub(in crate::host) trait HostScopedArgument: HostAbiType {
     type Slot: Copy + Send + Sync + 'static;
 
     fn register(layout: &mut HostParameterLayout) -> Self::Slot;

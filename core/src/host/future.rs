@@ -3,6 +3,7 @@ mod native;
 mod value;
 
 pub use context::HostFutureContext;
+pub(crate) use value::FutureRetention;
 pub use value::HostFutureValue;
 
 use super::{

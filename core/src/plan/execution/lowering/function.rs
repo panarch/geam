@@ -6,6 +6,6 @@ pub(super) use table::{
     CoreListFunctionFunctionSignature, ExternalListFunctionFunctionSignature, FunctionTableBuilder,
     FunctionTableFamily, ListFunctionFunctionSignature, LoweredSpecialization,
     ProfiledFunctionEntries, function_function_id, function_function_table_family, function_id,
-    list_function_function_signature, list_function_id, list_function_table_family,
-    lowered_host_function, stored_function_table_family,
+    invocable_function_function_id, list_function_function_signature, list_function_id,
+    list_function_table_family, lowered_host_function, stored_function_table_family,
 };

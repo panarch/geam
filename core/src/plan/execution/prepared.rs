@@ -22,7 +22,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -98,6 +98,7 @@ impl<Graph: super::function::ExecutionGraphProfile> LibraryFunctionEntries<Graph
             nils: Table::Static(&self.nils),
             tuples: Table::Static(&self.tuples),
             lists: Table::Static(&self.lists),
+            functions: Table::Static(&self.functions),
         }
     }
 }

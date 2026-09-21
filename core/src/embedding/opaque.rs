@@ -104,7 +104,7 @@ macro_rules! opaque {
     ($type:ident, $value:ident, $runtime:ty, $family:ident, $name:ident, $entries:ident, $take:ident, $read:expr, $returned:expr) => {
         impl<Schema: NamedTypeSchema> EmbeddingValue for $type<Schema> {
             const VARIANT_COUNT: usize = 0;
-            const LIST_COUNTS: [usize; 11] = [0; 11];
+            const LIST_COUNTS: [usize; 12] = [0; 12];
             const LIST_FAMILY: ListFamily = ListFamily::$family;
 
             fn library_type() -> LibraryValueType {
@@ -134,6 +134,7 @@ macro_rules! opaque {
                 brand: ScopeBrand<'scope>,
                 _: (),
                 owner: &Arc<()>,
+                _: &mut super::callable::OutputCallables<'scope>,
             ) -> OpaqueContext<'scope> {
                 OpaqueContext {
                     _brand: brand,

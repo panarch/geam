@@ -3,11 +3,10 @@ mod error;
 pub use error::BindingError;
 
 use super::{Arguments, EmbeddingValue, Function, Module, ReturnValue};
-use crate::HostProfile;
 use crate::plan::execution::prepared::Export;
 use crate::plan::{
-    FunctionTemplateId, FunctionTemplateSignature, FunctionType, HostedLibraryModulePlan,
-    LibraryEntry, LibraryModulePlan, LibraryValueType,
+    FunctionTemplateId, FunctionTemplateSignature, FunctionType, LibraryEntry, LibraryModulePlan,
+    LibraryValueType, ProfiledHostedLibraryModulePlan,
 };
 use crate::{ExecutionPlan, PlanError, TypedProgram};
 use ecow::EcoString;
@@ -60,6 +59,16 @@ pub(super) struct BindingParts<Plan: BindingPlan> {
     pub(super) exports: Vec<Export>,
 }
 
+impl<Plan: BindingPlan> Bindings<Plan> {
+    pub(super) fn plan_mut(&mut self) -> &mut Plan {
+        &mut self.source.plan
+    }
+
+    pub(super) fn owner(&self) -> &Arc<()> {
+        &self.owner
+    }
+}
+
 /// A typed declaration for one Gleam function selected for Rust embedding.
 ///
 /// Arguments are represented by Rust tuples with arity `0..=7`. Supported
@@ -101,7 +110,7 @@ struct BindingSource<Plan> {
 }
 
 pub(super) trait BindingPlan {
-    type External;
+    type External: crate::plan::LibraryProfile;
 
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature>;
 
@@ -124,6 +133,7 @@ struct LibraryEntryCounts {
     nils: usize,
     tuples: usize,
     lists: usize,
+    functions: usize,
 }
 
 impl ModuleBuilder {
@@ -296,7 +306,8 @@ impl<Plan: BindingPlan> BindingBuilder<Plan> {
             return_,
             input_variants,
             ArgumentsType::input_lists(),
-        );
+        )
+        .with_callables(Return::callables());
         let (slot, first) = counts.reserve(entry);
         let exports = vec![Export::new(name.clone(), expected, slot)];
         let function = Function::new(name, slot, &self.owner);
@@ -345,7 +356,8 @@ impl<Plan: BindingPlan> Bindings<Plan> {
             return_,
             input_variants,
             ArgumentsType::input_lists(),
-        );
+        )
+        .with_callables(Return::callables());
         let (slot, entry) = self.counts.reserve(entry);
         self.exports.push(Export::new(name.clone(), expected, slot));
         self.remaining.push(entry);
@@ -382,7 +394,7 @@ impl BindingPlan for LibraryModulePlan {
     }
 }
 
-impl<Profile: HostProfile> BindingPlan for HostedLibraryModulePlan<Profile> {
+impl<Implementation> BindingPlan for ProfiledHostedLibraryModulePlan<Implementation> {
     type External = crate::plan::ExternalType;
 
     fn function_signature(&self, name: &EcoString) -> Option<&FunctionTemplateSignature> {
@@ -411,7 +423,7 @@ fn public_function_names(module: &TypedModule) -> HashSet<EcoString> {
 }
 
 impl LibraryEntryCounts {
-    fn reserve<External>(
+    fn reserve<External: crate::plan::LibraryProfile>(
         &mut self,
         entry: LibraryEntry<External>,
     ) -> (usize, LibraryEntry<External>) {
@@ -427,6 +439,7 @@ impl LibraryEntryCounts {
             LibraryValueType::Nil => &mut self.nils,
             LibraryValueType::Tuple(_) => &mut self.tuples,
             LibraryValueType::List(_) => &mut self.lists,
+            LibraryValueType::Function(_) => &mut self.functions,
         };
         let slot = *count;
         *count += 1;

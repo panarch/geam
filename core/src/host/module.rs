@@ -22,11 +22,13 @@ pub struct HostProviderModule<Profile: HostProfile = StatelessHostProfile> {
     identity: HostModuleIdentity,
     functions: RegisteredFunctions<Profile>,
     external_types: RegisteredExternalTypes,
+    callables: super::callable::RegisteredCallableSet<HostFunctionImplementation<Profile>>,
 }
 
 pub struct HostProviderSet<Profile: HostProfile = StatelessHostProfile> {
     modules: Vec<HostModule<Profile>>,
     providers: Vec<HostProviderModule<Profile>>,
+    callables: super::callable::RegisteredCallableSet<HostFunctionImplementation<Profile>>,
 }
 
 pub(super) struct HostModuleIdentity {
@@ -56,13 +58,30 @@ pub(crate) struct RegisteredHostFunction {
 #[derive(Clone, Copy)]
 pub(crate) struct RegisteredHostImplementationId(usize);
 
-pub(crate) struct RegisteredHostImplementations<Profile: HostProfile> {
-    functions: Vec<Arc<HostFunctionImplementation<Profile>>>,
+pub(crate) struct RegisteredHostBindings<Implementation> {
+    functions: Vec<Arc<Implementation>>,
 }
 
-struct RegisteredFunctions<Profile: HostProfile> {
-    functions: Vec<HostFunctionDefinition<Profile>>,
+pub(crate) type RegisteredHostImplementations<Profile> =
+    RegisteredHostBindings<HostFunctionImplementation<Profile>>;
+
+pub(super) struct RegisteredFunctionSet<Implementation> {
+    functions: Vec<super::function::RegisteredHostDefinition<Implementation>>,
 }
+
+impl<Value, Never> RegisteredFunctionSet<super::HostFunctionBinding<Value, Never>> {
+    fn into_declarations(self) -> RegisteredFunctionSet<super::HostFunctionBinding<(), ()>> {
+        RegisteredFunctionSet {
+            functions: self
+                .functions
+                .into_iter()
+                .map(super::function::RegisteredHostDefinition::into_declaration)
+                .collect(),
+        }
+    }
+}
+
+type RegisteredFunctions<Profile> = RegisteredFunctionSet<HostFunctionImplementation<Profile>>;
 
 pub(super) struct RegisteredExternalTypes {
     types: Vec<HostExternalTypeSchema>,
@@ -86,6 +105,69 @@ impl<Profile: HostProfile> HostModule<Profile> {
             identity,
             functions: RegisteredFunctions::new(),
         })
+    }
+
+    /// Binds a scoped body to a shared static declaration and its construction contract.
+    pub fn with_declared_function<Provider, Arguments, Return, Constructions, Function>(
+        mut self,
+        declaration: super::HostFunctionDeclaration<Arguments, Return, Constructions>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: super::HostTypeSequence,
+        Function:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.functions
+            .register(&self.identity.module, declaration.name().into(), |name| {
+                HostFunctionDefinition::new_scoped_with_constructions::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Constructions,
+                    Function,
+                >(name, function)
+            })?;
+        Ok(self)
+    }
+
+    /// Binds a resumable body without changing the declaration's source result type.
+    pub fn with_declared_resumable_function<Provider, Arguments, Return, Constructions, Function>(
+        self,
+        declaration: super::HostFunctionDeclaration<Arguments, Return, Constructions>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: super::HostTypeSequence,
+        Function: super::ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.with_resumable_function::<Provider, Arguments, Return, Constructions, Function>(
+            declaration.name(),
+            function,
+        )
+    }
+
+    /// Binds a body which cannot produce a value to a diverging declaration.
+    pub fn with_declared_diverging_function<Provider, Arguments, Return, Function>(
+        self,
+        declaration: super::HostFunctionDeclaration<
+            Arguments,
+            Return,
+            super::HostTypeListEnd,
+            super::HostDiverges,
+        >,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        self.with_scoped_diverging_function::<Provider, Arguments, Return, Function>(
+            declaration.name(),
+            function,
+        )
     }
 
     pub fn with_function<Arguments, Return, Function>(
@@ -197,7 +279,104 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             identity,
             functions: RegisteredFunctions::new(),
             external_types: RegisteredExternalTypes::new(),
+            callables: super::callable::RegisteredCallableSet::new(),
         })
+    }
+
+    /// Registers a private callable body without adding a Gleam external declaration.
+    pub fn with_resumable_callable<Provider, Schema, Arguments, Function>(
+        mut self,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: super::HostCallableSchema,
+        Function: super::ResumableHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        self.callables.register::<Schema>(|| {
+            HostFunctionDefinition::new_resumable_callable::<Provider, Schema, Arguments, Function>(
+                function,
+            )
+        })?;
+        Ok(self)
+    }
+
+    pub fn with_callable<Provider, Schema, Arguments, Function>(
+        mut self,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: super::HostCallableSchema,
+        Function: super::ScopedHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        self.callables.register::<Schema>(|| {
+            HostFunctionDefinition::new_callable::<Provider, Schema, Arguments, Function>(function)
+        })?;
+        Ok(self)
+    }
+
+    /// Binds a scoped body to a shared static declaration and its construction contract.
+    pub fn with_declared_function<Provider, Arguments, Return, Constructions, Function>(
+        mut self,
+        declaration: super::HostFunctionDeclaration<Arguments, Return, Constructions>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: super::HostTypeSequence,
+        Function:
+            ScopedConstructingHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.functions
+            .register(&self.identity.module, declaration.name().into(), |name| {
+                HostFunctionDefinition::new_scoped_with_constructions::<
+                    Provider,
+                    Arguments,
+                    Return,
+                    Constructions,
+                    Function,
+                >(name, function)
+            })?;
+        Ok(self)
+    }
+
+    /// Binds a resumable body without changing the declaration's source result type.
+    pub fn with_declared_resumable_function<Provider, Arguments, Return, Constructions, Function>(
+        self,
+        declaration: super::HostFunctionDeclaration<Arguments, Return, Constructions>,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Constructions: super::HostTypeSequence,
+        Function: super::ResumableHostFunction<Profile, Provider, Arguments, Return, Constructions>,
+    {
+        self.with_resumable_function::<Provider, Arguments, Return, Constructions, Function>(
+            declaration.name(),
+            function,
+        )
+    }
+
+    /// Binds a body which cannot produce a value to a diverging declaration.
+    pub fn with_declared_diverging_function<Provider, Arguments, Return, Function>(
+        self,
+        declaration: super::HostFunctionDeclaration<
+            Arguments,
+            Return,
+            super::HostTypeListEnd,
+            super::HostDiverges,
+        >,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Function: ScopedDivergingHostFunction<Profile, Provider, Arguments, Return>,
+    {
+        self.with_scoped_diverging_function::<Provider, Arguments, Return, Function>(
+            declaration.name(),
+            function,
+        )
     }
 
     pub fn with_function<Arguments, Return, Function>(
@@ -428,7 +607,84 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
                     .map(|module| (&module.identity.package, &module.identity.module)),
             )
             .collect::<Vec<_>>();
-        validate_module_identities(&identities).map(|()| Self { modules, providers })
+        validate_module_identities(&identities)?;
+        super::callable::validate_callable_identities(
+            providers
+                .iter()
+                .flat_map(|provider| provider.callables.identities()),
+        )?;
+        Ok(Self {
+            modules,
+            providers,
+            callables: super::callable::RegisteredCallableSet::new(),
+        })
+    }
+
+    /// Keeps complete static contracts while dropping native implementations.
+    ///
+    /// A preparation helper can combine dependency-provider declarations with
+    /// application-local schemas without importing the application's Rust bodies.
+    pub fn into_declarations(self) -> super::HostDeclarations {
+        super::HostDeclarations {
+            modules: self
+                .modules
+                .into_iter()
+                .map(|module| super::HostModuleDeclaration {
+                    identity: module.identity,
+                    functions: module.functions.into_declarations(),
+                })
+                .collect(),
+            providers: self
+                .providers
+                .into_iter()
+                .map(|module| super::HostProviderModuleDeclaration {
+                    identity: module.identity,
+                    functions: module.functions.into_declarations(),
+                    external_types: module.external_types,
+                    callables: module.callables.into_declarations(),
+                })
+                .collect(),
+            callables: self.callables.into_declarations(),
+        }
+    }
+
+    /// Registers a private callable body without adding a Gleam external declaration.
+    pub fn with_resumable_callable<Provider, Schema, Arguments, Function>(
+        mut self,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: super::HostCallableSchema,
+        Function: super::ResumableHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        for provider in &self.providers {
+            provider.callables.check_available::<Schema>()?;
+        }
+        self.callables.register::<Schema>(|| {
+            HostFunctionDefinition::new_resumable_callable::<Provider, Schema, Arguments, Function>(
+                function,
+            )
+        })?;
+        Ok(self)
+    }
+
+    pub fn with_callable<Provider, Schema, Arguments, Function>(
+        mut self,
+        function: Function,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: super::HostCallableSchema,
+        Function: super::ScopedHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        for provider in &self.providers {
+            provider.callables.check_available::<Schema>()?;
+        }
+        self.callables.register::<Schema>(|| {
+            HostFunctionDefinition::new_callable::<Provider, Schema, Arguments, Function>(function)
+        })?;
+        Ok(self)
     }
 
     pub fn modules(&self) -> impl ExactSizeIterator<Item = &HostModule<Profile>> {
@@ -443,12 +699,8 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
         mut self,
         source_modules: &BTreeSet<(EcoString, EcoString)>,
     ) -> Self {
-        self.providers.retain(|provider| {
-            source_modules.contains(&(
-                provider.identity.package.clone(),
-                provider.identity.module.clone(),
-            ))
-        });
+        self.providers
+            .retain(|provider| provider.identity.is_selected(source_modules));
         self
     }
 
@@ -457,6 +709,7 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
     ) -> (
         Vec<RegisteredHostModule>,
         Vec<RegisteredHostProviderModule>,
+        Vec<super::RegisteredHostCallable>,
         RegisteredHostImplementations<Profile>,
     ) {
         let mut implementations = RegisteredHostImplementations::new();
@@ -469,6 +722,7 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
             });
         }
         let mut providers = Vec::with_capacity(self.providers.len());
+        let mut callables = Vec::new();
         for provider in self.providers {
             providers.push(RegisteredHostProviderModule {
                 package: provider.identity.package,
@@ -476,8 +730,10 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
                 functions: provider.functions.into_registered(&mut implementations),
                 external_types: provider.external_types.into_vec(),
             });
+            callables.extend(provider.callables.into_registered(&mut implementations));
         }
-        (modules, providers, implementations)
+        callables.extend(self.callables.into_registered(&mut implementations));
+        (modules, providers, callables, implementations)
     }
 }
 
@@ -489,9 +745,13 @@ impl HostModuleIdentity {
         validate_module_name(&module)?;
         Ok(Self { package, module })
     }
+
+    pub(super) fn is_selected(&self, source_modules: &BTreeSet<(EcoString, EcoString)>) -> bool {
+        source_modules.contains(&(self.package.clone(), self.module.clone()))
+    }
 }
 
-fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError> {
+pub(super) fn validate_module_name(module: &EcoString) -> Result<(), HostRegistrationError> {
     let valid = module != PRELUDE_MODULE_NAME
         && !module.is_empty()
         && module.split('/').all(|segment| {
@@ -529,21 +789,23 @@ pub(super) fn validate_module_identities(
     Ok(())
 }
 
-impl<Profile: HostProfile> RegisteredFunctions<Profile> {
-    fn new() -> Self {
+impl<Implementation> RegisteredFunctionSet<Implementation> {
+    pub(super) fn new() -> Self {
         Self {
             functions: Vec::new(),
         }
     }
 
-    fn register(
+    pub(super) fn register(
         &mut self,
         module: &EcoString,
         name: EcoString,
         definition: impl FnOnce(
             EcoString,
-        )
-            -> Result<HostFunctionDefinition<Profile>, HostRegistrationError>,
+        ) -> Result<
+            super::function::RegisteredHostDefinition<Implementation>,
+            HostRegistrationError,
+        >,
     ) -> Result<(), HostRegistrationError> {
         validate_function_name(module, &name)?;
         if self
@@ -561,13 +823,15 @@ impl<Profile: HostProfile> RegisteredFunctions<Profile> {
         Ok(())
     }
 
-    fn schemas(&self) -> impl ExactSizeIterator<Item = &HostFunctionSchema> {
-        self.functions.iter().map(HostFunctionDefinition::schema)
+    pub(super) fn schemas(&self) -> impl ExactSizeIterator<Item = &HostFunctionSchema> {
+        self.functions
+            .iter()
+            .map(super::function::RegisteredHostDefinition::schema)
     }
 
-    fn into_registered(
+    pub(super) fn into_registered(
         self,
-        implementations: &mut RegisteredHostImplementations<Profile>,
+        implementations: &mut RegisteredHostBindings<Implementation>,
     ) -> Vec<RegisteredHostFunction> {
         let mut registered = Vec::with_capacity(self.functions.len());
         for function in self.functions {
@@ -685,14 +949,17 @@ impl RegisteredHostFunction {
     }
 }
 
-impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
-    fn new() -> Self {
+impl<Implementation> RegisteredHostBindings<Implementation> {
+    pub(super) fn new() -> Self {
         Self {
             functions: Vec::new(),
         }
     }
 
-    fn register(&mut self, definition: HostFunctionDefinition<Profile>) -> RegisteredHostFunction {
+    pub(super) fn register(
+        &mut self,
+        definition: super::function::RegisteredHostDefinition<Implementation>,
+    ) -> RegisteredHostFunction {
         let (schema, constructions, implementation) = definition.into_parts();
         let id = RegisteredHostImplementationId(self.functions.len());
         self.functions.push(Arc::new(implementation));
@@ -703,10 +970,7 @@ impl<Profile: HostProfile> RegisteredHostImplementations<Profile> {
         }
     }
 
-    pub(crate) fn implementation(
-        &self,
-        id: RegisteredHostImplementationId,
-    ) -> Arc<HostFunctionImplementation<Profile>> {
+    pub(crate) fn implementation(&self, id: RegisteredHostImplementationId) -> Arc<Implementation> {
         Arc::clone(&self.functions[id.0])
     }
 }
@@ -887,6 +1151,436 @@ mod tests {
     }
 
     #[test]
+    fn source_less_module_declarations_preserve_preparation_after_dropping_bodies() {
+        let hosts = || {
+            HostProviderSet::new([HostModule::new("arithmetic", "native/math")
+                .unwrap()
+                .with_function("add", <BigInt as std::ops::Add>::add)
+                .unwrap()])
+            .unwrap()
+        };
+        let packages = || {
+            [PackageSource::new(
+                "application",
+                ["arithmetic"],
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+import native/math
+pub fn main() { math.add(31, 11) }
+"#,
+                )],
+            )]
+        };
+        let program = crate::compile_declared_host_program(
+            "application",
+            "main",
+            packages(),
+            hosts().into_declarations(),
+        )
+        .unwrap();
+        let prepared = crate::embedding::HostPreparation::new(program)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("main"))
+            .unwrap()
+            .prepare()
+            .unwrap()
+            .emit_rust();
+        let program =
+            compile_typed_host_program("application", "main", packages(), hosts()).unwrap();
+        let (bindings, _) = HostedModuleBuilder::new(program)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("main"))
+            .unwrap();
+        assert_eq!(prepared, bindings.prepare().unwrap().emit_rust());
+        let program =
+            compile_typed_host_program("application", "main", packages(), hosts()).unwrap();
+        let (bindings, main) = HostedModuleBuilder::new(program)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("main"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                assert_eq!(scope.call(&main, ()).await.unwrap(), BigInt::from(42));
+            }),
+        )
+        .unwrap();
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn callable_registration_checks_names_and_bound_types_before_accepting_a_body() {
+        use crate::{
+            HostCallableSchema, HostCaptures, HostConstructions, HostTypeList, HostTypeListEnd,
+            HostTypeParameter,
+        };
+        type End = HostTypeListEnd;
+        type Unbound = HostTypeList<HostTypeParameter<0>, End>;
+        struct Invalid<const KIND: u8, Captures = End>(std::marker::PhantomData<Captures>);
+        impl<const KIND: u8, Captures: crate::HostTypeSequence> HostCallableSchema
+            for Invalid<KIND, Captures>
+        {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = if KIND == 0 {
+                "Bad"
+            } else {
+                "private/callbacks"
+            };
+            const NAME: &'static str = if KIND == 1 { "Bad" } else { "unbound" };
+            type Arguments = End;
+            type Return = BigInt;
+            type Captures = Captures;
+            type Constructions = Unbound;
+            type Completion = crate::HostReturns;
+        }
+        fn body<'call, Captures: crate::HostTypeSequence>(
+            call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+            _: HostCaptures<'call, Captures>,
+            _: HostConstructions<'call, Unbound>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            increment(call)
+        }
+        fn resumable<'call, Captures: crate::HostTypeSequence>(
+            call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+            _: HostCaptures<'call, Captures>,
+            constructions: HostConstructions<'call, Unbound>,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError> {
+            Ok(call.resume(constructions, |_| {
+                Box::pin(async { Ok(crate::HostOwnedCompletion::new(|call, _| increment(call))) })
+            }))
+        }
+        fn check<const KIND: u8>(expected: HostRegistrationError) {
+            assert_eq!(
+                HostProviderModule::new("application", "main")
+                    .unwrap()
+                    .with_callable::<Counter, Invalid<KIND>, (), _>(body::<End>)
+                    .err()
+                    .as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(
+                HostProviderModule::new("application", "main")
+                    .unwrap()
+                    .with_resumable_callable::<Counter, Invalid<KIND>, (), _>(resumable::<End>)
+                    .err()
+                    .as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(
+                HostProviderSet::new([])
+                    .unwrap()
+                    .with_callable::<Counter, Invalid<KIND>, (), _>(body::<End>)
+                    .err()
+                    .as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(
+                HostProviderSet::new([])
+                    .unwrap()
+                    .with_resumable_callable::<Counter, Invalid<KIND>, (), _>(resumable::<End>)
+                    .err()
+                    .as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(
+                crate::HostDeclarations::new([])
+                    .unwrap()
+                    .with_callable::<Invalid<KIND>>()
+                    .err()
+                    .as_ref(),
+                Some(&expected)
+            );
+        }
+        check::<0>(HostRegistrationError::InvalidModuleName {
+            module: "Bad".into(),
+        });
+        check::<1>(HostRegistrationError::InvalidFunctionName {
+            module: "private/callbacks".into(),
+            function: "Bad".into(),
+        });
+        check::<2>(HostRegistrationError::UnboundConstructionTypeParameters {
+            function: "unbound".into(),
+            parameters: Box::new([0]),
+        });
+
+        // Binding the same construction parameter through a capture makes the
+        // body valid. Exercise both completion styles through their public
+        // callable path, with the caller's original counter state.
+        for resumes in [false, true] {
+            let hosts = HostProviderSet::<TestHostProfile>::new([]).unwrap();
+            let hosts = if resumes {
+                hosts
+                    .with_resumable_callable::<Counter, Invalid<2, Unbound>, (), _>(
+                        resumable::<Unbound>,
+                    )
+                    .unwrap()
+            } else {
+                hosts
+                    .with_callable::<Counter, Invalid<2, Unbound>, (), _>(body::<Unbound>)
+                    .unwrap()
+            };
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "main",
+                [crate::PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        "pub fn main() { 42 }",
+                    )],
+                )],
+                hosts,
+            )
+            .unwrap();
+            let (mut bindings, _) = crate::embedding::HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(crate::embedding::FunctionDeclaration::<(), BigInt>::new(
+                    "main",
+                ))
+                .unwrap();
+            let factory = bindings
+                .callable::<Invalid<2, HostTypeList<BigInt, End>>>()
+                .unwrap();
+            let mut module = bindings.seal().unwrap();
+            let host = crate::execution_fixture::TestHost::default();
+            let mut state = TestRunState::default();
+            host.block_on(
+                module.with_execution(&host, &mut state, &mut drop, async |scope| {
+                    let callback = scope.construct(&factory, (BigInt::from(7), ())).unwrap();
+                    assert_eq!(scope.invoke(&callback, ()).await.unwrap(), BigInt::from(1));
+                }),
+            )
+            .unwrap();
+            assert_eq!(state.counter, 1);
+        }
+    }
+
+    #[test]
+    fn private_callable_registration_follows_its_provider_and_rejects_duplicate_owners() {
+        use crate::{HostCallableSchema, HostCaptures, HostConstructions, HostTypeListEnd};
+        type End = HostTypeListEnd;
+        struct Callback;
+        impl HostCallableSchema for Callback {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "private/callbacks";
+            const NAME: &'static str = "increment";
+            type Arguments = End;
+            type Return = BigInt;
+            type Captures = End;
+            type Constructions = End;
+            type Completion = crate::HostReturns;
+        }
+        fn body<'call>(
+            call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+            _: HostCaptures<'call, End>,
+            _: HostConstructions<'call, End>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            increment(call)
+        }
+        fn resumable<'call>(
+            call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+            _: HostCaptures<'call, End>,
+            constructions: HostConstructions<'call, End>,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError> {
+            Ok(call.resume(constructions, |_| {
+                Box::pin(async { Ok(crate::HostOwnedCompletion::new(|call, _| increment(call))) })
+            }))
+        }
+        fn provider(module: &str) -> HostProviderModule<TestHostProfile> {
+            HostProviderModule::new("application", module)
+                .unwrap()
+                .with_callable::<Counter, Callback, (), _>(body)
+                .unwrap()
+        }
+        let duplicate = || HostRegistrationError::DuplicateFunction {
+            module: "private/callbacks".into(),
+            function: "increment".into(),
+        };
+        assert_eq!(
+            provider("main")
+                .with_callable::<Counter, Callback, (), _>(body)
+                .err(),
+            Some(duplicate()),
+        );
+        for providers in [
+            vec![provider("one")],
+            vec![provider("one"), provider("two")],
+        ] {
+            let expected = if providers.len() == 1 {
+                None
+            } else {
+                Some(duplicate())
+            };
+            assert_eq!(
+                HostProviderSet::with_providers(
+                    Vec::<HostModule<TestHostProfile>>::new(),
+                    providers
+                )
+                .err(),
+                expected,
+            );
+        }
+        assert_eq!(
+            HostProviderSet::with_providers(
+                Vec::<HostModule<TestHostProfile>>::new(),
+                vec![provider("one"), provider("one")],
+            )
+            .err(),
+            Some(HostRegistrationError::DuplicateModule {
+                module: "one".into(),
+                first_package: "application".into(),
+                second_package: "application".into(),
+            }),
+        );
+        assert_eq!(
+            HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+                .unwrap()
+                .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+                .err(),
+            Some(duplicate()),
+        );
+        assert_eq!(
+            HostProviderSet::from_providers([
+                HostProviderModule::new("application", "main").unwrap()
+            ])
+            .unwrap()
+            .with_callable::<Counter, Callback, (), _>(body)
+            .unwrap()
+            .with_callable::<Counter, Callback, (), _>(body)
+            .err(),
+            Some(duplicate()),
+        );
+        assert_eq!(
+            HostProviderSet::from_providers([
+                HostProviderModule::new("application", "main").unwrap()
+            ])
+            .unwrap()
+            .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+            .unwrap()
+            .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+            .err(),
+            Some(duplicate()),
+        );
+        assert_eq!(
+            HostProviderSet::from_providers([provider("one"), provider("two")]).err(),
+            Some(duplicate()),
+        );
+        assert_eq!(
+            HostProviderSet::from_providers([provider("main")])
+                .unwrap()
+                .with_callable::<Counter, Callback, (), _>(body)
+                .err(),
+            Some(duplicate()),
+        );
+        assert_eq!(
+            HostProviderSet::from_providers([provider("main")])
+                .unwrap()
+                .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+                .err(),
+            Some(duplicate()),
+        );
+
+        for hosts in [
+            HostProviderSet::from_providers([HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+                .unwrap()])
+            .unwrap(),
+            HostProviderSet::new([])
+                .unwrap()
+                .with_resumable_callable::<Counter, Callback, (), _>(resumable)
+                .unwrap(),
+        ] {
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        "pub fn main() { 42 }",
+                    )],
+                )],
+                hosts,
+            )
+            .unwrap();
+            let (mut bindings, main) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), BigInt>::new("main"))
+                .unwrap();
+            let callable = bindings.callable::<Callback>().unwrap();
+            let mut module = bindings.seal().unwrap();
+            let host = crate::execution_fixture::TestHost::default();
+            let mut state = TestRunState::default();
+            let mut echo = Vec::new();
+            host.block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    assert_eq!(scope.call(&main, ()).await.unwrap(), BigInt::from(42));
+                    let function = scope.construct(&callable, ()).unwrap();
+                    assert_eq!(scope.invoke(&function, ()).await.unwrap(), BigInt::from(1));
+                }),
+            )
+            .unwrap();
+            assert_eq!(state.counter, 1);
+            assert!(echo.is_empty());
+        }
+
+        for selected in [false, true] {
+            let modules = if selected {
+                BTreeSet::from([("application".into(), "main".into())])
+            } else {
+                BTreeSet::new()
+            };
+            let hosts = HostProviderSet::from_providers([provider("main")])
+                .unwrap()
+                .select_source_providers(&modules);
+            let (_, providers, callables, implementations) = hosts.into_registered();
+            assert_eq!(providers.len(), usize::from(selected));
+            assert_eq!(callables.len(), usize::from(selected));
+            assert_eq!(implementations.functions.len(), usize::from(selected));
+            if selected {
+                let mut state = TestRunState::default();
+                let mut runtime = TestHostCallRuntime::new(
+                    &mut state,
+                    CallArguments::new(Vec::new(), Vec::new()),
+                );
+                crate::host::expect_immediate_call(
+                    expect_value_implementation(&implementations.functions[0]),
+                    &mut runtime,
+                )
+                .unwrap();
+                assert_eq!(runtime.completed(), Some(&HostScopedValue::Int(1.into())));
+                assert_eq!(state.counter, 1);
+            }
+            let declarations = HostProviderSet::from_providers([provider("main")])
+                .unwrap()
+                .into_declarations()
+                .select_source_providers(&modules);
+            let (_, providers, callables, _) = declarations.into_registered();
+            assert_eq!(providers.len(), usize::from(selected));
+            assert_eq!(callables.len(), usize::from(selected));
+            if selected {
+                assert_eq!(callables[0].identity.module, "private/callbacks");
+                assert_eq!(callables[0].identity.name, "increment");
+                assert_eq!(
+                    callables[0].function.schema.type_().return_(),
+                    &ValueType::Int
+                );
+            }
+        }
+    }
+
+    #[test]
     fn source_provider_selection_precedes_compact_implementation_registration() {
         let module = HostModule::new("host_support", "host/math")
             .expect("source-less module should be valid")
@@ -911,7 +1605,7 @@ mod tests {
         let hosts = HostProviderSet::with_providers([module], [unused, first, second])
             .expect("host module identities should be unique")
             .select_source_providers(&selected);
-        let (modules, providers, implementations) = hosts.into_registered();
+        let (modules, providers, _, implementations) = hosts.into_registered();
 
         assert_eq!(modules.len(), 1);
         assert_eq!(providers.len(), 2);
@@ -945,7 +1639,7 @@ mod tests {
             [provider],
         )
         .expect("provider module should be unique");
-        let (_, mut providers, _) = hosts.into_registered();
+        let (_, mut providers, _, _) = hosts.into_registered();
         let (_, _, _, external_types) = providers
             .pop()
             .expect("provider module should be registered")
@@ -1067,7 +1761,7 @@ mod tests {
         let hosts =
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
-        let (_, mut providers, implementations) = hosts.into_registered();
+        let (_, mut providers, _, implementations) = hosts.into_registered();
         let (_, _, mut definitions, _) = providers
             .pop()
             .expect("provider module should be registered")
@@ -1111,7 +1805,7 @@ mod tests {
         let hosts =
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
-        let (_, mut providers, implementations) = hosts.into_registered();
+        let (_, mut providers, _, implementations) = hosts.into_registered();
         let (_, _, mut definitions, _) = providers
             .pop()
             .expect("provider module should be registered")
@@ -1128,13 +1822,124 @@ mod tests {
 
         assert_eq!(
             implementation
-                .call(&mut runtime)
-                .expect_err("scoped diverging function should fail")
+                .start(&mut runtime)
+                .err()
+                .expect("scoped diverging function should fail")
                 .to_string(),
             "stopped",
         );
         drop(runtime);
         assert_eq!(state.counter, 1);
+    }
+
+    #[test]
+    fn declared_source_less_bodies_keep_registration_validation_and_state_projection() {
+        use crate::{HostConstructions, HostDiverges, HostFunctionDeclaration, HostTypeListEnd};
+        fn construct<'call>(
+            call: HostCall<'call, TestHostProfile, Counter, BigInt>,
+            _: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            increment(call)
+        }
+        const INCREMENT: HostFunctionDeclaration<(), BigInt> =
+            HostFunctionDeclaration::new("increment");
+        const STOP: HostFunctionDeclaration<(), BigInt, HostTypeListEnd, HostDiverges> =
+            HostFunctionDeclaration::new("stop");
+        for name in ["Bad", "increment"] {
+            let error = HostModule::<TestHostProfile>::new_for_profile("app", "native/state")
+                .unwrap()
+                .with_declared_function::<Counter, _, _, _, _>(INCREMENT, construct)
+                .unwrap()
+                .with_declared_function::<Counter, _, _, _, _>(
+                    HostFunctionDeclaration::new(name),
+                    construct,
+                )
+                .err();
+            let expected = if name == "Bad" {
+                HostRegistrationError::InvalidFunctionName {
+                    module: "native/state".into(),
+                    function: name.into(),
+                }
+            } else {
+                HostRegistrationError::DuplicateFunction {
+                    module: "native/state".into(),
+                    function: name.into(),
+                }
+            };
+            assert_eq!(error, Some(expected));
+        }
+        let module = HostModule::<TestHostProfile>::new_for_profile("app", "native/state")
+            .unwrap()
+            .with_declared_function::<Counter, _, _, _, _>(INCREMENT, construct)
+            .unwrap()
+            .with_declared_diverging_function::<Counter, _, _, _>(STOP, stop)
+            .unwrap();
+        let (modules, _, _, implementations) =
+            HostProviderSet::new([module]).unwrap().into_registered();
+        let mut definitions = modules
+            .into_iter()
+            .next()
+            .unwrap()
+            .into_parts()
+            .2
+            .into_iter();
+        let value = implementations.implementation(definitions.next().unwrap().into_parts().2);
+        let never = implementations.implementation(definitions.next().unwrap().into_parts().2);
+        let mut state = TestRunState {
+            counter: 40,
+            unrelated: true,
+        };
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        crate::host::expect_immediate_call(expect_value_implementation(&value), &mut runtime)
+            .unwrap();
+        assert_eq!(runtime.completed(), Some(&HostScopedValue::Int(41.into())));
+        drop(runtime);
+        let mut runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        assert_eq!(
+            expect_never_implementation(&never)
+                .start(&mut runtime)
+                .err()
+                .unwrap()
+                .to_string(),
+            "stopped"
+        );
+        drop(runtime);
+        assert_eq!(state.counter, 42);
+        assert!(state.unrelated);
+
+        for name in ["Bad", "increment"] {
+            let provider = HostProviderModule::<TestHostProfile>::new("app", "native/state")
+                .unwrap()
+                .with_declared_function::<Counter, _, _, _, _>(INCREMENT, construct)
+                .unwrap();
+            assert_eq!(
+                provider
+                    .functions()
+                    .map(|function| function.name())
+                    .collect::<Vec<_>>(),
+                ["increment"]
+            );
+            let error = provider
+                .with_declared_function::<Counter, _, _, _, _>(
+                    HostFunctionDeclaration::new(name),
+                    construct,
+                )
+                .err();
+            let expected = if name == "Bad" {
+                HostRegistrationError::InvalidFunctionName {
+                    module: "native/state".into(),
+                    function: name.into(),
+                }
+            } else {
+                HostRegistrationError::DuplicateFunction {
+                    module: "native/state".into(),
+                    function: name.into(),
+                }
+            };
+            assert_eq!(error, Some(expected));
+        }
     }
 
     #[test]
@@ -1148,7 +1953,7 @@ mod tests {
             .with_scoped_function::<Counter, _, _, _>("increment", increment)
             .expect("scoped function should be valid");
         let hosts = HostProviderSet::new([module]).expect("host module should be unique");
-        let (mut modules, _, implementations) = hosts.into_registered();
+        let (mut modules, _, _, implementations) = hosts.into_registered();
         let (_, _, definitions) = modules
             .pop()
             .expect("host module should be registered")
@@ -1653,13 +2458,13 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
             type Arguments = (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,);
             let error = crate::HostModule::<Profile>::new_for_profile("application", "library")
                 .unwrap()
-                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge)
+                .with_declared_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(crate::HostFunctionDeclaration::new("bridge"), bridge)
                 .unwrap()
                 .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(name, bridge)
                 .err();
             let provider_error = HostProviderModule::<Profile>::new("application", "library")
                 .unwrap()
-                .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge)
+                .with_declared_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(crate::HostFunctionDeclaration::new("bridge"), bridge)
                 .unwrap()
                 .with_resumable_function::<WorkComponent, Arguments, WorkHostType<BigInt>, HostTypeListEnd, _>(name, bridge)
                 .err();
@@ -1679,7 +2484,7 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
         }
         let mut providers = WorkComponent::providers::<Profile>().expect("Future module");
         providers.push(HostProviderModule::new("application", "library").expect("native module")
-            .with_resumable_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, HostTypeListEnd, _>("bridge", bridge).expect("callback")
+            .with_declared_resumable_function::<WorkComponent, (HostFunctionType<HostTypeListEnd, WorkHostType<BigInt>>,), WorkHostType<BigInt>, HostTypeListEnd, _>(crate::HostFunctionDeclaration::new("bridge"), bridge).expect("callback")
             .with_scoped_function::<WorkComponent, (), WorkHostType<BigInt>, _>("reject", reject).expect("failure"));
         let source = r#"import fixture/work as future
 @external(erlang, "native", "bridge")

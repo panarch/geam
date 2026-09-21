@@ -64,7 +64,13 @@ pub(super) fn admit(
         nils,
         tuples,
         lists,
+        functions,
     } = &inputs.lists;
+    for id in functions.iter() {
+        types
+            .list_storage(ListStorageTypeId::Function(*id))
+            .map_err(InputError::Type)?;
+    }
     for id in ints.iter() {
         types
             .list_storage(ListStorageTypeId::Int(*id))
@@ -146,7 +152,7 @@ pub(super) fn mapping(
         }
     }
     let lists = &inputs.lists;
-    let mut counts = [0; 11];
+    let mut counts = [0; 12];
     for (index, item) in items.iter().enumerate() {
         let (family, stored) = match item {
             LibraryValueType::Int => (
@@ -229,6 +235,14 @@ pub(super) fn mapping(
                     .copied()
                     .map(ListStorageTypeId::Tuple),
             ),
+            LibraryValueType::Function(_) => (
+                11,
+                lists
+                    .functions
+                    .get(counts[11])
+                    .copied()
+                    .map(ListStorageTypeId::Function),
+            ),
             LibraryValueType::List(_) => (
                 10,
                 lists
@@ -264,6 +278,7 @@ pub(super) fn mapping(
         (FunctionReturnFamily::Nil, lists.nils.len()),
         (FunctionReturnFamily::Tuple, lists.tuples.len()),
         (FunctionReturnFamily::List, lists.lists.len()),
+        (FunctionReturnFamily::Function, lists.functions.len()),
     ]
     .into_iter()
     .zip(counts)
@@ -359,9 +374,9 @@ mod tests {
         use crate::plan::execution::type_::{
             BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeDescriptor,
             CustomTypeTable, ExternalListTypeId, ExternalTypeId, ExternalTypeTable,
-            FloatListTypeId, IntListTypeId, ListListTypeId, ListStorageTypeId, ListTypeId,
-            ListTypeTable, NilListTypeId, NominalTypeMetadata, StringListTypeId, TupleListTypeId,
-            UtfCodepointListTypeId, ValueShapeTable, ValueType,
+            FloatListTypeId, FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId,
+            ListStorageTypeId, ListTypeId, ListTypeTable, NilListTypeId, NominalTypeMetadata,
+            StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueShapeTable, ValueType,
         };
         use crate::plan::execution::{LibraryInputConstructions, LibraryListConstructions};
         use crate::plan::{
@@ -416,6 +431,7 @@ mod tests {
         let nil = NilListTypeId::new(ListTypeId(8));
         let tuple = TupleListTypeId::new(ListTypeId(9), 0);
         let nested = ListListTypeId::new(ListTypeId(10), ListTypeId(0));
+        let function = FunctionListTypeId::new(ListTypeId(11), 0);
         let lists = ListTypeTable {
             types: vec![
                 ListStorageTypeId::Int(int),
@@ -429,15 +445,17 @@ mod tests {
                 ListStorageTypeId::Nil(nil),
                 ListStorageTypeId::Tuple(tuple),
                 ListStorageTypeId::List(nested),
+                ListStorageTypeId::Function(function),
             ]
             .into(),
             tuple_items: vec![vec![ValueType::Int, ValueType::Bool].into()].into(),
-            function_items: Table::Static(&[]),
+            function_items: vec![FunctionType::new(vec![ValueType::Bool], ValueType::Int)].into(),
         };
         let types = Types::admit(&lists, &customs, &externals, &shapes).unwrap();
         let inputs = LibraryInputConstructions {
             variants: Table::Static(&[]),
             lists: LibraryListConstructions {
+                functions: vec![function].into(),
                 ints: vec![int].into(),
                 floats: vec![float].into(),
                 strings: vec![string].into(),
@@ -463,6 +481,10 @@ mod tests {
             LibraryValueType::Nil,
             LibraryValueType::Tuple(vec![Public::Int, Public::Bool]),
             LibraryValueType::List(Box::new(LibraryValueType::Int)),
+            LibraryValueType::Function(crate::plan::FunctionType::new(
+                vec![Public::Bool],
+                Public::Int,
+            )),
         ];
         assert_eq!(admit(&inputs, &types), Ok(()));
         assert_eq!(mapping(&inputs, &[], &items, &[], &types), Ok(()));
@@ -479,6 +501,7 @@ mod tests {
             FunctionReturnFamily::Nil,
             FunctionReturnFamily::Tuple,
             FunctionReturnFamily::List,
+            FunctionReturnFamily::Function,
         ];
         for (index, family) in families.into_iter().enumerate() {
             let mut omitted = items.to_vec();
@@ -492,7 +515,7 @@ mod tests {
                 })
             );
         }
-        let mutations: [fn(&mut LibraryListConstructions); 11] = [
+        let mutations: [fn(&mut LibraryListConstructions); 12] = [
             |lists| lists.ints = vec![IntListTypeId::new(ListTypeId(99))].into(),
             |lists| lists.floats = vec![FloatListTypeId::new(ListTypeId(99))].into(),
             |lists| lists.strings = vec![StringListTypeId::new(ListTypeId(99))].into(),
@@ -509,6 +532,7 @@ mod tests {
             |lists| lists.nils = vec![NilListTypeId::new(ListTypeId(99))].into(),
             |lists| lists.tuples = vec![TupleListTypeId::new(ListTypeId(99), 0)].into(),
             |lists| lists.lists = vec![ListListTypeId::new(ListTypeId(99), ListTypeId(0))].into(),
+            |lists| lists.functions = vec![FunctionListTypeId::new(ListTypeId(99), 0)].into(),
         ];
         for mutate in mutations {
             let mut malformed = inputs.clone();
@@ -624,6 +648,7 @@ mod tests {
                 ]]
                 .into(),
                 lists: crate::plan::execution::LibraryListConstructions {
+                    functions: Vec::new().into(),
                     ints: vec![].into(),
                     floats: vec![].into(),
                     strings: vec![].into(),
@@ -680,6 +705,7 @@ mod tests {
             })]
             .into(),
             lists: LibraryListConstructions {
+                functions: Vec::new().into(),
                 ints: vec![].into(),
                 floats: vec![].into(),
                 strings: vec![].into(),

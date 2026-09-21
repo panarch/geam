@@ -14,7 +14,8 @@ Read the crates in this order:
 2. [`provider`](provider) adapts that domain crate to Geam. It exports a
    `HostProviderComponent`, initializes caller-owned state from explicit
    configuration, registers typed callbacks, binds `Catalog` as opaque external
-   storage, and constructs a compound Gleam result.
+   storage, constructs a compound Gleam result, and returns capturing native
+   function values through a private `HostCallableSchema`.
 3. [`runner`](runner) represents application-owned embedding code. It manually
    combines component stores and run state into a concrete `HostProfile`,
    collects providers, and executes the complete hosted pipeline through the
@@ -41,6 +42,10 @@ Gleam external declarations and program source
 -> typed compilation, planning, and execution sealing
 -> execution with exact returned-value and provider-state assertions
 ```
+
+The canonical flow invokes a Rust-created function directly from Gleam and
+through another provider callback, with exact alias identity and state effects.
+Its private native body needs no synthetic source external.
 
 The remaining tests in that file show independent run states, opaque external
 values that outlive execution, and callback failure propagation. Provider-local

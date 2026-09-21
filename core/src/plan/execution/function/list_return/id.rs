@@ -123,6 +123,7 @@ pub enum LibraryListFunctionId<Graph: ExecutionGraphProfile = HostedExecutionGra
     Nil(NilListFunctionId),
     Tuple(TupleListFunctionId),
     List(ListListFunctionId),
+    Function(FunctionListFunctionId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +150,7 @@ impl<Graph: ExecutionGraphProfile> LibraryListFunctionId<Graph> {
             Self::Nil(id) => ProfiledListFunctionId::Core(ListFunctionId::Nil(*id)),
             Self::Tuple(id) => ProfiledListFunctionId::Core(ListFunctionId::Tuple(*id)),
             Self::List(id) => ProfiledListFunctionId::Core(ListFunctionId::List(*id)),
+            Self::Function(id) => ProfiledListFunctionId::Core(ListFunctionId::Function(*id)),
         }
     }
 }
@@ -666,6 +668,9 @@ where
                 output.call("function::LibraryListFunctionId::Tuple", &[field_0])
             }
             Self::List(field_0) => output.call("function::LibraryListFunctionId::List", &[field_0]),
+            Self::Function(field_0) => {
+                output.call("function::LibraryListFunctionId::Function", &[field_0])
+            }
         }
     }
 }
@@ -906,7 +911,7 @@ data::function::ListFunctionId::Function(data::function::FunctionListFunctionId 
         for (id, expected) in cases {
             assert_eq!(Rust::expression(&id), expected);
         }
-        let library: [(LibraryListFunctionId<HostedExecutionGraph>, &str); 11] = [
+        let library: [(LibraryListFunctionId<HostedExecutionGraph>, &str); 12] = [
             (
                 LibraryListFunctionId::Int(IntListFunctionId::new(
                     2,
@@ -1064,6 +1069,24 @@ data::function::LibraryListFunctionId::List(data::function::ListListFunctionId {
     type_id: data::type_::ListListTypeId {
         list_type: data::type_::ListTypeId(3),
         item_type: data::type_::ListTypeId(4),
+    },
+})"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                LibraryListFunctionId::Function(FunctionListFunctionId::new(
+                    2,
+                    FunctionListTypeId {
+                        list_type: ListTypeId(3),
+                        item_type: FunctionItemTypeId(4),
+                    },
+                )),
+                r#"
+data::function::LibraryListFunctionId::Function(data::function::FunctionListFunctionId {
+    index: 2,
+    type_id: data::type_::FunctionListTypeId {
+        list_type: data::type_::ListTypeId(3),
+        item_type: data::type_::FunctionItemTypeId(4),
     },
 })"#
                 .trim_start_matches('\n'),

@@ -68,6 +68,12 @@ impl From<HostFailure> for HostCallError {
     }
 }
 
+impl From<std::convert::Infallible> for HostCallError {
+    fn from(error: std::convert::Infallible) -> Self {
+        match error {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{HostCallError, HostCallErrorKind, HostFailure};

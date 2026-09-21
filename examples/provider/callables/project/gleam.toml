@@ -1,0 +1,7 @@
+name = "callables_example"
+version = "1.0.0"
+description = "Rust-created functions used by ordinary higher-order Gleam code"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_callables = { path = "packages/example_callables" }

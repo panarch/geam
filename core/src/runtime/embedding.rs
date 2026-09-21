@@ -1,8 +1,10 @@
+mod callable;
 mod entry;
 mod input;
 mod list;
 mod output;
 
+pub(crate) use callable::{CallableView, EmbeddingCallable};
 pub(crate) use entry::EmbeddingEntry;
 pub(crate) use input::{
     EmbeddingCustomInput, EmbeddingInput, EmbeddingInputStorage, EmbeddingInputValue,

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 2,
+    format: 3,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -257,8 +257,10 @@ data::ModuleArtifact {
                         nils: data::Storage::Static(&[]),
                         tuples: data::Storage::Static(&[]),
                         lists: data::Storage::Static(&[]),
+                        functions: data::Storage::Static(&[]),
                     },
                 },
+                callables: data::Storage::Static(&[]),
             },
         ]),
         floats: data::Storage::Static(&[]),
@@ -271,6 +273,7 @@ data::ModuleArtifact {
         nils: data::Storage::Static(&[]),
         tuples: data::Storage::Static(&[]),
         lists: data::Storage::Static(&[]),
+        functions: data::Storage::Static(&[]),
     },
     exports: data::Storage::Static(&[
         data::Export {

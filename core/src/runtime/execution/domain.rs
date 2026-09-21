@@ -72,7 +72,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             echo,
             budget,
             lists: RuntimeListStorage::default(),
-            work: ExecutionWork::new(captures),
+            work: ExecutionWork::new(captures.for_execution()),
             entries: Requests::new(),
             tasks: FuturesUnordered::new(),
             units,
@@ -266,6 +266,10 @@ impl<Profile: HostProfile> Drop for Domain<'_, Profile> {
 }
 
 impl<Profile: HostProfile> EntryContext<Profile> {
+    pub(crate) fn captures(&self) -> &crate::runtime::CaptureStorage {
+        self.execution.services().captures()
+    }
+
     pub(in crate::runtime) async fn run_main(
         &self,
     ) -> Result<crate::Value, crate::execution::RunError> {
@@ -297,6 +301,45 @@ impl<Profile: HostProfile> EntryContext<Profile> {
             .await
             .map_err(|_| crate::execution::RunError::Cancelled)?
             .map_err(Into::into)
+    }
+
+    pub(in crate::runtime) fn invoke(
+        &self,
+        callable: crate::runtime::RetainedCallable,
+        origin: HostCallOrigin,
+        inputs: crate::runtime::CallbackInputs,
+    ) -> impl Future<Output = Result<ExecutionResult<crate::runtime::EvaluatedValue>, Cancelled>>
+    + Send
+    + use<Profile> {
+        let plan = Arc::clone(&self.plan);
+        let budget = self.budget;
+        let entries = self.entries.clone();
+        let completion = self.completion.clone();
+        async move {
+            let owner = UnitOwner::new(completion);
+            let _cancel = super::unit::CancelOnDrop(owner.handle());
+            entries
+                .submit(|reply| Entry {
+                    owner,
+                    start: Box::new(move |context, root| {
+                        super::worker::completing(
+                            reply,
+                            root.run(async move {
+                                let invocation = callable.with_value(|function| {
+                                    crate::runtime::function::prepare_callable(
+                                        plan.as_ref(),
+                                        function,
+                                        origin,
+                                        inputs.into_arguments(),
+                                    )
+                                });
+                                invocation.submit(context.services(), budget).await
+                            }),
+                        )
+                    }),
+                })
+                .await
+        }
     }
 
     pub(crate) async fn retain_outputs<Output: Send + 'static>(
@@ -348,6 +391,8 @@ impl<Profile: HostProfile> EntryContext<Profile> {
 
 #[cfg(test)]
 mod tests {
+    mod factory;
+
     use super::Domain;
     use crate::execution::{ExecutionHost, HostTask, TaskExit, Worker};
     use crate::host::{HostProfile, HostProviderSet};
@@ -531,7 +576,8 @@ mod tests {
             .find(|function| function.name() == "main")
             .unwrap();
         let entry = LibraryEntry::new(function.signature().id(), result, Vec::new(), Vec::new());
-        let (plan, entries) = HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
+        let (plan, entries, _) =
+            HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
         (Arc::new(plan), entries)
     }
 
@@ -918,7 +964,8 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) = HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
+        let (plan, entries, _) =
+            HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
         let host = ManualHost::default();
         let mut state = Cell::new(0);
         let mut stores = Cell::new(());
@@ -1068,7 +1115,7 @@ pub fn main() {{
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) =
+            let (plan, entries, _) =
                 HostedProgram::from_library_plan(library, entry, Vec::new()).unwrap();
             let plan = Arc::new(plan);
             for budget in (1..=16).chain([1024]) {
@@ -1627,7 +1674,7 @@ mod source_work {
             .expect("idle")
             .signature()
             .id();
-        let (plan, _) = HostedProgram::from_library_plan(
+        let (plan, _, _) = HostedProgram::from_library_plan(
             library,
             LibraryEntry::new(id, LibraryValueType::Nil, Vec::new(), Vec::new()),
             Vec::new(),
@@ -1724,7 +1771,7 @@ mod source_work {
             .gleam_body()
             .expect("source body");
         let entry = LibraryEntry::new(function.id(), LibraryValueType::Nil, Vec::new(), Vec::new());
-        let (plan, _) =
+        let (plan, _, _) =
             HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed execution");
         let mut host = Cell::new(0);
         let mut stores = Cell::new(());
@@ -1825,7 +1872,7 @@ mod source_work {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed execution");
         let entry = *entries.tuples[0].function();
         let mut host = Cell::new(2);
@@ -2208,7 +2255,7 @@ pub fn make() {{
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+            let (plan, entries, _) = HostedProgram::from_library_plan(plan, entry, Vec::new())
                 .expect("retained callback specialization");
             let plan = Arc::new(plan);
             let executor = TestHost::default();
@@ -2492,7 +2539,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) = HostedProgram::from_library_plan(library, entry, Vec::new())
+            let (plan, entries, _) = HostedProgram::from_library_plan(library, entry, Vec::new())
                 .expect("sealed source");
             let plan = Arc::new(plan);
             let executor = TestHost::default();
@@ -2691,7 +2738,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+            let (plan, entries, _) = HostedProgram::from_library_plan(plan, entry, Vec::new())
                 .expect("native Future execution");
             let plan = Arc::new(plan);
             let executor = TestHost::default();
@@ -3027,7 +3074,7 @@ pub fn make() {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("all execution");
         let plan = Arc::new(plan);
         let executor = TestHost::default();
@@ -3277,7 +3324,7 @@ pub fn make() {
                 Vec::new(),
                 Vec::new(),
             );
-            let (plan, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+            let (plan, entries, _) = HostedProgram::from_library_plan(plan, entry, Vec::new())
                 .expect("specialized Future callbacks");
             let plan = Arc::new(plan);
             let executor = TestHost::default();
@@ -3562,7 +3609,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             ));
         }
         let entry = entries.remove(0);
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(library, entry, entries).expect("sealed entries");
         let plan = Arc::new(plan);
         let executor = TestHost::default();
@@ -4004,7 +4051,7 @@ mod work_requests {
             Vec::new(),
             Vec::new(),
         );
-        let (execution, entries) = HostedProgram::from_library_plan(plan, entry, Vec::new())
+        let (execution, entries, _) = HostedProgram::from_library_plan(plan, entry, Vec::new())
             .expect("sealed callback program");
         (Arc::new(execution), *entries.tuples[0].function())
     }
@@ -4307,7 +4354,7 @@ pub fn make() { #(fn(value: Int) {
             entry("increment", LibraryValueType::Int),
             entry("plain", LibraryValueType::Int),
         ];
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(library, first, remaining).expect("sealed callbacks");
         let plan = Arc::new(plan);
         let executor = TestHost::default();
@@ -4323,6 +4370,7 @@ pub fn make() { #(fn(value: Int) {
             (4, 41, false),
             (5, 41, false),
             (5, -1, false),
+            (5, -2, false),
             (5, 41, true),
         ] {
             let mut state = Cell::new(0);
@@ -4344,9 +4392,12 @@ pub fn make() { #(fn(value: Int) {
                 codec.clone(),
                 HostCallOrigin::Entry,
                 move |_| {
+                    if input == -2 {
+                        return Err(crate::HostFailure::new("encoder rejected").into());
+                    }
                     let mut values = CallbackInputs::new();
                     values.push_value(EvaluatedValue::Int(input.into()));
-                    values
+                    Ok(values)
                 },
                 move |runtime, value| {
                     let value = runtime.int(value);
@@ -4397,6 +4448,11 @@ pub fn make() { #(fn(value: Int) {
                             .contains("source rejected")),
                         Poll::Ready(true)
                     );
+                } else if input == -2 {
+                    assert_eq!(
+                        result.map(|result| result.expect_err("encoder failure").to_string()),
+                        Poll::Ready("encoder rejected".to_owned())
+                    );
                 } else if decode_fails {
                     assert_eq!(
                         result.map(|result| result.expect_err("decoder failure").to_string()),
@@ -4410,8 +4466,8 @@ pub fn make() { #(fn(value: Int) {
                 }
                 drop(execution);
             }
-            assert_eq!(state.get(), usize::from(serviced >= 4 && input != -1));
-            assert_eq!(echo.len(), usize::from(serviced >= 3));
+            assert_eq!(state.get(), usize::from(serviced >= 4 && input >= 0));
+            assert_eq!(echo.len(), usize::from(serviced >= 3 && input != -2));
         }
         for close in [false, true] {
             let mut state = Cell::new(0);

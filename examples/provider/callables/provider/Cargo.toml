@@ -1,0 +1,23 @@
+[package]
+name = "geam-example-callables"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Rust-created functions and higher-order callbacks for Geam"
+license = "Apache-2.0"
+repository = "https://github.com/panarch/geam"
+readme = "README.md"
+publish = ["crates-io"]
+keywords = ["geam", "gleam", "provider", "example"]
+categories = ["development-tools"]
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "example_callables"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider"] }
+
+[workspace]
+resolver = "3"

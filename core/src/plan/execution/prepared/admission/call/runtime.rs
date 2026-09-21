@@ -31,7 +31,7 @@ impl Target for ExternalFunctionCallTarget {
     }
 }
 
-impl Target for function::RuntimeFunctionFunctionTarget {
+impl<Symbolic: Target> Target for function::RuntimeFunctionFunctionTarget<Symbolic> {
     fn resolve<'data>(
         &self,
         catalog: &Catalog<'data>,

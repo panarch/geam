@@ -19,6 +19,9 @@ pub(super) fn metadata(
     returns_value: bool,
 ) -> Result<(), ContractError> {
     let schema = &registration.schema;
+    if metadata.callable_entry.is_some() != schema.is_callable() {
+        return Err(ContractError::Callable);
+    }
     if metadata.type_arguments.len() != schema.scheme().parameters().len() {
         return Err(ContractError::TypeArguments);
     }
@@ -76,6 +79,19 @@ pub(super) fn metadata(
             return Err(ContractError::Parameters);
         }
     }
+    if metadata.parameters.captures.len() != schema.captures().len() {
+        return Err(ContractError::Captures);
+    }
+    for (stored, original) in metadata.parameters.captures.iter().zip(schema.captures()) {
+        let stored_type = types
+            .shape_type(stored.shape)
+            .map_err(ContractError::Type)?;
+        let expected = original.resolve_sealed(&|index| arguments[index].clone());
+        let expected = TypeMetadata::from_public(&expected);
+        if !types.metadata_matches_value(&expected, stored_type) {
+            return Err(ContractError::Captures);
+        }
+    }
     construction::admit(metadata, registration, &arguments, types)?;
     callback::admit(registration, &metadata.type_arguments, types, returns_value)
 }
@@ -86,7 +102,12 @@ pub(super) fn call(
     declaration: &Function<'_>,
     types: &Types<'_>,
 ) -> Result<(), ContractError> {
-    if !declaration.captures.is_empty() {
+    if let Some(entry) = metadata.callable_entry
+        && (entry.family != declaration.family || entry.index != declaration.index)
+    {
+        return Err(ContractError::Callable);
+    }
+    if declaration.captures != metadata.parameters.captures.as_ref() {
         return Err(ContractError::Captures);
     }
     shape::admit(metadata, registration, declaration, types)?;
@@ -116,6 +137,11 @@ pub(super) fn call(
         if &types.shape_types()[slot.shape.index()] != expected {
             return Err(ContractError::Signature);
         }
+    }
+    for slot in declaration.captures {
+        locals
+            .define(slot, types)
+            .map_err(|_| ContractError::Captures)?;
     }
     if declaration.return_type != metadata.type_.return_() {
         return Err(ContractError::Signature);
@@ -169,6 +195,171 @@ mod tests {
     use crate::plan::execution::prepared::admission::type_::TypeError;
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::{ListTypeId, TypeMetadata, ValueShapeId, ValueType};
+
+    #[test]
+    fn native_callable_contracts_validate_body_identity_capture_types_and_unique_slots() {
+        use crate::plan::execution::prepared::admission::catalog::{Catalog, Function};
+        use crate::{
+            HostCallableSchema, HostCaptures, HostConstructions, HostCreatedFunction,
+            HostFunctionType, HostReturns, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+        };
+        type End = HostTypeListEnd;
+        type One<T> = HostTypeList<T, End>;
+        type Captures = HostTypeList<bool, One<bool>>;
+        type Thunk = HostFunctionType<One<num_bigint::BigInt>, num_bigint::BigInt>;
+        type Permission = One<HostCreatedFunction<Add>>;
+        struct Add;
+        impl HostCallableSchema for Add {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "callbacks";
+            const NAME: &'static str = "add";
+            type Arguments = One<num_bigint::BigInt>;
+            type Return = num_bigint::BigInt;
+            type Captures = Captures;
+            type Constructions = End;
+            type Completion = HostReturns;
+        }
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn add<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, num_bigint::BigInt>,
+            captures: HostCaptures<'call, Captures>,
+            _: HostConstructions<'call, End>,
+            value: num_bigint::BigInt,
+        ) -> Result<HostCallCompletion<'call, num_bigint::BigInt>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            assert_eq!(call.captures(captures), (true, (false, ())));
+            Ok(call.return_value(value + 2))
+        }
+        fn make<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Thunk>,
+            constructions: HostConstructions<'call, Permission>,
+            left: bool,
+            right: bool,
+        ) -> Result<HostCallCompletion<'call, Thunk>, HostCallError> {
+            let callback =
+                call.construct_function(constructions.at::<HostTypeIndex0>(), (left, (right, ())));
+            Ok(call.return_value(callback))
+        }
+        let hosts = || {
+            HostProviderSet::from_providers([HostProviderModule::new("app", "main").unwrap()
+            .with_scoped_function_and_constructions::<Provider, (bool, bool), Thunk, Permission, _>("make", make).unwrap()]).unwrap()
+            .with_callable::<Provider, Add, (num_bigint::BigInt,), _>(add).unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "make") fn make(left: Bool, right: Bool) -> fn(Int) -> Int
+pub fn main() { make(True, False)(40) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "main.gleam", source)],
+            )],
+            hosts(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Int(42.into())
+        );
+        let (program, values, nevers) = lowered(source, hosts());
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let linked = NativeFunctions::new(&values, &nevers, hosts()).unwrap();
+        let index = values
+            .iter()
+            .position(|value| value.name() == "add")
+            .unwrap();
+        let original = &values[index];
+        let registration = &linked.registrations[linked.values[index].2];
+        let entry = original.callable_entry.unwrap();
+        assert_eq!(metadata(original, registration, &types, true), Ok(()));
+        assert_eq!(
+            super::call(
+                original,
+                registration,
+                &catalog.function(entry.family, entry.index).unwrap(),
+                &types
+            ),
+            Ok(())
+        );
+        let (_, mut altered, _) = lowered(source, hosts());
+        let mut changed = altered.remove(index);
+        changed.callable_entry = None;
+        assert_eq!(
+            metadata(&changed, registration, &types, true),
+            Err(ContractError::Callable)
+        );
+        changed.callable_entry = original.callable_entry;
+        changed.parameters.captures = original.parameters.captures.clone();
+        changed.parameters.captures = Vec::new().into();
+        assert_eq!(
+            metadata(&changed, registration, &types, true),
+            Err(ContractError::Captures)
+        );
+        changed.callable_entry = original.callable_entry;
+        changed.parameters.captures = original.parameters.captures.clone();
+        let mut captures = changed.parameters.captures.to_vec();
+        captures[0].shape = ValueShapeId(999);
+        changed.parameters.captures = captures.into();
+        assert_eq!(
+            metadata(&changed, registration, &types, true),
+            Err(ContractError::Type(TypeError::MissingShape { index: 999 }))
+        );
+        changed.callable_entry = original.callable_entry;
+        changed.parameters.captures = original.parameters.captures.clone();
+        let mut captures = changed.parameters.captures.to_vec();
+        let declaration = catalog.function(entry.family, entry.index).unwrap();
+        captures[0].shape = declaration.parameter_shapes[0];
+        changed.parameters.captures = captures.into();
+        assert_eq!(
+            metadata(&changed, registration, &types, true),
+            Err(ContractError::Captures)
+        );
+        changed.callable_entry = original.callable_entry;
+        changed.parameters.captures = original.parameters.captures.clone();
+        changed.callable_entry = Some(crate::plan::execution::host::HostCallableEntry {
+            index: entry.index + 1,
+            ..entry
+        });
+        assert_eq!(
+            super::call(&changed, registration, &declaration, &types),
+            Err(ContractError::Callable)
+        );
+        let mut captures = original.parameters.captures.to_vec();
+        captures[1] = captures[0].clone();
+        changed.callable_entry = original.callable_entry;
+        changed.parameters.captures = original.parameters.captures.clone();
+        changed.parameters.captures = captures.clone().into();
+        assert_eq!(metadata(&changed, registration, &types, true), Ok(()));
+        let duplicated = Function {
+            captures: &captures,
+            ..declaration
+        };
+        assert_eq!(
+            super::call(&changed, registration, &duplicated, &types),
+            Err(ContractError::Captures)
+        );
+    }
 
     #[test]
     fn callable_parameter_layouts_require_the_registered_arity() {

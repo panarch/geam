@@ -1666,7 +1666,7 @@ data::graph::ExternalFunctionCallTarget::ListFunction {
             assert_eq!(Rust::expression(&target), expected);
         }
         assert_eq!(
-            Rust::expression(&RuntimeFunctionFunctionTarget::External(
+            Rust::expression(&RuntimeFunctionFunctionTarget::<crate::plan::execution::function::GenericFunctionFunctionId>::External(
                 ExternalFunctionCallTarget::Function(ExternalFunctionFunctionId {
                     index: 2,
                     type_: ExternalFunctionType::from_shapes(

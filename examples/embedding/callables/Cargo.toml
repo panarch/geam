@@ -1,0 +1,20 @@
+[package]
+name = "geam-rust-embedding-callables"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[package.metadata.geam.embedding]
+generate = "both"
+declarations = "src/declarations.rs"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "tokio"] }
+tokio = { version = "1", features = ["rt"] }
+
+[patch.crates-io]
+geam = { path = "../../.." }
+
+[workspace]
+resolver = "3"

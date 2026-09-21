@@ -11,6 +11,9 @@
 pub struct Component;
 
 #[cfg(test)]
+mod callable_factories;
+
+#[cfg(test)]
 #[path = "../../../../../../tests/support/execution_host.rs"]
 mod execution_fixture;
 

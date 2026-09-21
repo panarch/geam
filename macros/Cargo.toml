@@ -15,7 +15,7 @@ proc-macro = true
 proc-macro-crate.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
-syn = { workspace = true, features = ["extra-traits"] }
+syn = { workspace = true, features = ["extra-traits", "visit"] }
 
 [dev-dependencies]
 geam-builtin.workspace = true

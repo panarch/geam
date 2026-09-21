@@ -1,4 +1,5 @@
 use super::ScopeBrand;
+use crate::embedding::callable::OutputCallables;
 use crate::host::{
     HostExternalSchema, HostFutureStore, HostProfile, HostWorkProfile, HostWorkSchema,
 };
@@ -104,6 +105,7 @@ pub(crate) trait ScopedOutput<Profile: HostProfile>: SourceType {
         brand: ScopeBrand<'scope>,
         retention: Self::Retention,
         owner: &Arc<()>,
+        callables: &mut OutputCallables<'scope>,
     ) -> <Self::Value<'scope> as SharedValue>::Context;
 }
 
@@ -111,7 +113,7 @@ impl<Value: crate::embedding::value::EmbeddingValue, Schema: HostExternalSchema>
     crate::embedding::value::EmbeddingValue for FutureType<Value, Schema>
 {
     const VARIANT_COUNT: usize = 0;
-    const LIST_COUNTS: [usize; 11] = [0; 11];
+    const LIST_COUNTS: [usize; 12] = [0; 12];
     const LIST_FAMILY: crate::embedding::input::ListFamily =
         crate::embedding::input::ListFamily::External;
 
@@ -131,6 +133,9 @@ impl<Value: crate::embedding::value::EmbeddingValue, Schema: HostExternalSchema>
     }
     fn collect_input_variants(_: &mut Vec<crate::plan::LibraryVariant>) {}
     fn collect_lists(_: &mut Vec<crate::plan::LibraryValueType>) {}
+    fn collect_callables(callables: &mut Vec<crate::plan::LibraryCallableSignature>) {
+        Value::collect_callables(callables);
+    }
 }
 
 pub(crate) struct FutureContext<'scope, Value: SharedValue, Schema: HostExternalSchema> {
@@ -277,7 +282,13 @@ macro_rules! scalar {
         impl<Profile: HostProfile> ScopedOutput<Profile> for $type {
             type Retention = ();
             fn retain(_: &Profile::ExternalStores) {}
-            fn context<'scope>(_: ScopeBrand<'scope>, _: (), _: &Arc<()>) {}
+            fn context<'scope>(
+                _: ScopeBrand<'scope>,
+                _: (),
+                _: &Arc<()>,
+                _: &mut OutputCallables<'scope>,
+            ) {
+            }
         }
     };
 }
@@ -313,7 +324,8 @@ impl SourceType for () {
 impl<Profile: HostProfile> ScopedOutput<Profile> for () {
     type Retention = ();
     fn retain(_: &Profile::ExternalStores) {}
-    fn context<'scope>(_: ScopeBrand<'scope>, _: (), _: &Arc<()>) {}
+    fn context<'scope>(_: ScopeBrand<'scope>, _: (), _: &Arc<()>, _: &mut OutputCallables<'scope>) {
+    }
 }
 
 macro_rules! tuple {
@@ -333,8 +345,8 @@ macro_rules! tuple {
         impl<Profile: HostProfile, $($type: ScopedOutput<Profile>),+> ScopedOutput<Profile> for ($($type,)+) {
             type Retention = ($($type::Retention,)+);
             fn retain(stores: &Profile::ExternalStores) -> Self::Retention { ($($type::retain(stores),)+) }
-            fn context<'scope>(brand: ScopeBrand<'scope>, retention: Self::Retention, owner: &Arc<()>) -> <Self::Value<'scope> as SharedValue>::Context {
-                ($($type::context(brand, retention.$index, owner),)+)
+            fn context<'scope>(brand: ScopeBrand<'scope>, retention: Self::Retention, owner: &Arc<()>, callables: &mut OutputCallables<'scope>) -> <Self::Value<'scope> as SharedValue>::Context {
+                ($($type::context(brand, retention.$index, owner, callables),)+)
             }
         }
     };
@@ -378,10 +390,11 @@ impl<Profile: HostProfile, Success: ScopedOutput<Profile>, Failure: ScopedOutput
         brand: ScopeBrand<'scope>,
         retention: Self::Retention,
         owner: &Arc<()>,
+        callables: &mut OutputCallables<'scope>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         (
-            Success::context(brand, retention.0, owner),
-            Failure::context(brand, retention.1, owner),
+            Success::context(brand, retention.0, owner, callables),
+            Failure::context(brand, retention.1, owner, callables),
         )
     }
 }
@@ -414,8 +427,9 @@ impl<Profile: HostProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profile> f
         brand: ScopeBrand<'scope>,
         retention: Self::Retention,
         owner: &Arc<()>,
+        callables: &mut OutputCallables<'scope>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
-        Value::context(brand, retention, owner)
+        Value::context(brand, retention, owner, callables)
     }
 }
 
@@ -448,10 +462,11 @@ impl<Profile: HostProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profile>
         brand: ScopeBrand<'scope>,
         retention: Self::Retention,
         owner: &Arc<()>,
+        callables: &mut OutputCallables<'scope>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         ListContext {
             owner: owner.clone(),
-            item: Value::context(brand, retention, owner),
+            item: Value::context(brand, retention, owner, callables),
         }
     }
 }
@@ -501,11 +516,12 @@ impl<Profile: HostWorkProfile, Value: ScopedOutput<Profile>> ScopedOutput<Profil
         brand: ScopeBrand<'scope>,
         retention: Self::Retention,
         owner: &Arc<()>,
+        callables: &mut OutputCallables<'scope>,
     ) -> <Self::Value<'scope> as SharedValue>::Context {
         FutureContext {
             brand,
             store: retention.0,
-            output: Value::context(brand, retention.1, owner),
+            output: Value::context(brand, retention.1, owner, callables),
             schema: PhantomData,
         }
     }
@@ -544,6 +560,116 @@ mod tests {
         fn emit(&mut self, value: EchoOutput) {
             self.0.push(value.to_string());
         }
+    }
+
+    #[test]
+    fn callable_work_returns_and_work_held_functions_keep_explicit_observation() {
+        use crate::embedding::{BigInt, CallableType};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        type Adjust = CallableType<(BigInt,), BigInt>;
+        type MakeWork = CallableType<(BigInt,), WorkType<BigInt>>;
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "src/fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new(
+                        "library",
+                        "src/library.gleam",
+                        r#"
+import fixture/work as future
+pub fn factory() -> fn(Int) -> future.Work(Int) {
+  fn(value) {
+    future.map(future.ready(value), fn(number) { echo "observed" number + 2 })
+  }
+}
+pub fn carried() -> future.Work(fn(Int) -> Int) {
+  future.ready(fn(value) { value + 2 })
+}
+pub fn list_factory() -> fn(Int) -> List(future.Work(Int)) {
+  fn(value) { [future.ready(value), future.ready(value + 2)] }
+}
+"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers(WorkComponent::providers::<Profile>().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let (mut bindings, factory) = HostedModuleBuilder::new(program)
+            .unwrap()
+            .function(FunctionDeclaration::<(), MakeWork>::new("factory"))
+            .unwrap();
+        let carried = bindings
+            .function(FunctionDeclaration::<(), WorkType<Adjust>>::new("carried"))
+            .unwrap();
+        let list_factory = bindings
+            .function(FunctionDeclaration::<
+                (),
+                CallableType<(BigInt,), List<WorkType<BigInt>>>,
+            >::new("list_factory"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let effects = Arc::new(AtomicUsize::new(0));
+        let echo_effects = Arc::clone(&effects);
+        let mut echo = move |_| {
+            echo_effects.fetch_add(1, Ordering::SeqCst);
+        };
+        let host = crate::execution_fixture::TestHost::default();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                let make = scope.call(&factory, ()).await.unwrap();
+                let work = scope.invoke(&make, (BigInt::from(40),)).await.unwrap();
+                assert_eq!(effects.load(Ordering::SeqCst), 0);
+                let alias = work.clone();
+                for work in [work, alias] {
+                    assert_eq!(
+                        scope.observe(&work).await.unwrap().read(Clone::clone),
+                        BigInt::from(42)
+                    );
+                }
+                assert_eq!(effects.load(Ordering::SeqCst), 1);
+                let list_factory = scope.call(&list_factory, ()).await.unwrap();
+                let work = scope
+                    .invoke(&list_factory, (BigInt::from(40),))
+                    .await
+                    .unwrap();
+                assert_eq!(work.len(), 2);
+                for (index, expected) in [(0, 40), (1, 42)] {
+                    let item = work.read_item(index, std::convert::identity).unwrap();
+                    assert_eq!(
+                        scope.observe(&item).await.unwrap().read(Clone::clone),
+                        BigInt::from(expected)
+                    );
+                }
+                let work = scope.call(&carried, ()).await.unwrap();
+                let function = scope
+                    .observe(&work)
+                    .await
+                    .unwrap()
+                    .read(std::convert::identity);
+                assert_eq!(
+                    scope.invoke(&function, (BigInt::from(40),)).await.unwrap(),
+                    BigInt::from(42)
+                );
+                assert_eq!(effects.load(Ordering::SeqCst), 1);
+            }),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1019,6 +1145,7 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
         let execution_host = crate::execution_fixture::TestHost::default();
 
         use crate::BitArrayValue;
+        use crate::embedding::CallableType;
         use num_bigint::BigInt;
 
         let program = compile_typed_host_program(
@@ -1042,6 +1169,8 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
                         "src/library.gleam",
                         r#"
 import fixture/work as future
+pub fn callback() { fn(value: Int) { value + 3 } }
+pub fn functions(values: List(fn(Int) -> Int)) { values }
 pub fn ready(value: Int) { future.ready(value) }
 pub fn ints(values: List(Int)) { values }
 pub fn floats(values: List(Float)) { values }
@@ -1090,6 +1219,10 @@ pub fn work(values: List(future.Work(Int))) { values }
         bind_list!(choices, Result<BigInt, StringValue>);
         bind_list!(nested, List<BigInt>);
         bind_list!(work, WorkType<BigInt>);
+        bind_list!(functions, CallableType<(BigInt,), BigInt>);
+        let callback = bindings
+            .function(FunctionDeclaration::<(), CallableType<(BigInt,), BigInt>>::new("callback"))
+            .unwrap();
         let mut module = bindings.seal().expect("all list families seal together");
         let mut state = ();
         let mut echo = Echo::default();
@@ -1099,6 +1232,14 @@ pub fn work(values: List(future.Work(Int))) { values }
                 &mut state,
                 &mut echo,
                 async |scope| {
+                    let callback = scope.call(&callback, ()).await.unwrap();
+                    let functions = scope.call(&functions, (vec![callback],)).await.unwrap();
+                    let callback = functions.read_item(0, std::convert::identity).unwrap();
+                    drop(functions);
+                    assert_eq!(
+                        scope.invoke(&callback, (BigInt::from(39),)).await.unwrap(),
+                        BigInt::from(42)
+                    );
                     let numbers = scope
                         .call(&ints, (vec![BigInt::from(42)],))
                         .await

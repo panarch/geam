@@ -15,6 +15,7 @@ pub struct HostedPlannedModule {
     constants: ConstantTemplates,
     functions: Vec<HostedFunctionTemplate>,
     anonymous_functions: Vec<FunctionTemplate>,
+    native_callables: Vec<HostFunctionTemplate>,
 }
 
 pub enum HostedFunctionTemplate {
@@ -32,6 +33,7 @@ pub(crate) struct HostedPlannedModuleParts {
     pub(crate) constants: ConstantTemplates,
     pub(crate) functions: Vec<HostedFunctionTemplate>,
     pub(crate) anonymous_functions: Vec<FunctionTemplate>,
+    pub(crate) native_callables: Vec<HostFunctionTemplate>,
 }
 
 impl HostedPlannedModule {
@@ -46,6 +48,7 @@ impl HostedPlannedModule {
             constants: parts.constants,
             functions: parts.functions,
             anonymous_functions: parts.anonymous_functions,
+            native_callables: parts.native_callables,
         }
     }
 
@@ -77,6 +80,55 @@ impl HostedPlannedModule {
         &self.custom_types
     }
 
+    pub(crate) fn host_templates_mut(&mut self) -> impl Iterator<Item = &mut HostFunctionTemplate> {
+        self.functions
+            .iter_mut()
+            .filter_map(|function| match function {
+                HostedFunctionTemplate::GleamBody(_) => None,
+                HostedFunctionTemplate::HostTemplate(template) => Some(template.as_mut()),
+            })
+            .chain(&mut self.native_callables)
+    }
+
+    pub(crate) fn native_callables(&self) -> &[HostFunctionTemplate] {
+        &self.native_callables
+    }
+
+    pub(crate) fn push_native_callable(
+        &mut self,
+        schema: crate::HostFunctionSchema,
+    ) -> &HostFunctionTemplate {
+        let id = crate::FunctionTemplateId::in_module(
+            self.id,
+            self.functions.len() + self.anonymous_functions.len() + self.native_callables.len(),
+        );
+        let signature = crate::plan::FunctionTemplateSignature::new(
+            id,
+            schema.scheme().clone(),
+            crate::plan::FunctionShape::new(
+                schema
+                    .parameters()
+                    .iter()
+                    .map(crate::host::HostTypeDescriptor::value_shape)
+                    .collect(),
+                schema.return_type().value_shape(),
+            ),
+        );
+        let site = crate::HostCallSite::new(
+            self.module.clone(),
+            schema.name().clone(),
+            crate::SourceSpan::new(0, 0),
+        );
+        self.native_callables
+            .push(HostFunctionTemplate::from_schema(
+                signature,
+                self.package.clone(),
+                site,
+                schema,
+            ));
+        &self.native_callables[self.native_callables.len() - 1]
+    }
+
     pub(crate) fn into_parts(self) -> HostedPlannedModuleParts {
         HostedPlannedModuleParts {
             id: self.id,
@@ -88,6 +140,7 @@ impl HostedPlannedModule {
             constants: self.constants,
             functions: self.functions,
             anonymous_functions: self.anonymous_functions,
+            native_callables: self.native_callables,
         }
     }
 }

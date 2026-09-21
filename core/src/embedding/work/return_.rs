@@ -15,6 +15,13 @@ pub(in crate::embedding) trait ScopedReturn<Profile: HostProfile>:
         slot: usize,
     ) -> &LibraryInputConstructions;
 
+    fn output_callables(
+        _entries: &LibraryFunctionEntries,
+        _slot: usize,
+    ) -> &[crate::plan::execution::LibraryCallable] {
+        &[]
+    }
+
     fn call<'scope>(
         execution: &EntryContext<Profile>,
         entries: &LibraryFunctionEntries,
@@ -78,6 +85,7 @@ macro_rules! compound_return {
     ($container:ty, $entries:ident, $($type:ident),+) => {
         impl<Profile: HostProfile, $($type: ScopedTake<Profile>),+> ScopedReturn<Profile> for $container {
             fn input_constructions(entries: &LibraryFunctionEntries, slot: usize) -> &LibraryInputConstructions { entries.$entries[slot].inputs() }
+            fn output_callables(entries: &LibraryFunctionEntries, slot: usize) -> &[crate::plan::execution::LibraryCallable] { &entries.$entries[slot].callables }
             async fn call<'scope>(
                 execution: &EntryContext<Profile>, entries: &LibraryFunctionEntries,
                 slot: usize, inputs: RetainedInputs,
@@ -170,6 +178,12 @@ impl<Profile: HostWorkProfile, Value: ScopedTake<Profile>> ScopedReturn<Profile>
         slot: usize,
     ) -> &LibraryInputConstructions {
         entries.externals[slot].inputs()
+    }
+    fn output_callables(
+        entries: &LibraryFunctionEntries,
+        slot: usize,
+    ) -> &[crate::plan::execution::LibraryCallable] {
+        &entries.externals[slot].callables
     }
     async fn call<'scope>(
         execution: &EntryContext<Profile>,

@@ -11,7 +11,7 @@ use ecow::EcoString;
 use gleam_compiler_core::ast::TypedFunction;
 use std::collections::{HashMap, HashSet};
 
-pub(super) use custom::validate_host_custom_schemas;
+pub(super) use custom::{validate_host_custom_schemas, validate_host_schemas};
 
 pub(super) struct LinkedModule {
     pub(super) id: ModuleId,

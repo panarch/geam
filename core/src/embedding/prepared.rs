@@ -21,9 +21,9 @@ pub struct PreparedModuleBindings {
 
 /// Selects typed handles from a prepared program linked to fresh Rust providers.
 pub struct PreparedHostedModuleBindings<Profile: crate::HostProfile> {
-    program: AdmittedHostedModule<Profile>,
+    pub(super) program: AdmittedHostedModule<Profile>,
     selected: HashSet<ecow::EcoString>,
-    owner: Arc<()>,
+    pub(super) owner: Arc<()>,
 }
 
 impl HostedModuleArtifact {
@@ -70,6 +70,7 @@ impl PreparedModuleBindings {
             &ArgumentsType::input_variants(),
             &ArgumentsType::input_lists(),
             &standard,
+            &Return::callables(),
         )?;
         let function = Function::new(name.clone(), slot, &self.owner);
         self.selected.insert(name);
@@ -102,6 +103,7 @@ impl<Profile: crate::HostProfile> PreparedHostedModuleBindings<Profile> {
             &ArgumentsType::input_variants(),
             &ArgumentsType::input_lists(),
             &standard,
+            &Return::callables(),
         )?;
         let function = Function::new(name.clone(), slot, &self.owner);
         self.selected.insert(name);
@@ -110,10 +112,11 @@ impl<Profile: crate::HostProfile> PreparedHostedModuleBindings<Profile> {
 
     /// Creates fresh runtime stores while borrowing the validated static program.
     pub fn seal(self) -> HostedModule<Profile> {
-        let (execution, entries) = self.program.into_execution();
+        let (execution, entries, native_callables) = self.program.into_execution();
         HostedModule {
             execution,
             entries,
+            native_callables,
             owner: self.owner,
         }
     }

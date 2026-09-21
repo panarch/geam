@@ -75,6 +75,30 @@ where
         }
     }
 
+    pub(crate) fn into_provider<Other: HostProvider<Profile>>(
+        self,
+    ) -> HostCall<'call, Profile, Other, Return> {
+        HostCall::new(self.runtime)
+    }
+
+    pub(crate) fn with_codec<Other, Constructions, Output>(
+        &mut self,
+        constructions: &crate::HostConstructions<'_, Constructions>,
+        operation: impl for<'codec> FnOnce(
+            HostCall<'codec, Profile, Other, ()>,
+            crate::HostConstructions<'codec, Constructions>,
+        ) -> Output,
+    ) -> Output
+    where
+        Other: HostProvider<Profile>,
+        Constructions: crate::HostTypeSequence,
+    {
+        operation(
+            HostCall::new(self.runtime),
+            crate::HostConstructions::with_base(constructions.callable_base()),
+        )
+    }
+
     pub fn state(&mut self) -> &mut Provider::State {
         Provider::project(self.runtime.state())
     }
@@ -214,6 +238,31 @@ where
         slot: HostFunctionArgumentSlot,
     ) -> crate::host::HostCallable<'call, Arguments, FunctionReturn> {
         crate::host::HostCallable::new(self.runtime.function(slot))
+    }
+
+    /// Reads the immutable captures of this native callable invocation.
+    pub fn captures<Types: HostTypeSequence>(
+        &self,
+        _: crate::host::HostCaptures<'call, Types>,
+    ) -> Types::Values<'call> {
+        crate::host::type_::from_tokens::<Types, Profile>(
+            self.runtime,
+            self.runtime.capture_tokens(),
+        )
+    }
+
+    /// Creates a fresh instance of one declared native body with immutable captures.
+    pub fn construct_function<Schema: crate::HostCallableSchema>(
+        &mut self,
+        construction: HostConstruction<'call, crate::HostCreatedFunction<Schema>>,
+        captures: <Schema::Captures as HostTypeSequence>::Values<'call>,
+    ) -> crate::HostCallable<'call, Schema::Arguments, Schema::Return> {
+        let mut values = Vec::new();
+        crate::host::type_::into_scoped_values::<Schema::Captures>(captures, &mut values);
+        crate::HostCallable::new(
+            self.runtime
+                .build_function(construction.callable_index, values.into_boxed_slice()),
+        )
     }
 
     pub fn list_len<Item>(&self, value: HostList<'call, Item>) -> usize {
@@ -574,19 +623,6 @@ where
     }
 
     #[doc(hidden)]
-    pub fn provider_retained_input_list<Item, HostItem, Decoder>(
-        &self,
-        value: HostList<'call, HostItem>,
-        decoder: Decoder,
-    ) -> crate::provider::List<Item, crate::provider::ProviderInputListContext<Decoder>>
-    where
-        HostItem: HostType,
-        Decoder: crate::provider::ProviderListItemDecoder<Item>,
-    {
-        crate::provider::ProviderInputListContext::new(self.retain_list_value(value), decoder)
-    }
-
-    #[doc(hidden)]
     pub fn provider_list_from_input<Item, HostItem, Decoder>(
         &mut self,
         value: crate::provider::List<Item, crate::provider::ProviderListContext<HostItem, Decoder>>,
@@ -696,6 +732,10 @@ where
         >::store(
             self.runtime.external_stores()
         ))
+    }
+
+    pub(crate) fn value_retention(&self) -> crate::runtime::ValueRetention {
+        self.runtime.native_values().value_retention()
     }
 
     pub(crate) fn retain_value<Type: HostType>(

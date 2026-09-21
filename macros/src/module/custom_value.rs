@@ -3,9 +3,10 @@ use super::type_syntax::{
     collection_item, external_type, is_collection, is_qualified_type_path, source_wrapper,
 };
 use super::{
-    CollectionType, ExternalModel, ListDecoderModel, ListType, SourceWrapper, StaticValueType,
-    is_marker,
+    CollectionType, ExternalModel, GenericParameterScope, ListDecoderModel, ListType,
+    SourceWrapper, StaticValueType, is_marker,
 };
+use proc_macro2::TokenStream;
 use quote::format_ident;
 use std::collections::BTreeSet;
 use syn::ext::IdentExt;
@@ -29,20 +30,24 @@ struct CustomHeader {
     item: ItemEnum,
 }
 
+#[derive(Clone)]
 pub(super) struct CustomModel {
     pub(super) ident: Ident,
+    pub(super) parameters: Vec<Ident>,
     pub(super) input: Option<CustomInputModel>,
     pub(super) visibility: Visibility,
     pub(super) schema: Ident,
     pub(super) constructors: Vec<CustomConstructorModel>,
 }
 
+#[derive(Clone)]
 pub(super) struct CustomInputModel {
     pub(super) ident: Ident,
     pub(super) decoder: Ident,
     pub(super) list_decoder: Ident,
 }
 
+#[derive(Clone)]
 pub(super) struct CustomConstructorModel {
     pub(super) ident: Ident,
     pub(super) definition: Ident,
@@ -50,6 +55,7 @@ pub(super) struct CustomConstructorModel {
     pub(super) fields: CustomFields,
 }
 
+#[derive(Clone)]
 pub(super) enum CustomFields {
     Unit,
     Unnamed(Vec<CustomFieldModel>),
@@ -63,6 +69,7 @@ pub(super) fn custom_field_models(fields: &CustomFields) -> &[CustomFieldModel] 
     }
 }
 
+#[derive(Clone)]
 pub(super) struct CustomFieldModel {
     pub(super) ident: Ident,
     pub(super) named: bool,
@@ -70,6 +77,7 @@ pub(super) struct CustomFieldModel {
     pub(super) value: CustomFieldValueType,
 }
 
+#[derive(Clone)]
 pub(super) enum CustomFieldValueType {
     Value(Box<StaticValueType>),
     List(Box<ListType>),
@@ -117,6 +125,7 @@ pub(super) fn collect_custom_declarations(
     provider_type_names: &BTreeSet<String>,
     externals: &[ExternalModel],
     list_decoders: &mut Vec<ListDecoderModel>,
+    support: &TokenStream,
 ) -> syn::Result<CustomDeclarations> {
     let mut headers = Vec::new();
     for item in items {
@@ -171,10 +180,202 @@ pub(super) fn collect_custom_declarations(
             list_decoders,
         )?);
     }
+    resolve_custom_callbacks(&mut models, externals, list_decoders, support)?;
     validate_custom_cycles(&models)?;
     validate_custom_input_dependencies(&models)?;
+    let declarations = models.clone();
+    for model in &mut models {
+        for field in
+            model
+                .constructors
+                .iter_mut()
+                .flat_map(|constructor| match &mut constructor.fields {
+                    CustomFields::Unit => &mut [][..],
+                    CustomFields::Unnamed(fields) | CustomFields::Named(fields) => {
+                        fields.as_mut_slice()
+                    }
+                })
+        {
+            let value = match &mut field.value {
+                CustomFieldValueType::Value(value) => value.as_mut(),
+                CustomFieldValueType::List(list) => &mut list.collection.value,
+            };
+            super::syntax::rewrite_static_callbacks(value, support, &declarations);
+        }
+    }
 
     Ok(CustomDeclarations { models })
+}
+
+// Callback signatures refer to nominal custom identities, including declarations
+// appearing later in the module. Resolve them after every identity is known.
+fn resolve_custom_callbacks(
+    models: &mut [CustomModel],
+    externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    support: &TokenStream,
+) -> syn::Result<()> {
+    let declarations = models.to_vec();
+    list_decoders.clear();
+    for (index, model) in models.iter_mut().enumerate() {
+        let parameters = &model.parameters;
+        let mut scope = GenericParameterScope::from_parameters(parameters.clone(), &model.ident);
+        scope.declared_hosts = true;
+        scope.nominal = !parameters.is_empty();
+        for parameter in parameters {
+            scope.parameter_index(parameter.clone());
+        }
+        for field in
+            model
+                .constructors
+                .iter_mut()
+                .flat_map(|constructor| match &mut constructor.fields {
+                    CustomFields::Unit => &mut [][..],
+                    CustomFields::Unnamed(fields) | CustomFields::Named(fields) => {
+                        fields.as_mut_slice()
+                    }
+                })
+        {
+            let value = match &mut field.value {
+                CustomFieldValueType::Value(value) => value.as_mut(),
+                CustomFieldValueType::List(list) => &mut list.collection.value,
+            };
+            resolve_custom_callback_value(
+                value,
+                &declarations,
+                externals,
+                list_decoders,
+                &mut scope,
+                support,
+            )?;
+            if let CustomFieldValueType::List(list) = &mut field.value {
+                list.decoder = register_list_decoder(&list.collection, list_decoders);
+            }
+        }
+        if let Some(input) = &mut model.input {
+            input.list_decoder = register_list_decoder(
+                &CollectionType {
+                    value: StaticValueType::Custom { index },
+                },
+                list_decoders,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn resolve_custom_callback_value(
+    value: &mut StaticValueType,
+    customs: &[CustomModel],
+    externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+    scope: &mut GenericParameterScope,
+    support: &TokenStream,
+) -> syn::Result<()> {
+    match value {
+        StaticValueType::Scalar(type_) | StaticValueType::Declared { type_ } => {
+            if super::syntax::generic_custom_application(
+                type_, false, scope, externals, customs, support,
+            )? || super::syntax::generic_external_type(
+                type_, false, externals, scope, customs, support,
+            )?
+            .is_some()
+                || super::syntax::generic_value_type(type_, scope, externals, customs, support)?
+                    .is_some()
+            {
+                *value = StaticValueType::Declared {
+                    type_: type_.clone(),
+                };
+                return Ok(());
+            }
+            if let Some(external) = super::syntax::generic_external_type(
+                type_, true, externals, scope, customs, support,
+            )? {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    format!(
+                        "custom output fields require the generic external output `{}<...>`, not `{}<...>`",
+                        external.output, external.input,
+                    ),
+                ));
+            }
+            if let Some(future) = super::syntax::future_type(
+                type_,
+                externals,
+                customs,
+                list_decoders,
+                scope,
+                support,
+            )? {
+                *value = StaticValueType::Future(Box::new(future));
+            } else if let Some(callback) = super::syntax::callback_type(
+                type_,
+                externals,
+                customs,
+                list_decoders,
+                scope,
+                support,
+            )? {
+                *value = StaticValueType::Callback(Box::new(callback));
+            } else if let Some(parameter) = scope.declared_ident(type_) {
+                return Err(syn::Error::new_spanned(
+                    type_,
+                    format!(
+                        "generic source type `{parameter}` must be written as Value<{parameter}>"
+                    ),
+                ));
+            }
+        }
+        StaticValueType::Tuple(elements) => {
+            for element in elements {
+                resolve_custom_callback_value(
+                    element,
+                    customs,
+                    externals,
+                    list_decoders,
+                    scope,
+                    support,
+                )?;
+            }
+        }
+        StaticValueType::Result { success, failure } => {
+            resolve_custom_callback_value(
+                success,
+                customs,
+                externals,
+                list_decoders,
+                scope,
+                support,
+            )?;
+            resolve_custom_callback_value(
+                failure,
+                customs,
+                externals,
+                list_decoders,
+                scope,
+                support,
+            )?;
+        }
+        StaticValueType::Option { value } => {
+            resolve_custom_callback_value(value, customs, externals, list_decoders, scope, support)?
+        }
+        StaticValueType::List(list) => {
+            resolve_custom_callback_value(
+                &mut list.collection.value,
+                customs,
+                externals,
+                list_decoders,
+                scope,
+                support,
+            )?;
+            list.decoder = register_list_decoder(&list.collection, list_decoders);
+        }
+        StaticValueType::Custom { .. }
+        | StaticValueType::External { .. }
+        | StaticValueType::Callback(_)
+        | StaticValueType::Future(_) => {}
+    }
+    Ok(())
 }
 
 fn take_custom_marker(attributes: &mut Vec<Attribute>) -> syn::Result<Option<CustomArguments>> {
@@ -208,11 +409,25 @@ fn take_custom_marker(attributes: &mut Vec<Attribute>) -> syn::Result<Option<Cus
 }
 
 fn validate_custom(custom: &ItemEnum) -> syn::Result<()> {
-    if !custom.generics.params.is_empty() || custom.generics.where_clause.is_some() {
+    if custom.generics.where_clause.is_some() {
         return Err(syn::Error::new_spanned(
             &custom.generics,
-            "custom value enums must not have generics",
+            "custom value enums must not have where clauses",
         ));
+    }
+    for parameter in &custom.generics.params {
+        let syn::GenericParam::Type(parameter) = parameter else {
+            return Err(syn::Error::new_spanned(
+                parameter,
+                "custom value enums support only type parameters",
+            ));
+        };
+        if !parameter.bounds.is_empty() || parameter.default.is_some() {
+            return Err(syn::Error::new_spanned(
+                parameter,
+                "custom value type parameters must not have bounds or defaults",
+            ));
+        }
     }
     if custom.variants.is_empty() {
         return Err(syn::Error::new_spanned(
@@ -296,10 +511,8 @@ fn build_custom_model(
     }
 
     let input = header.input.as_ref().map(|ident| {
-        let item: Type = syn::parse_quote!(#ident);
         let list_decoder = register_list_decoder(
             &CollectionType {
-                source: item.clone(),
                 value: StaticValueType::Custom {
                     index: custom_index,
                 },
@@ -315,6 +528,12 @@ fn build_custom_model(
 
     Ok(CustomModel {
         ident: header.ident.clone(),
+        parameters: header
+            .item
+            .generics
+            .type_params()
+            .map(|parameter| parameter.ident.clone())
+            .collect(),
         input,
         visibility: header.visibility.clone(),
         schema: header.schema.clone(),
@@ -351,29 +570,12 @@ fn classify_custom_output_value(
     list_decoders: &mut Vec<ListDecoderModel>,
 ) -> syn::Result<CustomFieldValueType> {
     if let Some(item) = collection_item(type_, "Vec")? {
-        if let Type::Reference(_) = &item {
-            return Err(syn::Error::new_spanned(
-                &item,
-                "custom List item outputs must be owned values",
-            ));
-        }
-        if is_collection(&item, "List") || is_collection(&item, "Vec") {
-            return Err(syn::Error::new_spanned(
-                &item,
-                "nested List values are not supported in custom declarations",
-            ));
-        }
-        let value = classify_custom_value(&item, headers, externals)?;
-        let collection = CollectionType {
-            source: type_.clone(),
-
-            value,
-        };
-        let decoder = register_list_decoder(&collection, list_decoders);
-        return Ok(CustomFieldValueType::List(Box::new(ListType {
-            collection,
-            decoder,
-        })));
+        return Ok(CustomFieldValueType::List(Box::new(classify_custom_list(
+            &item,
+            headers,
+            externals,
+            list_decoders,
+        )?)));
     }
     if is_collection(type_, "List") {
         return Err(syn::Error::new_spanned(
@@ -382,7 +584,7 @@ fn classify_custom_output_value(
         ));
     }
     Ok(CustomFieldValueType::Value(Box::new(
-        classify_custom_value(type_, headers, externals)?,
+        classify_custom_value(type_, headers, externals, list_decoders)?,
     )))
 }
 
@@ -390,6 +592,7 @@ fn classify_custom_value(
     type_: &Type,
     headers: &[CustomHeader],
     externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
 ) -> syn::Result<StaticValueType> {
     if let Type::Reference(_) = type_ {
         return Err(syn::Error::new_spanned(
@@ -397,10 +600,18 @@ fn classify_custom_value(
             "custom output fields must be owned values",
         ));
     }
-    if is_collection(type_, "List") || is_collection(type_, "Vec") {
+    if let Some(item) = collection_item(type_, "Vec")? {
+        return Ok(StaticValueType::List(Box::new(classify_custom_list(
+            &item,
+            headers,
+            externals,
+            list_decoders,
+        )?)));
+    }
+    if is_collection(type_, "List") {
         return Err(syn::Error::new_spanned(
             type_,
-            "List values are not supported inside custom tuple fields",
+            "custom output List fields use Vec<T>; generated input values use geam::List<T>",
         ));
     }
     match source_wrapper(type_)? {
@@ -408,13 +619,28 @@ fn classify_custom_value(
             success, failure, ..
         } => {
             return Ok(StaticValueType::Result {
-                success: Box::new(classify_custom_value(success, headers, externals)?),
-                failure: Box::new(classify_custom_value(failure, headers, externals)?),
+                success: Box::new(classify_custom_value(
+                    success,
+                    headers,
+                    externals,
+                    list_decoders,
+                )?),
+                failure: Box::new(classify_custom_value(
+                    failure,
+                    headers,
+                    externals,
+                    list_decoders,
+                )?),
             });
         }
         SourceWrapper::Option { value, .. } => {
             return Ok(StaticValueType::Option {
-                value: Box::new(classify_custom_value(value, headers, externals)?),
+                value: Box::new(classify_custom_value(
+                    value,
+                    headers,
+                    externals,
+                    list_decoders,
+                )?),
             });
         }
         SourceWrapper::Other => {}
@@ -444,7 +670,12 @@ fn classify_custom_value(
     {
         let mut elements = Vec::with_capacity(tuple.elems.len());
         for element in &tuple.elems {
-            elements.push(classify_custom_value(element, headers, externals)?);
+            elements.push(classify_custom_value(
+                element,
+                headers,
+                externals,
+                list_decoders,
+            )?);
         }
         return Ok(StaticValueType::Tuple(elements));
     }
@@ -456,6 +687,27 @@ fn classify_custom_value(
     Ok(StaticValueType::Scalar(type_.clone()))
 }
 
+fn classify_custom_list(
+    item: &Type,
+    headers: &[CustomHeader],
+    externals: &[ExternalModel],
+    list_decoders: &mut Vec<ListDecoderModel>,
+) -> syn::Result<ListType> {
+    if let Type::Reference(_) = item {
+        return Err(syn::Error::new_spanned(
+            item,
+            "custom List item outputs must be owned values",
+        ));
+    }
+    let value = classify_custom_value(item, headers, externals, list_decoders)?;
+    let collection = CollectionType { value };
+    let decoder = register_list_decoder(&collection, list_decoders);
+    Ok(ListType {
+        collection,
+        decoder,
+    })
+}
+
 fn custom_header_output_type<'custom>(
     type_: &Type,
     customs: &'custom [CustomHeader],
@@ -465,7 +717,7 @@ fn custom_header_output_type<'custom>(
     };
     let ident = path.get_ident()?;
     for (index, custom) in customs.iter().enumerate() {
-        if &custom.ident == ident {
+        if custom.item.generics.params.is_empty() && &custom.ident == ident {
             return Some((index, custom));
         }
     }
@@ -480,13 +732,16 @@ fn custom_header_input_type<'custom>(
         return None;
     };
     let ident = path.get_ident()?;
-    customs.iter().find_map(|custom| {
-        custom
-            .input
-            .as_ref()
-            .filter(|input| *input == ident)
-            .map(|input| (custom, input))
-    })
+    customs
+        .iter()
+        .filter(|custom| custom.item.generics.params.is_empty())
+        .find_map(|custom| {
+            custom
+                .input
+                .as_ref()
+                .filter(|input| *input == ident)
+                .map(|input| (custom, input))
+        })
 }
 
 fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
@@ -521,7 +776,7 @@ fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
             return Ok(());
         }
         visiting.push(index);
-        for nested in custom_dependencies(&customs[index]) {
+        for nested in custom_dependencies(&customs[index], customs) {
             visit(nested, customs, visiting, visited)?;
         }
         visiting.pop();
@@ -535,22 +790,29 @@ fn validate_custom_cycles(customs: &[CustomModel]) -> syn::Result<()> {
     Ok(())
 }
 
-fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
-    fn collect(type_: &StaticValueType, output: &mut Vec<usize>) {
+fn custom_dependencies(custom: &CustomModel, customs: &[CustomModel]) -> Vec<usize> {
+    fn collect(type_: &StaticValueType, customs: &[CustomModel], output: &mut Vec<usize>) {
         match type_ {
+            StaticValueType::List(list) => collect(&list.collection.value, customs, output),
             StaticValueType::Custom { index, .. } => output.push(*index),
             StaticValueType::Tuple(elements) => {
                 for element in elements {
-                    collect(element, output);
+                    collect(element, customs, output);
                 }
             }
             StaticValueType::Result { success, failure } => {
-                collect(success, output);
-                collect(failure, output);
+                collect(success, customs, output);
+                collect(failure, customs, output);
             }
-            StaticValueType::Option { value } => collect(value, output),
-            StaticValueType::Scalar(_)
-            | StaticValueType::Declared { .. }
+            StaticValueType::Option { value } => collect(value, customs, output),
+            StaticValueType::Declared { type_ } => {
+                if let Some((index, _)) = generic_custom_index(type_, customs) {
+                    output.push(index);
+                }
+            }
+            StaticValueType::Future(_)
+            | StaticValueType::Callback(_)
+            | StaticValueType::Scalar(_)
             | StaticValueType::External { .. } => {}
         }
     }
@@ -563,8 +825,10 @@ fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
         };
         for field in fields {
             match &field.value {
-                CustomFieldValueType::Value(value) => collect(value, &mut output),
-                CustomFieldValueType::List(list) => collect(&list.collection.value, &mut output),
+                CustomFieldValueType::Value(value) => collect(value, customs, &mut output),
+                CustomFieldValueType::List(list) => {
+                    collect(&list.collection.value, customs, &mut output)
+                }
             }
         }
     }
@@ -574,6 +838,7 @@ fn custom_dependencies(custom: &CustomModel) -> Vec<usize> {
 fn validate_custom_input_dependencies(customs: &[CustomModel]) -> syn::Result<()> {
     fn validate_value(type_: &StaticValueType, customs: &[CustomModel]) -> syn::Result<()> {
         match type_ {
+            StaticValueType::List(list) => validate_value(&list.collection.value, customs)?,
             StaticValueType::Custom { index, .. } => {
                 let custom = &customs[*index];
                 if custom.input.is_none() {
@@ -596,8 +861,23 @@ fn validate_custom_input_dependencies(customs: &[CustomModel]) -> syn::Result<()
                 validate_value(failure, customs)?;
             }
             StaticValueType::Option { value } => validate_value(value, customs)?,
-            StaticValueType::Scalar(_)
-            | StaticValueType::Declared { .. }
+            StaticValueType::Declared { type_ } => {
+                if let Some((index, _)) = generic_custom_index(type_, customs)
+                    && customs[index].input.is_none()
+                {
+                    let custom = &customs[index];
+                    return Err(syn::Error::new(
+                        custom.ident.span(),
+                        format!(
+                            "custom value `{}` is nested in an input declaration but has no `input = ...`",
+                            custom.ident
+                        ),
+                    ));
+                }
+            }
+            StaticValueType::Future(_)
+            | StaticValueType::Callback(_)
+            | StaticValueType::Scalar(_)
             | StaticValueType::External { .. } => {}
         }
         Ok(())
@@ -639,7 +919,7 @@ pub(super) fn custom_output_type_with_index<'custom>(
     };
     let ident = path.get_ident()?;
     for (index, custom) in customs.iter().enumerate() {
-        if &custom.ident == ident {
+        if custom.parameters.is_empty() && &custom.ident == ident {
             return Some((index, custom));
         }
     }
@@ -655,7 +935,8 @@ pub(super) fn custom_input_model<'custom>(
     };
     let ident = path.get_ident()?;
     for (index, custom) in customs.iter().enumerate() {
-        if let Some(input) = custom.input.as_ref()
+        if custom.parameters.is_empty()
+            && let Some(input) = custom.input.as_ref()
             && &input.ident == ident
         {
             return Some((index, custom, &input.ident));
@@ -664,9 +945,39 @@ pub(super) fn custom_input_model<'custom>(
     None
 }
 
+/// A source-level application of a generic custom declared in this module.
+pub(super) fn generic_custom_index(type_: &Type, customs: &[CustomModel]) -> Option<(usize, bool)> {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return None;
+    };
+    if path.segments.len() != 1 {
+        return None;
+    }
+    let ident = &path.segments[0].ident;
+    customs
+        .iter()
+        .enumerate()
+        .filter(|(_, custom)| !custom.parameters.is_empty())
+        .find_map(|(index, custom)| {
+            if &custom.ident == ident {
+                Some((index, false))
+            } else if custom
+                .input
+                .as_ref()
+                .is_some_and(|input| &input.ident == ident)
+            {
+                Some((index, true))
+            } else {
+                None
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::expand;
     use super::{CustomHeader, build_custom_model, parse_custom_arguments};
+    use proc_macro2::TokenStream;
     use quote::quote;
     use syn::parse::Parser;
 
@@ -745,5 +1056,229 @@ mod tests {
             error.to_string(),
             "named custom fields must have identifiers"
         );
+    }
+    #[test]
+    fn generic_custom_parameters_have_exact_declaration_diagnostics() {
+        for parameters in [quote!(<'a>), quote!(<const N: usize>)] {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::custom]
+                    enum Record #parameters { Value(BigInt) }
+                }),
+                "custom value enums support only type parameters",
+            );
+        }
+        for parameters in [quote!(<T: Clone>), quote!(<T = bool>)] {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::custom]
+                    enum Record #parameters { Value(BigInt) }
+                }),
+                "custom value type parameters must not have bounds or defaults",
+            );
+        }
+    }
+
+    #[test]
+    fn generic_custom_applications_keep_arity_and_direction_at_the_declaration_boundary() {
+        let cases = [
+            (
+                quote! {
+                    #[geam::function]
+                    fn read(value: RecordInput) -> bool { true }
+                },
+                "generic custom `RecordInput` requires exactly 1 type arguments",
+            ),
+            (
+                quote! {
+                    #[geam::function]
+                    fn make() -> Record<bool, bool> { todo!() }
+                },
+                "generic custom `Record` requires exactly 1 type arguments",
+            ),
+            (
+                quote! {
+                    #[geam::function]
+                    fn make() -> Record<'static> { todo!() }
+                },
+                "generic custom arguments must be source types",
+            ),
+            (
+                quote! {
+                    #[geam::function]
+                    fn read<T>(value: Record<T>) -> bool { true }
+                },
+                "generic custom source arguments require the generated input type",
+            ),
+            (
+                quote! {
+                    #[geam::function]
+                    fn make<T>(value: Value<T>) -> RecordInput<T> { todo!() }
+                },
+                "generic custom returns require the output declaration",
+            ),
+            (
+                quote! {
+                    #[geam::custom]
+                    enum Envelope<T> { Envelope(RecordInput<T>) }
+                },
+                "generic custom returns require the output declaration",
+            ),
+        ];
+        for (declarations, expected) in cases {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::custom(input = RecordInput)]
+                    enum Record<T> { Value(Value<T>) }
+                    #declarations
+                }),
+                expected,
+            );
+        }
+        assert_eq!(
+            declaration_error(quote! {
+                #[geam::function]
+                fn make() -> declarations::Record<'static> { todo!() }
+            }),
+            "generic declared arguments must be source types",
+        );
+    }
+
+    #[test]
+    fn generic_custom_dependencies_preserve_cycle_and_input_visibility_diagnostics() {
+        assert_eq!(
+            declaration_error(quote! {
+                #[geam::custom]
+                enum First<T> { Next((bool, Second<T>)) }
+                #[geam::custom]
+                enum Second<T> { Next(Vec<First<T>>) }
+            }),
+            "recursive custom values are not supported: First -> Second -> First",
+        );
+        for field in [quote!(Record<T>), quote!(Vec<Option<Record<T>>>)] {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::custom]
+                    enum Record<T> { Value(Value<T>) }
+                    #[geam::custom(input = EnvelopeInput)]
+                    enum Envelope<T> { Envelope(#field) }
+                }),
+                "custom value `Record` is nested in an input declaration but has no `input = ...`",
+            );
+        }
+    }
+
+    #[test]
+    fn generic_external_fields_require_the_output_declaration_and_exact_arguments() {
+        for (field, expected) in [
+            (
+                quote!(HandleInput<T>),
+                "custom output fields require the generic external output `Handle<...>`, not `HandleInput<...>`",
+            ),
+            (
+                quote!(Handle<T, bool>),
+                "generic external `Handle` requires exactly 1 type arguments",
+            ),
+            (
+                quote!(HandleInput<'static>),
+                "generic external arguments must be source types",
+            ),
+        ] {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::external(name = "Handle", parameters = [T], input = HandleInput)]
+                    struct Handle<T> {
+                        #[geam::stored]
+                        value: Stored<T>,
+                    }
+                    #[geam::custom(input = EnvelopeInput)]
+                    enum Envelope<T> { Envelope(#field) }
+                }),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn nested_custom_fields_report_the_invalid_callback_or_work_declaration() {
+        for (bad, expected) in [
+            (
+                quote!(Callback<bool>),
+                "Callback<T> requires a safe non-variadic Rust fn signature",
+            ),
+            (
+                quote!(Future<bool, bool>),
+                "Future requires exactly one type argument",
+            ),
+            (
+                quote!(Value<bool>),
+                "Value<T> is reserved for generic source shapes and opaque function values; use the concrete provider type directly",
+            ),
+        ] {
+            for field in [
+                bad.clone(),
+                quote!((bool, #bad)),
+                quote!(Result<#bad, bool>),
+                quote!(Result<bool, #bad>),
+                quote!(Option<#bad>),
+                quote!(Vec<Vec<#bad>>),
+            ] {
+                assert_eq!(
+                    declaration_error(quote! {
+                        #[geam::custom(input = EnvelopeInput)]
+                        enum Envelope { Envelope(#field) }
+                    }),
+                    expected
+                );
+            }
+        }
+        for field in [
+            quote!(Vec<bool, bool>),
+            quote!((bool, Vec<bool, bool>)),
+            quote!(Vec<Vec<bool, bool>>),
+        ] {
+            assert_eq!(
+                declaration_error(quote! {
+                    #[geam::custom(input = EnvelopeInput)]
+                    enum Envelope { Envelope(#field) }
+                }),
+                "Vec requires exactly one type argument"
+            );
+        }
+        assert_eq!(
+            declaration_error(quote! {
+                #[geam::custom]
+                enum Envelope { Envelope((bool, Vec<&bool>)) }
+            }),
+            "custom List item outputs must be owned values"
+        );
+        assert_eq!(
+            declaration_error(quote! {
+                #[geam::custom]
+                enum Record { Record(bool) }
+                #[geam::custom(input = EnvelopeInput)]
+                enum Envelope { Envelope((bool, Vec<Record>)) }
+            }),
+            "custom value `Record` is nested in an input declaration but has no `input = ...`"
+        );
+    }
+
+    fn declaration_error(declarations: TokenStream) -> String {
+        match expand(
+            quote!(path = "generic", crate_path = geam_core),
+            quote!(mod generic { #declarations }),
+        ) {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("the authoring boundary must reject this declaration"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the authoring boundary must reject this declaration")]
+    fn diagnostic_fixture_requires_a_rejected_declaration() {
+        declaration_error(quote! {
+            #[geam::function]
+            fn accepted() -> bool { true }
+        });
     }
 }

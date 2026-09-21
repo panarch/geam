@@ -9,7 +9,9 @@ use crate::schema::{
 };
 use crate::{BitArrayValue, HostCall, HostCallCompletion, HostExternal, HostProvider};
 use geam_core::StringValue;
-use geam_core::provider::{ProviderConstructions, ProviderValue};
+use geam_core::provider::{
+    ProviderConstructions, ProviderNoConstructions, ProviderRuntimeValueForms, ProviderTypedValue,
+};
 use geam_core::provider::{ProviderRootOutputValue, ProviderValueForms};
 use geam_stdlib::provider_support::Dynamic;
 use jiter::{Jiter, Peek};
@@ -23,18 +25,34 @@ pub(super) fn decode_to_dynamic(json: BitArrayValue) -> DecodeOutput {
     DecodeOutput { json }
 }
 
-impl ProviderValue for DecodeOutput {
-    type Host = JsonDynamicResult;
-    type OutputRequirements = DecodeRequirements;
-    type RootRequirements = DecodeRequirements;
+impl<Profile: crate::GleamJsonHostProfile> ProviderTypedValue<Profile> for DecodeOutput {
+    type Host = JsonDynamicResult<Profile>;
+    type OutputRequirements = DecodeRequirements<Profile>;
+    type RootRequirements = DecodeRequirements<Profile>;
 }
 
 impl ProviderValueForms for DecodeOutput {
+    type InvocationRequirements = ();
+    type ImmediateListDecoder = geam_core::provider::MissingListContext;
+    type OwnedListDecoder = geam_core::provider::MissingListContext;
+    type Runtime<Profile: geam_core::HostProfile> = Self;
     type Output = Self;
     type ImmediateInput = Self;
     type ImmediateListInput = Self;
     type OwnedInput = Self;
     type OwnedListInput = Self;
+}
+
+impl<Profile: crate::GleamJsonHostProfile> ProviderRuntimeValueForms<Profile> for DecodeOutput {
+    type Host = JsonDynamicResult<Profile>;
+    type Output = Self;
+    type OutputRequirements = DecodeRequirements<Profile>;
+    type RootRequirements = DecodeRequirements<Profile>;
+    type ImmediateInput = Self;
+    type ImmediateListInput = Self;
+    type OwnedInput = Self;
+    type OwnedListInput = Self;
+    type InputRequirements = ProviderNoConstructions;
 }
 
 impl<Profile, Provider> ProviderRootOutputValue<Profile, Provider> for DecodeOutput
@@ -45,9 +63,10 @@ where
 {
     fn complete<'call>(
         self,
-        mut call: HostCall<'call, Profile, Provider, JsonDynamicResult>,
-        constructions: &ProviderConstructions<'call, DecodeRequirements>,
-    ) -> Result<HostCallCompletion<'call, JsonDynamicResult>, geam_core::HostCallError> {
+        mut call: HostCall<'call, Profile, Provider, JsonDynamicResult<Profile>>,
+        constructions: &ProviderConstructions<'call, DecodeRequirements<Profile>>,
+    ) -> Result<HostCallCompletion<'call, JsonDynamicResult<Profile>>, geam_core::HostCallError>
+    {
         let decoded = if self.json.bit_len().is_multiple_of(8) {
             parse_dynamic(
                 &mut DynamicBuilder {
@@ -60,27 +79,27 @@ where
             Err(DecodeFailure::Byte(StringValue::new()))
         };
         match decoded {
-            Ok(value) => Ok(call.return_custom::<JsonDynamicOk>((value, ()))),
+            Ok(value) => Ok(call.return_custom::<JsonDynamicOk<Profile>>((value, ()))),
             Err(DecodeFailure::EndOfInput) => {
-                let error = call.construct_custom::<UnexpectedEndOfInput>(
+                let error = call.construct_custom::<UnexpectedEndOfInput<Profile>>(
                     constructions.select::<DecodeErrorIndex>().token(),
                     (),
                 );
-                Ok(call.return_custom::<JsonDynamicError>((error, ())))
+                Ok(call.return_custom::<JsonDynamicError<Profile>>((error, ())))
             }
             Err(DecodeFailure::Byte(byte)) => {
-                let error = call.construct_custom::<UnexpectedByte>(
+                let error = call.construct_custom::<UnexpectedByte<Profile>>(
                     constructions.select::<DecodeErrorIndex>().token(),
                     (byte, ()),
                 );
-                Ok(call.return_custom::<JsonDynamicError>((error, ())))
+                Ok(call.return_custom::<JsonDynamicError<Profile>>((error, ())))
             }
             Err(DecodeFailure::Sequence(sequence)) => {
-                let error = call.construct_custom::<UnexpectedSequence>(
+                let error = call.construct_custom::<UnexpectedSequence<Profile>>(
                     constructions.select::<DecodeErrorIndex>().token(),
                     (sequence, ()),
                 );
-                Ok(call.return_custom::<JsonDynamicError>((error, ())))
+                Ok(call.return_custom::<JsonDynamicError<Profile>>((error, ())))
             }
         }
     }

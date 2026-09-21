@@ -45,6 +45,31 @@ impl CallbackInputs {
     }
 }
 
+impl FromIterator<crate::runtime::EmbeddingInput> for RetainedInputs {
+    fn from_iter<Inputs: IntoIterator<Item = crate::runtime::EmbeddingInput>>(
+        inputs: Inputs,
+    ) -> Self {
+        let mut retained = Self::empty();
+        for input in inputs {
+            retained.push_input(input);
+        }
+        retained
+    }
+}
+
+impl FromIterator<crate::runtime::EmbeddingInput> for CallbackInputs {
+    fn from_iter<Inputs: IntoIterator<Item = crate::runtime::EmbeddingInput>>(
+        inputs: Inputs,
+    ) -> Self {
+        Self {
+            arguments: inputs
+                .into_iter()
+                .map(crate::runtime::EmbeddingInput::into_value)
+                .collect(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CallbackInputs, EvaluatedValue, RetainedInputs};

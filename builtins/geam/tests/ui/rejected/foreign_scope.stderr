@@ -40,4 +40,16 @@ help: consider reusing a named lifetime parameter
 5 + pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, 'a, P>, work: Future<'b, BigInt>)
   |
 
+error[E0621]: explicit lifetime required in the type of `scope`
+ --> tests/ui/rejected/foreign_scope.rs:7:24
+  |
+7 |     let _observation = scope.observe(&work);
+  |                        ^^^^^^^^^^^^^^^^^^^^ lifetime `'b` required
+  |
+help: add explicit lifetime `'b` to the type of `scope`
+  |
+5 - pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, '_, P>, work: Future<'b, BigInt>)
+5 + pub fn foreign<'a, 'b, P>(scope: &mut ExecutionScope<'a, 'b, P>, work: Future<'b, BigInt>)
+  |
+
 help: `'a` and `'b` must be the same: replace one with the other

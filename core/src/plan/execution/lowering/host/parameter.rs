@@ -8,6 +8,7 @@ use crate::plan::execution::host::{HostCallParameter, HostedFunctionParameters};
 pub(super) fn lower_host_parameters(
     shapes: &[StoredValueShape],
     layout: &[HostParameter],
+    captures: &[StoredValueShape],
     context: &mut LoweringContext,
 ) -> HostedFunctionParameters {
     let mut prefix = local::ParameterPrefix::default();
@@ -19,7 +20,11 @@ pub(super) fn lower_host_parameters(
             host_call_parameter(&stored, index, &layout[position], context)
         })
         .collect::<Vec<_>>();
-    HostedFunctionParameters::new(parameters.into_boxed_slice())
+    let captures = local::parameter_slots(captures, &mut prefix, context);
+    HostedFunctionParameters {
+        call: parameters.into(),
+        captures: captures.into(),
+    }
 }
 
 fn host_call_parameter(

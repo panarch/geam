@@ -8,27 +8,30 @@ use geam_stdlib::provider_support::{DictOf, Dynamic, GleamError, GleamOk, GleamR
 
 #[cfg(test)]
 pub(super) type JsonSchema = provider::__GeamExternalSchema0;
-pub(super) type DecodeErrorSchema = provider::__GeamCustomSchema0;
+pub(super) type DecodeErrorSchema<Profile> = provider::__GeamCustomSchema0<Profile>;
 
-pub(super) type DecodeError = HostCustomType<DecodeErrorSchema>;
-pub(super) type UnexpectedEndOfInput = provider::__GeamCustom0Constructor0;
-pub(super) type UnexpectedByte = provider::__GeamCustom0Constructor1;
-pub(super) type UnexpectedSequence = provider::__GeamCustom0Constructor2;
+pub(super) type DecodeError<Profile> = HostCustomType<DecodeErrorSchema<Profile>>;
+pub(super) type UnexpectedEndOfInput<Profile> = provider::__GeamCustom0Constructor0<Profile>;
+pub(super) type UnexpectedByte<Profile> = provider::__GeamCustom0Constructor1<Profile>;
+pub(super) type UnexpectedSequence<Profile> = provider::__GeamCustom0Constructor2<Profile>;
 
-pub(super) type JsonDynamicResult = GleamResult<Dynamic, DecodeError>;
-pub(super) type JsonDynamicOk = GleamOk<Dynamic, DecodeError>;
-pub(super) type JsonDynamicError = GleamError<Dynamic, DecodeError>;
+pub(super) type JsonDynamicResult<Profile> = GleamResult<Dynamic, DecodeError<Profile>>;
+pub(super) type JsonDynamicOk<Profile> = GleamOk<Dynamic, DecodeError<Profile>>;
+pub(super) type JsonDynamicError<Profile> = GleamError<Dynamic, DecodeError<Profile>>;
 
 pub(super) type DynamicList = HostListType<Dynamic>;
 pub(super) type DynamicDict = DictOf<Dynamic, Dynamic>;
 
-pub(super) type DecodeRequirements = ProviderConstructionList<
+pub(super) type DecodeRequirements<Profile> = ProviderConstructionList<
     ProviderConstruction<Dynamic>,
     ProviderConstructionList<
         ProviderConstruction<DynamicList>,
         ProviderConstructionList<
             ProviderConstruction<DynamicDict>,
-            ProviderConstructionList<ProviderConstruction<DecodeError>, ProviderNoConstructions>,
+            ProviderConstructionList<
+                ProviderConstruction<DecodeError<Profile>>,
+                ProviderNoConstructions,
+            >,
         >,
     >,
 >;
@@ -52,7 +55,7 @@ mod tests {
             HostExternalTypeSchema::new("gleam_json", "gleam/json", "Json", 0),
         );
         assert_eq!(
-            HostCustomTypeSchema::of::<DecodeErrorSchema>(),
+            HostCustomTypeSchema::of::<DecodeErrorSchema<crate::GleamJsonProfile>>(),
             HostCustomTypeSchema::new(
                 "gleam_json",
                 "gleam/json",

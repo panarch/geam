@@ -24,7 +24,43 @@ pub struct Component;
 #[geam_macros::module(path = "future_provider/native", crate_path = geam_core)]
 mod native {
     use super::State;
-    use geam_core::provider::{BigInt, Call, Callback};
+    use geam_core::provider::{BigInt, Call, Callback, Future, HostResult, List};
+
+    #[geam_macros::external(name = "Token")]
+    #[derive(PartialEq, Eq, Hash)]
+    struct Token(BigInt);
+
+    #[geam_macros::function]
+    async fn observed_callback_list(
+        #[geam_macros::call] call: &mut Call<State>,
+        factory: Callback<fn() -> Future<List<Callback<fn(Vec<Token>) -> BigInt>>>>,
+    ) -> HostResult<(BigInt, BigInt)> {
+        let work = call.invoke(&factory, ()).await?;
+        let alias = work.clone();
+        let first_list = call.observe(&work).await?;
+        let second_list = call.observe(&alias).await?;
+        drop(work);
+        drop(alias);
+        let first = first_list.get(1).expect("selected callback");
+        let second = second_list.get(1).expect("shared selected callback");
+        drop(first_list);
+        drop(second_list);
+        let first = call
+            .invoke(&first, (vec![Token(10.into()), Token(20.into())],))
+            .await?;
+        let second = call.invoke(&second, (vec![Token(30.into())],)).await?;
+        Ok((first, second))
+    }
+
+    #[geam_macros::function]
+    async fn observed_callback(
+        #[geam_macros::call] call: &mut Call<State>,
+        value: Future<Callback<fn(Vec<Token>) -> BigInt>>,
+    ) -> HostResult<BigInt> {
+        let callback = call.observe(&value).await?;
+        drop(value);
+        call.invoke(&callback, (vec![Token(40.into())],)).await
+    }
 
     #[geam_macros::function]
     fn double(value: BigInt) -> BigInt {
@@ -116,6 +152,11 @@ pub fn work(value: Int) {
   use received <- future.then(fetch(value))
   apply(fn(value) { echo value value + 1 }, received)
 }
+@external(erlang, "native", "Token") pub type Token
+@external(erlang, "native", "observed_callback_list")
+fn observed_callback_list(factory: fn() -> future.Future(List(fn(List(Token)) -> Int))) -> future.Future(#(Int, Int))
+@external(erlang, "native", "observed_callback")
+fn observed_callback(value: future.Future(fn(List(Token)) -> Int)) -> future.Future(Int)
 "#;
     let mut providers = FutureComponent::providers().expect("Future component");
     providers.extend(
@@ -203,6 +244,94 @@ pub fn work(value: Int) {
         [
             "src/future_provider/native.gleam:11\n20",
             "src/future_provider/native.gleam:11\n21"
+        ]
+    );
+}
+
+#[test]
+fn shared_work_keeps_demanded_callback_construction_permissions_after_observation() {
+    let execution_host = crate::execution_fixture::TestHost::default();
+    let source = r#"
+import geam/future
+@external(erlang, "native", "Token") pub type Token
+@external(erlang, "native", "observed_callback_list")
+fn observed_callback_list(factory: fn() -> future.Future(List(fn(List(Token)) -> Int))) -> future.Future(#(Int, Int))
+@external(erlang, "native", "observed_callback")
+fn observed_callback(value: future.Future(fn(List(Token)) -> Int)) -> future.Future(Int)
+fn count(tokens) { case tokens { [] -> 0 [_, ..rest] -> 1 + count(rest) } }
+pub fn work() {
+  let callbacks = fn() {
+    future.map(future.ready(Nil), fn(_) {
+      echo "created"
+      [fn(_) { echo "unused" 100 }, fn(tokens) { echo "selected" count(tokens) }]
+    })
+  }
+  use pair <- future.then(observed_callback_list(callbacks))
+  use last <- future.map(observed_callback(future.ready(fn(tokens) { count(tokens) + 10 })))
+  #(pair, last)
+}
+@external(erlang, "native", "double") pub fn double(value: Int) -> Int
+@external(erlang, "native", "fetch") fn fetch(value: Int) -> future.Future(Int)
+@external(erlang, "native", "apply") fn apply(callback: fn(Int) -> Int, value: Int) -> future.Future(Int)
+"#;
+    let mut providers = FutureComponent::providers().unwrap();
+    providers
+        .extend(<Component as HostProviderComponentRegistration<Profile>>::providers().unwrap());
+    let typed = compile_typed_host_program(
+        "future_provider",
+        "future_provider/native",
+        [
+            PackageSource::new(
+                "geam",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "geam/future",
+                    "src/geam/future.gleam",
+                    include_str!("../../builtins/geam/gleam/src/geam/future.gleam"),
+                )],
+            ),
+            PackageSource::new(
+                "future_provider",
+                ["geam"],
+                [ModuleSource::new(
+                    "future_provider/native",
+                    "src/future_provider/native.gleam",
+                    source,
+                )],
+            ),
+        ],
+        HostProviderSet::from_providers(providers).unwrap(),
+    )
+    .unwrap();
+    let (builder, work) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<
+            (),
+            FutureType<((BigInt, BigInt), BigInt)>,
+        >::new("work"))
+        .unwrap();
+    let mut module = builder.seal().unwrap();
+    let mut state = HostState::default();
+    let mut echo = Echo::default();
+    let result = execution_host
+        .block_on(
+            module.with_execution(&execution_host, &mut state, &mut echo, async |scope| {
+                let work = scope.call(&work, ()).await.unwrap();
+                scope
+                    .observe(&work)
+                    .await
+                    .unwrap()
+                    .read(|((first, second), last)| ((first.clone(), second.clone()), last.clone()))
+            }),
+        )
+        .unwrap();
+    assert_eq!(result, ((2.into(), 1.into()), 11.into()));
+    assert_eq!(
+        echo.0,
+        [
+            "src/future_provider/native.gleam:12\n\"created\"",
+            "src/future_provider/native.gleam:13\n\"selected\"",
+            "src/future_provider/native.gleam:13\n\"selected\"",
         ]
     );
 }

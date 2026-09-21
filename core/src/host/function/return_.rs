@@ -24,10 +24,14 @@ use nil::HostNilFunction;
 use string::HostStringFunction;
 use utf_codepoint::HostUtfCodepointFunction;
 
-pub(crate) enum HostFunctionImplementation<Profile: HostProfile> {
-    Never(HostNeverFunction<Profile>),
-    Value(HostValueFunction<Profile>),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HostFunctionBinding<Value, Never> {
+    Never(Never),
+    Value(Value),
 }
+
+pub(crate) type HostFunctionImplementation<Profile> =
+    HostFunctionBinding<HostValueFunction<Profile>, HostNeverFunction<Profile>>;
 
 pub(crate) struct HostValueFunction<Profile: HostProfile> {
     kind: HostValueFunctionKind<Profile>,
@@ -201,6 +205,19 @@ impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
 }
 
 impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
+    pub(super) fn continuing_never(
+        function: impl Fn(
+            &mut dyn HostCallRuntime<Profile>,
+        ) -> Result<
+            crate::runtime::execution::Continuation<std::convert::Infallible>,
+            HostCallError,
+        > + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self::Never(HostNeverFunction::continuing(function))
+    }
+
     pub(super) fn continuing(
         function: impl Fn(
             &mut dyn HostCallRuntime<Profile>,
@@ -396,8 +413,10 @@ mod tests {
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
         assert_eq!(
-            super::never::expect_never_implementation(&implementation).call(&mut runtime),
-            Err(HostCallError::from(HostFailure::new("stopped"))),
+            super::never::expect_never_implementation(&implementation)
+                .start(&mut runtime)
+                .err(),
+            Some(HostCallError::from(HostFailure::new("stopped"))),
         );
 
         expect_value_implementation(&implementation);

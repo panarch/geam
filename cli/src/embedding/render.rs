@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 mod named;
 mod prepared;
 mod value;
-pub(super) use prepared::{hosted_helper, plain_helper};
+pub(super) use prepared::{application_helper, hosted_helper, plain_helper};
 use value::{push_function_field, push_input_shapes};
 
 pub(super) fn plain(
@@ -79,6 +79,15 @@ pub(super) fn hosted(
     project_path: &Utf8Path,
     generation: Generation,
 ) -> String {
+    hosted_with_application(bindings, project_path, generation, false)
+}
+
+pub(super) fn hosted_with_application(
+    bindings: &HostedBindings,
+    project_path: &Utf8Path,
+    generation: Generation,
+    application: bool,
+) -> String {
     let mut output = format!("{}\n", super::GENERATED_HEADER);
     let boundary = &bindings.boundary;
     let alias = boundary.geam_alias.as_str();
@@ -121,7 +130,14 @@ pub(super) fn hosted(
         ]);
     }
     if generation.prepared() {
-        embedding_imports.extend(["HostedModule", "PreparedError"]);
+        embedding_imports.extend([
+            if application {
+                "PreparedHostedModuleBindings"
+            } else {
+                "HostedModule"
+            },
+            "PreparedError",
+        ]);
     }
     for function in boundary.functions() {
         for type_ in function
@@ -175,7 +191,7 @@ pub(super) fn hosted(
         if generation == Generation::Both {
             output.push_str("#[allow(dead_code)]\n");
         }
-        push_hosted_project(&mut output, alias, components, project_path);
+        push_hosted_project(&mut output, alias, components, project_path, application);
     }
 
     output.push_str("#[allow(clippy::type_complexity)]\npub struct Functions {\n");
@@ -188,13 +204,17 @@ pub(super) fn hosted(
         if generation == Generation::Both {
             output.push_str("#[allow(dead_code)]\n");
         }
-        push_hosted_bind(&mut output, alias, components, boundary);
+        push_hosted_bind(&mut output, alias, components, boundary, application);
     }
     if generation.prepared() {
         if generation == Generation::Both {
             output.push_str("\n#[allow(dead_code)]\n");
         }
-        prepared::push_hosted_load(&mut output, bindings);
+        if application {
+            prepared::push_hosted_load_with(&mut output, bindings, true);
+        } else {
+            prepared::push_hosted_load(&mut output, bindings);
+        }
     }
     output
 }
@@ -218,20 +238,34 @@ fn push_hosted_project(
     alias: &str,
     components: &HostedComponents,
     project_path: &Utf8Path,
+    application: bool,
 ) {
     let profile = profile_type(components);
-    output.push_str(&format!(
-        "pub fn project{}() -> {}<{profile}>",
-        generics(components),
-        "HostedProject",
-    ));
-    push_bounds_open(output, alias, components);
+    let parameters = generics(components);
+    if application {
+        output.push_str(
+            "pub fn project<Application: HostProfile>(\n    providers: fn() -> Result<HostProviderSet<Application>, HostRegistrationError>,\n) -> HostedProject<Application>"
+        );
+    } else {
+        output.push_str(&format!(
+            "pub fn project{parameters}() -> HostedProject<{profile}>"
+        ));
+    }
+    if application {
+        output.push_str(" {\n");
+    } else {
+        push_bounds_open(output, alias, components);
+    }
     output.push_str(&format!("    {}::new(\n", "HostedProject"));
     push_project_root_argument(output, project_path, "        ");
     output.push_str("        ROOT_MODULE,\n");
-    let registration = match generics(components) {
-        "" => "host_providers".to_owned(),
-        generics => format!("host_providers::{generics}"),
+    let registration = if application {
+        "providers".to_owned()
+    } else {
+        match generics(components) {
+            "" => "host_providers".to_owned(),
+            generics => format!("host_providers::{generics}"),
+        }
     };
     output.push_str(&format!("        {registration},\n    )\n}}\n\n"));
 }
@@ -618,15 +652,18 @@ fn push_hosted_bind(
     alias: &str,
     components: &HostedComponents,
     boundary: &PlainBindings,
+    application: bool,
 ) {
-    let profile = profile_type(components);
-    output.push_str(&format!(
-        "pub fn bind{}(\n    builder: {}<{profile}>,\n) -> Result<({}<{profile}>, Functions), BindingError>",
-        generics(components),
-        "HostedModuleBuilder",
-        "HostedModuleBindings",
-    ));
-    push_bounds_open(output, alias, components);
+    if application {
+        output.push_str("pub fn bind<Application: HostProfile>(\n    builder: HostedModuleBuilder<Application>,\n) -> Result<(HostedModuleBindings<Application>, Functions), BindingError> {\n");
+    } else {
+        let profile = profile_type(components);
+        output.push_str(&format!(
+            "pub fn bind{}(\n    builder: HostedModuleBuilder<{profile}>,\n) -> Result<(HostedModuleBindings<{profile}>, Functions), BindingError>",
+            generics(components),
+        ));
+        push_bounds_open(output, alias, components);
+    }
     push_bind_body(output, boundary, "Functions", "function");
     output.push_str("}\n");
 }
@@ -838,6 +875,13 @@ impl DataType {
             Self::Future(item) => {
                 imports.insert("FutureType");
                 item.collect_imports(imports);
+            }
+            Self::Function(arguments, return_) => {
+                imports.insert("CallableType");
+                for argument in arguments {
+                    argument.collect_imports(imports);
+                }
+                return_.collect_imports(imports);
             }
             Self::Named(_) => {}
             Self::Tuple(elements) => {
@@ -1426,9 +1470,51 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         }
     }
 
+    #[test]
+    fn application_callable_generation_preserves_formatting_in_each_mode_and_profile() {
+        for components in [
+            HostedComponents::default(),
+            HostedComponents::from_builtin(BuiltInProvider::Stdlib),
+            HostedComponents::from_builtin(BuiltInProvider::Time),
+        ] {
+            let bindings = HostedBindings {
+                components,
+                boundary: PlainBindings {
+                    named_types: Vec::new(),
+                    geam_alias: identifier("runtime"),
+                    root_module: "application".to_owned(),
+                    first: FunctionBinding {
+                        gleam_name: "keep".to_owned(),
+                        rust_name: identifier("keep"),
+                        arguments: vec![DataType::Function(
+                            vec![DataType::Int],
+                            Box::new(DataType::Int),
+                        )],
+                        return_type: DataType::Function(
+                            vec![DataType::Int],
+                            Box::new(DataType::Int),
+                        ),
+                    },
+                    remaining: Vec::new(),
+                },
+            };
+            for mode in [Generation::Dynamic, Generation::Both, Generation::Prepared] {
+                let source =
+                    super::hosted_with_application(&bindings, Utf8Path::new("gleam"), mode, true);
+                assert_rustfmt_stable("application callables", &source);
+            }
+        }
+    }
+
     fn assert_rustfmt_stable(label: &str, source: &str) {
         let directory = tempfile::tempdir().expect("temporary directory should be created");
         let path = directory.path().join("geam_bindings.rs");
+        fs::create_dir(directory.path().join("geam_bindings")).unwrap();
+        fs::write(
+            directory.path().join("geam_bindings/program.rs"),
+            "// Prepared artifact.\n",
+        )
+        .unwrap();
         fs::write(&path, source).expect("generated source should be written");
         for style_edition in ["2015", "2024"] {
             let output = std::process::Command::new("rustfmt")

@@ -61,5 +61,5 @@ runner supplies Tokio; a Rust embedding application uses its own Tokio runtime.
 Both `around` and `record_later` use `#[geam::function(await)]`: Gleam receives
 the completed result, not a source Future.
 
-Continue with [generic box](../generic_box/README.md) to retain a typed Gleam
-value inside an external value across provider calls.
+Continue with [Rust-created functions](../callables/README.md) to return
+capturing functions and generic wrappers from a provider.

@@ -42,6 +42,11 @@ impl ProviderValue for DynamicDictOutput {
 }
 
 impl ProviderValueForms for DynamicDictOutput {
+    type InvocationRequirements = ();
+    type ImmediateListDecoder = geam_core::provider::MissingListContext;
+    type OwnedListDecoder = geam_core::provider::MissingListContext;
+    type Runtime<Profile: geam_core::HostProfile> =
+        geam_core::provider::ProviderStaticValueForms<Self>;
     type Output = Self;
     type ImmediateInput = Self;
     type ImmediateListInput = Self;
@@ -55,23 +60,27 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
+    type Error = std::convert::Infallible;
+
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> <Self::Host as HostType>::Value<'call> {
+    ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
         let dict = constructions.select::<ProviderConstructionIndex0>();
-        match self.value {
-            Output::Exact(value) => value.into_host(call, &dict),
+        Ok(match self.value {
+            Output::Exact(value) => value.into_host_infallible(call, &dict),
             Output::Native(value) => {
                 let dynamic = constructions
                     .select::<ProviderConstructionIndexNext<ProviderConstructionIndex0>>();
                 create_dynamic_dict_with(call, dict.token(), value.entries(), |call, entry| {
-                    let key = DynamicPayload::from_native(entry.key).into_host(call, &dynamic);
-                    let value = DynamicPayload::from_native(entry.value).into_host(call, &dynamic);
+                    let key =
+                        DynamicPayload::from_native(entry.key).into_host_infallible(call, &dynamic);
+                    let value = DynamicPayload::from_native(entry.value)
+                        .into_host_infallible(call, &dynamic);
                     (key, value)
                 })
             }
-        }
+        })
     }
 }

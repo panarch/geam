@@ -59,7 +59,7 @@ where
         I::Reference(target) => Ok(V::Ready(target_value(
             plan,
             target,
-            Captures::default(),
+            state.captures().capture(Vec::new()),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         ))),
@@ -91,7 +91,7 @@ where
         } => {
             let function = environment.core_function_function(function);
             let mut inputs = environment.retain(args);
-            inputs.append_captures(function.captures());
+            inputs.append_captures(function.capture_frame());
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
@@ -158,7 +158,7 @@ where
         I::Reference(target) => V::Ready(external_target_value(
             plan,
             target,
-            Captures::default(),
+            storage.capture(Vec::new()),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         )),
@@ -185,7 +185,7 @@ where
         } => {
             let function = environment.external_function_function(function);
             let mut inputs = environment.retain(args);
-            inputs.append_captures(function.captures());
+            inputs.append_captures(function.capture_frame());
             V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),

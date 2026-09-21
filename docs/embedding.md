@@ -357,6 +357,29 @@ Other executors can implement `geam::execution::ExecutionHost`, including its
 task cancellation and clock contracts. Pure bindings that use `ModuleBuilder`
 also retain the direct `module.call` API shown in the first example.
 
+## Pass and create function values
+
+A generated binding can accept or return a concrete Gleam function type. Keep
+the returned handle within its execution scope and invoke it explicitly:
+
+```rust
+let alias = scope.call(&functions.keep, (&callback,)).await?;
+let next = scope.invoke(&alias, (BigInt::from(7),)).await?;
+```
+
+A function value has its own captures and identity. Its aliases use the same
+execution and provider state. Each call has independent arguments and pending
+work; passing a function does not invoke it or observe a returned Future.
+
+The [callables example](../examples/embedding/callables) also creates a capturing
+Rust function inside the application. It shares `src/declarations.rs` with the
+preparation helper, registers real bodies from ordinary application modules,
+selects a factory before sealing, and constructs it inside the live scope.
+Dynamic and prepared loading expose the same typed calls. The example keeps a
+callback in private Gleam data and then invokes a source wrapper around it.
+See the [function-value reference](reference/embedding-boundary.md#function-values-and-native-construction)
+for declaration configuration and exact ownership rules.
+
 ## Drive explicit Future values
 
 A Rust provider can expose an `async fn` as a Gleam function returning
@@ -462,7 +485,7 @@ remain responsible for compiling and testing the handwritten Rust application.
 Generated bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | Named
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | fn(Data...) -> Data | Named
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
@@ -480,8 +503,9 @@ let total = scope.call(&functions.total, (next,)).await?;
 
 The [Session example](../examples/embedding/session) includes the corresponding
 Gleam type, functions, and generated Rust bindings. Its private fields stay in
-Gleam. Expose a Gleam accessor when Rust needs to inspect them. Public callbacks
-and unbound generic parameters remain outside generated signatures.
+Gleam. Expose a Gleam accessor when Rust needs to inspect them. Function values
+use scoped typed callable handles, including inside containers; public roots
+with unbound generic parameters remain outside generated signatures.
 
 Lists returned from Gleam are retained, immutable handles. Rust can inspect
 them lazily or pass them back to the same loaded module without reconstructing

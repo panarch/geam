@@ -1,0 +1,34 @@
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:48:14
+   |
+48 |         call.restore_dynamic::<Message, Dynamic>(&value.value).is_some()
+   |              ^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `opaque::Message` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`
+
+error[E0277]: the trait bound `geam_core::provider::advanced::ProviderInvocationRequired: geam_core::provider::advanced::ProviderNoInvocations` is not satisfied
+  --> tests/ui/generic/opaque_custom_not_callback.rs:53:14
+   |
+53 |         call.restore_dynamic::<Batch, Dynamic>(&value.value).is_some()
+   |              ^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `geam_core::provider::advanced::ProviderNoInvocations` is not implemented for `geam_core::provider::advanced::ProviderInvocationRequired`
+help: the following other types implement trait `geam_core::provider::advanced::ProviderNoInvocations`
+  --> $WORKSPACE/core/src/provider/advanced.rs
+   |
+   |   impl ProviderNoInvocations for () {}
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `()`
+   | / impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+   | |     for (Head, Tail)
+   | |____________________^ `(Head, Tail)`
+   = note: required for `(geam_core::provider::advanced::ProviderInvocationRequired, ())` to implement `geam_core::provider::advanced::ProviderNoInvocations`
+   = note: required for `Batch` to implement `geam_core::provider::advanced::ProviderDynamicInput<__GeamProfile, opaque::__GeamProvider, bool>`

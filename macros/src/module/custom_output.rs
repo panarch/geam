@@ -5,7 +5,7 @@ use quote::{format_ident, quote};
 use syn::{Ident, ItemEnum};
 
 pub(super) struct OutputField {
-    index: usize,
+    pub(super) index: usize,
     pub(super) parameter: Ident,
     pub(super) value_type: TokenStream,
 }
@@ -25,7 +25,9 @@ pub(super) fn fields(
                 CustomFieldValueType::Value(value) => (value.as_ref(), false),
                 CustomFieldValueType::List(list) => (&list.collection.value, true),
             };
-            changes_representation(value, customs).then(|| {
+            (changes_representation(value, customs)
+                || (index == 0 && !custom.parameters.is_empty()))
+            .then(|| {
                 let value = output_type(value, customs, support);
                 OutputField {
                     index,
@@ -43,7 +45,7 @@ pub(super) fn fields(
 
 // Parameterize only representation-dependent fields. Rust still sees the
 // original enum name and derives its requested traits from the actual fields.
-pub(super) fn parameterize(item: &mut ItemEnum, fields: &[OutputField]) {
+pub(super) fn parameterize(item: &mut ItemEnum, custom: &CustomModel, fields: &[OutputField]) {
     for (index, field) in item
         .variants
         .iter_mut()
@@ -56,13 +58,51 @@ pub(super) fn parameterize(item: &mut ItemEnum, fields: &[OutputField]) {
             item.generics
                 .params
                 .push(syn::parse_quote!(#parameter = #default));
-            field.ty = syn::parse_quote!(#parameter);
+            field.ty = if index == 0 && !custom.parameters.is_empty() {
+                let shape = format_ident!("__Geam{}Field", custom.ident);
+                let parameters = &custom.parameters;
+                syn::parse_quote!(<#parameter as #shape<#(#parameters),*>>::Value)
+            } else {
+                syn::parse_quote!(#parameter)
+            };
         }
     }
+    if let Some(marker) = phantom_variant(custom) {
+        item.variants.push(marker);
+    }
+}
+
+// Fieldless generic declarations still carry their nominal source parameters.
+// The uninhabited variant adds no source constructor and needs no match arm.
+pub(super) fn phantom_variant(custom: &CustomModel) -> Option<syn::Variant> {
+    if custom.parameters.is_empty()
+        || custom
+            .constructors
+            .iter()
+            .any(|constructor| !custom_field_models(&constructor.fields).is_empty())
+    {
+        return None;
+    }
+    let mut name = format_ident!("__GeamParameters");
+    while custom
+        .constructors
+        .iter()
+        .any(|constructor| constructor.ident == name)
+    {
+        name = format_ident!("{name}_");
+    }
+    let parameters = &custom.parameters;
+    Some(syn::parse_quote! {
+        #[doc(hidden)]
+        #[allow(dead_code, reason = "uninhabited nominal type parameter marker")]
+        #name(::core::convert::Infallible, ::core::marker::PhantomData<fn() -> (#(#parameters,)*)>)
+    })
 }
 
 fn changes_representation(value: &StaticValueType, customs: &[CustomModel]) -> bool {
     match value {
+        StaticValueType::List(list) => changes_representation(&list.collection.value, customs),
+        StaticValueType::Future(_) | StaticValueType::Callback(_) => true,
         StaticValueType::Scalar(_) => false,
         StaticValueType::Declared { .. } => true,
         StaticValueType::External {
@@ -96,6 +136,18 @@ fn output_type(
     support: &TokenStream,
 ) -> TokenStream {
     match value {
+        StaticValueType::List(list) => {
+            let item = output_type(&list.collection.value, customs, support);
+            quote!(::std::vec::Vec<#item>)
+        }
+        StaticValueType::Future(future) => {
+            let source = &future.source;
+            quote!(#support::ProviderFuture<#source>)
+        }
+        StaticValueType::Callback(callback) => {
+            let signature = &callback.signature;
+            quote!(#support::Callback<#signature>)
+        }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_ } => {
             quote!(<#type_ as #support::ProviderValueForms>::Output)

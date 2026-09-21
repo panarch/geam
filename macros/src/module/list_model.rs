@@ -25,6 +25,17 @@ pub(super) fn register_list_decoder(
 
 pub(super) fn static_value_key(type_: &StaticValueType) -> String {
     match type_ {
+        StaticValueType::List(list) => {
+            format!("list:<{}>", static_value_key(&list.collection.value))
+        }
+        StaticValueType::Future(future) => {
+            let source = &future.source;
+            format!("future:{}", quote!(#source))
+        }
+        StaticValueType::Callback(callback) => {
+            let signature = &callback.signature;
+            format!("callback:{}", quote!(#signature))
+        }
         StaticValueType::Scalar(type_) => format!("scalar:{}", quote!(#type_)),
         StaticValueType::Declared { type_, .. } => {
             format!("declared:{}", quote!(#type_))
@@ -96,11 +107,9 @@ mod tests {
     fn decoder_registration_deduplicates_exact_item_shapes() {
         let mut decoders: Vec<ListDecoderModel> = Vec::new();
         let integers = CollectionType {
-            source: syn::parse_quote!(geam::List<BigInt>),
             value: StaticValueType::Scalar(syn::parse_quote!(BigInt)),
         };
         let booleans = CollectionType {
-            source: syn::parse_quote!(geam::List<bool>),
             value: StaticValueType::Scalar(syn::parse_quote!(bool)),
         };
 
