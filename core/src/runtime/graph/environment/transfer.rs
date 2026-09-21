@@ -5,6 +5,7 @@ impl BlockEnvironment {
     pub(in crate::runtime::graph) fn into_retained(self, transfer: &Transfer) -> RetainedValues {
         let mut retained = RetainedValues {
             values: self.values,
+            callable_domain: None,
         };
         retained.transfer(transfer);
         retained
@@ -18,6 +19,7 @@ impl BlockEnvironment {
     ) -> RetainedValues {
         let mut retained = RetainedValues {
             values: self.values,
+            callable_domain: None,
         };
         let mut selected = selected.iter().copied().peekable();
         for (index, value) in bindings.into_values().into_iter().enumerate() {

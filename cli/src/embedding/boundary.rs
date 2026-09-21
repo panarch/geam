@@ -24,6 +24,7 @@ pub(super) enum DataType {
     Option(Box<DataType>),
     List(Box<DataType>),
     Future(Box<DataType>),
+    Function(Vec<DataType>, Box<DataType>),
     Named(usize),
 }
 
@@ -172,7 +173,13 @@ impl PlainBindings {
     }
 
     pub(super) fn needs_scope(&self) -> bool {
-        !self.named_types.is_empty() || self.has_future()
+        self.functions().any(|function| {
+            function
+                .arguments
+                .iter()
+                .chain([&function.return_type])
+                .any(DataType::needs_scope)
+        })
     }
 }
 
@@ -189,9 +196,23 @@ fn unique_rust_identifier(
 }
 
 impl DataType {
+    fn needs_scope(&self) -> bool {
+        match self {
+            Self::Function(_, _) | Self::Future(_) | Self::Named(_) => true,
+            Self::Tuple(items) => items.iter().any(Self::needs_scope),
+            Self::Result(ok, error) => ok.needs_scope() || error.needs_scope(),
+            Self::Option(item) | Self::List(item) => item.needs_scope(),
+            _ => false,
+        }
+    }
+
     fn has_future(&self) -> bool {
         match self {
             Self::Future(_) => true,
+            Self::Function(arguments, return_) => arguments
+                .iter()
+                .chain([return_.as_ref()])
+                .any(Self::has_future),
             Self::Tuple(items) => items.iter().any(Self::has_future),
             Self::Result(ok, error) => ok.has_future() || error.has_future(),
             Self::Option(item) | Self::List(item) => item.has_future(),
@@ -293,9 +314,39 @@ impl DataType {
                             .map(Self::Named),
                     }
                 }
-                Type::Fn { .. } => {
-                    Err(vec![format!("{position} has an unsupported function type")])
+                Type::Fn {
+                    arguments: args,
+                    return_: retrn,
+                } if args.len() <= 7 => {
+                    let arguments = Self::from_types(
+                        named,
+                        args.iter().enumerate().map(|(index, argument)| {
+                            (
+                                argument,
+                                format!("{position} -> function argument {}", index + 1),
+                            )
+                        }),
+                    );
+                    let return_ = Self::from_type(
+                        named,
+                        retrn,
+                        &format!("{position} -> function return value"),
+                    );
+                    match (arguments, return_) {
+                        (Ok(arguments), Ok(return_)) => {
+                            Ok(Self::Function(arguments, Box::new(return_)))
+                        }
+                        (Err(mut errors), Err(rest)) => {
+                            errors.extend(rest);
+                            Err(errors)
+                        }
+                        (Err(errors), Ok(_)) | (Ok(_), Err(errors)) => Err(errors),
+                    }
                 }
+                Type::Fn { arguments, .. } => Err(vec![format!(
+                    "{position} has function arity {}, but embedding supports arity 0..=7",
+                    arguments.len()
+                )]),
                 Type::Var { .. } => {
                     Err(vec![format!("{position} has an unsupported generic type")])
                 }
@@ -406,24 +457,36 @@ pub fn bool_value(value: Bool) -> Bool { value }
                 "public function `unsupported` argument 1 has an unsupported generic type; public function `unsupported` return value has an unsupported generic type",
             ),
             (
-                "pub fn unsupported(_value: List(fn(Int) -> Int)) -> Int { 1 }",
-                "public function `unsupported` argument 1 -> List item has an unsupported function type",
+                "pub fn unsupported(_value: List(fn(Int, Int, Int, Int, Int, Int, Int, Int) -> Int)) -> Int { 1 }",
+                "public function `unsupported` argument 1 -> List item has function arity 8, but embedding supports arity 0..=7",
             ),
             (
                 "pub fn unsupported(value: #(Int, Int, Int, Int, Int, Int, Int, Int)) { value }",
                 "public function `unsupported` argument 1 has Tuple arity 8, but embedding supports Tuple arity 1..=7; public function `unsupported` return value has Tuple arity 8, but embedding supports Tuple arity 1..=7",
             ),
             (
-                "pub fn unsupported() { fn(value: Int) { value } }",
-                "public function `unsupported` return value has an unsupported function type",
+                "pub fn unsupported() { fn(_a: Int, _b: Int, _c: Int, _d: Int, _e: Int, _f: Int, _g: Int, h: Int) { h } }",
+                "public function `unsupported` return value has function arity 8, but embedding supports arity 0..=7",
             ),
             (
                 "pub fn unsupported(_value: #(a, Result(fn() -> Int, b))) { 1 }",
-                "public function `unsupported` argument 1 -> Tuple element 1 has an unsupported generic type; public function `unsupported` argument 1 -> Tuple element 2 -> Result Ok has an unsupported function type; public function `unsupported` argument 1 -> Tuple element 2 -> Result Error has an unsupported generic type",
+                "public function `unsupported` argument 1 -> Tuple element 1 has an unsupported generic type; public function `unsupported` argument 1 -> Tuple element 2 -> Result Error has an unsupported generic type",
             ),
             (
                 "pub fn first(_value: Result(Int, a)) { 1 }\npub fn second(_value: Result(a, Int)) { 2 }",
                 "public function `first` argument 1 -> Result Error has an unsupported generic type; public function `second` argument 1 -> Result Ok has an unsupported generic type",
+            ),
+            (
+                "pub fn unsupported(_value: Result(a, b)) -> Int { 1 }",
+                "public function `unsupported` argument 1 -> Result Ok has an unsupported generic type; public function `unsupported` argument 1 -> Result Error has an unsupported generic type",
+            ),
+            (
+                "pub fn unsupported(_value: fn(a) -> Int) -> Int { 1 }",
+                "public function `unsupported` argument 1 -> function argument 1 has an unsupported generic type",
+            ),
+            (
+                "pub fn unsupported(_value: fn(Int) -> a) -> Int { 1 }",
+                "public function `unsupported` argument 1 -> function return value has an unsupported generic type",
             ),
         ] {
             let error = bindings(source).expect_err("unsupported boundary should fail");
@@ -437,6 +500,33 @@ pub fn bool_value(value: Bool) -> Bool { value }
                 "unexpected diagnostic: {error:?}"
             );
         }
+    }
+
+    #[test]
+    fn derives_nested_callable_codecs_and_rejects_unbound_callable_parameters() {
+        let bound = bindings("pub fn callbacks(items: List(fn(Int) -> fn(Int) -> Int)) { items }\npub fn factory() { fn(value: Int) { fn(offset: Int) { value + offset } } }").unwrap();
+        let callback = DataType::Function(
+            vec![DataType::Int],
+            Box::new(DataType::Function(
+                vec![DataType::Int],
+                Box::new(DataType::Int),
+            )),
+        );
+        assert!(bound.needs_scope());
+        assert!(!bound.has_future());
+        assert_eq!(
+            bound.first.arguments,
+            [DataType::List(Box::new(callback.clone()))]
+        );
+        assert_eq!(
+            bound.first.return_type,
+            DataType::List(Box::new(callback.clone()))
+        );
+        assert_eq!(bound.remaining[0].return_type, callback);
+        let error = bindings("pub fn generic(_value: fn(a) -> a) -> Int { 42 }").unwrap_err();
+        assert!(
+            matches!(error, CliError::InvalidEmbeddingBoundary { reason, .. } if reason == "public function `generic` argument 1 -> function argument 1 has an unsupported generic type; public function `generic` argument 1 -> function return value has an unsupported generic type")
+        );
     }
 
     #[test]
@@ -566,7 +656,7 @@ pub fn again(value: Future(Future(Int))) { value }
     }
 
     #[test]
-    fn retains_lookalike_futures_without_granting_observation_and_rejects_callable_completion() {
+    fn retains_lookalike_futures_and_exposes_declared_callable_completion() {
         for package in ["other", "geam"] {
             let program = compile_typed_package_program("application", "boundary", [
                 PackageSource::new(package, Vec::<String>::new(), [ModuleSource::new(
@@ -600,15 +690,20 @@ pub fn again(value: Future(Future(Int))) { value }
                 );
                 continue;
             }
-            let error = result.expect_err("callable work results are not Rust function bindings");
-            assert!(
-                matches!(error, CliError::InvalidEmbeddingBoundary { module, reason } if module == "boundary" && reason == "public function `work` argument 1 -> Future completion -> List item has an unsupported function type")
+            let bindings = result.expect("callable completion is scoped");
+            assert!(bindings.has_future());
+            assert!(bindings.needs_scope());
+            assert_eq!(
+                bindings.first.arguments,
+                [DataType::Future(Box::new(DataType::List(Box::new(
+                    DataType::Function(Vec::new(), Box::new(DataType::Int))
+                ))))]
             );
         }
     }
 
     #[test]
-    fn retains_lookalike_standard_types_and_rejects_nested_option_callable_values() {
+    fn retains_lookalike_standard_types_and_exposes_nested_option_callable_values() {
         for package in ["other_package", "gleam_stdlib"] {
             let program = compile_typed_package_program(
                 "application",
@@ -660,9 +755,13 @@ pub fn optional(_value: Option(List(fn() -> Int))) { 1 }
                 );
                 continue;
             }
-            let error = result.expect_err("standard Option decodes its exposed content");
-            assert!(
-                matches!(error, CliError::InvalidEmbeddingBoundary { reason, .. } if reason == "public function `optional` argument 1 -> Option value -> List item has an unsupported function type")
+            let bindings = result.expect("standard Option decodes its declared functions");
+            assert!(bindings.needs_scope());
+            assert_eq!(
+                bindings.first.arguments,
+                [DataType::Option(Box::new(DataType::List(Box::new(
+                    DataType::Function(Vec::new(), Box::new(DataType::Int))
+                ))))]
             );
         }
         let bindings = bindings("pub type Result(a, b) { Ok(a) Error(b) }\npub fn local(value: Result(Int, String)) { value }")

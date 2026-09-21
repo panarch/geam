@@ -1,8 +1,9 @@
-use super::argument::{HostArgument, HostParameter, HostParameterLayout, HostScopedArgument};
+use super::HostFunctionSchemaRegistration;
+use super::argument::{HostArgument, HostParameterLayout, HostScopedArgument};
 use super::return_::{HostFunctionImplementation, HostReturn, OwnedHostFunctionImplementation};
 use crate::host::{
     HostAbiType, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure,
-    HostProfile, HostProvider, HostTypeDescriptor, HostTypeSequence,
+    HostProfile, HostProvider, HostTypeSequence,
 };
 
 pub trait HostFunctionAdapter<Arguments, Return>: Send + Sync + 'static {
@@ -51,13 +52,223 @@ where
     fn register(self) -> ScopedHostFunctionRegistration<Profile>;
 }
 
-macro_rules! resumable_function {
+pub(in crate::host) trait HostSignature<Return: HostAbiType> {
+    type Slots;
+
+    fn signature() -> (HostFunctionSchemaRegistration, Self::Slots);
+}
+
+macro_rules! host_signature {
     (@layout $layout:ident;) => {
         let $layout = HostParameterLayout::default();
     };
     (@layout $layout:ident; $($argument:ident),+) => {
         let mut $layout = HostParameterLayout::default();
     };
+    ($($argument:ident => $slot:ident),*) => {
+        impl<Return: HostAbiType, $($argument: HostScopedArgument,)*>
+            HostSignature<Return> for ($($argument,)*)
+        {
+            type Slots = ($(<$argument as HostScopedArgument>::Slot,)*);
+
+            fn signature() -> (HostFunctionSchemaRegistration, Self::Slots) {
+                host_signature!(@layout layout; $($argument),*);
+                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
+                let mut custom_schemas = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+                $(<$argument as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);)*
+                <Return as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);
+                (
+                    HostFunctionSchemaRegistration {
+                        layout: layout.finish(),
+                        parameters: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                        captures: Box::new([]),
+                        callable: false,
+                        return_: <Return as HostAbiType>::descriptor(),
+                        custom_schemas: custom_schemas.into_boxed_slice(),
+                    },
+                    ($($slot,)*),
+                )
+            }
+        }
+    };
+}
+
+host_signature!();
+host_signature!(A => a);
+host_signature!(A => a, B => b);
+host_signature!(A => a, B => b, C => c);
+host_signature!(A => a, B => b, C => c, D => d);
+host_signature!(A => a, B => b, C => c, D => d, E => e);
+host_signature!(A => a, B => b, C => c, D => d, E => e, F => f);
+host_signature!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+
+pub(in crate::host) trait HostCallableSignature<Return: HostAbiType>:
+    crate::HostTypeSequence
+{
+    type Slots;
+
+    fn signature() -> (HostFunctionSchemaRegistration, Self::Slots);
+}
+
+pub trait HostCallableAdapter<Profile, Provider, Schema, Arguments, Completion>:
+    Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Schema: crate::HostCallableSchema,
+{
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
+}
+
+pub trait ResumableHostCallableAdapter<Profile, Provider, Schema, Arguments, Completion>:
+    Send + Sync + 'static
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Schema: crate::HostCallableSchema,
+{
+    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
+}
+
+macro_rules! callable_arguments {
+    () => { crate::HostTypeListEnd };
+    ($head:ident $(, $tail:ident)*) => {
+        crate::HostTypeList<$head, callable_arguments!($($tail),*)>
+    };
+}
+
+macro_rules! native_callable {
+    ($($argument:ident => $slot:ident),*) => {
+        impl<Return: HostAbiType, $($argument: HostScopedArgument,)*>
+            HostCallableSignature<Return> for callable_arguments!($($argument),*)
+        {
+            type Slots = ($(<$argument as HostScopedArgument>::Slot,)*);
+
+            fn signature() -> (HostFunctionSchemaRegistration, Self::Slots) {
+                <($($argument,)*) as HostSignature<Return>>::signature()
+            }
+        }
+
+        impl<Profile, Provider, Schema, Function, $($argument,)*>
+            HostCallableAdapter<Profile, Provider, Schema, ($($argument,)*), crate::HostReturns> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Schema: crate::HostCallableSchema<Arguments = callable_arguments!($($argument),*), Completion = crate::HostReturns>,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Schema::Return>,
+                crate::host::HostCaptures<'call, Schema::Captures>,
+                HostConstructions<'call, Schema::Constructions>,
+                $(<$argument as crate::HostType>::Value<'call>,)*
+            ) -> Result<HostCallCompletion<'call, Schema::Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                let (schema, ($($slot,)*)) = <Schema::Arguments as HostCallableSignature<Schema::Return>>::signature();
+                let schema = schema.with_captures::<Schema::Captures>();
+                let implementation = HostFunctionImplementation::scoped(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(call, crate::host::HostCaptures::new(), HostConstructions::new(), $($slot,)*)
+                        .map(|completion| completion.token)
+                });
+                ScopedHostFunctionRegistration { schema, implementation }
+            }
+        }
+
+        impl<Profile, Provider, Schema, Function, $($argument,)*>
+            ResumableHostCallableAdapter<Profile, Provider, Schema, ($($argument,)*), crate::HostReturns> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Schema: crate::HostCallableSchema<Arguments = callable_arguments!($($argument),*), Completion = crate::HostReturns>,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Schema::Return>,
+                crate::host::HostCaptures<'call, Schema::Captures>,
+                HostConstructions<'call, Schema::Constructions>,
+                $(<$argument as crate::HostType>::Value<'call>,)*
+            ) -> Result<crate::HostCallContinuation<'call, Schema::Return>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                let (schema, ($($slot,)*)) = <Schema::Arguments as HostCallableSignature<Schema::Return>>::signature();
+                let schema = schema.with_captures::<Schema::Captures>();
+                let implementation = HostFunctionImplementation::continuing(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(call, crate::host::HostCaptures::new(), HostConstructions::new(), $($slot,)*)
+                        .map(|completion| completion.continuation)
+                });
+                ScopedHostFunctionRegistration { schema, implementation }
+            }
+        }
+
+        impl<Profile, Provider, Schema, Function, $($argument,)*>
+            ResumableHostCallableAdapter<Profile, Provider, Schema, ($($argument,)*), crate::HostDiverges> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Schema: crate::HostCallableSchema<Arguments = callable_arguments!($($argument),*), Completion = crate::HostDiverges>,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Schema::Return>,
+                crate::host::HostCaptures<'call, Schema::Captures>,
+                HostConstructions<'call, Schema::Constructions>,
+                $(<$argument as crate::HostType>::Value<'call>,)*
+            ) -> Result<crate::HostNeverContinuation<'call>, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                let (schema, ($($slot,)*)) = <Schema::Arguments as HostCallableSignature<Schema::Return>>::signature();
+                let schema = schema.with_captures::<Schema::Captures>();
+                let implementation = HostFunctionImplementation::continuing_never(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(call, crate::host::HostCaptures::new(), HostConstructions::new(), $($slot,)*)
+                        .map(|completion| completion.continuation)
+                });
+                ScopedHostFunctionRegistration { schema, implementation }
+            }
+        }
+
+        impl<Profile, Provider, Schema, Function, $($argument,)*>
+            HostCallableAdapter<Profile, Provider, Schema, ($($argument,)*), crate::HostDiverges> for Function
+        where
+            Profile: HostProfile,
+            Provider: HostProvider<Profile>,
+            Schema: crate::HostCallableSchema<Arguments = callable_arguments!($($argument),*), Completion = crate::HostDiverges>,
+            $($argument: HostScopedArgument,)*
+            Function: for<'call> Fn(
+                HostCall<'call, Profile, Provider, Schema::Return>,
+                crate::host::HostCaptures<'call, Schema::Captures>,
+                HostConstructions<'call, Schema::Constructions>,
+                $(<$argument as crate::HostType>::Value<'call>,)*
+            ) -> Result<std::convert::Infallible, HostCallError> + Send + Sync + 'static,
+        {
+            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+                let (schema, ($($slot,)*)) = <Schema::Arguments as HostCallableSignature<Schema::Return>>::signature();
+                let schema = schema.with_captures::<Schema::Captures>();
+                let implementation = HostFunctionImplementation::scoped_never(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    self(call, crate::host::HostCaptures::new(), HostConstructions::new(), $($slot,)*)
+                });
+                ScopedHostFunctionRegistration { schema, implementation }
+            }
+        }
+    };
+}
+
+native_callable!();
+native_callable!(A => a);
+native_callable!(A => a, B => b);
+native_callable!(A => a, B => b, C => c);
+native_callable!(A => a, B => b, C => c, D => d);
+native_callable!(A => a, B => b, C => c, D => d, E => e);
+native_callable!(A => a, B => b, C => c, D => d, E => e, F => f);
+native_callable!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
+
+macro_rules! resumable_function {
     ($($argument:ident => $slot:ident),*) => {
         impl<Profile, Provider, Function, Return, Constructions, $($argument,)*>
             ResumableHostFunctionAdapter<Profile, Provider, ($($argument,)*), Return, Constructions> for Function
@@ -74,12 +285,7 @@ macro_rules! resumable_function {
             ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError> + Send + Sync + 'static,
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                resumable_function!(@layout layout; $($argument),*);
-                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                $(<$argument as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);)*
-                <Return as HostAbiType>::collect_custom_schemas(&mut custom_schemas, &mut visited);
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
                 let implementation = HostFunctionImplementation::continuing(move |runtime| {
                     let call = HostCall::new(runtime);
                     $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
@@ -87,10 +293,7 @@ macro_rules! resumable_function {
                         .map(|completion| completion.continuation)
                 });
                 ScopedHostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation,
                 }
             }
@@ -108,28 +311,19 @@ resumable_function!(A => a, B => b, C => c, D => d, E => e, F => f);
 resumable_function!(A => a, B => b, C => c, D => d, E => e, F => f, G => g);
 
 pub struct HostFunctionRegistration<Profile: HostProfile> {
-    pub(super) parameters: Box<[HostParameter]>,
-    pub(super) parameter_types: Box<[HostTypeDescriptor]>,
-    pub(super) return_type: HostTypeDescriptor,
-    pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    pub(super) schema: HostFunctionSchemaRegistration,
     pub(super) implementation: OwnedHostFunctionImplementation<Profile>,
 }
 
 pub struct ScopedHostFunctionRegistration<Profile: HostProfile> {
-    pub(super) parameters: Box<[HostParameter]>,
-    pub(super) parameter_types: Box<[HostTypeDescriptor]>,
-    pub(super) return_type: HostTypeDescriptor,
-    pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
+    pub(super) schema: HostFunctionSchemaRegistration,
     pub(super) implementation: HostFunctionImplementation<Profile>,
 }
 
 impl<Profile: HostProfile> HostFunctionRegistration<Profile> {
     pub(super) fn into_immediate(self) -> ScopedHostFunctionRegistration<Profile> {
         ScopedHostFunctionRegistration {
-            parameters: self.parameters,
-            parameter_types: self.parameter_types,
-            return_type: self.return_type,
-            custom_schemas: self.custom_schemas,
+            schema: self.schema,
             implementation: self.implementation.into_immediate(),
         }
     }
@@ -242,10 +436,14 @@ macro_rules! host_function {
                 self,
             ) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
-                    parameters: Box::new([]),
-                    parameter_types: Box::new([]),
-                    return_type: <Return as HostReturn>::descriptor(),
-                    custom_schemas: Box::new([]),
+                    schema: HostFunctionSchemaRegistration {
+                        layout: Box::new([]),
+                        parameters: Box::new([]),
+                        captures: Box::new([]),
+                        callable: false,
+                        return_: <Return as HostReturn>::descriptor(),
+                        custom_schemas: Box::new([]),
+                    },
                     implementation: Return::implementation(move |_, _| Ok(self())),
                 }
             }
@@ -260,10 +458,14 @@ macro_rules! host_function {
                 self,
             ) -> HostFunctionRegistration<Profile> {
                 HostFunctionRegistration {
-                    parameters: Box::new([]),
-                    parameter_types: Box::new([]),
-                    return_type: <Return as HostReturn>::descriptor(),
-                    custom_schemas: Box::new([]),
+                    schema: HostFunctionSchemaRegistration {
+                        layout: Box::new([]),
+                        parameters: Box::new([]),
+                        captures: Box::new([]),
+                        callable: false,
+                        return_: <Return as HostReturn>::descriptor(),
+                        custom_schemas: Box::new([]),
+                    },
                     implementation: Return::implementation(move |_, _| self()),
                 }
             }
@@ -283,17 +485,9 @@ macro_rules! host_function {
             Return: HostAbiType,
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ()) = <() as HostSignature<Return>>::signature();
                 ScopedHostFunctionRegistration {
-                    parameters: Box::new([]),
-                    parameter_types: Box::new([]),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation: HostFunctionImplementation::scoped(move |runtime| {
                         self(HostCall::new(runtime)).map(|completion| completion.token)
                     }),
@@ -318,17 +512,9 @@ macro_rules! host_function {
             Return: HostAbiType,
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ()) = <() as HostSignature<Return>>::signature();
                 ScopedHostFunctionRegistration {
-                    parameters: Box::new([]),
-                    parameter_types: Box::new([]),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation: HostFunctionImplementation::scoped(move |runtime| {
                         self(HostCall::new(runtime), HostConstructions::new())
                             .map(|completion| completion.token)
@@ -351,17 +537,9 @@ macro_rules! host_function {
             Return: HostAbiType,
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ()) = <() as HostSignature<Return>>::signature();
                 ScopedHostFunctionRegistration {
-                    parameters: Box::new([]),
-                    parameter_types: Box::new([]),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation: HostFunctionImplementation::scoped_never(move |runtime| {
                         self(HostCall::new(runtime))
                     }),
@@ -385,10 +563,14 @@ macro_rules! host_function {
                     Ok(self($($argument::read(arguments, $slot)),*))
                 });
                 HostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostReturn>::descriptor(),
-                    custom_schemas: Box::new([]),
+                    schema: HostFunctionSchemaRegistration {
+                        layout: layout.finish(),
+                        parameters: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                        captures: Box::new([]),
+                        callable: false,
+                        return_: <Return as HostReturn>::descriptor(),
+                        custom_schemas: Box::new([]),
+                    },
                     implementation,
                 }
             }
@@ -410,10 +592,14 @@ macro_rules! host_function {
                     self($($argument::read(arguments, $slot)),*)
                 });
                 HostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostReturn>::descriptor(),
-                    custom_schemas: Box::new([]),
+                    schema: HostFunctionSchemaRegistration {
+                        layout: layout.finish(),
+                        parameters: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
+                        captures: Box::new([]),
+                        callable: false,
+                        return_: <Return as HostReturn>::descriptor(),
+                        custom_schemas: Box::new([]),
+                    },
                     implementation,
                 }
             }
@@ -435,18 +621,7 @@ macro_rules! host_function {
             $($argument: HostScopedArgument,)*
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut layout = HostParameterLayout::default();
-                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                $(<$argument as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );)*
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
                 let implementation = HostFunctionImplementation::scoped(move |runtime| {
                     let call = HostCall::new(runtime);
                     $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
@@ -457,10 +632,7 @@ macro_rules! host_function {
                     .map(|completion| completion.token)
                 });
                 ScopedHostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation,
                 }
             }
@@ -490,18 +662,7 @@ macro_rules! host_function {
             $($argument: HostScopedArgument,)*
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut layout = HostParameterLayout::default();
-                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                $(<$argument as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );)*
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
                 let implementation = HostFunctionImplementation::scoped(move |runtime| {
                     let call = HostCall::new(runtime);
                     $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
@@ -513,10 +674,7 @@ macro_rules! host_function {
                     .map(|completion| completion.token)
                 });
                 ScopedHostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation,
                 }
             }
@@ -538,18 +696,7 @@ macro_rules! host_function {
             $($argument: HostScopedArgument,)*
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                let mut layout = HostParameterLayout::default();
-                $(let $slot = <$argument as HostScopedArgument>::register(&mut layout);)*
-                let mut custom_schemas = Vec::new();
-                let mut visited = std::collections::HashSet::new();
-                $(<$argument as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );)*
-                <Return as HostAbiType>::collect_custom_schemas(
-                    &mut custom_schemas,
-                    &mut visited,
-                );
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
                 let implementation = HostFunctionImplementation::scoped_never(move |runtime| {
                     let call = HostCall::new(runtime);
                     $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
@@ -559,10 +706,7 @@ macro_rules! host_function {
                     )
                 });
                 ScopedHostFunctionRegistration {
-                    parameters: layout.finish(),
-                    parameter_types: vec![$(<$argument as HostAbiType>::descriptor()),*].into_boxed_slice(),
-                    return_type: <Return as HostAbiType>::descriptor(),
-                    custom_schemas: custom_schemas.into_boxed_slice(),
+                    schema,
                     implementation,
                 }
             }
@@ -795,8 +939,8 @@ mod tests {
         let registration = <_ as HostFunctionAdapter<(), BigInt>>::register(|| BigInt::from(7));
         let registration = registration.into_immediate();
 
-        assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(registration.return_type, HostTypeDescriptor::Int);
+        assert_eq!(registration.schema.layout.as_ref(), []);
+        assert_eq!(registration.schema.return_, HostTypeDescriptor::Int);
         assert_eq!(
             call_int(&registration.implementation, Vec::new(), Vec::new()),
             BigInt::from(7),
@@ -811,8 +955,8 @@ mod tests {
         let registration = registration.into_immediate();
         let implementation = expect_value_implementation(&registration.implementation);
 
-        assert_eq!(registration.parameters.as_ref(), []);
-        assert_eq!(registration.return_type, HostTypeDescriptor::Int);
+        assert_eq!(registration.schema.layout.as_ref(), []);
+        assert_eq!(registration.schema.return_, HostTypeDescriptor::Int);
         let mut state = TestRunState::default();
         let mut runtime =
             TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
@@ -862,7 +1006,7 @@ mod tests {
         for (arity, registration) in registrations.into_iter().enumerate() {
             let registration = registration.into_immediate();
             assert_eq!(
-                registration.parameter_types.as_ref(),
+                registration.schema.parameters.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],
             );
             let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
@@ -949,7 +1093,7 @@ mod tests {
 
         for (arity, registration) in registrations.into_iter().enumerate() {
             assert_eq!(
-                registration.parameter_types.as_ref(),
+                registration.schema.parameters.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],
             );
             let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
@@ -1070,7 +1214,7 @@ mod tests {
 
         for (arity, registration) in registrations.into_iter().enumerate() {
             assert_eq!(
-                registration.parameter_types.as_ref(),
+                registration.schema.parameters.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],
             );
             let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
@@ -1093,6 +1237,170 @@ mod tests {
             );
         }
     }
+
+    // Each case executes all four completion adapters, with distinct argument digits
+    // and two capture instances so slot order and capture offsets are observable.
+    macro_rules! check_callable_arity {
+        ($test:ident, $first:literal, $second:literal; $($argument:ident = $value:literal),*) => {
+            #[test]
+            fn $test() {
+                use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
+                use crate::{HostCallableSchema, HostCaptures, HostDiverges, HostReturns};
+                use std::marker::PhantomData;
+                type Captures = HostTypeList<BigInt, HostTypeListEnd>;
+                struct Schema<Completion>(PhantomData<Completion>);
+                impl<Completion: crate::HostCompletion + Send + Sync + 'static>
+                    HostCallableSchema for Schema<Completion>
+                {
+                    const PACKAGE: &'static str = "application";
+                    const MODULE: &'static str = "private/callbacks";
+                    const NAME: &'static str = "digits";
+                    type Arguments = callable_integer_sequence!($($argument),*);
+                    type Return = BigInt;
+                    type Captures = Captures;
+                    type Constructions = HostTypeListEnd;
+                    type Completion = Completion;
+                }
+                fn calculate<'call>(
+                    call: &mut HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+                    captures: HostCaptures<'call, Captures>,
+                    arguments: impl IntoIterator<Item = BigInt>,
+                ) -> BigInt {
+                    let (offset, ()) = call.captures(captures);
+                    *call.state() += 1;
+                    std::iter::once(offset).chain(arguments)
+                        .fold(BigInt::from(0), |prefix, digit| prefix * 10 + digit)
+                }
+                type Immediate = for<'call> fn(
+                    HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+                    HostCaptures<'call, Captures>,
+                    HostConstructions<'call, HostTypeListEnd>,
+                    $(callable_integer!($argument),)*
+                ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError>;
+                let immediate: Immediate = |mut call, captures, _, $($argument,)*| {
+                    let value = calculate(&mut call, captures, [$($argument),*]);
+                    Ok(call.return_value(value))
+                };
+                type Diverging = for<'call> fn(
+                    HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+                    HostCaptures<'call, Captures>,
+                    HostConstructions<'call, HostTypeListEnd>,
+                    $(callable_integer!($argument),)*
+                ) -> Result<Infallible, HostCallError>;
+                let diverging: Diverging = |mut call, captures, _, $($argument,)*| {
+                    let value = calculate(&mut call, captures, [$($argument),*]);
+                    Err(HostFailure::new(value.to_string()).into())
+                };
+                async fn yield_once() {
+                    let mut pending = true;
+                    std::future::poll_fn(|cx| {
+                        if pending {
+                            pending = false;
+                            cx.waker().wake_by_ref();
+                            std::task::Poll::Pending
+                        } else {
+                            std::task::Poll::Ready(())
+                        }
+                    }).await
+                }
+                type Continuing = for<'call> fn(
+                    HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+                    HostCaptures<'call, Captures>,
+                    HostConstructions<'call, HostTypeListEnd>,
+                    $(callable_integer!($argument),)*
+                ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError>;
+                let continuing: Continuing = |mut call, captures, constructions, $($argument,)*| {
+                    let value = calculate(&mut call, captures, [$($argument),*]);
+                    Ok(call.resume(constructions, move |context| Box::pin(async move {
+                        yield_once().await;
+                        context.with_state(|counter| *counter += 10).await.unwrap();
+                        Ok(crate::HostOwnedCompletion::new(move |call, _| {
+                            Ok(call.return_value(value))
+                        }))
+                    })))
+                };
+                type ContinuingNever = for<'call> fn(
+                    HostCall<'call, TestHostProfile, ScopedProvider, BigInt>,
+                    HostCaptures<'call, Captures>,
+                    HostConstructions<'call, HostTypeListEnd>,
+                    $(callable_integer!($argument),)*
+                ) -> Result<crate::HostNeverContinuation<'call>, HostCallError>;
+                let continuing_never: ContinuingNever = |mut call, captures, constructions, $($argument,)*| {
+                    let value = calculate(&mut call, captures, [$($argument),*]);
+                    Ok(call.resume_never(constructions, move |context| Box::pin(async move {
+                        yield_once().await;
+                        context.with_state(|counter| *counter += 10).await.unwrap();
+                        Err(HostFailure::new(value.to_string()).into())
+                    })))
+                };
+                for suspend in [false, true] {
+                    for diverges in [false, true] {
+                        let providers = crate::HostProviderSet::new([]).unwrap();
+                        let providers = match (suspend, diverges) {
+                            (false, false) => providers.with_callable::<ScopedProvider, Schema<HostReturns>, _, _>(immediate),
+                            (false, true) => providers.with_callable::<ScopedProvider, Schema<HostDiverges>, _, _>(diverging),
+                            (true, false) => providers.with_resumable_callable::<ScopedProvider, Schema<HostReturns>, _, _>(continuing),
+                            (true, true) => providers.with_resumable_callable::<ScopedProvider, Schema<HostDiverges>, _, _>(continuing_never),
+                        }.unwrap();
+                        let typed = crate::compile_typed_host_program(
+                            "application", "library",
+                            [crate::PackageSource::new("application", Vec::<String>::new(), [
+                                crate::ModuleSource::new("library", "library.gleam", "pub fn root() { Nil }"),
+                            ])], providers,
+                        ).unwrap();
+                        let (mut bindings, _) = HostedModuleBuilder::new(typed).unwrap()
+                            .function(FunctionDeclaration::<(), ()>::new("root")).unwrap();
+                        let factory = if diverges {
+                            bindings.callable::<Schema<HostDiverges>>().unwrap()
+                        } else {
+                            bindings.callable::<Schema<HostReturns>>().unwrap()
+                        };
+                        let mut module = bindings.seal().unwrap();
+                        let host = crate::execution_fixture::TestHost::default();
+                        let mut state = TestRunState::default();
+                        let mut echoes = Vec::new();
+                        host.block_on(module.with_execution(&host, &mut state, &mut echoes, async |scope| {
+                            for (offset, expected) in [(9, $first), (8, $second)] {
+                                let callback = scope.construct(&factory, (BigInt::from(offset), ())).unwrap();
+                                let result = scope.invoke(&callback, ($(BigInt::from($value),)*)).await;
+                                if diverges {
+                                    assert_eq!(result.unwrap_err().to_string(), format!(
+                                        "host function application::private/callbacks.digits failed: {expected}"
+                                    ));
+                                } else {
+                                    assert_eq!(result.unwrap(), BigInt::from(expected));
+                                }
+                            }
+                        })).unwrap();
+                        assert_eq!(state.counter, if suspend { 22 } else { 2 });
+                        assert!(echoes.is_empty());
+                    }
+                }
+            }
+        };
+    }
+
+    macro_rules! callable_integer {
+        ($argument:ident) => {
+            BigInt
+        };
+    }
+
+    macro_rules! callable_integer_sequence {
+        () => { HostTypeListEnd };
+        ($head:ident $(, $tail:ident)*) => {
+            HostTypeList<BigInt, callable_integer_sequence!($($tail),*)>
+        };
+    }
+
+    check_callable_arity!(created_callable_zero_arguments, 9, 8;);
+    check_callable_arity!(created_callable_one_argument, 91, 81; a = 1);
+    check_callable_arity!(created_callable_two_arguments, 912, 812; a = 1, b = 2);
+    check_callable_arity!(created_callable_three_arguments, 9123, 8123; a = 1, b = 2, c = 3);
+    check_callable_arity!(created_callable_four_arguments, 91234, 81234; a = 1, b = 2, c = 3, d = 4);
+    check_callable_arity!(created_callable_five_arguments, 912345, 812345; a = 1, b = 2, c = 3, d = 4, e = 5);
+    check_callable_arity!(created_callable_six_arguments, 9123456, 8123456; a = 1, b = 2, c = 3, d = 4, e = 5, f = 6);
+    check_callable_arity!(created_callable_seven_arguments, 91234567, 81234567; a = 1, b = 2, c = 3, d = 4, e = 5, f = 6, g = 7);
 
     #[test]
     fn supports_every_native_argument_arity_without_a_second_parameter_layout() {
@@ -1229,10 +1537,10 @@ pub fn main() {
 
         for (arity, registration) in registrations.into_iter().enumerate() {
             assert_eq!(
-                registration.parameter_types.as_ref(),
+                registration.schema.parameters.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],
             );
-            assert_eq!(registration.return_type, HostTypeDescriptor::Int);
+            assert_eq!(registration.schema.return_, HostTypeDescriptor::Int);
             let arguments = CallArguments::new(Vec::new(), Vec::new()).with_scalar_values(
                 Vec::new(),
                 Vec::new(),
@@ -1244,8 +1552,9 @@ pub fn main() {
             let mut runtime = TestHostCallRuntime::new(&mut state, arguments);
             assert_eq!(
                 expect_never_implementation(&registration.implementation)
-                    .call(&mut runtime)
-                    .expect_err("scoped diverging callback should not return")
+                    .start(&mut runtime)
+                    .err()
+                    .expect("scoped diverging callback should not return")
                     .to_string(),
                 arity.to_string(),
             );
@@ -1259,7 +1568,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [HostTypeDescriptor::Int],
         );
         assert_eq!(
@@ -1276,7 +1585,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [HostTypeDescriptor::Int, HostTypeDescriptor::Int],
         );
         assert_eq!(
@@ -1299,7 +1608,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Bool,
                 HostTypeDescriptor::Int,
@@ -1334,7 +1643,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Int,
                 HostTypeDescriptor::Bool,
@@ -1358,7 +1667,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Int,
                 HostTypeDescriptor::Int,
@@ -1388,7 +1697,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Bool,
                 HostTypeDescriptor::Bool,
@@ -1421,7 +1730,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Int,
                 HostTypeDescriptor::Bool,
@@ -1473,7 +1782,7 @@ pub fn main() {
         let registration = registration.into_immediate();
 
         assert_eq!(
-            registration.parameter_types.as_ref(),
+            registration.schema.parameters.as_ref(),
             [
                 HostTypeDescriptor::Int,
                 HostTypeDescriptor::Float,
@@ -1484,7 +1793,7 @@ pub fn main() {
                 HostTypeDescriptor::Nil,
             ],
         );
-        assert_eq!(registration.return_type, HostTypeDescriptor::String);
+        assert_eq!(registration.schema.return_, HostTypeDescriptor::String);
         let arguments = CallArguments::new(vec![1.into()], vec![true]).with_scalar_values(
             vec![1.5],
             vec!["one".into()],

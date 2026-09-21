@@ -15,34 +15,63 @@ pub(in crate::planner::module::host) fn validate_host_custom_schemas(
     source_context: Option<&SourceContext>,
     functions: &[LinkedFunction],
 ) -> Result<(), PlanError> {
-    let access = match source_context {
-        Some(_) => HostCustomTypeAccess::SourceDeclaration,
-        None => HostCustomTypeAccess::SourceLessPublicSurface,
-    };
     for function in functions {
-        let LinkedFunction::Host {
+        if let LinkedFunction::Host {
             template,
             constructions,
             ..
         } = function
-        else {
-            continue;
-        };
-        for actual in template
-            .custom_schemas()
-            .iter()
-            .chain(constructions.custom_schemas())
         {
-            validate_host_custom_schema_with_constructions(
-                registry,
-                template.package(),
-                template.site(),
-                template.signature(),
-                actual,
-                access,
-                constructions,
-            )?;
+            validate_host_schemas(registry, source_context, template, constructions)?;
         }
+    }
+    Ok(())
+}
+
+pub(in crate::planner::module::host) fn validate_host_schemas(
+    registry: &ProgramRegistry,
+    source_context: Option<&SourceContext>,
+    template: &crate::plan::HostFunctionTemplate,
+    constructions: &crate::host::RegisteredHostConstructions,
+) -> Result<(), PlanError> {
+    let access = match source_context {
+        Some(_) => HostCustomTypeAccess::SourceDeclaration,
+        None => HostCustomTypeAccess::SourceLessPublicSurface,
+    };
+    let additional_types = template
+        .captures()
+        .iter()
+        .chain(constructions.validation_types())
+        .cloned()
+        .collect::<Vec<_>>();
+    for actual in template
+        .custom_schemas()
+        .iter()
+        .chain(constructions.custom_schemas())
+    {
+        validate_host_custom_schema_with_constructions(
+            registry,
+            template.package(),
+            template.site(),
+            template.signature(),
+            actual,
+            access,
+            &additional_types,
+        )?;
+    }
+    for actual in template
+        .external_schemas()
+        .iter()
+        .chain(constructions.external_schemas())
+    {
+        crate::planner::module::external_type::validate_host_external_schema(
+            registry,
+            template.package(),
+            template.site(),
+            template.signature(),
+            actual,
+            &additional_types,
+        )?;
     }
     Ok(())
 }
@@ -63,7 +92,7 @@ fn validate_host_custom_schema(
         signature,
         actual,
         access,
-        &crate::host::RegisteredHostConstructions::empty(),
+        &[],
     )
 }
 
@@ -74,7 +103,7 @@ fn validate_host_custom_schema_with_constructions(
     signature: &crate::plan::FunctionTemplateSignature,
     actual: &crate::host::HostCustomTypeSchema,
     access: HostCustomTypeAccess,
-    constructions: &crate::host::RegisteredHostConstructions,
+    constructions: &[crate::host::HostTypeDescriptor],
 ) -> Result<(), PlanError> {
     let name = crate::plan::CustomTypeName::new(
         actual.package().clone(),
@@ -174,7 +203,7 @@ fn validate_host_custom_schema_with_constructions(
         .chain([signature.shape().return_shape()])
         .find_map(|shape| invalid_host_custom_type_argument_count(shape, &name, parameter_count))
         .or_else(|| {
-            constructions.types().iter().find_map(|construction| {
+            constructions.iter().find_map(|construction| {
                 invalid_host_custom_type_argument_count(
                     &construction.value_shape(),
                     &name,
@@ -218,6 +247,10 @@ fn invalid_host_custom_type_argument_count(
             crate::plan::ValueShape::External(external) => {
                 pending.extend(external.arguments().iter().rev());
             }
+            crate::plan::ValueShape::Function(function) => {
+                pending.push(function.return_shape());
+                pending.extend(function.argument_shapes().iter().rev());
+            }
             crate::plan::ValueShape::Parameter(_)
             | crate::plan::ValueShape::Int
             | crate::plan::ValueShape::Float
@@ -225,8 +258,7 @@ fn invalid_host_custom_type_argument_count(
             | crate::plan::ValueShape::BitArray
             | crate::plan::ValueShape::UtfCodepoint
             | crate::plan::ValueShape::Bool
-            | crate::plan::ValueShape::Nil
-            | crate::plan::ValueShape::Function(_) => {}
+            | crate::plan::ValueShape::Nil => {}
         }
     }
     None
@@ -1157,7 +1189,7 @@ mod tests {
                 &signature,
                 &actual,
                 HostCustomTypeAccess::SourceLessPublicSurface,
-                &constructions,
+                constructions.types(),
             ),
             Err(PlanError::HostProviderLink {
                 package: "application".into(),

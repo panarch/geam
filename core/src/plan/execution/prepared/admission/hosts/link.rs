@@ -4,12 +4,17 @@ use crate::host::{
     HostProviderSet, HostValueFunction, RegisteredHostConstructions,
 };
 use crate::plan::execution::host::{HostFunctionTables, HostedFunction, HostedFunctionMetadata};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub(in crate::plan::execution::prepared::admission) struct NativeFunctions<
     'data,
     Profile: HostProfile,
 > {
+    // Populated by the ordinary function-table admission walk, before callable
+    // construction links are checked. This scratch state never enters execution.
+    pub(super) callable_bindings:
+        RefCell<HashMap<crate::plan::execution::host::HostCallableEntry, (bool, usize)>>,
     pub(super) registrations: Vec<Registration>,
     pub(super) external_types: Vec<crate::host::HostExternalTypeSchema>,
     pub(super) values: Vec<(
@@ -35,7 +40,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
         never_functions: &'data [HostedFunctionMetadata],
         hosts: HostProviderSet<Profile>,
     ) -> Result<Self, NativeError> {
-        let (modules, providers, implementations) = hosts.into_registered();
+        let (modules, providers, callables, implementations) = hosts.into_registered();
         let mut external_types = Vec::new();
         let sources = modules
             .into_iter()
@@ -43,7 +48,15 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 let (package, module, functions) = module.into_parts();
                 (package, module, functions, Vec::new())
             })
-            .chain(providers.into_iter().map(|module| module.into_parts()));
+            .chain(providers.into_iter().map(|module| module.into_parts()))
+            .chain(callables.into_iter().map(|callable| {
+                (
+                    callable.identity.package,
+                    callable.identity.module,
+                    vec![callable.function],
+                    Vec::new(),
+                )
+            }));
         let mut registrations = Vec::new();
         let mut index = HashMap::new();
         for (package, module, functions, schemas) in sources {
@@ -54,6 +67,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                     package.to_string(),
                     module.to_string(),
                     schema.name().to_string(),
+                    schema.is_callable(),
                 );
                 let slot = registrations.len();
                 index.insert(key, (slot, implementation));
@@ -68,6 +82,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 metadata.package().to_string(),
                 metadata.module().to_string(),
                 metadata.name().to_string(),
+                metadata.registration.callable,
             );
             let failure = |reason| NativeError::Registration {
                 package: key.0.clone(),
@@ -104,6 +119,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
             nevers.push((metadata, implementation.clone(), slot));
         }
         Ok(Self {
+            callable_bindings: RefCell::new(HashMap::new()),
             registrations,
             external_types,
             values,

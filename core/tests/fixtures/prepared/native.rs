@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 2,
+        format: 3,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2311,8 +2311,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::BitArrayFunctionId(1),
@@ -2330,8 +2332,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             utf_codepoints: data::Storage::Static(&[]),
@@ -2356,8 +2360,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::TupleFunctionId(1),
@@ -2375,11 +2381,14 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             lists: data::Storage::Static(&[]),
+            functions: data::Storage::Static(&[]),
         },
         exports: data::Storage::Static(&[
             data::Export {
@@ -2433,6 +2442,7 @@ data::HostedModuleArtifact {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
             signature: data::type_::FunctionMetadata {
@@ -2497,6 +2507,7 @@ data::HostedModuleArtifact {
                         },
                     })),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -2592,6 +2603,7 @@ data::HostedModuleArtifact {
                         },
                     ]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -2606,6 +2618,9 @@ data::HostedModuleArtifact {
                     data::host::RegistrationType::Parameter(0),
                     data::host::RegistrationType::Parameter(1),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::Bool,
                 layout: data::Storage::Static(&[
                     data::host::RegistrationParameter::Value(0),
@@ -2694,6 +2709,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
             signature: data::type_::FunctionMetadata {
@@ -2742,6 +2758,7 @@ data::HostedModuleArtifact {
                         ]),
                     }),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -2846,6 +2863,7 @@ data::HostedModuleArtifact {
                         },
                     ]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -2866,6 +2884,9 @@ data::HostedModuleArtifact {
                     data::host::RegistrationType::Parameter(0),
                     data::host::RegistrationType::Parameter(1),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::Bool,
                 layout: data::Storage::Static(&[
                     data::host::RegistrationParameter::Value(0),
@@ -2954,6 +2975,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "fold", data::source::SourceSpan::new(178, 225)),
             signature: data::type_::FunctionMetadata {
@@ -2985,6 +3007,7 @@ data::HostedModuleArtifact {
                     },
                     data::host::HostCallParameter::Int(data::graph::IntLocalId(0)),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3000,6 +3023,7 @@ data::HostedModuleArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3024,6 +3048,9 @@ data::HostedModuleArtifact {
                     },
                     data::host::RegistrationType::Int,
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::Int,
                 layout: data::Storage::Static(&[
                     data::host::RegistrationParameter::Function {
@@ -3041,6 +3068,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
             signature: data::type_::FunctionMetadata {
@@ -3089,6 +3117,7 @@ data::HostedModuleArtifact {
                         ]),
                     }),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3193,6 +3222,7 @@ data::HostedModuleArtifact {
                         },
                     ]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3213,6 +3243,9 @@ data::HostedModuleArtifact {
                     data::host::RegistrationType::Parameter(0),
                     data::host::RegistrationType::Parameter(1),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::Bool,
                 layout: data::Storage::Static(&[
                     data::host::RegistrationParameter::Value(0),
@@ -3301,6 +3334,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "keep_bits", data::source::SourceSpan::new(275, 304)),
             signature: data::type_::FunctionMetadata {
@@ -3314,6 +3348,7 @@ data::HostedModuleArtifact {
                 call: data::Storage::Static(&[
                     data::host::HostCallParameter::BitArray(data::graph::BitArrayLocalId(0)),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3329,6 +3364,7 @@ data::HostedModuleArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3341,6 +3377,9 @@ data::HostedModuleArtifact {
                 parameters: data::Storage::Static(&[
                     data::host::RegistrationType::BitArray,
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::BitArray,
                 layout: data::Storage::Static(&[
                     data::host::RegistrationParameter::BitArray(0),
@@ -3355,4 +3394,5 @@ data::HostedModuleArtifact {
         },
     ]),
     never_functions: data::Storage::Static(&[]),
+    callables: data::Storage::Static(&[]),
 }

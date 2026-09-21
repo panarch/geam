@@ -1,6 +1,6 @@
 mod field;
 
-pub use field::HostCustomTypeArgument;
+pub use field::{HostCustomTypeArgument, HostNominalCustomField};
 
 use super::{
     HostAbiTypeSequence, HostCustomIdentity, HostType, HostTypeDescriptor, HostTypeList,

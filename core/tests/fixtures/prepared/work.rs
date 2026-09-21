@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 2,
+        format: 3,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -3197,8 +3197,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::CustomFunctionId {
@@ -3222,8 +3224,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             externals: data::Storage::Static(&[
@@ -3246,8 +3250,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3268,8 +3274,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3290,8 +3298,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3312,8 +3322,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3334,8 +3346,10 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             bools: data::Storage::Static(&[]),
@@ -3357,11 +3371,14 @@ data::HostedModuleArtifact {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             lists: data::Storage::Static(&[]),
+            functions: data::Storage::Static(&[]),
         },
         exports: data::Storage::Static(&[
             data::Export {
@@ -3517,6 +3534,7 @@ data::HostedModuleArtifact {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "ready", data::source::SourceSpan::new(60, 86)),
             signature: data::type_::FunctionMetadata {
@@ -3542,6 +3560,7 @@ data::HostedModuleArtifact {
                 call: data::Storage::Static(&[
                     data::host::HostCallParameter::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3566,6 +3585,7 @@ data::HostedModuleArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3578,6 +3598,9 @@ data::HostedModuleArtifact {
                 parameters: data::Storage::Static(&[
                     data::host::RegistrationType::Parameter(0),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3608,6 +3631,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "map", data::source::SourceSpan::new(139, 187)),
             signature: data::type_::FunctionMetadata {
@@ -3665,6 +3689,7 @@ data::HostedModuleArtifact {
                         arity: 1,
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3689,6 +3714,7 @@ data::HostedModuleArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3723,6 +3749,9 @@ data::HostedModuleArtifact {
                         return_: data::Storage::Static(&data::host::RegistrationType::Parameter(0)),
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3757,6 +3786,7 @@ data::HostedModuleArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "all", data::source::SourceSpan::new(325, 358)),
             signature: data::type_::FunctionMetadata {
@@ -3795,6 +3825,7 @@ data::HostedModuleArtifact {
                         },
                     })),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3837,6 +3868,7 @@ data::HostedModuleArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3859,6 +3891,9 @@ data::HostedModuleArtifact {
                         ]),
                     })),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3892,4 +3927,5 @@ data::HostedModuleArtifact {
         },
     ]),
     never_functions: data::Storage::Static(&[]),
+    callables: data::Storage::Static(&[]),
 }

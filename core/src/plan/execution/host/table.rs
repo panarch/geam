@@ -1,16 +1,20 @@
-use super::{HostFunctionId, HostNeverFunctionId, HostedNeverFunction, HostedValueFunction};
-use crate::host::HostProfile;
+use super::{HostFunctionId, HostNeverFunctionId, HostedFunction};
 use crate::plan::execution::function::ExecutionFunctionBody;
 
-pub(crate) struct HostFunctionTables<Profile: HostProfile> {
-    value_functions: Box<[HostedValueFunction<Profile>]>,
-    never_functions: Box<[HostedNeverFunction<Profile>]>,
+pub(crate) struct HostBindingTables<Value, Never> {
+    value_functions: Box<[HostedFunction<Value>]>,
+    never_functions: Box<[HostedFunction<Never>]>,
 }
 
-impl<Profile: HostProfile> HostFunctionTables<Profile> {
+pub(crate) type HostFunctionTables<Profile> = HostBindingTables<
+    crate::host::HostValueFunction<Profile>,
+    crate::host::HostNeverFunction<Profile>,
+>;
+
+impl<Value, Never> HostBindingTables<Value, Never> {
     pub(in crate::plan::execution) fn new(
-        value_functions: Box<[HostedValueFunction<Profile>]>,
-        never_functions: Box<[HostedNeverFunction<Profile>]>,
+        value_functions: Box<[HostedFunction<Value>]>,
+        never_functions: Box<[HostedFunction<Never>]>,
     ) -> Self {
         Self {
             value_functions,
@@ -21,11 +25,11 @@ impl<Profile: HostProfile> HostFunctionTables<Profile> {
     pub(crate) fn value<Body: ExecutionFunctionBody>(
         &self,
         id: &HostFunctionId<Body>,
-    ) -> &HostedValueFunction<Profile> {
+    ) -> &HostedFunction<Value> {
         &self.value_functions[id.index()]
     }
 
-    pub(crate) fn never(&self, id: HostNeverFunctionId) -> &HostedNeverFunction<Profile> {
+    pub(crate) fn never(&self, id: HostNeverFunctionId) -> &HostedFunction<Never> {
         &self.never_functions[id.index()]
     }
 
@@ -50,12 +54,12 @@ impl<Profile: HostProfile> HostFunctionTables<Profile> {
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn value_functions(&self) -> &[HostedValueFunction<Profile>] {
+    pub(in crate::plan::execution) fn value_functions(&self) -> &[HostedFunction<Value>] {
         &self.value_functions
     }
 
     #[cfg(test)]
-    pub(in crate::plan::execution) fn never_functions(&self) -> &[HostedNeverFunction<Profile>] {
+    pub(in crate::plan::execution) fn never_functions(&self) -> &[HostedFunction<Never>] {
         &self.never_functions
     }
 }

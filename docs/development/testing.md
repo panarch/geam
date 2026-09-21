@@ -46,7 +46,10 @@ without adding a production runtime dependency to the
 proc-macro crate. They fix generated schemas and stores, constructor and field
 metadata, mixed custom/external/scalar List items, pass-through versus Vec
 construction, source equality, inspection, escaped payload lifetime, and
-structured linkage mismatch. A separately locked two-crate fixture proves that
+structured linkage mismatch. Callable owner targets also cover private native
+construction, nested callbacks and explicit work, generic custom captures,
+phantom parameters, non-Clone payload retention, and once-only lifecycle effects.
+A separately locked two-crate fixture proves that
 the same static custom/external declaration protocol compiles, links, and runs
 across crate boundaries. Consumer fixtures do not replace these owner tests.
 
@@ -206,7 +209,8 @@ The independent `tests/fixtures/provider_sdk` Cargo workspace verifies the
 public path-provider boundary without adding its crates to Geam's development
 dependencies. Its `runner/tests/public_usage.rs` keeps the complete Gleam
 source, explicit component configuration, generated-like profile, provider
-composition, hosted pipeline, expected value, and state assertions visible as
+composition, native function construction/return/invocation, hosted pipeline,
+expected value, and state assertions visible as
 one executable example.
 
 ```sh
@@ -240,7 +244,8 @@ for example in \
   async_host \
   session \
   processes \
-  prepared
+  prepared \
+  callables
 do
   (
     export CARGO_TARGET_DIR="$PWD/target"
@@ -259,6 +264,14 @@ It loads an independently locked macro-authored file provider, creates work
 through ordinary Gleam source, drives it using the application's Tokio
 executor, and observes its completion again. Its binary test fixes stdout and
 stderr alongside an ordinary value-returning call in the same execution.
+
+The `callables` example shares an app-local declaration module with preparation
+and binds real Rust bodies from ordinary application modules. It constructs a
+capturing function, passes it through a private Gleam custom value and a generic
+source wrapper, and compares exact dynamic/prepared output. The
+`prepared_embedding` acceptance target copies that consumer, checks declaration
+drift and repeated generation without lock changes, then removes the original
+application and runs its relocated prepared binary with an empty PATH.
 
 The `session` example returns an opaque source value with a private closure,
 retains it in Rust, and passes it back through generated bindings. It requires
@@ -376,7 +389,7 @@ default features and release profile. It uploads that executable as a workflow
 artifact for the Linux embedding jobs. Each consumer downloads the same binary
 and restores its executable permission; it does not install another CLI.
 
-The `Embedding examples` matrix runs the nine guided examples in three groups.
+The `Embedding examples` matrix runs the ten guided examples in three groups.
 Each group checks, formats, tests, and lints its examples sequentially. Their
 integration tests execute each binary and compare exact output. Each example
 has a separate log section; a failure stops that example's remaining commands
@@ -450,7 +463,9 @@ semantics. `request_ids` combines mutable and read-only default state,
 `feature_flags` owns configured initialization, and `run_metrics` retains
 specialized manual external semantics. `call_tracing` verifies typed callback
 return identity, same-component re-entry, exact state ordering, and fresh state
-on repeated runs. `generic_box` verifies typed retention, cross-type
+on repeated runs. `callables` verifies Rust-created capturing functions,
+generic constants and wrappers, alias identity, and custom-held reply callbacks.
+`generic_box` verifies typed retention, cross-type
 replacement, source semantics, and callback mapping without materialization.
 `native_records` verifies declared symbols and records through actual stdlib
 Dynamic decoding, bidirectional equality, dictionary key hashing, inspection,
@@ -490,12 +505,12 @@ This test requires Erlang/OTP as well as Gleam; CI supplies OTP `29`. The native
 Erlang source is included in the exported Hex package.
 
 CI formats, tests, lints, and packages every independent example provider. The
-eleven macro examples select the current unreleased authoring surface through
+twelve macro examples select the current unreleased authoring surface through
 repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the ten
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the eleven
 provider examples other than `async_files` in four matrix groups of two or
 three examples. Groups balance observed execution times rather than following
 the guide's reading order. For each example, the job selects its exact
@@ -522,7 +537,7 @@ those isolated runner artifacts are not shared or cached between jobs.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and the same ten example Gleam packages. It also packages the
+Gleam dependencies and the same eleven example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No test-only
 fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
@@ -535,7 +550,7 @@ The root package keeps seven explicit acceptance targets:
 - `cross_crate_http` proves that the Pure Gleam `gleam_http` package works
   through the root facade and stdlib composition. HTTP is not a Geam built-in
   and has no provider crate.
-- `provider_examples` executes the eleven documented provider projects through
+- `provider_examples` executes the twelve documented provider projects through
   the real binary and generated runners.
 - `future_builtins` composes a macro-authored asynchronous provider with stdlib,
   JSON, and Time in a caller-driven Rust embedding scope.
@@ -673,7 +688,7 @@ cargo test --package geam --test provider_examples --locked -- \
   --exact runs_the_documented_text_tools_provider_across_three_modules
 ```
 
-The unfiltered `provider_examples` command runs all eleven examples locally.
+The unfiltered `provider_examples` command runs all twelve examples locally.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan

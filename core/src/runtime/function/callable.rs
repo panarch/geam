@@ -27,6 +27,58 @@ pub(in crate::runtime) enum InvocableFunctionValue {
 }
 
 impl InvocableFunctionValue {
+    pub(in crate::runtime) fn closure(
+        target: crate::plan::execution::function::RuntimeFunctionId,
+        params: Vec<crate::plan::execution::graph::ParamLocal>,
+        captures: crate::runtime::captures::Captures,
+        type_: crate::plan::execution::type_::FunctionType,
+    ) -> Self {
+        use crate::plan::execution::function::{
+            CoreRuntimeFunctionId as C, RuntimeFunctionFunctionTarget as F, RuntimeFunctionId as R,
+        };
+        use crate::runtime::evaluated::EvaluatedFunction;
+        match target {
+            R::External(id) => {
+                Self::External(EvaluatedFunction::closure(id, params, captures, type_))
+            }
+            R::Core(id) => match id {
+                C::Never(id) => {
+                    Self::Never(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::Int(id) => Self::Int(EvaluatedFunction::closure(id, params, captures, type_)),
+                C::Float(id) => {
+                    Self::Float(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::String(id) => {
+                    Self::String(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::BitArray(id) => {
+                    Self::BitArray(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::UtfCodepoint(id) => {
+                    Self::UtfCodepoint(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::Bool(id) => Self::Bool(EvaluatedFunction::closure(id, params, captures, type_)),
+                C::Nil(id) => Self::Nil(EvaluatedFunction::closure(id, params, captures, type_)),
+                C::List(id) => Self::List(EvaluatedFunction::closure(id, params, captures, type_)),
+                C::Custom(id) => Self::Custom(EvaluatedCustomFunction::Function(
+                    EvaluatedFunction::closure(id, params, captures, type_),
+                )),
+                C::Tuple { id, .. } => {
+                    Self::Tuple(EvaluatedFunction::closure(id, params, captures, type_))
+                }
+                C::Function { id, .. } => Self::Function(match id {
+                    F::Core(id) => EvaluatedFunctionFunction::Core(EvaluatedFunction::closure(
+                        id, params, captures, type_,
+                    )),
+                    F::External(id) => EvaluatedFunctionFunction::External(
+                        EvaluatedFunction::closure(id, params, captures, type_),
+                    ),
+                }),
+            },
+        }
+    }
+
     pub(in crate::runtime) fn into_evaluated(self) -> EvaluatedFunctionValue {
         match self {
             Self::Never(function) => function.into(),
@@ -61,7 +113,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
     macro_rules! source {
         ($function:expr, $map:expr) => {{
             let function = $function;
-            let inputs = callable_inputs(arguments, function.captures());
+            let inputs = callable_inputs(arguments, function.capture_frame());
             Invocation::execution(plan, function.runtime_id(), origin, inputs)
                 .map(|value| Ok(($map)(value)))
         }};
@@ -69,7 +121,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
 
     match function {
         InvocableFunctionValue::Never(function) => {
-            let inputs = callable_inputs(arguments, function.captures());
+            let inputs = callable_inputs(arguments, function.capture_frame());
             Invocation::execution(plan, function.runtime_id(), origin, inputs)
                 .map(|never| match never {})
         }
@@ -96,7 +148,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
         InvocableFunctionValue::Nil(function) => source!(function, |()| EvaluatedValue::Nil),
         InvocableFunctionValue::Tuple(function) => source!(function, EvaluatedValue::Tuple),
         InvocableFunctionValue::List(function) => {
-            let inputs = callable_inputs(arguments, function.captures());
+            let inputs = callable_inputs(arguments, function.capture_frame());
             macro_rules! list {
                 ($id:expr, $variant:ident) => {
                     Invocation::execution(plan, $id, origin, inputs)
@@ -131,7 +183,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
             }
             match function {
                 EvaluatedFunctionFunction::Core(function) => {
-                    let inputs = callable_inputs(arguments, function.captures());
+                    let inputs = callable_inputs(arguments, function.capture_frame());
                     match function.runtime_id() {
                         ProfiledFunctionFunctionId::Generic(id) => returned_function!(id, inputs),
                         ProfiledFunctionFunctionId::Never(id) => returned_function!(id, inputs),
@@ -152,7 +204,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
                     }
                 }
                 EvaluatedFunctionFunction::External(function) => {
-                    let inputs = callable_inputs(arguments, function.captures());
+                    let inputs = callable_inputs(arguments, function.capture_frame());
                     match function.runtime_id() {
                         crate::plan::execution::graph::ExternalFunctionCallTarget::Function(id) => returned_function!(id, inputs),
                         crate::plan::execution::graph::ExternalFunctionCallTarget::ListFunction { id, .. } => returned_function!(id, inputs),
@@ -165,7 +217,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
 
 pub(in crate::runtime) fn callable_inputs(
     arguments: Box<[EvaluatedValue]>,
-    captures: &[crate::runtime::evaluated::EvaluatedCapture],
+    captures: &crate::runtime::captures::Captures,
 ) -> RetainedValues {
     let mut inputs = RetainedValues::empty();
     for value in arguments {

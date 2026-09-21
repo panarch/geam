@@ -9,11 +9,13 @@ use crate::runtime::{ObservationError, SharedExecutionError};
 use std::sync::Arc;
 
 /// Typed function calls within one host-driven execution lifetime.
-pub struct ExecutionScope<'scope, 'module, Profile: HostProfile> {
-    context: EntryContext<Profile>,
+pub struct ExecutionScope<'scope, 'module: 'scope, Profile: HostProfile> {
+    pub(super) context: EntryContext<Profile>,
     entries: &'module crate::plan::execution::LibraryFunctionEntries,
-    owner: &'module Arc<()>,
-    brand: ScopeBrand<'scope>,
+    pub(super) owner: &'module Arc<()>,
+    pub(super) brand: ScopeBrand<'scope>,
+    pub(super) native_callables: &'module [crate::plan::execution::LibraryNativeConstruction],
+    pub(super) captures: crate::runtime::CaptureStorage,
 }
 
 impl<Profile: HostProfile> HostedModule<Profile> {
@@ -43,12 +45,14 @@ impl<Profile: HostProfile> HostedModule<Profile> {
             entries: &self.entries,
             owner: &self.owner,
             brand: ScopeBrand::new(),
+            native_callables: &self.native_callables,
+            captures: domain.context().captures().clone(),
         };
         domain.drive(run(scope)).await
     }
 }
 
-impl<'scope, Profile: HostProfile> ExecutionScope<'scope, '_, Profile> {
+impl<'scope, 'module: 'scope, Profile: HostProfile> ExecutionScope<'scope, 'module, Profile> {
     /// Executes one selected function. Dropping the returned Rust Future cancels its entry.
     ///
     /// A source Future result is returned as a value; call does not observe it.
@@ -81,7 +85,15 @@ impl<'scope, Profile: HostProfile> ExecutionScope<'scope, '_, Profile> {
                 .retain_outputs(|stores| Return::retain(stores))
                 .await
                 .map_err(|_| CallError::Cancelled)?;
-            let context = Return::context(self.brand, retention, self.owner);
+            let context = Return::context(
+                self.brand,
+                retention,
+                self.owner,
+                &mut super::callable::OutputCallables::new(Return::output_callables(
+                    self.entries,
+                    slot,
+                )),
+            );
             Return::call(&self.context, self.entries, slot, inputs, context).await
         }
     }
@@ -139,6 +151,188 @@ mod tests {
             .unwrap(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn native_captures_and_callable_inputs_reject_lists_from_another_loaded_owner() {
+        use crate::{HostCallableSchema, HostReturns, HostTypeList, HostTypeListEnd};
+        struct Profile;
+        impl crate::HostProfile for Profile {
+            type RunState = std::cell::Cell<usize>;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl crate::HostProvider<Profile> for Profile {
+            type State = std::cell::Cell<usize>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        use crate::embedding::{
+            CallError, CallableType, FunctionDeclaration, HostedModuleBuilder, List,
+        };
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCaptures, HostConstructions, HostList,
+            HostListType,
+        };
+        type End = HostTypeListEnd;
+        type One<T> = HostTypeList<T, End>;
+        type Lists = HostListType<BigInt>;
+        struct Lengths;
+        impl HostCallableSchema for Lengths {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "callbacks";
+            const NAME: &'static str = "lengths";
+            type Arguments = One<Lists>;
+            type Return = BigInt;
+            type Captures = One<Lists>;
+            type Constructions = End;
+            type Completion = HostReturns;
+        }
+        fn lengths<'call>(
+            mut call: HostCall<'call, Profile, Profile, BigInt>,
+            captures: HostCaptures<'call, One<Lists>>,
+            _: HostConstructions<'call, End>,
+            values: HostList<'call, BigInt>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let (captured, ()) = call.captures(captures);
+            let state = call.state();
+            state.set(state.get() + 1);
+            let count = call.list_len(captured) + call.list_len(values);
+            Ok(call.return_value(count.into()))
+        }
+        let build = || {
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "library",
+                [crate::PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new(
+                        "library",
+                        "library.gleam",
+                        r#"
+pub fn values() { [1, 2, 3] }
+pub fn first() { fn(values: List(Int)) { case values { [head, ..] -> head [] -> panic as "empty callback input" } } }
+pub fn empty() -> List(Int) { [] }
+"#,
+                    )],
+                )],
+                crate::HostProviderSet::new([])
+                    .unwrap()
+                    .with_callable::<Profile, Lengths, (Lists,), _>(lengths)
+                    .unwrap(),
+            )
+            .unwrap();
+            let (mut bindings, values) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("values"))
+                .unwrap();
+            let first = bindings
+                .function(FunctionDeclaration::<
+                    (),
+                    CallableType<(List<BigInt>,), BigInt>,
+                >::new("first"))
+                .unwrap();
+            let factory = bindings.callable::<Lengths>().unwrap();
+            let empty = bindings
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))
+                .unwrap();
+            (bindings.seal().unwrap(), values, first, factory, empty)
+        };
+        let host = crate::execution_fixture::TestHost::default();
+        let (mut foreign, values, _, foreign_factory, _) = build();
+        let foreign_values = host
+            .block_on(foreign.with_execution(
+                &host,
+                &mut std::cell::Cell::new(0),
+                &mut drop,
+                async |scope| scope.call(&values, ()).await.unwrap(),
+            ))
+            .unwrap();
+        let (mut module, values, first, factory, empty) = build();
+        let mut calls = std::cell::Cell::new(0);
+        let own_values = host
+            .block_on(
+                module.with_execution(&host, &mut calls, &mut drop, async |scope| {
+                    assert_eq!(
+                        scope
+                            .construct(&foreign_factory, (&foreign_values, ()))
+                            .err(),
+                        Some(CallError::ForeignFunction)
+                    );
+                    assert_eq!(
+                        scope.construct(&factory, (&foreign_values, ())).err(),
+                        Some(CallError::ForeignValue)
+                    );
+                    let first = scope.call(&first, ()).await.unwrap();
+                    let empty = scope.call(&empty, ()).await.unwrap();
+                    assert_eq!(
+                        scope
+                            .invoke(&first, (&empty,))
+                            .await
+                            .err()
+                            .unwrap()
+                            .to_string(),
+                        "panic: empty callback input"
+                    );
+                    assert_eq!(
+                        scope.invoke(&first, (&foreign_values,)).await,
+                        Err(CallError::ForeignValue)
+                    );
+                    let own = scope.call(&values, ()).await.unwrap();
+                    let callable = scope.construct(&factory, (&own, ())).unwrap();
+                    assert_eq!(
+                        scope.invoke(&callable, (&own,)).await.unwrap(),
+                        BigInt::from(6)
+                    );
+                    assert_eq!(
+                        scope.invoke(&first, (&own,)).await.unwrap(),
+                        BigInt::from(1)
+                    );
+                    own
+                }),
+            )
+            .unwrap();
+        assert_eq!(calls.get(), 1);
+
+        use super::{ExecutionScope, ScopeBrand};
+        use crate::runtime::execution::Domain;
+        use std::{
+            future::Future,
+            sync::Arc,
+            task::{Context, Poll, Waker},
+        };
+        let mut echoes = Vec::new();
+        let (plan, stores, captures) = module.execution.parts_mut();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut calls,
+            stores,
+            &mut echoes,
+            captures.clone(),
+            Domain::<Profile>::DEFAULT_BUDGET,
+        );
+        let scope = ExecutionScope {
+            context: domain.context(),
+            entries: &module.entries,
+            owner: &module.owner,
+            brand: ScopeBrand::new(),
+            native_callables: &module.native_callables,
+            captures: domain.context().captures().clone(),
+        };
+        let callable = scope.construct(&factory, (&own_values, ())).unwrap();
+        let mut invocation = std::pin::pin!(scope.invoke(&callable, (&own_values,)));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(invocation.as_mut().poll(&mut cx).is_pending());
+        drop(domain);
+        assert_eq!(
+            invocation.as_mut().poll(&mut cx),
+            Poll::Ready(Err(CallError::Cancelled))
+        );
+        assert_eq!(calls.get(), 1);
+        assert!(echoes.is_empty());
     }
 
     #[test]
@@ -306,6 +500,149 @@ mod plain_outputs {
     }
 
     #[test]
+    fn callable_factories_and_invocations_keep_the_original_source_failure() {
+        use crate::embedding::CallableType;
+        let (mut bindings, failed_factory) = HostedModuleBuilder::new(program(
+            r#"
+pub fn failed_factory() -> fn() -> Int { panic as "factory stopped" }
+pub fn failed_body() { fn() -> Int { panic as "body stopped" } }
+"#,
+        ))
+        .unwrap()
+        .function(FunctionDeclaration::<(), CallableType<(), BigInt>>::new(
+            "failed_factory",
+        ))
+        .unwrap();
+        let failed_body = bindings
+            .function(FunctionDeclaration::<(), CallableType<(), BigInt>>::new(
+                "failed_body",
+            ))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                assert_eq!(
+                    scope
+                        .call(&failed_factory, ())
+                        .await
+                        .err()
+                        .unwrap()
+                        .to_string(),
+                    "panic: factory stopped"
+                );
+                let callback = scope.call(&failed_body, ()).await.unwrap();
+                assert_eq!(
+                    scope.invoke(&callback, ()).await.unwrap_err().to_string(),
+                    "panic: body stopped"
+                );
+            }),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn closing_the_domain_cancels_native_invocation_waiting_for_output_retention() {
+        use super::{Domain, ExecutionScope, ScopeBrand};
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCallableSchema, HostCaptures,
+            HostConstructions, HostProvider, HostReturns, HostTypeListEnd,
+        };
+        use std::{
+            future::Future,
+            sync::Arc,
+            task::{Context, Poll, Waker},
+        };
+        struct Constant;
+        impl HostCallableSchema for Constant {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "constant";
+            type Arguments = HostTypeListEnd;
+            type Return = BigInt;
+            type Captures = HostTypeListEnd;
+            type Constructions = HostTypeListEnd;
+            type Completion = HostReturns;
+        }
+        impl HostProvider<Profile> for Constant {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn constant<'call>(
+            mut call: HostCall<'call, Profile, Constant, BigInt>,
+            _: HostCaptures<'call, HostTypeListEnd>,
+            _: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            Ok(call.return_value(42.into()))
+        }
+        let typed = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new(
+                    "library",
+                    "library.gleam",
+                    "pub fn run() { 42 }",
+                )],
+            )],
+            HostProviderSet::new([])
+                .unwrap()
+                .with_callable::<Constant, Constant, (), _>(constant)
+                .unwrap(),
+        )
+        .unwrap();
+        let (mut bindings, _) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("run"))
+            .unwrap();
+        let factory = bindings.callable::<Constant>().unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                let callback = scope.construct(&factory, ()).unwrap();
+                assert_eq!(scope.invoke(&callback, ()).await.unwrap(), BigInt::from(42));
+            }),
+        )
+        .unwrap();
+        let mut state = ();
+        let mut echo = Echo::default();
+        let (plan, stores, captures) = module.execution.parts_mut();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<Profile>::DEFAULT_BUDGET,
+        );
+        let scope = ExecutionScope {
+            context: domain.context(),
+            entries: &module.entries,
+            owner: &module.owner,
+            brand: ScopeBrand::new(),
+            native_callables: &module.native_callables,
+            captures: domain.context().captures().clone(),
+        };
+        let callback = scope.construct(&factory, ()).unwrap();
+        let mut invocation = std::pin::pin!(scope.invoke(&callback, ()));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(invocation.as_mut().poll(&mut cx).is_pending());
+        drop(domain);
+        assert_eq!(
+            invocation.as_mut().poll(&mut cx),
+            Poll::Ready(Err(CallError::Cancelled))
+        );
+        assert!(echo.0.is_empty());
+    }
+
+    #[test]
     fn closing_the_domain_cancels_a_call_waiting_for_output_retention() {
         use super::{Domain, ExecutionScope, ScopeBrand};
         use std::future::Future;
@@ -338,6 +675,8 @@ mod plain_outputs {
             entries: &module.entries,
             owner: &module.owner,
             brand: ScopeBrand::new(),
+            native_callables: &module.native_callables,
+            captures: domain.context().captures().clone(),
         };
         let mut call = std::pin::pin!(scope.call(&run, (vec![StringValue::from("retained")],)));
         let mut cx = Context::from_waker(Waker::noop());
@@ -347,6 +686,91 @@ mod plain_outputs {
             call.as_mut().poll(&mut cx).map(Result::err),
             Poll::Ready(Some(CallError::Cancelled))
         );
+        assert!(echo.0.is_empty());
+    }
+
+    #[test]
+    fn closing_the_domain_cancels_each_named_callable_entry_before_source_effects() {
+        use crate::embedding::{BitArrayValue, CallableType, CustomType, NamedTypeSchema};
+        use crate::runtime::{RetainedInputs, execution::Domain};
+        use std::{
+            future::Future,
+            sync::Arc,
+            task::{Context, Poll, Waker},
+        };
+
+        struct Empty;
+        impl NamedTypeSchema for Empty {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "Empty";
+        }
+        let (mut bindings, _) = HostedModuleBuilder::new(program(
+            r#"
+pub type Empty { Again(Empty) }
+pub fn ints() { echo "entered" fn() { 42 } }
+pub fn floats() { echo "entered" fn() { 1.5 } }
+pub fn strings() { echo "entered" fn() { "value" } }
+pub fn bits() { echo "entered" fn() { <<42>> } }
+pub fn codepoints() { echo "entered" fn(value: UtfCodepoint) { value } }
+pub fn bools() { echo "entered" fn() { True } }
+pub fn nils() { echo "entered" fn() { Nil } }
+pub fn tuples() { echo "entered" fn() { #(42, "value") } }
+pub fn choices() { echo "entered" fn() -> Result(Int, Bool) { Ok(42) } }
+pub fn lists() { echo "entered" fn() { [42] } }
+pub fn functions() { echo "entered" fn() { fn() { 42 } } }
+pub fn empty() -> fn() -> Empty { echo "entered" fn() { panic as "unused" } }
+"#,
+        ))
+        .unwrap()
+        .function(FunctionDeclaration::<(), CallableType<(), BigInt>>::new(
+            "ints",
+        ))
+        .unwrap();
+        macro_rules! bind {
+            ($name:literal, $args:ty, $return:ty) => {
+                bindings
+                    .function(FunctionDeclaration::<(), CallableType<$args, $return>>::new($name))
+                    .unwrap();
+            };
+        }
+        bind!("floats", (), f64);
+        bind!("strings", (), StringValue);
+        bind!("bits", (), BitArrayValue);
+        bind!("codepoints", (char,), char);
+        bind!("bools", (), bool);
+        bind!("nils", (), ());
+        bind!("tuples", (), (BigInt, StringValue));
+        bind!("choices", (), Result<BigInt, bool>);
+        bind!("lists", (), List<BigInt>);
+        bind!("functions", (), CallableType<(), BigInt>);
+        bind!("empty", (), CustomType<Empty>);
+        let mut module = bindings.seal().unwrap();
+        assert_eq!(module.entries.functions.len(), 12);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut state = ();
+        let mut echo = Echo::default();
+        let (plan, stores, captures) = module.execution.parts_mut();
+        for entry in module.entries.functions.iter() {
+            let domain = Domain::new(
+                Arc::clone(plan),
+                &host,
+                &mut state,
+                stores,
+                &mut echo,
+                captures.clone(),
+                Domain::<Profile>::DEFAULT_BUDGET,
+            );
+            let context = domain.context();
+            let mut call = std::pin::pin!(entry.function.call(&context, RetainedInputs::empty()));
+            let mut cx = Context::from_waker(Waker::noop());
+            assert!(call.as_mut().poll(&mut cx).is_pending());
+            drop(domain);
+            assert_eq!(
+                call.as_mut().poll(&mut cx).map(Result::err),
+                Poll::Ready(Some(CallError::Cancelled))
+            );
+        }
         assert!(echo.0.is_empty());
     }
 

@@ -1,3 +1,5 @@
+pub mod work_values;
+
 #[geam_macros::provider(
     package = "macro_declarations",
     modules = [values],
@@ -67,5 +69,24 @@ pub mod values {
         Ready,
         Count(BigInt),
         Tagged(Token),
+    }
+
+    #[geam_macros::callable(factory = AddOffset)]
+    pub fn add_offset(#[geam_macros::capture] offset: BigInt, value: BigInt) -> BigInt {
+        offset + value
+    }
+
+    #[geam_macros::callable(factory = DelayedOffset)]
+    pub async fn delayed_offset(#[geam_macros::capture] offset: BigInt, value: BigInt) -> BigInt {
+        offset + value
+    }
+
+    #[geam_macros::callable(factory = StatusText, await)]
+    pub async fn status_text(#[geam_macros::capture] value: StatusInput) -> StringValue {
+        match value {
+            StatusInput::Ready => "ready".into(),
+            StatusInput::Count(value) => format!("count:{value}").into(),
+            StatusInput::Tagged(value) => value.with(|token| token.0.clone()),
+        }
     }
 }

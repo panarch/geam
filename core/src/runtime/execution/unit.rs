@@ -605,6 +605,197 @@ fn invoke(callback: fn() -> Int) -> Int
     }
 
     #[test]
+    fn native_spawn_survives_its_creator_and_reports_completion_failure_and_shutdown() {
+        use crate::{
+            HostCallableSchema, HostCaptures, HostCreatedFunction, HostFailure, HostReturns,
+            HostTypeIndex0, HostTypeList,
+        };
+        type End = HostTypeListEnd;
+        type Captures = HostTypeList<BigInt, HostTypeList<bool, End>>;
+        type Constructions = HostTypeList<HostCreatedFunction<Child>, End>;
+        struct Child;
+        impl HostCallableSchema for Child {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "child";
+            type Arguments = End;
+            type Return = BigInt;
+            type Captures = Captures;
+            type Constructions = End;
+            type Completion = HostReturns;
+        }
+        fn launch<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            constructions: HostConstructions<'call, Constructions>,
+            value: BigInt,
+            fails: bool,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let callback =
+                call.construct_function(constructions.at::<HostTypeIndex0>(), (value, (fails, ())));
+            let child = call.spawn(callback);
+            let index = call
+                .execution_state()
+                .units
+                .iter()
+                .position(|unit| unit.id() == child.id())
+                .unwrap();
+            Ok(call.return_value(index.into()))
+        }
+        fn child<'call>(
+            mut call: HostCall<'call, Profile, Provider, BigInt>,
+            captures: HostCaptures<'call, Captures>,
+            constructions: HostConstructions<'call, End>,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let (value, (fails, ())) = call.captures(captures);
+            let gate = call.state().gate.take().unwrap();
+            let ready = call.state().ready.take().unwrap();
+            Ok(call.resume(constructions, move |_| {
+                Box::pin(async move {
+                    ready.send(()).unwrap();
+                    gate.await.unwrap();
+                    if fails {
+                        Err(HostFailure::new(format!("native child {value}")).into())
+                    } else {
+                        Ok(HostOwnedCompletion::new(move |call, _| {
+                            Ok(call.return_value(value))
+                        }))
+                    }
+                })
+            }))
+        }
+
+        for (fails, close_pending) in [(false, false), (true, false), (false, true)] {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_scoped_function_and_constructions::<
+                    Provider, (BigInt, bool), BigInt, Constructions, _,
+                >("launch", launch)
+                .unwrap()
+                .with_scoped_function::<Provider, (), BigInt, _>("current", current)
+                .unwrap()
+                .with_resumable_callable::<Provider, Child, (), _>(child)
+                .unwrap();
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "library",
+                        "library.gleam",
+                        r#"
+@external(erlang, "native", "launch")
+pub fn launch(value: Int, fails: Bool) -> Int
+@external(erlang, "native", "current") fn current() -> Int
+pub fn tag() { current() }
+"#,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (mut builder, launch) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt, bool), BigInt>::new("launch"))
+                .unwrap();
+            let tag = builder
+                .function(FunctionDeclaration::<(), BigInt>::new("tag"))
+                .unwrap();
+            let mut module = builder.seal().unwrap();
+            let host = TestHost::default();
+            let (trace, mut events) = Trace::new();
+            let (release, gate) = oneshot::channel();
+            let mut release = Some(release);
+            let (ready, waiting) = oneshot::channel();
+            let mut state = State {
+                trace: trace.clone(),
+                gate: Some(gate),
+                ready: Some(ready),
+            };
+            let mut echo = Vec::new();
+            host.block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    assert_eq!(
+                        scope.call(&launch, (BigInt::from(42), fails)).await,
+                        Ok(1.into())
+                    );
+                    waiting.await.unwrap();
+                    assert_eq!(scope.call(&tag, ()).await, Ok(2.into()));
+                    if !close_pending {
+                        release.take().unwrap().send(()).unwrap();
+                        let ids = trace
+                            .records
+                            .lock()
+                            .iter()
+                            .filter_map(|event| match event {
+                                Event::Started(id) => Some(*id),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(ids.len(), 3);
+                        let terminal = if fails {
+                            Event::Failed(
+                                ids[1],
+                                "host function application::library.child failed: native child 42"
+                                    .into(),
+                            )
+                        } else {
+                            Event::Completed(ids[1])
+                        };
+                        loop {
+                            let event = events.next().await.unwrap();
+                            if event == Event::Completed(ids[1])
+                                || event == Event::Cancelled(ids[1])
+                                || matches!(&event, Event::Failed(id, _) if *id == ids[1])
+                            {
+                                assert_eq!(event, terminal);
+                                break;
+                            }
+                        }
+                    }
+                }),
+            )
+            .unwrap();
+            let records = trace.records.lock();
+            let ids = records
+                .iter()
+                .filter_map(|event| match event {
+                    Event::Started(id) => Some(*id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(ids.len(), 3);
+            let terminal = if close_pending {
+                assert!(release.as_ref().unwrap().is_canceled());
+                Event::Cancelled(ids[1])
+            } else if fails {
+                Event::Failed(
+                    ids[1],
+                    "host function application::library.child failed: native child 42".into(),
+                )
+            } else {
+                Event::Completed(ids[1])
+            };
+            assert_eq!(
+                &records[..],
+                &[
+                    Event::Started(ids[0]),
+                    Event::Started(ids[1]),
+                    Event::Completed(ids[0]),
+                    Event::Started(ids[2]),
+                    Event::Completed(ids[2]),
+                    terminal,
+                    Event::Closed,
+                ]
+            );
+            assert!(state.gate.is_none());
+            assert!(state.ready.is_none());
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
     fn source_failure_and_cancellation_remain_distinct_and_emit_one_terminal_event() {
         for (source, failed) in [
             ("pub fn run() { panic as \"source failure\" 1 }", true),

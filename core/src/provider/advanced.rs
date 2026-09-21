@@ -1,13 +1,13 @@
 use crate::host::{
     HostCall, HostExternalEquality, HostExternalHashing, HostExternalInspection, HostListType,
     HostProfile, HostProvider, HostStoredDynamic, HostStoredType, HostStoredValue, HostType,
-    HostTypeIndex0, HostTypeIndexNext,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeListEnd,
 };
 use crate::provider::{
-    List, ProviderConstructions, ProviderExternalDeclaration, ProviderInputValue,
-    ProviderListContext, ProviderListInputCodec, ProviderListInputValue, ProviderNoConstructions,
-    ProviderOutputValue, ProviderStoredOwner, ProviderValue, ProviderValueContext,
-    ProviderValueForms, Value,
+    List, ProviderConstructionRequirements, ProviderConstructions, ProviderContextualValueForms,
+    ProviderExternalDeclaration, ProviderInputValue, ProviderListContext, ProviderListInputCodec,
+    ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderStoredOwner,
+    ProviderTypedValue, ProviderValue, ProviderValueForms,
 };
 use crate::runtime::StoredRuntimeValue;
 use ecow::EcoString;
@@ -105,38 +105,17 @@ where
         Owner: ProviderStoredOwner;
 }
 
-impl<'call, Profile, Provider, Return, Type, Host>
-    ProviderDynamicValue<'call, Profile, Provider, Return>
-    for Value<Type, ProviderValueContext<Host>>
-where
-    Profile: HostProfile,
-    Provider: HostProvider<Profile>,
-    Return: HostType,
-    Host: HostType,
-{
-    type Host = Host;
-
-    fn into_stored<Owner>(
-        self,
-        _call: &mut HostCall<'call, Profile, Provider, Return>,
-    ) -> StoredDynamic<Owner>
-    where
-        Owner: ProviderStoredOwner,
-    {
-        StoredDynamic::from_runtime_value(self.into_stored())
-    }
-}
-
 impl<'call, Profile, Provider, Return, Type> ProviderDynamicValue<'call, Profile, Provider, Return>
     for Type
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Type: ProviderValue<OutputRequirements = ProviderNoConstructions>
-        + ProviderOutputValue<Profile, Provider, Return>,
+    Type: ProviderValue
+        + ProviderTypedValue<Profile, OutputRequirements = ProviderNoConstructions>
+        + ProviderOutputValue<Profile, Provider, Return, Error = std::convert::Infallible>,
 {
-    type Host = Type::Host;
+    type Host = <Type as ProviderTypedValue<Profile>>::Host;
 
     fn into_stored<Owner>(
         self,
@@ -145,8 +124,8 @@ where
     where
         Owner: ProviderStoredOwner,
     {
-        let value = self.into_host(call, &ProviderConstructions::none());
-        StoredDynamic::from_runtime_value(call.retain_value::<Self::Host>(value))
+        self.store_dynamic(call, &ProviderConstructions::none())
+            .unwrap_or_else(|never| match never {})
     }
 }
 
@@ -191,22 +170,43 @@ where
     ) -> Self::View;
 }
 
+/// A declaration that exposes a typed callback requires an invocation proof.
+#[doc(hidden)]
+pub struct ProviderInvocationRequired;
+
+/// A recursively derived declaration contains no invocable callback view.
+#[doc(hidden)]
+pub trait ProviderNoInvocations {}
+
+impl ProviderNoInvocations for () {}
+impl<Head: ProviderNoInvocations, Tail: ProviderNoInvocations> ProviderNoInvocations
+    for (Head, Tail)
+{
+}
+
 impl<Profile, Provider, Return, Type> ProviderDynamicInput<Profile, Provider, Return> for Type
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Type: ProviderValueForms,
-    Type::ImmediateInput: ProviderInputValue<Profile, Provider, Return, Host = Type::Host>,
+    Type: ProviderValueForms + ProviderContextualValueForms<Profile>,
+    Type::InvocationRequirements: ProviderNoInvocations,
+    <Type as ProviderContextualValueForms<Profile>>::ImmediateInput:
+        ProviderInputValue<Profile, Provider, Return, Host = Type::Host>,
+    <<Type as ProviderContextualValueForms<Profile>>::ImmediateInput as ProviderInputValue<
+        Profile,
+        Provider,
+        Return,
+    >>::Requirements: ProviderConstructionRequirements<Types<HostTypeListEnd> = HostTypeListEnd>,
 {
     type Host = Type::Host;
-    type View = Type::ImmediateInput;
+    type View = <Type as ProviderContextualValueForms<Profile>>::ImmediateInput;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
     ) -> Self::View {
-        Type::ImmediateInput::from_host(call, value)
+        <Type as ProviderContextualValueForms<Profile>>::ImmediateInput::from_host(call, value)
     }
 }
 
@@ -215,16 +215,19 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
-    Item: ProviderValueForms,
-    Item::ImmediateListInput:
+    Item: ProviderValueForms + ProviderContextualValueForms<Profile>,
+    Item::InvocationRequirements: ProviderNoInvocations,
+    <Item as ProviderContextualValueForms<Profile>>::ImmediateListInput:
         ProviderListInputCodec<Profile, Provider> + ProviderListInputValue<Host = Item::Host>,
+    <<Item as ProviderContextualValueForms<Profile>>::ImmediateListInput as ProviderListInputCodec<Profile, Provider>>::Requirements:
+        ProviderConstructionRequirements<Types<HostTypeListEnd> = HostTypeListEnd>,
 {
     type Host = HostListType<Item::Host>;
     type View = List<
-        Item::ImmediateListInput,
+        <Item as ProviderContextualValueForms<Profile>>::ImmediateListInput,
         ProviderListContext<
             Item::Host,
-            <Item::ImmediateListInput as ProviderListInputValue>::Decoder,
+            <<Item as ProviderContextualValueForms<Profile>>::ImmediateListInput as ProviderListInputValue>::Decoder,
         >,
     >;
 
@@ -233,7 +236,7 @@ where
         value: <Self::Host as HostType>::Value<'call>,
     ) -> Self::View {
         let decoder =
-            <Item::ImmediateListInput as ProviderListInputCodec<Profile, Provider>>::decoder(call);
+            <<Item as ProviderContextualValueForms<Profile>>::ImmediateListInput as ProviderListInputCodec<Profile, Provider>>::decoder(call);
         call.provider_retained_list(value, decoder)
     }
 }

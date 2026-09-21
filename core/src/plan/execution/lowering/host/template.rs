@@ -25,6 +25,7 @@ impl HostTemplateCatalog {
         &mut self,
         functions: Vec<HostedFunctionTemplate>,
         anonymous_functions: Vec<FunctionTemplate>,
+        native_callables: Vec<HostFunctionTemplate>,
     ) {
         let mut templates = functions
             .into_iter()
@@ -41,6 +42,11 @@ impl HostTemplateCatalog {
             anonymous_functions
                 .into_iter()
                 .map(|template| HostLoweringTemplate::Gleam(Box::new(template))),
+        );
+        templates.extend(
+            native_callables
+                .into_iter()
+                .map(|template| HostLoweringTemplate::Host(Box::new(template))),
         );
         templates.sort_by_key(HostLoweringTemplate::index);
         self.templates.push(templates);
@@ -67,6 +73,13 @@ impl HostTemplateCatalog {
                             local::FunctionEntryTemplate::from_shapes(
                                 template.signature().shape().argument_shapes().to_vec(),
                                 template.signature().shape().return_shape().clone(),
+                            )
+                            .with_captures(
+                                template
+                                    .captures()
+                                    .iter()
+                                    .map(crate::host::HostTypeDescriptor::value_shape)
+                                    .collect(),
                             )
                         }
                     },
@@ -143,7 +156,11 @@ pub fn main() {
 
         for module in parts.modules {
             let parts = module.into_parts();
-            catalog.push_module(parts.functions, parts.anonymous_functions);
+            catalog.push_module(
+                parts.functions,
+                parts.anonymous_functions,
+                parts.native_callables,
+            );
         }
 
         assert_eq!(

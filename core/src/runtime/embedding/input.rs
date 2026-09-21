@@ -33,8 +33,14 @@ pub(crate) struct EmbeddingTupleInput(Vec<EvaluatedValue>);
 pub(crate) struct EmbeddingCustomInput(EvaluatedCustomValue);
 pub(crate) struct EmbeddingListInput(pub(in crate::runtime::embedding) StoredListValueId);
 
+impl EmbeddingInput {
+    pub(super) fn function(value: crate::runtime::evaluated::EvaluatedFunctionValue) -> Self {
+        Self(EvaluatedValue::Function(value))
+    }
+}
+
 impl EmbeddingInputStorage {
-    fn lists(&self) -> std::cell::RefMut<'_, crate::runtime::RuntimeListStorage> {
+    pub(super) fn lists(&self) -> std::cell::RefMut<'_, crate::runtime::RuntimeListStorage> {
         std::cell::RefMut::map(self.0.borrow_mut(), |storage| {
             storage.get_or_insert_with(crate::runtime::RuntimeListStorage::default)
         })

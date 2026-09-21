@@ -513,7 +513,7 @@ pub fn run() {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed execution");
         let mut state = ();
         let mut stores = HostExternalStore::default();
@@ -723,7 +723,7 @@ pub fn run() {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             crate::plan::execution::HostedProgram::from_library_plan(library, entry, Vec::new())
                 .expect("seal");
         let mut drops = Arc::new(AtomicUsize::new(0));

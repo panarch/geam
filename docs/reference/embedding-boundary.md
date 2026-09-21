@@ -231,13 +231,74 @@ examples isolate each hosted input. The complete [Rust embedding
 application](../../examples/embedding/application)
 combines stdlib IO and the text-pattern provider in one lifecycle.
 
+## Function Values And Native Construction
+
+`Function<Args, Return>` selects a named public entry. A returned source or
+Rust-created function instead uses `Callable<'scope, Args, Return>` and its
+`CallableType<Args, Return>` declaration. Both are selected statically; calling
+a value does not repeat binding or recover a signature from runtime data.
+Use an explicit execution scope:
+
+```rust
+let alias = scope.call(&functions.keep, (&callback,)).await?;
+let value = scope.invoke(&alias, (BigInt::from(7),)).await?;
+```
+
+Function values use zero through seven arguments and compose through the same
+Tuple, List, Result, Option, named-value, and Future adapters. Cloning a handle
+retains identity and captures. The invariant scope lifetime follows recursive
+containers and private named fields; moving a callback into a private custom
+value does not permit it to escape or enter a different execution. Input Vecs
+still construct their new container; passing a retained List keeps its storage.
+
+For an app-local Rust body, share only static declarations with preparation:
+
+```toml
+[package.metadata.geam.embedding]
+generate = "both"
+declarations = "src/declarations.rs"
+```
+
+That module defines `HostCallableSchema` and these two entry points:
+
+```rust
+pub fn declare(base: HostDeclarations) -> Result<HostDeclarations, HostRegistrationError>;
+pub fn select(bindings: &mut HostPreparationBindings) -> Result<(), BindingError>;
+```
+
+`declare` registers native declarations with `base.with_callable::<Schema>()`.
+`select` includes concrete constructions with `bindings.callable::<Schema>()`.
+A declaration-only helper validates and prepares the same schemas without
+calling an application body. It imports this file and the package's ordinary
+dependencies, never application main, application build.rs, or run-state
+initialization. Keep shared declarations independent of generated bindings and
+application state. Child modules use explicit `#[path = "..."]` relative to
+the shared declaration file. Changes to declaration inputs participate in
+sync/check drift detection.
+
+The application registers its real bodies in ordinary Rust modules and supplies
+its `HostProviderSet<Application>` to generated `load`, or its registration
+function to generated `project`. Select `bindings.callable::<Schema>()` before
+sealing, then call `scope.construct(&factory, (capture, ()))`. Captures use a
+recursive `(Head, Tail)` sequence ending in `()`. `callable_as` selects exact
+Rust views when the schema's default opaque custom view is insufficient; the
+same view must be selected during preparation. Loading binds every real native
+implementation before any callable can run.
+
+The [same-package example](../../examples/embedding/callables) shows these
+complete declarations and application modules, dynamic/prepared parity,
+private retained data, and a generic internal Gleam wrapper. It needs no
+separate provider package or generated-file edits. Public root bindings remain
+concrete; generic provider bodies and internal source functions specialize
+normally. The application still supplies its executor, mutable state and Echo.
+
 ## Data Grammar
 
 Generated public function arguments and returns support this recursive grammar:
 
 ```text
 Data = Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data)
-     | List(Data) | Future(Data) | Named
+     | List(Data) | Future(Data) | fn(Data...) -> Data | Named
 Named = a concrete custom or external type, including closed generic specializations
 ```
 
@@ -256,6 +317,7 @@ Named = a concrete custom or external type, including closed generic specializat
 | `List(A)` input | consumed `Vec<A>` or retained `&List<A>` |
 | `List(A)` output | retained `List<A>` |
 | `geam/future.Future(A)` | `FutureType<A>` declaration; scoped `Future<A>` work |
+| `fn(A, ...) -> B` | `CallableType<(A, ...), B>` declaration; scoped `Callable` handle |
 | custom type | generated `CustomType<Schema>` declaration; scoped opaque `Custom<Schema>` |
 | external type | generated `ExternalType<Schema>` declaration; scoped opaque `External<Schema>` |
 
@@ -342,15 +404,16 @@ Passing a retained List back is restricted to its original live module. A
 different load is a different owner. `CallError::ForeignValue` is returned
 before source execution or host-state mutation when ownership does not match.
 
-For scalar or non-List compound items, `to_vec()` followed by fresh Vec input
-transfers values to another owner. Nested Lists require explicit recursive
+For plain scalar or non-List compound data, `to_vec()` followed by fresh Vec
+input transfers values to another owner. Scoped function and named handles
+retain their execution even inside a newly constructed Vec. Nested Lists require explicit recursive
 materialization:
 
 ```rust
 let rows: Vec<Vec<StringValue>> = nested.iter().map(|row| row.to_vec()).collect();
 ```
 
-A fresh outer Vec cannot contain retained children. `Vec<List<T>>` and
+A fresh outer Vec cannot contain retained List children. `Vec<List<T>>` and
 `Vec<&List<T>>` are not accepted because those children retain their original
 owner.
 
@@ -382,7 +445,7 @@ field, or perform an update.
 ## Input Inference
 
 Generated bindings fix ordinary data positions and permit the supported
-owned or borrowed carrier at each List, Future, custom, or external position.
+owned or borrowed carrier at each List, Future, callable, custom, or external position.
 Callers pass Vecs or borrowed Lists directly; there is no public mode wrapper.
 
 An absent Option or Result branch may not give Rust enough information to
@@ -396,8 +459,8 @@ scope.call(&functions.optional_batch, (rows,)).await?;
 ## Types Outside Generated Bindings
 
 Generated bindings do not currently support public constants in the same-name
-root module. Public function arguments and returns also cannot expose callbacks
-or unbound generic type parameters.
+root module. Public function arguments and returns cannot expose unbound
+generic type parameters. Concrete function types are supported recursively.
 Imported Gleam modules may use all these declarations. Rust can reach logic
 that uses an unsupported type through generated bindings only when the root
 module exposes a public function whose arguments and return value use the

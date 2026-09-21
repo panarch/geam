@@ -1,3 +1,4 @@
+mod created_function;
 mod custom;
 mod external;
 mod function;
@@ -8,12 +9,13 @@ mod schema;
 mod sequence;
 mod tuple;
 
+pub use created_function::HostCreatedFunction;
 pub use custom::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostSchemaType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostNominalCustomField, HostSchemaType,
 };
 pub use function::HostFunctionType;
 pub use list::HostListType;
@@ -445,15 +447,31 @@ impl HostTypeDescriptor {
     }
 }
 
+pub(crate) fn construction_callable_index<Types: HostTypeAt<Index>, Index>() -> usize {
+    <Types as private::ConstructionPosition<Index>>::CALLABLE_INDEX
+}
+
+pub(crate) const fn construction_callable_count<Types: HostTypeSequence>() -> usize {
+    <Types as private::Sequence>::CALLABLE_COUNT
+}
+
 mod private {
+    pub(crate) trait ConstructionPosition<Index> {
+        const CALLABLE_INDEX: usize;
+    }
     pub(crate) trait Sealed {}
 
     pub(crate) trait Abi {
+        const CALLABLE_CONSTRUCTION: usize = 0;
         fn descriptor() -> super::HostTypeDescriptor;
         fn schema_type() -> super::HostSchemaType;
         fn collect_custom_schemas(
             _output: &mut Vec<super::HostCustomTypeSchema>,
             _visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+        ) {
+        }
+        fn collect_callable_constructions(
+            _output: &mut Vec<crate::host::RegisteredCallableConstruction>,
         ) {
         }
         fn into_scoped(value: <Self as super::HostType>::Value<'_>) -> super::HostScopedValue
@@ -468,8 +486,12 @@ mod private {
     }
 
     pub(crate) trait Sequence {
+        const CALLABLE_COUNT: usize;
         fn descriptors() -> Vec<super::HostTypeDescriptor>;
         fn schema_types() -> Vec<super::HostSchemaType>;
+        fn collect_callable_constructions(
+            output: &mut Vec<crate::host::RegisteredCallableConstruction>,
+        );
         fn collect_custom_schemas(
             output: &mut Vec<super::HostCustomTypeSchema>,
             visited: &mut std::collections::HashSet<super::HostCustomIdentity>,

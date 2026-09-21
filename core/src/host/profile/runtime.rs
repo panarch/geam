@@ -23,6 +23,7 @@ pub(crate) trait HostTokenRuntime {
 }
 
 pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
+    fn capture_tokens(&self) -> &[HostValueToken];
     fn state(&mut self) -> &mut Profile::RunState;
     fn execution_state(&mut self) -> &mut Profile::ExecutionState;
     fn execution_with_native_values(
@@ -65,6 +66,11 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
         values: Box<[HostScopedValue]>,
     ) -> HostValueToken;
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken;
+    fn build_function(
+        &mut self,
+        index: usize,
+        captures: Box<[HostScopedValue]>,
+    ) -> HostFunctionToken;
     fn build_native_list(
         &mut self,
         type_: crate::plan::execution::type_::ListTypeId,
@@ -100,6 +106,7 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
     fn execution(&self) -> crate::runtime::execution::ExecutionContext<Profile>;
     fn origin(&self) -> crate::runtime::HostCallOrigin;
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable;
+    fn restore_callable(&mut self, value: crate::runtime::RetainedCallable) -> HostFunctionToken;
     fn codec_scope(&self) -> HostCodecScope;
     fn stored_equal(&self, left: &StoredRuntimeValue, right: &StoredRuntimeValue) -> bool;
     fn native_tuple(&self, value: HostListToken) -> crate::runtime::NativeValue;

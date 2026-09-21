@@ -1,0 +1,4 @@
+name = "example_callables"
+version = "1.0.0"
+description = "Capturing functions and generic callbacks backed by Rust"
+licences = ["Apache-2.0"]

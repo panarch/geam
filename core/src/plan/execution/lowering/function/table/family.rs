@@ -16,6 +16,7 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::ExternalFunctionCallTarget;
 use crate::plan::execution::lowering::specialization::{
     FunctionRepresentation, SpecializedFunctionShape, SpecializedValueShape, StoredValueShape,
+    ValueInhabitation,
 };
 
 #[derive(Clone)]
@@ -75,7 +76,7 @@ impl ListFunctionFunctionSignature {
         }
     }
 
-    fn runtime_id(&self, index: usize) -> RuntimeFunctionFunctionTarget {
+    fn runtime_id<Symbolic>(&self, index: usize) -> RuntimeFunctionFunctionTarget<Symbolic> {
         match self {
             Self::Core(signature) => RuntimeFunctionFunctionTarget::Core(
                 ProfiledFunctionFunctionId::List(signature.profiled_id(index)),
@@ -493,7 +494,38 @@ fn runtime_function_function_id(
                 ),
             ));
         }
-        FunctionRepresentation::Never(_) => {
+        FunctionRepresentation::Never(shape) => ValueInhabitation::Uninhabited(shape),
+        FunctionRepresentation::Executable(shape) => ValueInhabitation::Inhabited(shape),
+    };
+    function_function_target(function, return_, index, types)
+}
+
+// The library binding boundary has already established inhabited arguments.
+// Keep that invocation permission in the target type rather than recreating a
+// symbolic function branch in embedding execution.
+pub(in crate::plan::execution::lowering) fn invocable_function_function_id(
+    function: &SpecializedFunctionShape,
+    index: usize,
+    types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
+    representations: &crate::plan::execution::lowering::specialization::RepresentationContext,
+) -> RuntimeFunctionFunctionTarget<std::convert::Infallible> {
+    function_function_target(
+        function,
+        representations.inhabitation(function.return_()),
+        index,
+        types,
+    )
+}
+
+fn function_function_target<Symbolic>(
+    function: &SpecializedFunctionShape,
+    return_: ValueInhabitation,
+    index: usize,
+    types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
+) -> RuntimeFunctionFunctionTarget<Symbolic> {
+    let return_ = match return_ {
+        ValueInhabitation::Inhabited(return_) => return_,
+        ValueInhabitation::Uninhabited(_) => {
             return RuntimeFunctionFunctionTarget::Core(ProfiledFunctionFunctionId::Never(
                 execution::function::NeverFunctionFunctionId::new(
                     index,
@@ -501,7 +533,6 @@ fn runtime_function_function_id(
                 ),
             ));
         }
-        FunctionRepresentation::Executable(return_) => return_,
     };
 
     match return_ {
@@ -557,12 +588,12 @@ fn runtime_function_function_id(
     }
 }
 
-fn runtime_list_function_function_id(
+fn runtime_list_function_function_id<Symbolic>(
     function: &SpecializedFunctionShape,
     item: &SpecializedValueShape,
     index: usize,
     types: &mut crate::plan::execution::lowering::value_type::TypeInterner,
-) -> RuntimeFunctionFunctionTarget {
+) -> RuntimeFunctionFunctionTarget<Symbolic> {
     list_function_function_signature(function, item, types).runtime_id(index)
 }
 

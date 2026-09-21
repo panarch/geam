@@ -1,6 +1,8 @@
+mod callable;
 mod schema;
 mod type_;
 
+pub use callable::CallableRegistration;
 pub use schema::{ConstructorSchema, CustomSchema, ExternalSchema, FieldSchema, SchemaType};
 pub use type_::RegistrationType;
 
@@ -13,6 +15,9 @@ use crate::plan::execution::storage::Table;
 pub struct RegistrationContract {
     pub parameter_count: usize,
     pub parameters: Table<RegistrationType>,
+    pub captures: Table<RegistrationType>,
+    pub callable: bool,
+    pub callable_constructions: Table<CallableRegistration>,
     pub return_: RegistrationType,
     pub layout: Table<RegistrationParameter>,
     pub custom_schemas: Table<CustomSchema>,
@@ -47,8 +52,19 @@ impl RegistrationContract {
     ) -> Self {
         Self {
             parameter_count: template.scheme().parameters().len(),
+            callable: template.is_callable(),
+            callable_constructions: constructions
+                .callables()
+                .iter()
+                .map(CallableRegistration::from_registered)
+                .collect(),
             parameters: template
                 .parameters()
+                .iter()
+                .map(RegistrationType::from_descriptor)
+                .collect(),
+            captures: template
+                .captures()
                 .iter()
                 .map(RegistrationType::from_descriptor)
                 .collect(),
@@ -98,12 +114,19 @@ impl RegistrationContract {
         schema: &HostFunctionSchema,
         constructions: &RegisteredHostConstructions,
     ) -> bool {
-        self.parameter_count == schema.scheme().parameters().len()
+        self.callable == schema.is_callable()
+            && same(
+                &self.callable_constructions,
+                constructions.callables(),
+                CallableRegistration::matches,
+            )
+            && self.parameter_count == schema.scheme().parameters().len()
             && same(
                 &self.parameters,
                 schema.parameters(),
                 RegistrationType::matches,
             )
+            && same(&self.captures, schema.captures(), RegistrationType::matches)
             && self.return_.matches(schema.return_type())
             && self.layout.len() == schema.layout().len()
             && self
@@ -184,6 +207,9 @@ impl Emit for RegistrationContract {
         let Self {
             parameter_count,
             parameters,
+            captures,
+            callable,
+            callable_constructions,
             return_,
             layout,
             custom_schemas,
@@ -198,6 +224,9 @@ impl Emit for RegistrationContract {
             &[
                 ("parameter_count", parameter_count),
                 ("parameters", parameters),
+                ("captures", captures),
+                ("callable", callable),
+                ("callable_constructions", callable_constructions),
                 ("return_", return_),
                 ("layout", layout),
                 ("custom_schemas", custom_schemas),
@@ -248,6 +277,55 @@ mod tests {
     };
     use crate::{HostProvider, StatelessHostProfile};
     use num_bigint::BigInt;
+
+    #[test]
+    fn emitted_native_contract_keeps_captures_outside_the_argument_layout() {
+        use super::{RegistrationContract, RegistrationParameter, RegistrationType};
+        use crate::plan::execution::prepared::rust::Rust;
+        use crate::plan::execution::storage::Table;
+
+        let contract = RegistrationContract {
+            parameter_count: 0,
+            parameters: vec![RegistrationType::Int].into(),
+            captures: vec![RegistrationType::Bool].into(),
+            callable: true,
+            callable_constructions: Table::Static(&[]),
+            return_: RegistrationType::String,
+            layout: vec![RegistrationParameter::Int(0)].into(),
+            custom_schemas: Table::Static(&[]),
+            external_schemas: Table::Static(&[]),
+            constructions: Table::Static(&[]),
+            construction_customs: Table::Static(&[]),
+            construction_externals: Table::Static(&[]),
+            native_rules: None,
+        };
+        assert_eq!(
+            Rust::expression(&contract),
+            r#"
+data::host::RegistrationContract {
+    parameter_count: 0,
+    parameters: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+    captures: data::Storage::Static(&[
+        data::host::RegistrationType::Bool,
+    ]),
+    callable: true,
+    callable_constructions: data::Storage::Static(&[]),
+    return_: data::host::RegistrationType::String,
+    layout: data::Storage::Static(&[
+        data::host::RegistrationParameter::Int(0),
+    ]),
+    custom_schemas: data::Storage::Static(&[]),
+    external_schemas: data::Storage::Static(&[]),
+    constructions: data::Storage::Static(&[]),
+    construction_customs: data::Storage::Static(&[]),
+    construction_externals: data::Storage::Static(&[]),
+    native_rules: None,
+}"#
+            .trim_start_matches('\n')
+        );
+    }
 
     #[test]
     fn emits_original_parameter_slots_for_every_storage_family() {
@@ -400,7 +478,7 @@ pub fn main() { #(choose(True, 42, True, Nil), choose(False, 42, True, Nil)) }
             ])
         );
         let hosts = providers();
-        let (_, mut providers, _) = hosts.into_registered();
+        let (_, mut providers, _, _) = hosts.into_registered();
         let (schema, _, _) = providers.remove(0).functions.remove(0).into_parts();
         let constructions = RegisteredHostConstructions::new(
             Box::new([HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))]),
@@ -523,7 +601,7 @@ pub fn main() { convert(42) }
             crate::Value::Bool(true)
         );
         let hosts = providers();
-        let (_, mut providers, _) = hosts.into_registered();
+        let (_, mut providers, _, _) = hosts.into_registered();
         let (schema, constructions, _) = providers.remove(0).functions.remove(0).into_parts();
         let template = HostFunctionTemplate::from_schema(
             FunctionTemplateSignature::new(

@@ -1,0 +1,6 @@
+packages = [
+  { name = "example_callables", version = "1.0.0", build_tools = ["gleam"], requirements = [], source = "local", path = "packages/example_callables" },
+]
+
+[requirements]
+example_callables = { path = "packages/example_callables" }

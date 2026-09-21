@@ -56,11 +56,13 @@ type Return<'plan, Plan> =
     Box<dyn FnOnce(&mut Returns<'plan, Plan>) -> Activation<'plan, Plan> + Send + 'plan>;
 
 pub(super) struct Destination<Value> {
+    domain: Option<crate::runtime::captures::ExecutionDomain>,
     index: usize,
     value: PhantomData<fn(Value)>,
 }
 
 pub(in crate::runtime) struct Returns<'plan, Plan: ExecutableRuntimePlan> {
+    domain: Option<crate::runtime::captures::ExecutionDomain>,
     ints: Vec<Frame<'plan, Plan>>,
     floats: Vec<Frame<'plan, Plan>>,
     strings: Vec<Frame<'plan, Plan>>,
@@ -117,6 +119,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         returns: &mut Returns<'plan, Plan>,
         remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
+        returns.domain = Some(state.captures().domain());
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(mut frame) => loop {
@@ -171,10 +174,15 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
                 let function = match function {
                     NeverCall::Direct(function) => function,
                     NeverCall::Value(function) => {
-                        inputs.append_captures(function.captures());
+                        inputs.append_captures(function.capture_frame());
                         function.runtime_id()
                     }
                 };
+                if let Some(cancelled) =
+                    plan.reject_foreign_callable(&inputs, Some(state.captures().domain()))
+                {
+                    return Ok(Activation::Host(cancelled));
+                }
                 Ok(enter_never(
                     plan,
                     function,
@@ -194,6 +202,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
 impl<'plan, Plan: ExecutableRuntimePlan> Returns<'plan, Plan> {
     pub(in crate::runtime) fn new() -> Self {
         Self {
+            domain: None,
             ints: Vec::new(),
             floats: Vec::new(),
             strings: Vec::new(),
@@ -230,6 +239,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Returns<'plan, Plan> {
         let index = frames.len();
         frames.push(frame);
         Destination {
+            domain: self.domain,
             index,
             value: PhantomData,
         }
@@ -265,6 +275,9 @@ where
     Id::Body: 'plan,
     Value: ReturnValue,
 {
+    if let Some(cancelled) = plan.reject_foreign_callable(&inputs, destination.domain) {
+        return Activation::Host(cancelled);
+    }
     match id.entry(plan) {
         ExecutionFunctionRef::Graph(function) => {
             let body = function.body().function_body();

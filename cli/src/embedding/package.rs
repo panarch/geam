@@ -43,6 +43,10 @@ pub(super) struct ResolvedGeamDependency {
 }
 
 impl EmbeddingPackage {
+    pub(super) fn declarations(&self) -> Option<&Utf8Path> {
+        self.project.declarations.as_deref()
+    }
+
     pub(super) fn load(current_directory: &Utf8Path) -> Result<Self, CliError> {
         Self::load_with(current_directory, &SystemCargoMetadata)
     }

@@ -41,9 +41,16 @@ where
         dependencies: Dependencies<Completion>,
         codec: crate::host::HostCodecScope,
         origin: crate::runtime::HostCallOrigin,
+        callable_base: usize,
     ) -> Self {
         Self {
-            execution: HostExecutionContext::new(scope, work.execution().clone(), codec, origin),
+            execution: HostExecutionContext::new(
+                scope,
+                work.execution().clone(),
+                codec,
+                origin,
+                callable_base,
+            ),
             dependencies,
         }
     }

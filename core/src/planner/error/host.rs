@@ -23,6 +23,29 @@ pub enum ExternalTypeProviderLinkReason {
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum HostProviderLinkReason {
+    #[error(
+        "native callable construction cycle through {package}::{module}.{function} expands type parameters without bound"
+    )]
+    ExpandingCallableCycle {
+        package: ecow::EcoString,
+        module: ecow::EcoString,
+        function: ecow::EcoString,
+    },
+
+    #[error("native callable {package}::{module}.{function} is not registered")]
+    MissingCallable {
+        package: ecow::EcoString,
+        module: ecow::EcoString,
+        function: ecow::EcoString,
+    },
+    #[error(
+        "native callable {package}::{module}.{function} has an incompatible argument, capture, return or completion contract"
+    )]
+    CallableContractMismatch {
+        package: ecow::EcoString,
+        module: ecow::EcoString,
+        function: ecow::EcoString,
+    },
     #[error("source module is not linked")]
     MissingModule,
     #[error("function declaration is missing")]
@@ -70,4 +93,42 @@ pub enum HostProviderLinkReason {
         expected: HostExternalTypeSchema,
         actual: HostExternalTypeSchema,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HostProviderLinkReason;
+
+    #[test]
+    fn native_callable_diagnostics_identify_the_exact_declaration_and_contract() {
+        for (reason, expected) in [
+            (
+                HostProviderLinkReason::MissingCallable {
+                    package: "application".into(),
+                    module: "pricing".into(),
+                    function: "adjust".into(),
+                },
+                "native callable application::pricing.adjust is not registered",
+            ),
+            (
+                HostProviderLinkReason::CallableContractMismatch {
+                    package: "application".into(),
+                    module: "pricing".into(),
+                    function: "adjust".into(),
+                },
+                "native callable application::pricing.adjust has an incompatible argument, capture, return or completion contract",
+            ),
+            (
+                HostProviderLinkReason::ExpandingCallableCycle {
+                    package: "application".into(),
+                    module: "pricing".into(),
+                    function: "adjust".into(),
+                },
+                "native callable construction cycle through application::pricing.adjust expands type parameters without bound",
+            ),
+        ] {
+            assert_eq!(reason.to_string(), expected);
+            assert_eq!(reason.clone(), reason);
+        }
+    }
 }

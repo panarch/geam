@@ -4,37 +4,39 @@ use super::super::specialization::{
 };
 use super::super::{LoweredExecution, LoweringCompletion, LoweringContext};
 use super::{parameter, return_, sealing};
-use crate::host::{
-    HostFunctionImplementation as RegisteredHostFunctionImplementation, HostProfile,
-};
+use crate::host::HostFunctionBinding;
 use crate::plan::execution::host::{
-    HostFunctionTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
-    HostedFunctionMetadata, HostedNeverFunction, HostedValueFunction,
+    HostBindingTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
+    HostedFunctionMetadata,
 };
-use crate::plan::{HostFunctionTemplate, HostImplementationBinding};
+use crate::plan::{HostFunctionTemplate, ProfiledHostImplementationBinding};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
-pub(super) struct HostFunctionRegistry<Profile: HostProfile> {
-    functions: HashMap<crate::plan::FunctionTemplateId, RegisteredHostFunction<Profile>>,
+pub(super) struct HostFunctionRegistry<Value, Never> {
+    functions: HashMap<crate::plan::FunctionTemplateId, RegisteredHostFunction<Value, Never>>,
 }
 
-struct RegisteredHostFunction<Profile: HostProfile> {
+struct RegisteredHostFunction<Value, Never> {
     constructions: crate::host::RegisteredHostConstructions,
-    implementation: Arc<RegisteredHostFunctionImplementation<Profile>>,
+    implementation: Arc<HostFunctionBinding<Value, Never>>,
 }
 
-pub(super) struct HostFunctionLowering<'registry, Profile: HostProfile> {
-    registered: &'registry HostFunctionRegistry<Profile>,
-    value_functions: Vec<HostedValueFunction<Profile>>,
-    never_functions: Vec<HostedNeverFunction<Profile>>,
+pub(super) struct HostFunctionLowering<'registry, Value, Never> {
+    registered: &'registry HostFunctionRegistry<Value, Never>,
+    value_functions: Vec<HostedFunction<Value>>,
+    never_functions: Vec<HostedFunction<Never>>,
     additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
 }
 
-impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
-    pub(super) fn new(implementation_bindings: Vec<HostImplementationBinding<Profile>>) -> Self {
+impl<Value: Clone, Never: Clone> HostFunctionRegistry<Value, Never> {
+    pub(super) fn new(
+        implementation_bindings: Vec<
+            ProfiledHostImplementationBinding<HostFunctionBinding<Value, Never>>,
+        >,
+    ) -> Self {
         Self {
             functions: implementation_bindings
                 .into_iter()
@@ -52,7 +54,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
         }
     }
 
-    pub(super) fn lowering(&self) -> HostFunctionLowering<'_, Profile> {
+    pub(super) fn lowering(&self) -> HostFunctionLowering<'_, Value, Never> {
         HostFunctionLowering {
             registered: self,
             value_functions: Vec::new(),
@@ -115,7 +117,7 @@ impl<Profile: HostProfile> HostFunctionRegistry<Profile> {
     }
 }
 
-impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
+impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
     pub(super) fn lower_specialized(
         &mut self,
         template: &HostFunctionTemplate,
@@ -123,9 +125,18 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         context: &mut LoweringContext,
     ) -> Result<(), HostSpecializationError> {
         let index = context.specialization_index(key);
+        let callable_entry =
+            template
+                .is_callable()
+                .then(|| crate::plan::execution::host::HostCallableEntry {
+                    family: context.provisional_specializations[key].family,
+                    index,
+                });
         let shape =
             SpecializedFunctionShape::instantiate(template.signature().shape(), key.substitution());
         let parameters = context.specialization_parameters(key).to_vec();
+        let (_, captures) = context.entry_templates[&key.template()]
+            .contract(key.substitution(), &context.representations);
         let type_arguments = key
             .substitution()
             .arguments()
@@ -144,7 +155,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             sealing::seal_host_types(template, &registered.constructions, key, context)?;
 
         match implementation.as_ref() {
-            RegisteredHostFunctionImplementation::Value(implementation) => {
+            HostFunctionBinding::Value(implementation) => {
                 let ValueInhabitation::Inhabited(return_) = return_ else {
                     return Err(HostSpecializationError::undetermined_return_storage(
                         template.package().clone(),
@@ -154,12 +165,17 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     ));
                 };
                 sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
-                let parameters =
-                    parameter::lower_host_parameters(&parameters, template.layout(), context);
+                let parameters = parameter::lower_host_parameters(
+                    &parameters,
+                    template.layout(),
+                    &captures,
+                    context,
+                );
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.value_functions.len();
                 self.value_functions.push(HostedFunction::new(
                     HostedFunctionMetadata {
+                        callable_entry,
                         package: template.package().clone().into(),
                         site: template.site().clone(),
                         signature: crate::plan::execution::type_::FunctionMetadata::from_public(
@@ -188,14 +204,19 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
                     context,
                 );
             }
-            RegisteredHostFunctionImplementation::Never(implementation) => {
+            HostFunctionBinding::Never(implementation) => {
                 sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
-                let parameters =
-                    parameter::lower_host_parameters(&parameters, template.layout(), context);
+                let parameters = parameter::lower_host_parameters(
+                    &parameters,
+                    template.layout(),
+                    &captures,
+                    context,
+                );
                 let type_ = context.lower_concrete_function_type(&shape);
                 let host_index = self.never_functions.len();
                 self.never_functions.push(HostedFunction::new(
                     HostedFunctionMetadata {
+                        callable_entry,
                         package: template.package().clone().into(),
                         site: template.site().clone(),
                         signature: crate::plan::execution::type_::FunctionMetadata::from_public(
@@ -243,7 +264,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
         context: LoweringContext,
     ) -> (
         LoweringCompletion<HostedLoweredExecution>,
-        HostFunctionTables<Profile>,
+        HostBindingTables<Value, Never>,
     ) {
         let Self {
             registered: _,
@@ -252,7 +273,7 @@ impl<Profile: HostProfile> HostFunctionLowering<'_, Profile> {
             additional,
         } = self;
         let completion = context.finish_hosted(additional);
-        let tables = HostFunctionTables::new(
+        let tables = HostBindingTables::new(
             value_functions.into_boxed_slice(),
             never_functions.into_boxed_slice(),
         );

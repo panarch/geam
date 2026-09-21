@@ -41,7 +41,7 @@ pub(super) fn admit(
             .collect(),
         active: Vec::new(),
     };
-    for parameter in schema.parameters() {
+    for parameter in schema.parameters().iter().chain(schema.captures()) {
         search.check(parameter)?;
     }
     if returns_value {

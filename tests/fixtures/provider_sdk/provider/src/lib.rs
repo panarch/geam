@@ -1,15 +1,16 @@
 use geam::provider::{BigInt, EcoString, StringValue};
 use geam::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
-    HostComponentProfile, HostConstructions, HostCustomConstructorAt,
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
-    HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
-    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalType, HostFunctionType, HostListType, HostOwnedCompletion,
-    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostCallableSchema, HostCaptures, HostComponentProfile, HostConstructions, HostCreatedFunction,
+    HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
+    HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
+    HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
+    HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType, HostListType,
+    HostOwnedCompletion, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
-    HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+    HostProviderModule, HostRegistrationError, HostReturns, HostTypeIndex0, HostTypeList,
+    HostTypeListEnd,
 };
 use provider_sdk_example_domain::Catalog;
 use std::collections::hash_map::DefaultHasher;
@@ -30,6 +31,8 @@ pub struct RunState {
 
 struct Provider;
 
+struct Prefix;
+
 struct CatalogSchema;
 
 struct CatalogStorage;
@@ -44,6 +47,7 @@ struct SummaryItemsField;
 
 type TransformArguments = HostTypeList<StringValue, HostTypeListEnd>;
 type Transform = HostFunctionType<TransformArguments, StringValue>;
+type PrefixConstructions = HostTypeList<HostCreatedFunction<Prefix>, HostTypeListEnd>;
 type HostCatalog = HostExternalType<CatalogSchema>;
 type Summary = HostCustomType<SummarySchema>;
 type SummaryConstructor = HostCustomConstructorAt<Summary, HostCustomIndex0, SummaryDefinition>;
@@ -88,6 +92,14 @@ where
                 )
             })
             .and_then(|provider| {
+                provider.with_callable::<Provider, Prefix, (StringValue,), _>(prefix::<Profile>)
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function_and_constructions::<
+                    Provider, (StringValue,), Transform, PrefixConstructions, _,
+                >("make_transform", make_transform::<Profile>)
+            })
+            .and_then(|provider| {
                 provider.with_scoped_function::<Provider, (), HostCatalog, _>(
                     "catalog_new",
                     catalog_new::<Profile>,
@@ -129,6 +141,17 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         Profile::component_state(state)
     }
+}
+
+impl HostCallableSchema for Prefix {
+    const PACKAGE: &'static str = "provider_sdk_example";
+    const MODULE: &'static str = "provider/sdk";
+    const NAME: &'static str = "prefix";
+    type Arguments = TransformArguments;
+    type Return = StringValue;
+    type Captures = TransformArguments;
+    type Constructions = HostTypeListEnd;
+    type Completion = HostReturns;
 }
 
 impl HostExternalSchema for CatalogSchema {
@@ -251,6 +274,32 @@ where
             }))
         })
     }))
+}
+
+fn make_transform<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, Transform>,
+    constructions: HostConstructions<'call, PrefixConstructions>,
+    prefix: StringValue,
+) -> Result<HostCallCompletion<'call, Transform>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let function = call.construct_function(constructions.at::<HostTypeIndex0>(), (prefix, ()));
+    Ok(call.return_value(function))
+}
+
+fn prefix<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, StringValue>,
+    captures: HostCaptures<'call, TransformArguments>,
+    _: HostConstructions<'call, HostTypeListEnd>,
+    value: StringValue,
+) -> Result<HostCallCompletion<'call, StringValue>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let (prefix, ()) = call.captures(captures);
+    call.state().calls += 1;
+    Ok(call.return_value(format!("{prefix}{value}").into()))
 }
 
 fn catalog_new<'call, Profile>(

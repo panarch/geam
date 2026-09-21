@@ -53,21 +53,29 @@ where
     }
 }
 
-pub(in crate::runtime) fn invoke_never<'run, Profile>(
+pub(in crate::runtime) fn invoke_never<'run, Profile, Output: Send + 'static>(
     plan: &crate::plan::execution::HostedProgram<Profile>,
     state: &mut RuntimeStateFor<'run, crate::plan::execution::HostedProgram<Profile>>,
     origin: HostCallOrigin,
     target: crate::plan::execution::host::HostNeverFunctionId,
     inputs: RetainedValues,
-) -> ExecutionResult<std::convert::Infallible>
+) -> ExecutionResult<NativeReturn<Output>>
 where
     Profile: crate::HostProfile,
     crate::plan::execution::HostedProgram<Profile>: 'run,
 {
     let function = plan.host_never_function(target);
     let mut call = RuntimeHostCall::new(plan, state, function, inputs, origin.clone());
-    match function.implementation().call(&mut call) {
-        Ok(never) => match never {},
+    match function.implementation().start(&mut call) {
+        Ok(continuation) => {
+            drop(call);
+            Ok(NativeReturn::Continuing(Box::pin(async move {
+                continuation
+                    .complete()
+                    .await
+                    .map(|result| result.map(|never| match never {}))
+            })))
+        }
         Err(error) => {
             drop(call);
             Err(host_call_error(plan, origin, function.metadata(), error))

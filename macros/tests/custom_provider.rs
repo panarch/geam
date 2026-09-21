@@ -343,7 +343,8 @@ fn generated_custom_schema_preserves_constructor_field_and_function_order() {
     let ValueType::Custom(_) = &status else {
         panic!("idle should return the Status custom type")
     };
-    let status_schema = geam_core::HostCustomTypeSchema::of::<customs::__GeamCustomSchema0>();
+    let status_schema =
+        geam_core::HostCustomTypeSchema::of::<customs::__GeamCustomSchema0<Profile>>();
     assert_eq!(status_schema.name(), "Status");
     assert_eq!(status_schema.constructors().len(), 4);
     assert_eq!(status_schema.constructors()[0].name(), "Idle");

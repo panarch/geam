@@ -2,13 +2,14 @@ use super::rust::{Emit, Rust};
 use super::{Export, ModuleArtifact, ModuleEmission};
 use crate::plan::execution::host::{HostedExecutionProfile, HostedFunctionMetadata};
 use crate::plan::execution::storage::Table;
-use crate::plan::execution::{ExecutionProgram, HostedProgram, LibraryFunctionEntries};
+use crate::plan::execution::{ExecutionProgram, LibraryFunctionEntries};
 use std::sync::Arc;
 
 /// A prepared hosted program with native declarations but no runtime state.
 pub struct PreparedHostedModule {
     program: ExecutionProgram<HostedExecutionProfile>,
     entries: LibraryFunctionEntries,
+    callables: Table<crate::plan::execution::LibraryNativeConstruction>,
     exports: Table<Export>,
     value_functions: Table<Arc<HostedFunctionMetadata>>,
     never_functions: Table<Arc<HostedFunctionMetadata>>,
@@ -18,26 +19,25 @@ pub struct HostedModuleArtifact {
     pub module: ModuleArtifact<HostedExecutionProfile>,
     pub value_functions: Table<HostedFunctionMetadata>,
     pub never_functions: Table<HostedFunctionMetadata>,
+    pub callables: Table<crate::plan::execution::LibraryNativeConstruction>,
 }
 
 impl PreparedHostedModule {
-    pub(crate) fn new<Profile: crate::HostProfile>(
-        plan: crate::plan::HostedLibraryModulePlan<Profile>,
+    pub(crate) fn new<Value: Clone, Never: Clone>(
+        plan: crate::plan::ProfiledHostedLibraryModulePlan<
+            crate::host::HostFunctionBinding<Value, Never>,
+        >,
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,
         exports: Vec<Export>,
     ) -> Result<Self, crate::HostSpecializationError> {
-        let (
-            HostedProgram {
-                program,
-                host_functions,
-            },
-            entries,
-        ) = HostedProgram::from_library_plan(plan, first, remaining)?;
+        let (program, host_functions, entries, callables) =
+            crate::plan::execution::lowering::lower_hosted_library(plan, first, remaining)?;
         let (value_functions, never_functions) = host_functions.into_metadata();
         Ok(Self {
             program,
             entries,
+            callables,
             exports: exports.into(),
             value_functions,
             never_functions,
@@ -58,6 +58,7 @@ impl Emit for PreparedHostedModule {
             exports,
             value_functions,
             never_functions,
+            callables,
         } = self;
         output.structure(
             "HostedModuleArtifact",
@@ -72,6 +73,7 @@ impl Emit for PreparedHostedModule {
                 ),
                 ("value_functions", value_functions),
                 ("never_functions", never_functions),
+                ("callables", callables),
             ],
         );
     }

@@ -472,6 +472,10 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         &self.params
     }
 
+    pub(in crate::runtime) fn capture_frame(&self) -> &Captures {
+        &self.captures
+    }
+
     pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
         self.captures.values()
     }
@@ -616,6 +620,16 @@ evaluated_function_value_from!(EvaluatedListFunction, List);
 evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 
 impl EvaluatedFunctionValue {
+    pub(in crate::runtime) fn closure(
+        target: crate::plan::execution::function::RuntimeFunctionId,
+        params: Vec<ParamLocal>,
+        captures: Captures,
+        type_: FunctionType,
+    ) -> Self {
+        crate::runtime::function::InvocableFunctionValue::closure(target, params, captures, type_)
+            .into_evaluated()
+    }
+
     pub(in crate::runtime) fn from_kind(kind: EvaluatedFunctionValueKind) -> Self {
         Self { kind }
     }

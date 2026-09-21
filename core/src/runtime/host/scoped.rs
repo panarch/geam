@@ -76,9 +76,28 @@ pub(crate) struct StoredRuntimeList {
     item_values: RefCell<ScopedValues>,
 }
 
+#[derive(Clone)]
+pub(crate) struct ValueRetention(crate::plan::execution::runtime::OwnedRuntimeValueMetadata);
+
+impl ValueRetention {
+    pub(in crate::runtime) fn new(
+        metadata: crate::plan::execution::runtime::RuntimeValueMetadata<'_>,
+    ) -> Self {
+        Self(metadata.to_owned())
+    }
+}
+
 pub(crate) struct StoredRuntimeListItem<'value> {
     values: &'value mut ScopedValues,
     token: HostValueToken,
+}
+
+struct ListItemScratch<'value>(&'value mut ScopedValues);
+
+impl Drop for ListItemScratch<'_> {
+    fn drop(&mut self) {
+        self.0.clear();
+    }
 }
 
 pub(crate) struct StoredRuntimeListTupleItems<'value> {
@@ -209,7 +228,8 @@ impl StoredRuntimeList {
     ) -> Option<Output> {
         let value = self.retained.item(index)?;
         let mut item_values = self.item_values.borrow_mut();
-        let item = StoredRuntimeListItem::new(&mut item_values, value);
+        let scratch = ListItemScratch(&mut item_values);
+        let item = StoredRuntimeListItem::new(scratch.0, value);
         Some(decode(item))
     }
 
@@ -270,6 +290,50 @@ impl<'value> StoredRuntimeListItem<'value> {
         self.values.take_external(self.token).into_parts().1
     }
 
+    pub(crate) fn into_stored_external(
+        self,
+        retention: &ValueRetention,
+    ) -> (StoredRuntimeValue, crate::runtime::ExternalPayloadLease) {
+        let external = self.values.take_external(self.token);
+        let lease = external.lease().clone();
+        let value = StoredRuntimeValue::new(
+            EvaluatedValue::External(external),
+            retention.0.as_borrowed(),
+        );
+        (value, lease)
+    }
+
+    pub(crate) fn into_stored(self, retention: &ValueRetention) -> StoredRuntimeValue {
+        let value = match self.token.family {
+            HostValueFamily::Int => EvaluatedValue::Int(self.values.take_int(self.token)),
+            HostValueFamily::Float => EvaluatedValue::Float(self.values.take_float(self.token)),
+            HostValueFamily::String => EvaluatedValue::String(self.values.take_string(self.token)),
+            HostValueFamily::BitArray => EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+                self.values.take_bit_array(self.token),
+            )),
+            HostValueFamily::UtfCodepoint => {
+                EvaluatedValue::UtfCodepoint(self.values.take_utf_codepoint(self.token))
+            }
+            HostValueFamily::Bool => EvaluatedValue::Bool(self.values.take_bool(self.token)),
+            HostValueFamily::Nil => EvaluatedValue::Nil,
+            HostValueFamily::Tuple => EvaluatedValue::Tuple(self.values.take_tuple(self.token)),
+            HostValueFamily::Custom => EvaluatedValue::Custom(self.values.take_custom(self.token)),
+            HostValueFamily::External => {
+                EvaluatedValue::External(self.values.take_external(self.token))
+            }
+            // List and function token slots can share indexed handles; retaining
+            // those shallow owners must leave sibling references valid.
+            HostValueFamily::List
+            | HostValueFamily::Function
+            | HostValueFamily::SymbolicFunction => self.values.value(self.token),
+        };
+        StoredRuntimeValue::new(value, retention.0.as_borrowed())
+    }
+
+    pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
+        self.values.function(self.values.function_token(self.token))
+    }
+
     pub(crate) fn into_tuple_items(self) -> StoredRuntimeListTupleItems<'value> {
         StoredRuntimeListTupleItems {
             values: self.values.take_tuple(self.token),
@@ -312,6 +376,26 @@ impl<'value> StoredRuntimeListCustomFields<'value> {
 }
 
 impl ScopedValues {
+    // List item decoders return owned views. Reuse scratch capacity without
+    // retaining values or growing token columns with the history of reads.
+    fn clear(&mut self) {
+        self.ints.clear();
+        self.floats.clear();
+        self.strings.clear();
+        self.bit_arrays.clear();
+        self.utf_codepoints.clear();
+        self.bools.clear();
+        self.parameter_lists.clear();
+        self.lists.clear();
+        self.list_tokens.clear();
+        self.stored_list_values.clear();
+        self.tuples.clear();
+        self.customs.clear();
+        self.externals.clear();
+        self.functions.clear();
+        self.symbolic_functions.clear();
+        self.function_indices.clear();
+    }
     pub(super) fn retain(&self, token: HostValueToken, retained: &mut RetainedValues) {
         match token.family {
             HostValueFamily::Int => retained.push_int(self.ints[token.index].clone()),
@@ -899,6 +983,17 @@ impl ScopedValues {
         self.customs[value.0].take_fields()
     }
 
+    pub(super) fn push_callable(
+        &mut self,
+        value: crate::runtime::RetainedCallable,
+    ) -> HostFunctionToken {
+        let token = HostFunctionToken(self.functions.len());
+        self.functions.push(value);
+        let index = FunctionIndex::Invocable(token.0);
+        self.function_indices.insert(index.token(), index);
+        token
+    }
+
     pub(super) fn function(&self, value: HostFunctionToken) -> crate::runtime::RetainedCallable {
         self.functions[value.0].clone()
     }
@@ -935,6 +1030,26 @@ impl ScopedValues {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn repeated_list_reads_reuse_scratch_and_release_it_after_decoder_unwind() {
+        let list = super::StoredRuntimeList::test_ints(vec![41.into()]);
+        assert_eq!(list.decode_item(0, |item| item.into_int()), Some(41.into()));
+        let allocation = list.item_values.borrow().ints.as_ptr();
+        for _ in 0..256 {
+            assert_eq!(list.decode_item(0, |item| item.into_int()), Some(41.into()));
+            let scratch = list.item_values.borrow();
+            assert!(scratch.ints.is_empty());
+            assert_eq!(scratch.ints.as_ptr(), allocation);
+        }
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            list.decode_item(0, |_item| panic!("decoder stopped"))
+        }));
+        assert!(failed.is_err());
+        assert!(list.item_values.borrow().ints.is_empty());
+        assert_eq!(list.decode_item(0, |item| item.into_int()), Some(41.into()));
+        assert_eq!(list.item_values.borrow().ints.as_ptr(), allocation);
+    }
+
+    #[test]
     fn retaining_callable_shares_the_scoped_target_and_capture_allocation() {
         use crate::plan::execution::function::IntFunctionId;
         use crate::plan::execution::graph::IntLocalId;
@@ -955,6 +1070,21 @@ mod tests {
         let token = scoped.push_function(function.into());
         let callable = scoped.function(crate::host::HostFunctionToken(token.index));
         let retained = callable.clone();
+        let mut restored = super::ScopedValues::default();
+        let restored_token = restored.push_callable(retained.clone());
+        let index = super::FunctionIndex::Invocable(restored_token.0);
+        assert_eq!(
+            restored.function_indices[&index.token()].token(),
+            crate::host::HostValueToken {
+                family: crate::host::HostValueFamily::Function,
+                index: 0
+            },
+        );
+        callable.with_value(|original| {
+            restored.function(restored_token).with_value(|restored| {
+                assert!(std::ptr::eq(original, restored));
+            });
+        });
         callable.with_value(|first| {
             retained.with_value(|second| {
                 assert!(std::ptr::eq(first, second));

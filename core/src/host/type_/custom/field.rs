@@ -56,6 +56,31 @@ where
     type Types: HostTypeSequence;
 }
 
+/// Reuses a producer's nominal identity with declaration-local field arguments.
+#[doc(hidden)]
+pub trait HostNominalCustomField<Arguments: CustomFieldTypeSequence>: HostType {
+    type Field: CustomFieldType;
+}
+
+impl<Schema, Source, Arguments> HostNominalCustomField<Arguments> for HostCustomType<Schema, Source>
+where
+    Schema: HostCustomSchema,
+    Source: HostTypeSequence,
+    Arguments: CustomFieldTypeSequence,
+{
+    type Field = HostCustomType<Schema, Arguments>;
+}
+
+impl<Schema, Source, Arguments> HostNominalCustomField<Arguments>
+    for HostExternalType<Schema, Source>
+where
+    Schema: HostExternalSchema,
+    Source: HostTypeSequence,
+    Arguments: CustomFieldTypeSequence,
+{
+    type Field = HostExternalType<Schema, Arguments>;
+}
+
 trait CustomTypeArgumentIndex: Send + Sync + 'static {
     const INDEX: usize;
 }
@@ -196,6 +221,36 @@ where
     Return: ResolveCustomFieldType<Arguments>,
 {
     type Type = HostFunctionType<FunctionArguments::Types, Return::Type>;
+}
+
+impl<FunctionArguments, Return> CustomFieldType
+    for crate::provider_support::HostOpaqueFunctionType<FunctionArguments, Return>
+where
+    FunctionArguments: CustomFieldTypeSequence,
+    Return: CustomFieldType,
+{
+    fn schema_type() -> HostSchemaType {
+        HostSchemaType::function(FunctionArguments::schema_types(), Return::schema_type())
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomIdentity>,
+    ) {
+        FunctionArguments::collect_custom_schemas(output, visited);
+        Return::collect_custom_schemas(output, visited);
+    }
+}
+
+impl<Arguments, FunctionArguments, Return> ResolveCustomFieldType<Arguments>
+    for crate::provider_support::HostOpaqueFunctionType<FunctionArguments, Return>
+where
+    Arguments: HostTypeSequence,
+    FunctionArguments: ResolveCustomFieldTypeSequence<Arguments>,
+    Return: ResolveCustomFieldType<Arguments>,
+{
+    type Type =
+        crate::provider_support::HostOpaqueFunctionType<FunctionArguments::Types, Return::Type>;
 }
 
 impl<Schema, TypeArguments> CustomFieldType for HostCustomType<Schema, TypeArguments>
@@ -523,5 +578,52 @@ mod tests {
                 HostCustomTypeSchema::of::<NestedSchema>(),
             ],
         );
+    }
+    #[test]
+    fn nominal_field_rebinding_and_opaque_callbacks_resolve_declaration_parameters() {
+        use super::{CustomFieldType, HostNominalCustomField, ResolveCustomFieldType};
+        use crate::provider_support::HostOpaqueFunctionType;
+        type Source = HostTypeList<crate::HostTypeParameter<0>, HostTypeListEnd>;
+        type Arguments = HostTypeList<BigInt, HostTypeList<bool, HostTypeListEnd>>;
+        type Field = <HostCustomType<NestedSchema, Source> as HostNominalCustomField<
+            HostTypeList<SecondArgument, HostTypeListEnd>,
+        >>::Field;
+        type External = <HostExternalType<ExternalSchema, Source> as HostNominalCustomField<
+            HostTypeList<FirstArgument, HostTypeListEnd>,
+        >>::Field;
+        type Function = HostOpaqueFunctionType<HostTypeList<External, HostTypeListEnd>, Field>;
+        type Resolved = <Function as ResolveCustomFieldType<Arguments>>::Type;
+        assert_eq!(
+            Function::schema_type(),
+            HostSchemaType::function(
+                [HostSchemaType::External {
+                    schema: HostExternalTypeSchema::of::<ExternalSchema>(),
+                    arguments: vec![HostSchemaType::Parameter(0)].into_boxed_slice()
+                }],
+                HostSchemaType::custom(
+                    "domain",
+                    "domain/types",
+                    "Nested",
+                    [HostSchemaType::Parameter(1)]
+                )
+            )
+        );
+        assert_eq!(
+            <Resolved as HostAbiType>::descriptor(),
+            HostTypeDescriptor::OpaqueFunction {
+                arguments: vec![HostTypeDescriptor::External {
+                    schema: HostExternalTypeSchema::of::<ExternalSchema>(),
+                    arguments: vec![HostTypeDescriptor::Int].into_boxed_slice()
+                }]
+                .into_boxed_slice(),
+                return_: Box::new(HostTypeDescriptor::Custom {
+                    schema: HostCustomTypeSchema::of::<NestedSchema>(),
+                    arguments: vec![HostTypeDescriptor::Bool].into_boxed_slice()
+                }),
+            }
+        );
+        let mut schemas = Vec::new();
+        Function::collect_custom_schemas(&mut schemas, &mut HashSet::new());
+        assert_eq!(schemas, [HostCustomTypeSchema::of::<NestedSchema>()]);
     }
 }

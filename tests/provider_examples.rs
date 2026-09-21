@@ -300,6 +300,40 @@ fn runs_the_documented_call_tracing_provider_with_fresh_callback_state() {
 }
 
 #[test]
+fn runs_the_documented_callables_provider_with_generic_and_custom_callbacks() {
+    let fixture = provider_example("callables");
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "callables provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "callables prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "callables execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for callables_example\n")
+        );
+    }
+}
+
+#[test]
 fn runs_the_documented_generic_box_provider_with_persistent_values() {
     let fixture = provider_example("generic_box");
     let project = fixture.path().join("project");
@@ -598,6 +632,7 @@ fn prepare_provider_dependency(name: &str) {
     static TAG_SET: OnceLock<Result<(), String>> = OnceLock::new();
     static REQUEST_IDS: OnceLock<Result<(), String>> = OnceLock::new();
     static CALL_TRACING: OnceLock<Result<(), String>> = OnceLock::new();
+    static CALLABLES: OnceLock<Result<(), String>> = OnceLock::new();
     static GENERIC_BOX: OnceLock<Result<(), String>> = OnceLock::new();
     static NATIVE_RECORDS: OnceLock<Result<(), String>> = OnceLock::new();
     static FEATURE_FLAGS: OnceLock<Result<(), String>> = OnceLock::new();
@@ -611,6 +646,7 @@ fn prepare_provider_dependency(name: &str) {
         "tag_set" => &TAG_SET,
         "request_ids" => &REQUEST_IDS,
         "call_tracing" => &CALL_TRACING,
+        "callables" => &CALLABLES,
         "generic_box" => &GENERIC_BOX,
         "native_records" => &NATIVE_RECORDS,
         "feature_flags" => &FEATURE_FLAGS,

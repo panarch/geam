@@ -1,35 +1,29 @@
 use super::ExecutionContext;
 use crate::host::{
-    HostCallError, HostCallErrorKind, HostCallRuntime, HostCodecScope, HostExecutionError,
-    HostOwnedCompletion, HostProfile, HostProvider, HostScopedValue, HostType, HostTypeSequence,
+    HostCallRuntime, HostCodecScope, HostExecutionError, HostOwnedCompletion, HostProfile,
+    HostProvider, HostScopedValue, HostType, HostTypeSequence,
 };
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::host::RuntimeHostCall;
 use crate::runtime::work::Cancelled;
-use crate::runtime::{ExecutionError, HostCallOrigin, StoredRuntimeValue};
+use crate::runtime::{HostCallOrigin, StoredRuntimeValue};
 use std::future::Future;
 use std::pin::Pin;
 
-pub(crate) struct Continuation {
-    operation: Pin<
-        Box<dyn Future<Output = Result<ExecutionResult<StoredRuntimeValue>, Cancelled>> + Send>,
-    >,
+pub(crate) struct Continuation<Output = StoredRuntimeValue> {
+    operation: Pin<Box<dyn Future<Output = Result<ExecutionResult<Output>, Cancelled>> + Send>>,
 }
 
-impl Continuation {
+impl<Output> Continuation<Output> {
     pub(crate) fn new(
-        operation: impl Future<Output = Result<ExecutionResult<StoredRuntimeValue>, Cancelled>>
-        + Send
-        + 'static,
+        operation: impl Future<Output = Result<ExecutionResult<Output>, Cancelled>> + Send + 'static,
     ) -> Self {
         Self {
             operation: Box::pin(operation),
         }
     }
 
-    pub(in crate::runtime) async fn complete(
-        self,
-    ) -> Result<ExecutionResult<StoredRuntimeValue>, Cancelled> {
+    pub(in crate::runtime) async fn complete(self) -> Result<ExecutionResult<Output>, Cancelled> {
         self.operation.await
     }
 }
@@ -43,6 +37,7 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
         >,
         codec: HostCodecScope,
         origin: HostCallOrigin,
+        callable_base: usize,
     ) -> Result<ExecutionResult<StoredRuntimeValue>, Cancelled>
     where
         Provider: HostProvider<Profile>,
@@ -50,28 +45,43 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
         Constructions: HostTypeSequence,
     {
         let completion = match completion {
-            Ok(completion) => Ok(completion),
-            Err(HostExecutionError::Host(error)) => Err(error),
-            Err(HostExecutionError::Cancelled) => return Err(Cancelled),
-            Err(HostExecutionError::Execution(error)) => {
-                return Ok(Err(error.0.read(Clone::clone)));
-            }
+            Ok(completion) => completion,
+            Err(error) => return self.fail_native(error, codec, origin).await,
         };
         self.with_runtime(move |plan, state| {
-            let output = completion.and_then(|completion| {
-                let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
-                completion
-                    .complete(&mut runtime)
-                    .map(|token| runtime.retain_stored(HostScopedValue::Value(token)))
-            });
-            output.map_err(|error: HostCallError| match error.into_kind() {
-                HostCallErrorKind::Failure(failure) => {
-                    ExecutionError::host_failure(plan, origin, codec.function(), failure)
-                }
-                HostCallErrorKind::Nested(error) => error,
+            let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
+            let output = completion
+                .complete(&mut runtime, callable_base)
+                .map(|token| runtime.retain_stored(HostScopedValue::Value(token)));
+            drop(runtime);
+            output.map_err(|error| {
+                crate::runtime::host::host_call_error(plan, origin, codec.function(), error)
             })
         })
         .await
+    }
+
+    pub(crate) async fn fail_native<Output: Send + 'static>(
+        &self,
+        error: HostExecutionError,
+        codec: HostCodecScope,
+        origin: HostCallOrigin,
+    ) -> Result<ExecutionResult<Output>, Cancelled> {
+        match error {
+            HostExecutionError::Cancelled => Err(Cancelled),
+            HostExecutionError::Execution(error) => Ok(Err(error.0.read(Clone::clone))),
+            HostExecutionError::Host(error) => {
+                self.with_runtime(move |plan, _| {
+                    Err(crate::runtime::host::host_call_error(
+                        plan,
+                        origin,
+                        codec.function(),
+                        error,
+                    ))
+                })
+                .await
+            }
+        }
     }
 }
 

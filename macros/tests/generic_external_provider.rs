@@ -70,6 +70,30 @@ mod generic_box {
         call.restore(boxed.value())
     }
 
+    #[geam_macros::callable(factory = KeepBox)]
+    fn keep_box<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::capture] boxed: BoxInput<Item>,
+    ) -> BoxValue<Item> {
+        let value = call.restore(boxed.value());
+        BoxValue {
+            value: call.store(value),
+        }
+    }
+
+    #[geam_macros::function]
+    fn capture_box<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        #[geam_macros::factory] factory: geam_core::provider::Factory<KeepBox<Item>>,
+        boxed: BoxInput<Item>,
+    ) -> HostResult<Callback<fn() -> BoxInput<Item>>> {
+        let value = call.restore(boxed.value());
+        let boxed = BoxValue {
+            value: call.store(value),
+        };
+        call.create(&factory, (boxed,))
+    }
+
     #[geam_macros::function]
     fn replace<Old, New>(
         #[geam_macros::call] call: &mut Call<()>,
@@ -213,6 +237,8 @@ fn new(value: item) -> Box(item)
 
 @external(erlang, "generic_box", "get")
 fn get(boxed: Box(item)) -> item
+@external(erlang, "generic_box", "capture_box")
+fn capture_box(boxed: Box(item)) -> fn() -> Box(item)
 
 @external(erlang, "generic_box", "replace")
 fn replace(boxed: Box(old), value: new) -> Box(new)
@@ -263,6 +289,9 @@ pub fn main() {
   let paired = pair("left", 7)
   let swapped = swap(paired)
   let token_box = new(token("opaque"))
+  let retained = capture_box(token_box)
+  assert contains(retained(), token("opaque"))
+  assert get(capture_box(new(41))()) == 41
   #(
     get(original),
     get(replaced),
@@ -310,6 +339,7 @@ fn generic_external_schema_and_functions_preserve_source_parameter_shapes() {
             "token",
             "new",
             "get",
+            "capture_box",
             "replace",
             "contains",
             "map",

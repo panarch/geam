@@ -68,6 +68,33 @@ pub struct ExecutionPlan {
 pub struct LibraryFunctionEntry<Function> {
     pub function: Function,
     pub inputs: LibraryInputConstructions,
+    pub callables: Table<LibraryCallable>,
+}
+
+#[derive(Clone)]
+pub struct LibraryCallable {
+    pub type_: type_::FunctionType,
+    pub inputs: LibraryInputConstructions,
+    pub callables: Table<LibraryCallable>,
+}
+
+#[derive(Clone)]
+pub struct LibraryNativeConstruction {
+    pub declaration: host::CallableRegistration,
+    pub construction: host::HostCallableConstruction,
+    pub invocation: LibraryCallable,
+    pub captures: LibraryInputConstructions,
+}
+
+pub(crate) type NativeLibraryConstructions = Table<LibraryNativeConstruction>;
+
+/// A named entry returning a function which the embedding signature can invoke.
+/// Plain profiles have no scoped invocation target; symbolic functions stay in
+/// the general function-value tables instead of this capability-bearing entry.
+#[derive(Clone)]
+pub struct LibraryCallableEntry<Graph: ExecutionGraphProfile = function::HostedExecutionGraph> {
+    pub function: Graph::InvocableFunctionFunctionId,
+    pub type_: type_::FunctionType,
 }
 
 #[derive(Clone)]
@@ -89,6 +116,7 @@ pub struct LibraryListConstructions {
     pub nils: Table<type_::NilListTypeId>,
     pub tuples: Table<type_::TupleListTypeId>,
     pub lists: Table<type_::ListListTypeId>,
+    pub functions: Table<type_::FunctionListTypeId>,
 }
 
 #[derive(Clone)]
@@ -104,14 +132,20 @@ pub struct LibraryFunctionEntries<Graph: ExecutionGraphProfile = function::Hoste
     pub nils: Table<LibraryFunctionEntry<function::NilFunctionId>>,
     pub tuples: Table<LibraryFunctionEntry<function::TupleFunctionId>>,
     pub lists: Table<LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>>,
+    pub functions: Table<LibraryFunctionEntry<LibraryCallableEntry<Graph>>>,
 }
 
 impl<Function> LibraryFunctionEntry<Function> {
     pub(in crate::plan::execution) fn new(
         function: Function,
         inputs: LibraryInputConstructions,
+        callables: Table<LibraryCallable>,
     ) -> Self {
-        Self { function, inputs }
+        Self {
+            function,
+            inputs,
+            callables,
+        }
     }
 
     pub(crate) fn function(&self) -> &Function {
@@ -276,9 +310,17 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
         module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,
-    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
-        let (execution, entries) = HostedProgram::from_library_plan(module_plan, first, remaining)?;
-        Ok((Self::from_program(execution), entries))
+    ) -> Result<
+        (
+            Self,
+            LibraryFunctionEntries,
+            Table<LibraryNativeConstruction>,
+        ),
+        HostSpecializationError,
+    > {
+        let (execution, entries, callables) =
+            HostedProgram::from_library_plan(module_plan, first, remaining)?;
+        Ok((Self::from_program(execution), entries, callables))
     }
 
     pub async fn run_main(
@@ -323,8 +365,15 @@ impl<Profile: HostProfile> HostedProgram<Profile> {
         module_plan: crate::plan::HostedLibraryModulePlan<Profile>,
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,
-    ) -> Result<(Self, LibraryFunctionEntries), HostSpecializationError> {
-        let (program, host_functions, entries) =
+    ) -> Result<
+        (
+            Self,
+            LibraryFunctionEntries,
+            Table<LibraryNativeConstruction>,
+        ),
+        HostSpecializationError,
+    > {
+        let (program, host_functions, entries, callables) =
             lowering::lower_hosted_library(module_plan, first, remaining)?;
         Ok((
             Self {
@@ -332,6 +381,7 @@ impl<Profile: HostProfile> HostedProgram<Profile> {
                 host_functions,
             },
             entries,
+            callables,
         ))
     }
 
@@ -703,10 +753,57 @@ where
     Function: Emit,
 {
     fn emit(&self, output: &mut Rust) {
-        let Self { function, inputs } = self;
+        let Self {
+            function,
+            inputs,
+            callables,
+        } = self;
         output.structure(
             "program::LibraryFunctionEntry",
-            &[("function", function), ("inputs", inputs)],
+            &[
+                ("function", function),
+                ("inputs", inputs),
+                ("callables", callables),
+            ],
+        );
+    }
+}
+
+impl Emit for LibraryCallable {
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "program::LibraryCallable",
+            &[
+                ("type_", &self.type_),
+                ("inputs", &self.inputs),
+                ("callables", &self.callables),
+            ],
+        );
+    }
+}
+
+impl Emit for LibraryNativeConstruction {
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "program::LibraryNativeConstruction",
+            &[
+                ("declaration", &self.declaration),
+                ("construction", &self.construction),
+                ("invocation", &self.invocation),
+                ("captures", &self.captures),
+            ],
+        );
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for LibraryCallableEntry<Graph>
+where
+    Graph::InvocableFunctionFunctionId: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "program::LibraryCallableEntry",
+            &[("function", &self.function), ("type_", &self.type_)],
         );
     }
 }
@@ -735,6 +832,7 @@ impl Emit for LibraryListConstructions {
             nils,
             tuples,
             lists,
+            functions,
         } = self;
         output.structure(
             "program::LibraryListConstructions",
@@ -750,6 +848,7 @@ impl Emit for LibraryListConstructions {
                 ("nils", nils),
                 ("tuples", tuples),
                 ("lists", lists),
+                ("functions", functions),
             ],
         );
     }
@@ -758,6 +857,7 @@ impl Emit for LibraryListConstructions {
 impl<Graph: ExecutionGraphProfile> Emit for LibraryFunctionEntries<Graph>
 where
     Table<LibraryFunctionEntry<Graph::ExternalFunctionId>>: Emit,
+    Graph::InvocableFunctionFunctionId: Emit,
     Table<LibraryFunctionEntry<function::LibraryListFunctionId<Graph>>>: Emit,
 {
     fn emit(&self, output: &mut Rust) {
@@ -773,6 +873,7 @@ where
             nils,
             tuples,
             lists,
+            functions,
         } = self;
         output.structure(
             "program::LibraryFunctionEntries",
@@ -788,6 +889,7 @@ where
                 ("nils", nils),
                 ("tuples", tuples),
                 ("lists", lists),
+                ("functions", functions),
             ],
         );
     }
@@ -817,6 +919,291 @@ mod tests {
     };
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn emitted_native_library_factory_separates_declaration_body_and_input_codecs() {
+        use super::function::{BoolFunctionId, CoreRuntimeFunctionId, RuntimeFunctionId};
+        use super::graph::{IntLocalId, ParamLocal, ParamSlot};
+        use super::host::registration::RegistrationType;
+        use super::host::{CallableRegistration, HostCallableConstruction};
+        use super::prepared::rust::Rust;
+        use super::storage::Table;
+        use super::type_::{FunctionType, ValueShapeId, ValueType};
+        use super::{
+            LibraryCallable, LibraryInputConstructions, LibraryListConstructions,
+            LibraryNativeConstruction,
+        };
+
+        let inputs = LibraryInputConstructions {
+            variants: Table::Static(&[]),
+            lists: LibraryListConstructions {
+                ints: Table::Static(&[]),
+                floats: Table::Static(&[]),
+                strings: Table::Static(&[]),
+                bit_arrays: Table::Static(&[]),
+                utf_codepoints: Table::Static(&[]),
+                customs: Table::Static(&[]),
+                externals: Table::Static(&[]),
+                bools: Table::Static(&[]),
+                nils: Table::Static(&[]),
+                tuples: Table::Static(&[]),
+                lists: Table::Static(&[]),
+                functions: Table::Static(&[]),
+            },
+        };
+        let factory = LibraryNativeConstruction {
+            declaration: CallableRegistration {
+                package: "example".into(),
+                module: "callbacks".into(),
+                name: "positive".into(),
+                arguments: Table::Static(&[]),
+                captures: vec![RegistrationType::Int].into(),
+                return_: RegistrationType::Bool,
+                returns_value: true,
+            },
+            construction: HostCallableConstruction {
+                target: RuntimeFunctionId::Core(CoreRuntimeFunctionId::Bool(BoolFunctionId(1))),
+                type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                parameters: Table::Static(&[]),
+                captures: vec![ParamSlot::new(
+                    ParamLocal::Int(IntLocalId(0)),
+                    ValueShapeId(0),
+                )]
+                .into(),
+            },
+            invocation: LibraryCallable {
+                type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                inputs: inputs.clone(),
+                callables: Table::Static(&[]),
+            },
+            captures: inputs,
+        };
+        assert_eq!(Rust::expression(&factory), r#"
+data::program::LibraryNativeConstruction {
+    declaration: data::host::CallableRegistration {
+        package: data::Text::Static("example"),
+        module: data::Text::Static("callbacks"),
+        name: data::Text::Static("positive"),
+        arguments: data::Storage::Static(&[]),
+        captures: data::Storage::Static(&[
+            data::host::RegistrationType::Int,
+        ]),
+        return_: data::host::RegistrationType::Bool,
+        returns_value: true,
+    },
+    construction: data::host::HostCallableConstruction {
+        target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Bool(data::function::BoolFunctionId(1))),
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Bool),
+        },
+        parameters: data::Storage::Static(&[]),
+        captures: data::Storage::Static(&[
+            data::graph::ParamSlot {
+                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                shape: data::type_::ValueShapeId(0),
+            },
+        ]),
+    },
+    invocation: data::program::LibraryCallable {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Bool),
+        },
+        inputs: data::program::LibraryInputConstructions {
+            variants: data::Storage::Static(&[]),
+            lists: data::program::LibraryListConstructions {
+                ints: data::Storage::Static(&[]),
+                floats: data::Storage::Static(&[]),
+                strings: data::Storage::Static(&[]),
+                bit_arrays: data::Storage::Static(&[]),
+                utf_codepoints: data::Storage::Static(&[]),
+                customs: data::Storage::Static(&[]),
+                externals: data::Storage::Static(&[]),
+                bools: data::Storage::Static(&[]),
+                nils: data::Storage::Static(&[]),
+                tuples: data::Storage::Static(&[]),
+                lists: data::Storage::Static(&[]),
+                functions: data::Storage::Static(&[]),
+            },
+        },
+        callables: data::Storage::Static(&[]),
+    },
+    captures: data::program::LibraryInputConstructions {
+        variants: data::Storage::Static(&[]),
+        lists: data::program::LibraryListConstructions {
+            ints: data::Storage::Static(&[]),
+            floats: data::Storage::Static(&[]),
+            strings: data::Storage::Static(&[]),
+            bit_arrays: data::Storage::Static(&[]),
+            utf_codepoints: data::Storage::Static(&[]),
+            customs: data::Storage::Static(&[]),
+            externals: data::Storage::Static(&[]),
+            bools: data::Storage::Static(&[]),
+            nils: data::Storage::Static(&[]),
+            tuples: data::Storage::Static(&[]),
+            lists: data::Storage::Static(&[]),
+            functions: data::Storage::Static(&[]),
+        },
+    },
+}"#.trim_start_matches('\n'));
+    }
+
+    #[test]
+    fn emitted_callable_entries_preserve_the_hosted_invocation_target() {
+        use super::LibraryCallableEntry;
+        use super::function::{
+            IntFunctionFunctionId, ProfiledFunctionFunctionId, RuntimeFunctionFunctionTarget,
+        };
+        use super::prepared::rust::Rust;
+        use super::type_::{FunctionType, ValueType};
+
+        let hosted: LibraryCallableEntry = LibraryCallableEntry {
+            function: RuntimeFunctionFunctionTarget::Core(ProfiledFunctionFunctionId::Int(
+                IntFunctionFunctionId(2),
+            )),
+            type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        };
+        assert_eq!(Rust::expression(&hosted), r#"
+data::program::LibraryCallableEntry {
+    function: data::function::RuntimeFunctionFunctionTarget::Core(data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))),
+    type_: data::type_::FunctionType {
+        arguments: data::Storage::Static(&[
+            data::type_::ValueType::Int,
+        ]),
+        return_: data::Storage::Static(&data::type_::ValueType::Int),
+    },
+}"#.trim_start_matches('\n'));
+    }
+
+    #[test]
+    fn emitted_native_function_exports_include_the_returned_callable_codec() {
+        use super::function::{
+            BoolFunctionFunctionId, ProfiledFunctionFunctionId, RuntimeFunctionFunctionTarget,
+        };
+        use super::prepared::rust::Rust;
+        use super::storage::Table;
+        use super::type_::{FunctionType, ValueType};
+        use super::{
+            LibraryCallable, LibraryCallableEntry, LibraryFunctionEntries, LibraryFunctionEntry,
+            LibraryInputConstructions, LibraryListConstructions,
+        };
+
+        let inputs = LibraryInputConstructions {
+            variants: Table::Static(&[]),
+            lists: LibraryListConstructions {
+                ints: Table::Static(&[]),
+                floats: Table::Static(&[]),
+                strings: Table::Static(&[]),
+                bit_arrays: Table::Static(&[]),
+                utf_codepoints: Table::Static(&[]),
+                customs: Table::Static(&[]),
+                externals: Table::Static(&[]),
+                bools: Table::Static(&[]),
+                nils: Table::Static(&[]),
+                tuples: Table::Static(&[]),
+                lists: Table::Static(&[]),
+                functions: Table::Static(&[]),
+            },
+        };
+        let entries: LibraryFunctionEntries = LibraryFunctionEntries {
+            ints: Table::Static(&[]),
+            floats: Table::Static(&[]),
+            strings: Table::Static(&[]),
+            bit_arrays: Table::Static(&[]),
+            utf_codepoints: Table::Static(&[]),
+            customs: Table::Static(&[]),
+            externals: Table::Static(&[]),
+            bools: Table::Static(&[]),
+            nils: Table::Static(&[]),
+            tuples: Table::Static(&[]),
+            lists: Table::Static(&[]),
+            functions: vec![LibraryFunctionEntry {
+                function: LibraryCallableEntry {
+                    function: RuntimeFunctionFunctionTarget::Core(
+                        ProfiledFunctionFunctionId::Bool(BoolFunctionFunctionId(2)),
+                    ),
+                    type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                },
+                inputs: inputs.clone(),
+                callables: vec![LibraryCallable {
+                    type_: FunctionType::new(Vec::new(), ValueType::Bool),
+                    inputs,
+                    callables: Table::Static(&[]),
+                }]
+                .into(),
+            }]
+            .into(),
+        };
+        assert_eq!(Rust::expression(&entries), r#"
+data::program::LibraryFunctionEntries {
+    ints: data::Storage::Static(&[]),
+    floats: data::Storage::Static(&[]),
+    strings: data::Storage::Static(&[]),
+    bit_arrays: data::Storage::Static(&[]),
+    utf_codepoints: data::Storage::Static(&[]),
+    customs: data::Storage::Static(&[]),
+    externals: data::Storage::Static(&[]),
+    bools: data::Storage::Static(&[]),
+    nils: data::Storage::Static(&[]),
+    tuples: data::Storage::Static(&[]),
+    lists: data::Storage::Static(&[]),
+    functions: data::Storage::Static(&[
+        data::program::LibraryFunctionEntry {
+            function: data::program::LibraryCallableEntry {
+                function: data::function::RuntimeFunctionFunctionTarget::Core(data::function::ProfiledFunctionFunctionId::Bool(data::function::BoolFunctionFunctionId(2))),
+                type_: data::type_::FunctionType {
+                    arguments: data::Storage::Static(&[]),
+                    return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                },
+            },
+            inputs: data::program::LibraryInputConstructions {
+                variants: data::Storage::Static(&[]),
+                lists: data::program::LibraryListConstructions {
+                    ints: data::Storage::Static(&[]),
+                    floats: data::Storage::Static(&[]),
+                    strings: data::Storage::Static(&[]),
+                    bit_arrays: data::Storage::Static(&[]),
+                    utf_codepoints: data::Storage::Static(&[]),
+                    customs: data::Storage::Static(&[]),
+                    externals: data::Storage::Static(&[]),
+                    bools: data::Storage::Static(&[]),
+                    nils: data::Storage::Static(&[]),
+                    tuples: data::Storage::Static(&[]),
+                    lists: data::Storage::Static(&[]),
+                    functions: data::Storage::Static(&[]),
+                },
+            },
+            callables: data::Storage::Static(&[
+                data::program::LibraryCallable {
+                    type_: data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[]),
+                        return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                    },
+                    inputs: data::program::LibraryInputConstructions {
+                        variants: data::Storage::Static(&[]),
+                        lists: data::program::LibraryListConstructions {
+                            ints: data::Storage::Static(&[]),
+                            floats: data::Storage::Static(&[]),
+                            strings: data::Storage::Static(&[]),
+                            bit_arrays: data::Storage::Static(&[]),
+                            utf_codepoints: data::Storage::Static(&[]),
+                            customs: data::Storage::Static(&[]),
+                            externals: data::Storage::Static(&[]),
+                            bools: data::Storage::Static(&[]),
+                            nils: data::Storage::Static(&[]),
+                            tuples: data::Storage::Static(&[]),
+                            lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
+                        },
+                    },
+                    callables: data::Storage::Static(&[]),
+                },
+            ]),
+        },
+    ]),
+}"#.trim_start_matches('\n'));
+    }
 
     #[test]
     fn plain_execution_program_keeps_host_targets_uninhabited() {

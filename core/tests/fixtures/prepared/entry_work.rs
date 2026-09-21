@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 2,
+    format: 3,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -698,6 +698,7 @@ data::HostedEntryArtifact {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "ready", data::source::SourceSpan::new(60, 86)),
             signature: data::type_::FunctionMetadata {
@@ -723,6 +724,7 @@ data::HostedEntryArtifact {
                 call: data::Storage::Static(&[
                     data::host::HostCallParameter::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -747,6 +749,7 @@ data::HostedEntryArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -759,6 +762,9 @@ data::HostedEntryArtifact {
                 parameters: data::Storage::Static(&[
                     data::host::RegistrationType::Parameter(0),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -789,6 +795,7 @@ data::HostedEntryArtifact {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "map", data::source::SourceSpan::new(139, 187)),
             signature: data::type_::FunctionMetadata {
@@ -880,6 +887,7 @@ data::HostedEntryArtifact {
                         arity: 1,
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -917,6 +925,7 @@ data::HostedEntryArtifact {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -956,6 +965,9 @@ data::HostedEntryArtifact {
                         return_: data::Storage::Static(&data::host::RegistrationType::Parameter(0)),
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),

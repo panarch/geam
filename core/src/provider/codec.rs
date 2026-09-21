@@ -12,14 +12,132 @@ pub trait ProviderValue {
     type RootRequirements: ProviderConstructionRequirements;
 }
 
+/// Host representation selected after the execution profile is known.
+/// A declaration containing explicit work cannot select its nominal work
+/// schema until this point.
+#[doc(hidden)]
+pub trait ProviderTypedValue<Profile: HostProfile> {
+    type Host: HostType;
+    type OutputRequirements: ProviderConstructionRequirements;
+    type RootRequirements: ProviderConstructionRequirements;
+}
+
+impl<Profile: HostProfile, Value: ProviderValue> ProviderTypedValue<Profile> for Value {
+    type Host = Value::Host;
+    type OutputRequirements = Value::OutputRequirements;
+    type RootRequirements = Value::RootRequirements;
+}
+
+impl<const INDEX: usize> ProviderValue for crate::HostTypeParameter<INDEX> {
+    type Host = Self;
+    type OutputRequirements = ProviderNoConstructions;
+    type RootRequirements = ProviderNoConstructions;
+}
+
 /// Transferable input forms selected beside one ordinary provider value.
 #[doc(hidden)]
-pub trait ProviderValueForms: ProviderValue {
-    type Output: ProviderValueForms<Host = Self::Host, Output = Self::Output> + 'static;
+pub trait ProviderValueForms {
+    type InvocationRequirements;
+    type Runtime<Profile: HostProfile>;
+    type Output: ProviderValueForms<Output = Self::Output> + 'static;
     type ImmediateInput;
     type ImmediateListInput;
     type OwnedInput;
     type OwnedListInput;
+    type ImmediateListDecoder;
+    type OwnedListDecoder;
+}
+
+/// List forms that can be named before choosing an execution profile.
+/// Contextual declarations supply marker lists until their runtime family is
+/// selected; static declarations keep their ordinary retained-list forms.
+#[doc(hidden)]
+pub trait ProviderMarkerListForms {
+    type Immediate;
+    type Owned;
+}
+
+impl<Value: ProviderValueForms + ProviderValue> ProviderMarkerListForms for Value {
+    type Immediate = super::List<
+        Value::ImmediateListInput,
+        super::ProviderListContext<Value::Host, Value::ImmediateListDecoder>,
+    >;
+    type Owned = super::List<
+        Value::OwnedListInput,
+        super::ProviderListContext<Value::Host, Value::OwnedListDecoder>,
+    >;
+}
+
+/// Profile-dependent forms for declarations that retain callable values.
+#[doc(hidden)]
+pub trait ProviderContextualValueForms<Profile: HostProfile> {
+    type Host: HostType;
+    type Output;
+    type OutputRequirements: ProviderConstructionRequirements;
+    type RootRequirements: ProviderConstructionRequirements;
+    type ImmediateInput;
+    type ImmediateListInput;
+    type OwnedInput;
+    type OwnedListInput;
+    type InputRequirements: ProviderConstructionRequirements;
+}
+
+/// The declaration selects one runtime form family without requiring its
+/// execution profile when the declaration itself is named.
+#[doc(hidden)]
+pub trait ProviderRuntimeValueForms<Profile: HostProfile> {
+    type Host: HostType;
+    type Output;
+    type OutputRequirements: ProviderConstructionRequirements;
+    type RootRequirements: ProviderConstructionRequirements;
+    type ImmediateInput;
+    type ImmediateListInput;
+    type OwnedInput;
+    type OwnedListInput;
+    type InputRequirements: ProviderConstructionRequirements;
+}
+
+#[doc(hidden)]
+pub struct ProviderStaticValueForms<Value>(PhantomData<fn() -> Value>);
+
+impl<Profile: HostProfile, Value> ProviderRuntimeValueForms<Profile>
+    for ProviderStaticValueForms<Value>
+where
+    Value: ProviderValueForms + ProviderValue,
+    Value::Output: ProviderValue,
+{
+    type Host = Value::Host;
+    type Output = Value::Output;
+    type OutputRequirements = <Value::Output as ProviderValue>::OutputRequirements;
+    type RootRequirements = <Value::Output as ProviderValue>::RootRequirements;
+    type ImmediateInput = Value::ImmediateInput;
+    type ImmediateListInput = Value::ImmediateListInput;
+    type OwnedInput = Value::OwnedInput;
+    type OwnedListInput = Value::OwnedListInput;
+    type InputRequirements = ProviderNoConstructions;
+}
+
+impl<Profile, Value> ProviderContextualValueForms<Profile> for Value
+where
+    Profile: HostProfile,
+    Value: ProviderValueForms,
+    Value::Runtime<Profile>: ProviderRuntimeValueForms<Profile>,
+{
+    type Host = <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::Host;
+    type Output = <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::Output;
+    type OutputRequirements =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::OutputRequirements;
+    type RootRequirements =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::RootRequirements;
+    type ImmediateInput =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::ImmediateInput;
+    type ImmediateListInput =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::ImmediateListInput;
+    type OwnedInput = <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::OwnedInput;
+    type OwnedListInput =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::OwnedListInput;
+    type InputRequirements =
+        <Value::Runtime<Profile> as ProviderRuntimeValueForms<Profile>>::InputRequirements;
 }
 
 /// Owned conversion from one transferable host value into a provider input.
@@ -31,31 +149,73 @@ where
     Return: HostType,
 {
     type Host: HostType;
+    type Requirements: ProviderConstructionRequirements;
 
     fn from_host<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
+    ) -> Self
+    where
+        Self::Requirements:
+            ProviderConstructionRequirements<Types<HostTypeListEnd> = HostTypeListEnd>,
+    {
+        Self::from_host_with(call, value, &ProviderConstructions::empty())
+    }
+
+    fn from_host_with<'call>(
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        value: <Self::Host as HostType>::Value<'call>,
+        constructions: &ProviderConstructions<'call, Self::Requirements>,
     ) -> Self;
 }
 
 /// Conversion from an owned provider value into transferable execution.
 #[doc(hidden)]
-pub trait ProviderOutputValue<Profile, Provider, Return>: ProviderValue
+pub trait ProviderOutputValue<Profile, Provider, Return>: ProviderTypedValue<Profile>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
+    type Error: Into<HostCallError>;
+
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> <Self::Host as HostType>::Value<'call>;
+    ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error>;
+
+    fn store_dynamic<'call, Owner: super::ProviderStoredOwner>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> Result<super::advanced::StoredDynamic<Owner>, Self::Error>
+    where
+        Self: Sized,
+    {
+        let value = self.into_host(call, constructions)?;
+        Ok(super::advanced::StoredDynamic::from_runtime_value(
+            call.retain_value::<Self::Host>(value),
+        ))
+    }
+
+    fn into_host_infallible<'call>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> <Self::Host as HostType>::Value<'call>
+    where
+        Self: Sized
+            + ProviderOutputValue<Profile, Provider, Return, Error = std::convert::Infallible>,
+    {
+        self.into_host(call, constructions)
+            .unwrap_or_else(|never| match never {})
+    }
 }
 
 /// Root completion for an owned provider value in transferable execution.
 #[doc(hidden)]
-pub trait ProviderRootOutputValue<Profile, Provider>: ProviderValue
+pub trait ProviderRootOutputValue<Profile, Provider>: ProviderTypedValue<Profile>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
@@ -72,7 +232,10 @@ where
 pub trait ProviderListInputValue: Sized {
     type Host: HostType;
     type View;
-    type Decoder: super::ProviderListItemDecoder<Self, View = Self::View> + Clone;
+    type Decoder: super::ProviderTypedListItemDecoder<Self, Host = Self::Host, View = Self::View>
+        + Clone
+        + Send
+        + 'static;
 }
 
 /// Construction of one transferable List item decoder.
@@ -82,7 +245,21 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
+    type Requirements: ProviderConstructionRequirements;
+
     fn decoder<Return>(call: &HostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    where
+        Return: HostType,
+        Self::Requirements:
+            ProviderConstructionRequirements<Types<HostTypeListEnd> = HostTypeListEnd>,
+    {
+        Self::decoder_with(call, &ProviderConstructions::empty())
+    }
+
+    fn decoder_with<'call, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Self::Requirements>,
+    ) -> Self::Decoder
     where
         Return: HostType;
 }
@@ -170,6 +347,7 @@ pub struct ProviderConstructionIndexNext<Index>(PhantomData<fn() -> Index>);
 /// Selects one exact requirement from a generated construction list.
 #[doc(hidden)]
 pub trait ProviderConstructionRequirementAt<Index>: ProviderConstructionRequirements {
+    const CALLABLE_OFFSET: usize;
     type Requirement: ProviderConstructionRequirements;
 }
 
@@ -179,6 +357,7 @@ where
     Head: ProviderConstructionRequirements,
     Tail: ProviderConstructionRequirements,
 {
+    const CALLABLE_OFFSET: usize = 0;
     type Requirement = Head;
 }
 
@@ -188,32 +367,65 @@ where
     Head: ProviderConstructionRequirements,
     Tail: ProviderConstructionRequirementAt<Index>,
 {
+    const CALLABLE_OFFSET: usize = crate::host::construction_callable_count::<
+        Head::Types<HostTypeListEnd>,
+    >() + Tail::CALLABLE_OFFSET;
     type Requirement = Tail::Requirement;
 }
 
 /// Call-scoped proof of one exact generated construction requirement tree.
+///
+/// The saved construction positions belong to the call that granted them.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstructionRequirements, ProviderConstructions,
+/// };
+///
+/// fn escape<'call, Requirements: ProviderConstructionRequirements>(
+///     constructions: ProviderConstructions<'call, Requirements>,
+/// ) -> ProviderConstructions<'static, Requirements> {
+///     constructions
+/// }
+/// ```
 #[doc(hidden)]
 pub struct ProviderConstructions<'call, Requirements>
 where
     Requirements: ProviderConstructionRequirements,
 {
-    marker: PhantomData<fn(&'call ()) -> Requirements>,
+    callable_base: usize,
+    marker: ConstructionMarker<'call, Requirements>,
 }
+
+type ConstructionMarker<'call, Requirements> =
+    PhantomData<fn(&'call ()) -> (&'call (), Requirements)>;
 
 impl<'call, Requirements> ProviderConstructions<'call, Requirements>
 where
     Requirements: ProviderConstructionRequirements,
 {
+    /// Creates a proof only when the complete static requirement tree is empty.
+    pub fn empty() -> Self
+    where
+        Requirements: ProviderConstructionRequirements<Types<HostTypeListEnd> = HostTypeListEnd>,
+    {
+        Self {
+            callable_base: 0,
+            marker: PhantomData,
+        }
+    }
+
     pub fn new(
-        _constructions: &HostConstructions<'call, Requirements::Types<HostTypeListEnd>>,
+        constructions: &HostConstructions<'call, Requirements::Types<HostTypeListEnd>>,
     ) -> Self {
         Self {
+            callable_base: constructions.callable_base(),
             marker: PhantomData,
         }
     }
 
     pub(crate) fn host(&self) -> HostConstructions<'call, Requirements::Types<HostTypeListEnd>> {
-        HostConstructions::new()
+        HostConstructions::with_base(self.callable_base)
     }
 
     pub fn select<Index>(
@@ -226,6 +438,8 @@ where
         Requirements: ProviderConstructionRequirementAt<Index>,
     {
         ProviderConstructions {
+            callable_base: self.callable_base
+                + <Requirements as ProviderConstructionRequirementAt<Index>>::CALLABLE_OFFSET,
             marker: PhantomData,
         }
     }
@@ -236,16 +450,14 @@ where
     Type: HostType,
 {
     pub fn token(&self) -> HostConstruction<'call, Type> {
-        HostConstructions::<HostTypeList<Type, HostTypeListEnd>>::new()
+        HostConstructions::<HostTypeList<Type, HostTypeListEnd>>::with_base(self.callable_base)
             .at::<crate::HostTypeIndex0>()
     }
 }
 
 impl<'call> ProviderConstructions<'call, ProviderNoConstructions> {
     pub fn none() -> Self {
-        Self {
-            marker: PhantomData,
-        }
+        Self::empty()
     }
 }
 
@@ -277,11 +489,15 @@ macro_rules! provider_scalar {
         }
 
         impl ProviderValueForms for $type {
+            type InvocationRequirements = ();
+            type Runtime<Profile: HostProfile> = ProviderStaticValueForms<Self>;
             type Output = Self;
             type ImmediateInput = Self;
             type ImmediateListInput = Self;
             type OwnedInput = Self;
             type OwnedListInput = Self;
+            type ImmediateListDecoder = super::ProviderScalarListDecoder<Self>;
+            type OwnedListDecoder = Self::ImmediateListDecoder;
         }
 
         impl<Profile, Provider, Return> ProviderInputValue<Profile, Provider, Return> for $type
@@ -292,9 +508,12 @@ macro_rules! provider_scalar {
         {
             type Host = Self;
 
-            fn from_host<'call>(
+            type Requirements = ProviderNoConstructions;
+
+            fn from_host_with<'call>(
                 _call: &mut HostCall<'call, Profile, Provider, Return>,
                 value: <Self::Host as HostType>::Value<'call>,
+                _constructions: &ProviderConstructions<'call, Self::Requirements>,
             ) -> Self {
                 value
             }
@@ -306,12 +525,14 @@ macro_rules! provider_scalar {
             Provider: HostProvider<Profile>,
             Return: HostType,
         {
+            type Error = std::convert::Infallible;
+
             fn into_host<'call>(
                 self,
                 _call: &mut HostCall<'call, Profile, Provider, Return>,
                 _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-            ) -> <Self::Host as HostType>::Value<'call> {
-                self
+            ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
+                Ok(self)
             }
         }
 
@@ -340,7 +561,12 @@ macro_rules! provider_scalar {
             Profile: HostProfile,
             Provider: HostProvider<Profile>,
         {
-            fn decoder<Return>(_call: &HostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+            type Requirements = ProviderNoConstructions;
+
+            fn decoder_with<'call, Return>(
+                _call: &HostCall<'call, Profile, Provider, Return>,
+                _constructions: &ProviderConstructions<'call, Self::Requirements>,
+            ) -> Self::Decoder
             where
                 Return: HostType,
             {
@@ -380,22 +606,30 @@ impl<Payload> ProviderValueForms for super::ProviderExternalView<Payload>
 where
     Payload: ProviderValue + 'static,
 {
+    type InvocationRequirements = ();
+    type Runtime<Profile: HostProfile> = ProviderStaticValueForms<Self>;
     type Output = Self;
     type ImmediateInput = Self;
     type ImmediateListInput = Self;
     type OwnedInput = super::ProviderOwnedExternal<Payload>;
     type OwnedListInput = Self::OwnedInput;
+    type ImmediateListDecoder = super::ProviderExternalListDecoder<Payload>;
+    type OwnedListDecoder = super::ProviderOwnedExternalListDecoder<Payload>;
 }
 
 impl<Payload> ProviderValueForms for super::ProviderOwnedExternal<Payload>
 where
     Payload: ProviderValue + 'static,
 {
+    type InvocationRequirements = ();
+    type Runtime<Profile: HostProfile> = ProviderStaticValueForms<Self>;
     type Output = Self;
     type ImmediateInput = super::ProviderExternalView<Payload>;
     type ImmediateListInput = Self::ImmediateInput;
     type OwnedInput = Self;
     type OwnedListInput = Self;
+    type ImmediateListDecoder = super::ProviderExternalListDecoder<Payload>;
+    type OwnedListDecoder = super::ProviderOwnedExternalListDecoder<Payload>;
 }
 
 impl<Profile, Provider, Return, Payload> ProviderInputValue<Profile, Provider, Return>
@@ -408,9 +642,12 @@ where
 {
     type Host = Payload::Host;
 
-    fn from_host<'call>(
+    type Requirements = ProviderNoConstructions;
+
+    fn from_host_with<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
+        _constructions: &ProviderConstructions<'call, Self::Requirements>,
     ) -> Self {
         Payload::immediate_input(call, value)
     }
@@ -426,9 +663,12 @@ where
 {
     type Host = Payload::Host;
 
-    fn from_host<'call>(
+    type Requirements = ProviderNoConstructions;
+
+    fn from_host_with<'call>(
         call: &mut HostCall<'call, Profile, Provider, Return>,
         value: <Self::Host as HostType>::Value<'call>,
+        _constructions: &ProviderConstructions<'call, Self::Requirements>,
     ) -> Self {
         Payload::owned_input(call, value)
     }
@@ -459,7 +699,12 @@ where
     Provider: HostProvider<Profile>,
     Payload: ProviderExternalCodec<Profile>,
 {
-    fn decoder<Return>(call: &HostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    type Requirements = ProviderNoConstructions;
+
+    fn decoder_with<'call, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        _constructions: &ProviderConstructions<'call, Self::Requirements>,
+    ) -> Self::Decoder
     where
         Return: HostType,
     {
@@ -474,7 +719,12 @@ where
     Provider: HostProvider<Profile>,
     Payload: ProviderExternalCodec<Profile>,
 {
-    fn decoder<Return>(call: &HostCall<'_, Profile, Provider, Return>) -> Self::Decoder
+    type Requirements = ProviderNoConstructions;
+
+    fn decoder_with<'call, Return>(
+        call: &HostCall<'call, Profile, Provider, Return>,
+        _constructions: &ProviderConstructions<'call, Self::Requirements>,
+    ) -> Self::Decoder
     where
         Return: HostType,
     {
@@ -490,12 +740,14 @@ where
     Return: HostType,
     Payload: ProviderExternalCodec<Profile>,
 {
+    type Error = std::convert::Infallible;
+
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        Payload::immediate_output(call, self)
+    ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
+        Ok(Payload::immediate_output(call, self))
     }
 }
 
@@ -507,12 +759,14 @@ where
     Return: HostType,
     Payload: ProviderExternalCodec<Profile>,
 {
+    type Error = std::convert::Infallible;
+
     fn into_host<'call>(
         self,
         call: &mut HostCall<'call, Profile, Provider, Return>,
         _constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
-    ) -> <Self::Host as HostType>::Value<'call> {
-        Payload::owned_output(call, self)
+    ) -> Result<<Self::Host as HostType>::Value<'call>, Self::Error> {
+        Ok(Payload::owned_output(call, self))
     }
 }
 
@@ -595,5 +849,273 @@ mod tests {
         }
 
         assert_types::<Requirements>();
+    }
+
+    #[test]
+    fn empty_requirement_groups_preserve_zero_construction_permission() {
+        use super::{ProviderConstructionIndex0, ProviderConstructions};
+        type Empty = ProviderConstructionList<
+            ProviderConstructionList<ProviderNoConstructions, ProviderNoConstructions>,
+            ProviderNoConstructions,
+        >;
+        let proof = ProviderConstructions::<Empty>::empty();
+        let selected = proof.select::<ProviderConstructionIndex0>();
+        assert_eq!(proof.host().callable_base(), 0);
+        assert_eq!(selected.host().callable_base(), 0);
+    }
+
+    #[test]
+    fn selected_native_constructions_keep_their_body_through_retention_and_resume() {
+        use super::{
+            ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructions,
+        };
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCallable, HostCallableSchema,
+            HostCaptures, HostConstructions, HostCreatedFunction, HostFunctionType,
+            HostOwnedCompletion, HostProvider, HostProviderModule, HostProviderSet, HostTypeIndex0,
+            ModuleSource, PackageSource, StatelessHostProfile,
+        };
+        type End = HostTypeListEnd;
+        type One<T> = HostTypeList<T, End>;
+        type Thunk = HostFunctionType<End, BigInt>;
+        struct Add<const OFFSET: usize>;
+        impl<const OFFSET: usize> HostCallableSchema for Add<OFFSET> {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = if OFFSET == 10 { "first" } else { "second" };
+            type Arguments = End;
+            type Return = BigInt;
+            type Captures = One<BigInt>;
+            type Constructions = End;
+            type Completion = crate::HostReturns;
+        }
+        type Second = ProviderConstruction<HostCreatedFunction<Add<100>>>;
+        type Group = ProviderConstructionList<
+            ProviderConstruction<HostListType<BigInt>>,
+            ProviderConstructionList<Second, ProviderNoConstructions>,
+        >;
+        type Requirements = ProviderConstructionList<
+            ProviderConstruction<HostCreatedFunction<Add<10>>>,
+            ProviderConstructionList<Group, ProviderNoConstructions>,
+        >;
+        type Constructions = <Requirements as ProviderConstructionRequirements>::Types<End>;
+        type Next = ProviderConstructionIndexNext<ProviderConstructionIndex0>;
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn body<'call, const OFFSET: usize>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+            captures: HostCaptures<'call, One<BigInt>>,
+            _: HostConstructions<'call, End>,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            let (value, ()) = call.captures(captures);
+            Ok(call.return_value(value + OFFSET))
+        }
+        fn immediate<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Thunk>,
+            constructions: HostConstructions<'call, Constructions>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, Thunk>, HostCallError> {
+            let selected = ProviderConstructions::<Requirements>::new(&constructions)
+                .select::<Next>()
+                .select::<Next>();
+            let callback = call.construct_function(selected.token(), (value, ()));
+            Ok(call.return_value(callback))
+        }
+        fn resumable<'call>(
+            call: HostCall<'call, StatelessHostProfile, Provider, Thunk>,
+            constructions: HostConstructions<'call, Constructions>,
+            value: BigInt,
+        ) -> Result<crate::HostCallContinuation<'call, Thunk>, HostCallError> {
+            let selected = ProviderConstructions::<Requirements>::new(&constructions)
+                .select::<Next>()
+                .select::<Next>();
+            Ok(call.resume(selected.host(), move |_| {
+                Box::pin(async move {
+                    Ok(HostOwnedCompletion::new(move |mut call, constructions| {
+                        let callback = call
+                            .construct_function(constructions.at::<HostTypeIndex0>(), (value, ()));
+                        Ok(call.return_value(callback))
+                    }))
+                })
+            }))
+        }
+        fn retained<'call>(
+            call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+            constructions: HostConstructions<'call, Constructions>,
+            callback: HostCallable<'call, One<Thunk>, BigInt>,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError> {
+            let selected = ProviderConstructions::<Requirements>::new(&constructions)
+                .select::<Next>()
+                .select::<Next>();
+            let original = call.owned_callable(callback, &selected.host());
+            let callback = original.clone();
+            drop(original);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let value = callback
+                        .invoke(
+                            &context,
+                            |mut call, constructions| {
+                                let callback = call.construct_function(
+                                    constructions.at::<HostTypeIndex0>(),
+                                    (7.into(), ()),
+                                );
+                                (callback, ())
+                            },
+                            |_, _, value| Ok(value),
+                        )
+                        .await
+                        .unwrap();
+                    Ok(HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
+                    }))
+                })
+            }))
+        }
+        let provider = HostProviderModule::new("application", "library")
+            .unwrap()
+            .with_scoped_function_and_constructions::<Provider, (BigInt,), Thunk, Constructions, _>(
+                "immediate",
+                immediate,
+            )
+            .unwrap()
+            .with_resumable_function::<Provider, (BigInt,), Thunk, Constructions, _>(
+                "resumable", resumable,
+            )
+            .unwrap()
+            .with_resumable_function::<Provider, (HostFunctionType<One<Thunk>, BigInt>,), BigInt, Constructions, _>("retained", retained)
+            .unwrap()
+            .with_callable::<Provider, Add<10>, (), _>(body::<10>)
+            .unwrap()
+            .with_callable::<Provider, Add<100>, (), _>(body::<100>)
+            .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "library",
+                    "library.gleam",
+                    r#"
+@external(erlang, "native", "immediate") fn immediate(value: Int) -> fn() -> Int
+@external(erlang, "native", "resumable") fn resumable(value: Int) -> fn() -> Int
+@external(erlang, "native", "retained") fn retained(callback: fn(fn() -> Int) -> Int) -> Int
+pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1 })) }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut echoes = Vec::new();
+        let result = crate::execution_fixture::run(&mut execution, &mut (), &mut echoes).unwrap();
+        assert_eq!(result.inspect().to_string(), "#(105, 106, 108)");
+        assert!(echoes.is_empty());
+    }
+    #[test]
+    fn dynamic_storage_preserves_conversion_failures_without_retaining_a_value() {
+        use crate::host::test::{TestHostProfile, TestRunState};
+        use crate::provider::{
+            ProviderConstructions, ProviderOutputValue, ProviderStoredOwner, ProviderValue,
+        };
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostFailure, HostProvider, HostType,
+        };
+
+        struct Provider;
+        impl HostProvider<TestHostProfile> for Provider {
+            type State = TestRunState;
+            fn project(state: &mut TestRunState) -> &mut TestRunState {
+                state
+            }
+        }
+        struct Owner;
+        impl ProviderStoredOwner for Owner {}
+        struct Converted(bool);
+        impl ProviderValue for Converted {
+            type Host = BigInt;
+            type OutputRequirements = ProviderNoConstructions;
+            type RootRequirements = ProviderNoConstructions;
+        }
+        impl<Return: HostType> ProviderOutputValue<TestHostProfile, Provider, Return> for Converted {
+            type Error = HostCallError;
+            fn into_host<'call>(
+                self,
+                call: &mut HostCall<'call, TestHostProfile, Provider, Return>,
+                _: &ProviderConstructions<'call, ProviderNoConstructions>,
+            ) -> Result<BigInt, HostCallError> {
+                call.state().counter += 1;
+                if self.0 {
+                    Err(HostFailure::new("conversion stopped").into())
+                } else {
+                    Ok(42.into())
+                }
+            }
+        }
+        fn convert<'call>(
+            mut call: HostCall<'call, TestHostProfile, Provider, BigInt>,
+            fails: bool,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let stored = Converted(fails)
+                .store_dynamic::<Owner>(&mut call, &ProviderConstructions::none())?;
+            let value = call.restore_value::<BigInt>(stored.stored());
+            Ok(call.return_value(value))
+        }
+        for (argument, expected) in [
+            ("False", Ok(crate::Value::Int(42.into()))),
+            (
+                "True",
+                Err(
+                    "host function application::main.convert failed: conversion stopped".to_owned(),
+                ),
+            ),
+        ] {
+            let provider = crate::HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_scoped_function::<Provider, (bool,), BigInt, _>("convert", convert)
+                .unwrap();
+            let source = format!(
+                r#"
+@external(erlang, "native", "convert")
+fn convert(fails: Bool) -> Int
+pub fn main() {{ convert({argument}) }}
+"#
+            );
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "main",
+                [crate::PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new("main", "main.gleam", source)],
+                )],
+                crate::HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let mut execution = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let mut state = TestRunState::default();
+            let mut echo = Vec::new();
+            assert_eq!(
+                crate::execution_fixture::run(&mut execution, &mut state, &mut echo)
+                    .map_err(|error| error.to_string()),
+                expected
+            );
+            assert_eq!(state.counter, 1);
+            assert!(echo.is_empty());
+        }
     }
 }

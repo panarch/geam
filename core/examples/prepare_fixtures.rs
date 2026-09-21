@@ -12,6 +12,9 @@ mod work_fixture;
 #[path = "../tests/fixtures/prepared/work_provider.rs"]
 mod work_provider;
 
+#[path = "../tests/fixtures/prepared/callable_declarations.rs"]
+mod callable_declarations;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
@@ -63,6 +66,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
+        ("callables.rs", callable_declarations::prepare().emit_rust()),
+        (
+            "callable_embedding.rs",
+            callable_declarations::prepare_scoped().emit_rust(),
+        ),
+        (
+            "callable_views.rs",
+            callable_declarations::prepare_native_views().emit_rust(),
+        ),
         ("values.rs", values.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),

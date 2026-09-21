@@ -28,6 +28,16 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
     where
         Self: 'plan;
 
+    // Callable provenance is checked before a function-table lookup. Opaque
+    // values can preserve a target from a separately sealed, now closed plan.
+    fn reject_foreign_callable<'plan, Output: Send + 'plan>(
+        &self,
+        inputs: &RetainedValues,
+        domain: Option<crate::runtime::captures::ExecutionDomain>,
+    ) -> Option<Self::HostInvocation<'plan, Output>>
+    where
+        Self: 'plan;
+
     fn prepare_host<'plan, Body>(
         &'plan self,
         origin: HostCallOrigin,
@@ -77,6 +87,15 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
 impl ExecutableRuntimePlan for ExecutionPlan {
     type RuntimeHost<'run> = ();
     type HostInvocation<'plan, Output: Send + 'plan> = Infallible;
+
+    fn reject_foreign_callable<'plan, Output: Send + 'plan>(
+        &self,
+        _inputs: &RetainedValues,
+        _domain: Option<crate::runtime::captures::ExecutionDomain>,
+    ) -> Option<Infallible> {
+        // A graph-only plan has no native construction or host retention boundary.
+        None
+    }
 
     fn prepare_host<Body>(
         &self,
@@ -147,6 +166,14 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
 
     type HostInvocation<'plan, Output: Send + 'plan> = Invocation<'plan, Self, Output>;
 
+    fn reject_foreign_callable<'plan, Output: Send + 'plan>(
+        &self,
+        inputs: &RetainedValues,
+        domain: Option<crate::runtime::captures::ExecutionDomain>,
+    ) -> Option<Self::HostInvocation<'plan, Output>> {
+        (!inputs.belongs_to(domain)).then(Invocation::cancelled)
+    }
+
     fn prepare_host<'plan, Body>(
         &'plan self,
         origin: HostCallOrigin,
@@ -163,7 +190,7 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
                 host::invoke_value(plan, state, origin, &target, inputs)
             }
             crate::plan::execution::host::HostedFunctionTarget::Never(target) => {
-                host::invoke_never(plan, state, origin, target, inputs).map(|never| match never {})
+                host::invoke_never(plan, state, origin, target, inputs)
             }
         })
     }
@@ -176,7 +203,7 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
     ) -> Invocation<'plan, Self, Infallible> {
         let target = *target;
         Invocation::new(move |plan: &Self, state| {
-            host::invoke_never(plan, state, origin, target, inputs).map(|never| match never {})
+            host::invoke_never(plan, state, origin, target, inputs)
         })
     }
 
@@ -717,7 +744,7 @@ pub fn run(fails: Bool) {
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             crate::plan::execution::HostedProgram::from_library_plan(library, entry, Vec::new())
                 .expect("diverging callbacks seal");
         let plan = std::sync::Arc::new(plan);

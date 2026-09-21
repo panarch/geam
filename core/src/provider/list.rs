@@ -28,19 +28,18 @@ pub struct ProviderListContext<HostItem, Decoder> {
     host: PhantomData<fn() -> HostItem>,
 }
 
-/// An input-only transferable List nested inside another source value.
-#[doc(hidden)]
-pub struct ProviderInputListContext<Decoder> {
-    retained: StoredRuntimeList,
-    decoder: Decoder,
-}
-
 /// Transferable decoder for one exact List item shape.
 #[doc(hidden)]
 pub trait ProviderListItemDecoder<Item> {
     type View;
 
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View;
+}
+
+/// Exact source storage selected by a typed item decoder.
+#[doc(hidden)]
+pub trait ProviderTypedListItemDecoder<Item>: ProviderListItemDecoder<Item> {
+    type Host: HostType;
 }
 
 /// One requested transferable runtime List item.
@@ -142,25 +141,6 @@ where
     }
 }
 
-impl<Item, Decoder> List<Item, ProviderInputListContext<Decoder>>
-where
-    Decoder: ProviderListItemDecoder<Item>,
-{
-    #[expect(
-        clippy::len_without_is_empty,
-        reason = "the provider List slice intentionally exposes only len and get"
-    )]
-    pub fn len(&self) -> usize {
-        self.context.retained.len()
-    }
-
-    pub fn get(&self, index: usize) -> Option<Decoder::View> {
-        self.context.retained.decode_item(index, |value| {
-            self.context.decoder.decode(ProviderListItemValue { value })
-        })
-    }
-}
-
 impl<HostItem, Decoder> ProviderListContext<HostItem, Decoder>
 where
     HostItem: HostType,
@@ -178,15 +158,6 @@ where
 
     pub(crate) fn retained(&self) -> &StoredRuntimeList {
         &self.retained
-    }
-}
-
-impl<Decoder> ProviderInputListContext<Decoder> {
-    pub(crate) fn new<Item>(retained: StoredRuntimeList, decoder: Decoder) -> List<Item, Self> {
-        List {
-            context: Self { retained, decoder },
-            item: PhantomData,
-        }
     }
 }
 
@@ -239,14 +210,14 @@ impl<'value> ProviderListItemValue<'value> {
     }
 
     #[doc(hidden)]
-    pub fn into_list<Item, Decoder>(
+    pub fn into_typed_list<Item, Decoder>(
         self,
         decoder: Decoder,
-    ) -> List<Item, ProviderInputListContext<Decoder>>
+    ) -> List<Item, ProviderListContext<Decoder::Host, Decoder>>
     where
-        Decoder: ProviderListItemDecoder<Item>,
+        Decoder: ProviderTypedListItemDecoder<Item>,
     {
-        ProviderInputListContext::new(self.value.into_list(), decoder)
+        ProviderListContext::new(self.value.into_list(), decoder)
     }
 }
 
@@ -270,6 +241,26 @@ impl ProviderListCustomFields<'_> {
         ProviderListItemValue {
             value: self.fields.take_field(index),
         }
+    }
+}
+
+impl ProviderListItemValue<'_> {
+    pub(crate) fn into_stored_external(
+        self,
+        retention: &crate::runtime::ValueRetention,
+    ) -> (crate::runtime::StoredRuntimeValue, ExternalPayloadLease) {
+        self.value.into_stored_external(retention)
+    }
+
+    pub(crate) fn into_stored(
+        self,
+        retention: &crate::runtime::ValueRetention,
+    ) -> crate::runtime::StoredRuntimeValue {
+        self.value.into_stored(retention)
+    }
+
+    pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
+        self.value.into_callable()
     }
 }
 
@@ -330,6 +321,13 @@ impl<Scalar> ProviderScalarListDecoder<Scalar> {
     }
 }
 
+impl<Scalar> ProviderTypedListItemDecoder<Scalar> for ProviderScalarListDecoder<Scalar>
+where
+    Scalar: ProviderListScalar + HostType,
+{
+    type Host = Scalar;
+}
+
 impl<Scalar> ProviderListItemDecoder<Scalar> for ProviderScalarListDecoder<Scalar>
 where
     Scalar: ProviderListScalar,
@@ -353,6 +351,14 @@ impl<Payload: Send + 'static> ProviderExternalListDecoder<Payload> {
     }
 }
 
+impl<Payload> ProviderTypedListItemDecoder<ProviderOwnedExternal<Payload>>
+    for ProviderOwnedExternalListDecoder<Payload>
+where
+    Payload: super::ProviderValue + Send + 'static,
+{
+    type Host = Payload::Host;
+}
+
 impl<Payload: Send + 'static> ProviderListItemDecoder<ProviderOwnedExternal<Payload>>
     for ProviderOwnedExternalListDecoder<Payload>
 {
@@ -361,6 +367,14 @@ impl<Payload: Send + 'static> ProviderListItemDecoder<ProviderOwnedExternal<Payl
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
         value.into_external(&self.access)
     }
+}
+
+impl<Payload> ProviderTypedListItemDecoder<ProviderExternalView<Payload>>
+    for ProviderExternalListDecoder<Payload>
+where
+    Payload: super::ProviderValue + Send + 'static,
+{
+    type Host = Payload::Host;
 }
 
 impl<Payload: Send + 'static> ProviderListItemDecoder<ProviderExternalView<Payload>>

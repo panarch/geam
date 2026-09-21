@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub(super) trait EmbeddingValue: Sized {
     const VARIANT_COUNT: usize;
-    const LIST_COUNTS: [usize; 11];
+    const LIST_COUNTS: [usize; 12];
     const LIST_FAMILY: ListFamily;
 
     fn library_type() -> LibraryValueType;
@@ -24,6 +24,14 @@ pub(super) trait EmbeddingValue: Sized {
     fn collect_input_variants(_: &mut Vec<LibraryVariant>) {}
 
     fn collect_lists(lists: &mut Vec<LibraryValueType>);
+
+    fn collect_callables(_: &mut Vec<crate::plan::LibraryCallableSignature>) {}
+
+    fn callables() -> Vec<crate::plan::LibraryCallableSignature> {
+        let mut callables = Vec::new();
+        Self::collect_callables(&mut callables);
+        callables
+    }
 
     fn standard_variants() -> Vec<StandardVariant> {
         let mut variants = Vec::with_capacity(Self::VARIANT_COUNT);
@@ -70,7 +78,7 @@ macro_rules! scalar_value {
     ($type:ty, $value_type:ident, $take:ident) => {
         impl EmbeddingValue for $type {
             const VARIANT_COUNT: usize = 0;
-            const LIST_COUNTS: [usize; 11] = [0; 11];
+            const LIST_COUNTS: [usize; 12] = [0; 12];
             const LIST_FAMILY: ListFamily = ListFamily::$value_type;
 
             fn library_type() -> LibraryValueType {
@@ -114,8 +122,8 @@ macro_rules! tuple_value {
         {
 
             const VARIANT_COUNT: usize = 0 $(+ $type::VARIANT_COUNT)+;
-            const LIST_COUNTS: [usize; 11] = {
-                let counts = [0; 11];
+            const LIST_COUNTS: [usize; 12] = {
+                let counts = [0; 12];
                 $(let counts = add_list_counts(counts, $type::LIST_COUNTS);)+
                 counts
             };
@@ -135,6 +143,9 @@ macro_rules! tuple_value {
 
             fn collect_lists(lists: &mut Vec<LibraryValueType>) {
                 $($type::collect_lists(lists);)+
+            }
+            fn collect_callables(callables: &mut Vec<crate::plan::LibraryCallableSignature>) {
+                $($type::collect_callables(callables);)+
             }
 
         }
@@ -169,7 +180,7 @@ tuple_value!(A, B, C, D, E, F, G);
 
 impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result<Success, Failure> {
     const VARIANT_COUNT: usize = 1 + Success::VARIANT_COUNT + Failure::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 11] = add_list_counts(Success::LIST_COUNTS, Failure::LIST_COUNTS);
+    const LIST_COUNTS: [usize; 12] = add_list_counts(Success::LIST_COUNTS, Failure::LIST_COUNTS);
     const LIST_FAMILY: ListFamily = ListFamily::Custom;
 
     fn library_type() -> LibraryValueType {
@@ -196,6 +207,10 @@ impl<Success: EmbeddingValue, Failure: EmbeddingValue> EmbeddingValue for Result
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         Success::collect_lists(lists);
         Failure::collect_lists(lists);
+    }
+    fn collect_callables(callables: &mut Vec<crate::plan::LibraryCallableSignature>) {
+        Success::collect_callables(callables);
+        Failure::collect_callables(callables);
     }
 }
 
@@ -227,7 +242,7 @@ where
 
 impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
     const VARIANT_COUNT: usize = 1 + Value::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 11] = Value::LIST_COUNTS;
+    const LIST_COUNTS: [usize; 12] = Value::LIST_COUNTS;
     const LIST_FAMILY: ListFamily = ListFamily::Custom;
 
     fn library_type() -> LibraryValueType {
@@ -249,6 +264,9 @@ impl<Value: EmbeddingValue> EmbeddingValue for Option<Value> {
 
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         Value::collect_lists(lists);
+    }
+    fn collect_callables(callables: &mut Vec<crate::plan::LibraryCallableSignature>) {
+        Value::collect_callables(callables);
     }
 }
 

@@ -32,6 +32,7 @@ use std::convert::Infallible;
 
 pub(super) trait Hosts<Profile: ExecutionProfile> {
     type Error;
+    fn callables(&self, context: &Instructions<'_, '_, Profile::Graph>) -> Result<(), Self::Error>;
     fn tables(&self, context: &Instructions<'_, '_, Profile::Graph>) -> Result<(), Self::Error>;
     fn function<Body: ExecutionFunctionBody>(
         &self,
@@ -51,6 +52,9 @@ pub(super) trait Hosts<Profile: ExecutionProfile> {
 
 impl Hosts<Infallible> for InfallibleHosts {
     type Error = Infallible;
+    fn callables(&self, _context: &Instructions<'_, '_, Infallible>) -> Result<(), Infallible> {
+        Ok(())
+    }
     fn tables(&self, _context: &Instructions<'_, '_, Infallible>) -> Result<(), Infallible> {
         Ok(())
     }

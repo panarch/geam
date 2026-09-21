@@ -1,12 +1,11 @@
+use super::factory::FactoryConstructions;
 use super::{
-    Callback, ProviderCallbackCodec, ProviderExternalCodec, ProviderExternalView,
-    ProviderOwnedCallbackContext, ProviderOwnedStoredInput, ProviderStoredInput,
-    ProviderStoredOutput, ProviderStoredOwner, ProviderValueContext, ProviderValueForms, Stored,
-    Value,
+    Callback, Factory, ProviderCallbackContext, ProviderConstructions, ProviderExternalCodec,
+    ProviderExternalView, ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec,
+    ProviderNoFactories, ProviderOwnedStoredInput, ProviderStoredInput, ProviderStoredOutput,
+    ProviderStoredOwner, ProviderValueContext, ProviderValueForms, Stored, Value,
 };
-use crate::host::{
-    HostExecutionContext, HostExecutionError, HostFutureContext, HostTypeListEnd, HostTypeSequence,
-};
+use crate::host::{HostExecutionContext, HostExecutionError, HostFutureContext, HostTypeSequence};
 use crate::provider::advanced::{
     NativeValue, ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
 };
@@ -37,23 +36,31 @@ pub struct ProviderSharedCall<'state, State> {
 
 /// Active immediate call context for a transferable provider composition.
 #[doc(hidden)]
-pub struct ProviderActiveCall<'call, Profile, Provider, Return>
+pub struct ProviderActiveCall<'call, Profile, Provider, Return, Bindings = ProviderNoFactories>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
+    Bindings: ProviderFactoryBindings,
 {
     call: HostCall<'call, Profile, Provider, Return>,
+    constructions: ProviderConstructions<'call, Bindings::Requirements>,
 }
 
 /// Request capability shared by owned native operations.
 #[doc(hidden)]
-pub struct ProviderExecutionCall<'run, Profile, Provider, Observation = ()>
-where
+pub struct ProviderExecutionCall<
+    'run,
+    Profile,
+    Provider,
+    Observation = (),
+    Bindings = ProviderNoFactories,
+> where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
+    Bindings: ProviderFactoryBindings,
 {
-    execution: HostExecutionContext<'run, Profile, Provider, HostTypeListEnd>,
+    execution: HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>>,
     observation: Observation,
 }
 
@@ -63,8 +70,8 @@ pub struct ProviderWorkObservation {
 }
 
 #[doc(hidden)]
-pub type ProviderFutureCall<'run, Profile, Provider> =
-    ProviderExecutionCall<'run, Profile, Provider, ProviderWorkObservation>;
+pub type ProviderFutureCall<'run, Profile, Provider, Bindings = ProviderNoFactories> =
+    ProviderExecutionCall<'run, Profile, Provider, ProviderWorkObservation, Bindings>;
 
 impl<'state, State> Call<State, ProviderSharedCall<'state, State>> {
     pub fn state(&self) -> &State {
@@ -80,13 +87,29 @@ impl<'state, State> Call<State, ProviderSharedCall<'state, State>> {
     }
 }
 
-impl<'call, Profile, Provider, Return>
-    Call<Provider::State, ProviderActiveCall<'call, Profile, Provider, Return>>
+impl<'call, Profile, Provider, Return, Bindings>
+    Call<Provider::State, ProviderActiveCall<'call, Profile, Provider, Return, Bindings>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
     Return: HostType,
+    Bindings: ProviderFactoryBindings,
 {
+    /// Creates a fresh function value immediately from its declared captures.
+    pub fn create<Declaration>(
+        &mut self,
+        _: &Factory<Declaration>,
+        captures: Declaration::Captures,
+    ) -> Result<Declaration::Output, HostCallError>
+    where
+        Declaration:
+            ProviderFactoryCodec<Profile, <Bindings as ProviderFactoryBindings>::CaptureMode>,
+        Bindings: ProviderFactoryBinding<Declaration, Declaration::Requirements>,
+    {
+        let proof = Bindings::select(&self.context.constructions);
+        Declaration::create(&mut self.context.call, &proof, captures)
+    }
+
     pub fn state(&mut self) -> &Provider::State {
         &*self.context.call.state()
     }
@@ -221,7 +244,8 @@ where
         value: Value<Type, ProviderValueContext<Type::Host>>,
     ) -> ProviderExternalView<Type::Output>
     where
-        Type: ProviderValueForms,
+        Type: ProviderValueForms + super::ProviderValue,
+        Type::Output: super::ProviderValue<Host = Type::Host>,
         Type::Output: ProviderExternalCodec<Profile>,
     {
         let value = value.into_host(&mut self.context.call);
@@ -294,9 +318,15 @@ where
     }
 
     #[doc(hidden)]
-    pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
+    pub fn from_host_call_with_factories(
+        call: HostCall<'call, Profile, Provider, Return>,
+        constructions: ProviderConstructions<'call, Bindings::Requirements>,
+    ) -> Self {
         Self {
-            context: ProviderActiveCall { call },
+            context: ProviderActiveCall {
+                call,
+                constructions,
+            },
             state: PhantomData,
         }
     }
@@ -307,12 +337,49 @@ where
     }
 }
 
-impl<'run, Profile, Provider, Observation>
-    Call<Provider::State, ProviderExecutionCall<'run, Profile, Provider, Observation>>
+impl<'call, Profile, Provider, Return>
+    Call<Provider::State, ProviderActiveCall<'call, Profile, Provider, Return>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
+    Return: HostType,
 {
+    #[doc(hidden)]
+    pub fn from_host_call(call: HostCall<'call, Profile, Provider, Return>) -> Self {
+        Self::from_host_call_with_factories(call, ProviderConstructions::none())
+    }
+}
+
+impl<'run, Profile, Provider, Observation, Bindings>
+    Call<Provider::State, ProviderExecutionCall<'run, Profile, Provider, Observation, Bindings>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Bindings: ProviderFactoryBindings,
+{
+    /// Creates a function on this invocation's original execution with its exact permissions.
+    pub async fn create<Declaration>(
+        &mut self,
+        _: &Factory<Declaration>,
+        captures: Declaration::Captures,
+    ) -> Result<Declaration::Output, HostExecutionError>
+    where
+        Declaration:
+            ProviderFactoryCodec<Profile, <Bindings as ProviderFactoryBindings>::CaptureMode>,
+        Declaration::Captures: Send + 'static,
+        Declaration::Output: Send + 'static,
+        Bindings: ProviderFactoryBinding<Declaration, Declaration::Requirements>,
+    {
+        self.context
+            .execution
+            .with_constructions(move |mut call, constructions| {
+                let proof = Bindings::select(&ProviderConstructions::new(&constructions));
+                Declaration::create(&mut call, &proof, captures)
+            })
+            .await?
+            .map_err(Into::into)
+    }
+
     /// Runs a bounded value operation through the original typed call context.
     /// Its borrowed views cannot cross the next await point.
     pub fn with_call<'request, Operation, Output>(
@@ -321,7 +388,10 @@ where
     ) -> impl std::future::Future<Output = Result<Output, HostExecutionError>> + Send + 'request
     where
         Operation: for<'call> FnOnce(
-                &mut Call<Provider::State, ProviderActiveCall<'call, Profile, Provider, ()>>,
+                &mut Call<
+                    Provider::State,
+                    ProviderActiveCall<'call, Profile, Provider, (), Bindings>,
+                >,
             ) -> Output
             + Send
             + 'static,
@@ -329,7 +399,12 @@ where
     {
         self.context
             .execution
-            .with_call(move |call| operation(&mut Call::from_host_call(call)))
+            .with_constructions(move |call, constructions| {
+                operation(&mut Call::from_host_call_with_factories(
+                    call,
+                    ProviderConstructions::new(&constructions),
+                ))
+            })
     }
 
     /// Retains one owned generic value for an external payload returned after
@@ -370,19 +445,44 @@ where
     }
 
     /// Invokes a retained callback on its original execution, without implicitly driving its result.
-    pub async fn invoke<Signature, Codec>(
+    pub async fn invoke<Signature, Arguments, Returned, HostArguments, HostReturn>(
         &mut self,
-        callback: &Callback<Signature, ProviderOwnedCallbackContext<Profile, Provider, Codec>>,
-        arguments: Codec::Arguments,
-    ) -> Result<Codec::Returned, HostExecutionError>
+        callback: &Callback<
+            Signature,
+            ProviderCallbackContext<Profile, Arguments, Returned, HostArguments, HostReturn>,
+        >,
+        arguments: Arguments,
+    ) -> Result<Returned, HostExecutionError>
     where
-        Codec: ProviderCallbackCodec<Profile, Provider, ()> + 'static,
-        Codec::Arguments: Send + 'static,
-        Codec::Returned: Send + 'static,
+        Arguments: Send + 'static,
+        Returned: Send + 'static,
+        HostArguments: HostTypeSequence,
+        HostReturn: HostType,
     {
         callback
             .invoke_owned(&self.context.execution, arguments)
             .await
+    }
+}
+
+impl<'run, Profile, Provider, Bindings>
+    Call<Provider::State, ProviderExecutionCall<'run, Profile, Provider, (), Bindings>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Bindings: ProviderFactoryBindings,
+{
+    #[doc(hidden)]
+    pub fn from_execution_context_with_factories(
+        execution: HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>>,
+    ) -> Self {
+        Self {
+            context: ProviderExecutionCall {
+                execution,
+                observation: (),
+            },
+            state: PhantomData,
+        }
     }
 }
 
@@ -405,18 +505,17 @@ where
     }
 }
 
-impl<'work, Profile, Provider> Call<Provider::State, ProviderFutureCall<'work, Profile, Provider>>
+impl<'work, Profile, Provider, Bindings>
+    Call<Provider::State, ProviderFutureCall<'work, Profile, Provider, Bindings>>
 where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
+    Bindings: ProviderFactoryBindings,
 {
     /// Explicitly observes a Future returned by Gleam, sharing its original work.
     pub async fn observe<Value, Host, Output>(
         &mut self,
-        work: &super::Future<
-            Value,
-            super::ProviderFutureValueContext<Profile, Provider, Host, Output>,
-        >,
+        work: &super::Future<Value, super::ProviderFutureValueContext<Profile, Host, Output>>,
     ) -> Result<Output, HostExecutionError>
     where
         Host: HostType,
@@ -425,6 +524,26 @@ where
         work.observe(&self.context.observation.dependencies).await
     }
 
+    #[doc(hidden)]
+    pub fn from_future_context_with_factories(
+        call: HostFutureContext<'work, Profile, Provider, FactoryConstructions<Bindings>>,
+    ) -> Self {
+        let (execution, dependencies) = call.into_parts();
+        Self {
+            context: ProviderExecutionCall {
+                execution,
+                observation: ProviderWorkObservation { dependencies },
+            },
+            state: PhantomData,
+        }
+    }
+}
+
+impl<'work, Profile, Provider> Call<Provider::State, ProviderFutureCall<'work, Profile, Provider>>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+{
     #[doc(hidden)]
     pub fn from_future_context<Constructions: HostTypeSequence>(
         call: HostFutureContext<'work, Profile, Provider, Constructions>,
@@ -477,13 +596,20 @@ mod tests {
             arguments: Self::Arguments,
             _call: &mut HostCall<'call, TestHostProfile, Provider, ()>,
             _constructions: &ProviderConstructions<'call, Self::Requirements>,
-        ) -> <Self::HostArguments as crate::HostTypeSequence>::Values<'call> {
-            (arguments.0, ())
+        ) -> Result<
+            <Self::HostArguments as crate::HostTypeSequence>::Values<'call>,
+            crate::HostCallError,
+        > {
+            if arguments.0 < BigInt::from(0) {
+                return Err(HostFailure::new("negative callback input").into());
+            }
+            Ok((arguments.0, ()))
         }
 
         fn from_host_return<'call>(
             value: <Self::HostReturn as crate::HostType>::Value<'call>,
             _call: &mut HostCall<'call, TestHostProfile, Provider, ()>,
+            _constructions: &ProviderConstructions<'call, Self::Requirements>,
         ) -> Self::Returned {
             value
         }
@@ -559,6 +685,37 @@ mod tests {
 
     #[test]
     fn owned_call_invokes_one_static_callback_codec_and_reenters_state() {
+        // A receiving declaration can require additional constructions, but an
+        // alias must keep the original codec and construction proof at invocation.
+        struct ReceivingCodec;
+        impl ProviderCallbackCodec<TestHostProfile, Provider, ()> for ReceivingCodec {
+            type HostArguments = HostTypeList<BigInt, HostTypeListEnd>;
+            type HostReturn = BigInt;
+            type Arguments = (BigInt,);
+            type Returned = BigInt;
+            type Requirements = crate::provider::ProviderConstruction<crate::HostListType<BigInt>>;
+
+            fn into_host_arguments<'call>(
+                arguments: Self::Arguments,
+                _: &mut HostCall<'call, TestHostProfile, Provider, ()>,
+                _: &ProviderConstructions<'call, Self::Requirements>,
+            ) -> Result<
+                <Self::HostArguments as crate::HostTypeSequence>::Values<'call>,
+                crate::HostCallError,
+            > {
+                Ok((arguments.0 + 100, ()))
+            }
+
+            fn from_host_return<'call>(
+                value: BigInt,
+                _: &mut HostCall<'call, TestHostProfile, Provider, ()>,
+                _: &ProviderConstructions<'call, Self::Requirements>,
+            ) -> Self::Returned {
+                value + 100
+            }
+        }
+        type ReceivingContext =
+            ProviderOwnedCallbackContext<TestHostProfile, Provider, ReceivingCodec>;
         type Context = ProviderOwnedCallbackContext<TestHostProfile, Provider, IntCallbackCodec>;
         type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
         fn invoke<'call>(
@@ -567,15 +724,25 @@ mod tests {
             callback: HostCallable<'call, Arguments, BigInt>,
         ) -> Result<crate::HostCallContinuation<'call, BigInt>, crate::HostCallError> {
             let proof = ProviderConstructions::none();
-            let callback =
-                Callback::<fn(BigInt) -> BigInt, Context>::from_owned_host(&call, callback, proof);
-            let alias = callback.clone();
+            let callback = Callback::<fn(BigInt) -> BigInt, Context>::from_owned_host::<
+                IntCallbackCodec,
+                _,
+                _,
+            >(&call, callback, proof);
+            let alias: Callback<fn(BigInt) -> BigInt, ReceivingContext> = callback.clone();
             Ok(call.resume(constructions, move |context| {
                 Box::pin(async move {
                     let mut call = Call::from_execution_context(context);
                     call.with_state(|state| state.counter += 1)
                         .await
                         .expect("the live entry services its state request");
+                    assert_eq!(
+                        call.invoke(&callback, (BigInt::from(-1),))
+                            .await
+                            .unwrap_err()
+                            .to_string(),
+                        "negative callback input",
+                    );
                     let first = call.invoke(&callback, (BigInt::from(7),)).await?;
                     let second = call.invoke(&alias, (first,)).await?;
                     let counter = call
@@ -585,6 +752,30 @@ mod tests {
                     assert_eq!(counter, 1);
                     Ok(crate::HostOwnedCompletion::new(move |call, _| {
                         Ok(call.return_value(second))
+                    }))
+                })
+            }))
+        }
+        fn receive<'call>(
+            call: HostCall<'call, TestHostProfile, Provider, BigInt>,
+            constructions: crate::HostConstructions<
+                'call,
+                HostTypeList<crate::HostListType<BigInt>, HostTypeListEnd>,
+            >,
+            callback: HostCallable<'call, Arguments, BigInt>,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, crate::HostCallError> {
+            let callback =
+                Callback::<fn(BigInt) -> BigInt, ReceivingContext>::from_owned_host::<
+                    ReceivingCodec,
+                    _,
+                    _,
+                >(&call, callback, ProviderConstructions::new(&constructions));
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let mut call = Call::from_execution_context(context);
+                    let value = call.invoke(&callback, (BigInt::from(1),)).await.unwrap();
+                    Ok(crate::HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(value))
                     }))
                 })
             }))
@@ -611,12 +802,26 @@ mod tests {
                 HostTypeListEnd,
                 _,
             >("invoke", invoke)
+            .unwrap()
+            .with_resumable_function::<
+                Provider,
+                (crate::HostFunctionType<Arguments, BigInt>,),
+                BigInt,
+                HostTypeList<crate::HostListType<BigInt>, HostTypeListEnd>,
+                _,
+            >("receive", receive)
             .unwrap();
             let source = format!(
                 r#"
 @external(erlang, "native", "invoke")
 fn invoke(callback: fn(Int) -> Int) -> Int
-pub fn main() {{ invoke({callback}) }}
+@external(erlang, "native", "receive")
+fn receive(callback: fn(Int) -> Int) -> Int
+pub fn main() {{
+  let result = invoke({callback})
+  let assert 202 = receive(fn(value) {{ value + 1 }})
+  result
+}}
 "#
             );
             let typed = crate::compile_typed_host_program(

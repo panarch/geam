@@ -533,6 +533,14 @@ pub fn main() {{ #(project, {sample}) }}
         type RuntimeHost<'run> = ();
         type HostInvocation<'plan, Output: Send + 'plan> = Infallible;
 
+        fn reject_foreign_callable<'plan, Output: Send + 'plan>(
+            &self,
+            inputs: &RetainedValues,
+            domain: Option<crate::runtime::captures::ExecutionDomain>,
+        ) -> Option<Infallible> {
+            self.plan.reject_foreign_callable::<Output>(inputs, domain)
+        }
+
         fn prepare_host<Body>(
             &self,
             _origin: HostCallOrigin,

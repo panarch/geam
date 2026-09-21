@@ -1,3 +1,4 @@
+mod callable;
 mod function;
 mod implementation;
 mod module;
@@ -5,8 +6,9 @@ mod module;
 use super::{FunctionTemplateId, ModuleId};
 use crate::host::HostProfile;
 
+pub(crate) use callable::instantiate_native_callable;
 pub use function::HostFunctionTemplate;
-pub(crate) use implementation::HostImplementationBinding;
+pub(crate) use implementation::{HostImplementationBinding, ProfiledHostImplementationBinding};
 pub(crate) use module::HostedPlannedModuleParts;
 pub use module::{HostedFunctionTemplate, HostedPlannedModule};
 
@@ -21,6 +23,14 @@ pub(crate) struct ProfiledHostedLibraryModulePlan<Implementation> {
     root: ModuleId,
     modules: Vec<HostedPlannedModule>,
     implementation_bindings: Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
+    callables: Vec<LibraryNativeCallable>,
+}
+
+pub(crate) struct LibraryNativeCallable {
+    pub(crate) template: HostFunctionTemplate,
+    pub(crate) target: super::FunctionInstantiation,
+    pub(crate) declaration: crate::host::RegisteredCallableConstruction,
+    pub(crate) signature: super::LibraryNativeSignature,
 }
 
 pub(crate) type HostedLibraryModulePlan<Profile> =
@@ -38,10 +48,8 @@ pub(crate) struct ProfiledHostedLibraryModulePlanParts<Implementation> {
     pub(crate) modules: Vec<HostedPlannedModule>,
     pub(crate) implementation_bindings:
         Vec<implementation::ProfiledHostImplementationBinding<Implementation>>,
+    pub(crate) callables: Vec<LibraryNativeCallable>,
 }
-
-pub(crate) type HostedLibraryModulePlanParts<Profile> =
-    ProfiledHostedLibraryModulePlanParts<crate::host::HostFunctionImplementation<Profile>>;
 
 impl<Profile: HostProfile> HostedModulePlan<Profile> {
     pub(crate) fn new(
@@ -92,6 +100,7 @@ impl<Implementation> ProfiledHostedLibraryModulePlan<Implementation> {
             root,
             modules,
             implementation_bindings,
+            callables: Vec::new(),
         }
     }
 
@@ -114,6 +123,53 @@ impl<Implementation> ProfiledHostedLibraryModulePlan<Implementation> {
             root: self.root,
             modules: self.modules,
             implementation_bindings: self.implementation_bindings,
+            callables: self.callables,
         }
+    }
+}
+
+impl<Value, Never> ProfiledHostedLibraryModulePlan<crate::host::HostFunctionBinding<Value, Never>> {
+    pub(crate) fn callable(
+        &mut self,
+        declaration: crate::host::RegisteredCallableConstruction,
+        signature: super::LibraryNativeSignature,
+    ) -> Result<usize, crate::embedding::BindingError> {
+        let identity = &declaration.identity;
+        let failure = || crate::embedding::BindingError::NativeCallable {
+            package: identity.package.clone(),
+            module: identity.module.clone(),
+            name: identity.name.clone(),
+        };
+        let template = self
+            .modules
+            .iter()
+            .find(|module| {
+                module.package() == &identity.package && module.module() == &identity.module
+            })
+            .and_then(|module| {
+                module
+                    .native_callables()
+                    .iter()
+                    .find(|template| template.name() == identity.name.as_str())
+            })
+            .ok_or_else(failure)?;
+        let target = instantiate_native_callable(template, &declaration).ok_or_else(failure)?;
+        let returns_value = matches!(
+            declaration.completion,
+            crate::host::HostFunctionBinding::Value(())
+        );
+        if !self.implementation_bindings.iter().any(|binding| {
+            binding.template() == template.id() && binding.returns_value() == returns_value
+        }) {
+            return Err(failure());
+        }
+        let slot = self.callables.len();
+        self.callables.push(LibraryNativeCallable {
+            template: template.clone(),
+            target,
+            declaration,
+            signature,
+        });
+        Ok(slot)
     }
 }

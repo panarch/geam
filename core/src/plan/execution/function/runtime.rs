@@ -64,8 +64,8 @@ pub enum ProfiledCoreRuntimeFunctionId<Graph: ExecutionGraphProfile> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuntimeFunctionFunctionTarget {
-    Core(super::ProfiledFunctionFunctionId<Infallible>),
+pub enum RuntimeFunctionFunctionTarget<Symbolic = super::GenericFunctionFunctionId> {
+    Core(super::ProfiledFunctionFunctionId<Infallible, Symbolic>),
     External(ExternalFunctionCallTarget),
 }
 
@@ -178,6 +178,15 @@ impl RuntimeFunctionFunctionTarget {
     }
 }
 
+impl RuntimeFunctionFunctionTarget<Infallible> {
+    pub(super) fn value_target(&self) -> RuntimeFunctionFunctionTarget {
+        match self {
+            Self::Core(id) => RuntimeFunctionFunctionTarget::Core(id.value_target()),
+            Self::External(id) => RuntimeFunctionFunctionTarget::External(id.clone()),
+        }
+    }
+}
+
 impl Emit for GenericCallableId {
     fn emit(&self, output: &mut Rust) {
         match self {
@@ -265,7 +274,7 @@ where
     }
 }
 
-impl Emit for RuntimeFunctionFunctionTarget {
+impl<Symbolic: Emit> Emit for RuntimeFunctionFunctionTarget<Symbolic> {
     fn emit(&self, output: &mut Rust) {
         match self {
             Self::Core(field_0) => {

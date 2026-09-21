@@ -58,7 +58,9 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
     + Send
     + use<Profile, Output, Inputs, Decode>
     where
-        Inputs: FnOnce(&mut dyn HostCallRuntime<Profile>) -> CallbackInputs + Send + 'static,
+        Inputs: FnOnce(&mut dyn HostCallRuntime<Profile>) -> Result<CallbackInputs, HostCallError>
+            + Send
+            + 'static,
         Decode: FnOnce(
                 &mut dyn HostCallRuntime<Profile>,
                 HostValueToken,
@@ -76,7 +78,7 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
                         RuntimeHostCall::new_codec(plan, state, &input_codec, input_origin);
                     inputs(&mut runtime)
                 })
-                .await?;
+                .await??;
             let returned = context
                 .invoke(callable, origin.clone(), inputs)
                 .await?

@@ -1,0 +1,16 @@
+error[E0277]: the trait bound `geam_core::provider::ProviderNoFactories: geam_core::provider::ProviderFactoryBinding<_, _>` is not satisfied
+  --> tests/ui/factory_without_permission.rs:18:21
+   |
+18 |         call.create(&factory, (1.into(),))
+   |              ------ ^^^^^^^^ the trait `geam_core::provider::ProviderFactoryBinding<_, _>` is not implemented for `geam_core::provider::ProviderNoFactories`
+   |              |
+   |              required by a bound introduced by this call
+   |
+note: required by a bound in `geam_core::provider::Call::<<Provider as HostProvider<Profile>>::State, geam_core::provider::ProviderActiveCall<'call, Profile, Provider, Return, Bindings>>::create`
+  --> $WORKSPACE/core/src/provider/call.rs
+   |
+   |     pub fn create<Declaration>(
+   |            ------ required by a bound in this associated function
+...
+   |         Bindings: ProviderFactoryBinding<Declaration, Declaration::Requirements>,
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Call::<<Provider as HostProvider<Profile>>::State, ProviderActiveCall<'call, Profile, Provider, Return, Bindings>>::create`

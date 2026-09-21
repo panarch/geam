@@ -1,30 +1,43 @@
 use super::custom_value::{CustomFieldValueType, CustomModel};
-use super::list::list_decoder_ident;
 use super::{
-    CallbackType, DeclaredInput, FunctionArgumentType, FunctionInputType, FunctionInputValueType,
-    FunctionOutputLeafType, FunctionOutputValueType, FunctionReturnType,
-    FunctionRootOutputValueType, GeneratedNames, GeneratedValue, GenericExternalStorage,
-    GenericExternalType, GenericHostType, GenericInputSource, GenericValueType, InputOwnership,
-    ListType, ProviderValueType, StaticValueType,
+    CallbackType, DeclaredInput, FunctionInputType, FunctionInputValueType, FunctionOutputLeafType,
+    FunctionOutputValueType, FunctionReturnType, FunctionRootOutputValueType, GeneratedNames,
+    GeneratedValue, GenericExternalStorage, GenericExternalType, GenericHostType,
+    GenericInputSource, GenericValueType, InputOwnership, ListType, ProviderValueType,
+    StaticValueType,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, PathArguments, Type};
 
-fn static_list_item_type(
+pub(super) fn static_list_item_type(
     type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
     flavor: InputOwnership,
+    profile: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        StaticValueType::List(list) => {
+            let item =
+                static_list_item_type(&list.collection.value, customs, support, flavor, profile);
+            quote!(#support::List<#item>)
+        }
+        StaticValueType::Future(future) => {
+            let source = &future.source;
+            quote!(#support::ProviderFuture<#source>)
+        }
+        StaticValueType::Callback(callback) => {
+            let signature = &callback.signature;
+            quote!(#support::Callback<#signature>)
+        }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
             InputOwnership::Borrowed => {
-                quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
+                quote!(<#type_ as #support::ProviderContextualValueForms<#profile>>::ImmediateListInput)
             }
             InputOwnership::Owned => {
-                quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
+                quote!(<#type_ as #support::ProviderContextualValueForms<#profile>>::OwnedListInput)
             }
         },
         StaticValueType::External { payload, .. } => match flavor {
@@ -36,30 +49,31 @@ fn static_list_item_type(
             }
         },
         StaticValueType::Custom { index, .. } => {
-            let type_ = &customs[*index].ident;
+            let source = super::custom_context::source_type(&customs[*index]);
             match flavor {
                 InputOwnership::Borrowed => {
-                    quote!(<#type_ as #support::ProviderValueForms>::ImmediateListInput)
+                    quote!(<#source as #support::ProviderValueForms>::ImmediateInput)
                 }
                 InputOwnership::Owned => {
-                    quote!(<#type_ as #support::ProviderValueForms>::OwnedListInput)
+                    quote!(<#source as #support::ProviderValueForms>::OwnedInput)
                 }
             }
         }
+
         StaticValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|element| static_list_item_type(element, customs, support, flavor))
+                .map(|element| static_list_item_type(element, customs, support, flavor, profile))
                 .collect::<Vec<_>>();
             quote!((#(#elements,)*))
         }
         StaticValueType::Result { success, failure } => {
-            let success = static_list_item_type(success, customs, support, flavor);
-            let failure = static_list_item_type(failure, customs, support, flavor);
+            let success = static_list_item_type(success, customs, support, flavor, profile);
+            let failure = static_list_item_type(failure, customs, support, flavor, profile);
             quote!(::core::result::Result<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = static_list_item_type(value, customs, support, flavor);
+            let value = static_list_item_type(value, customs, support, flavor, profile);
             quote!(::core::option::Option<#value>)
         }
     }
@@ -70,10 +84,11 @@ pub(super) fn list_signature_type(
     customs: &[CustomModel],
     support: &TokenStream,
     flavor: InputOwnership,
+    profile: &TokenStream,
 ) -> Type {
-    let item = static_list_item_type(&list.collection.value, customs, support, flavor);
+    let item = static_list_item_type(&list.collection.value, customs, support, flavor, profile);
     let host_item = host_static_value_type(&list.collection.value, customs, support);
-    let decoder = list_decoder_ident(&list.decoder, flavor);
+    let decoder = super::list_capability::decoder_type(list, customs, support, flavor, profile);
     syn::parse_quote! {
         #support::List<
             #item,
@@ -87,8 +102,15 @@ pub(super) fn provider_input_signature_type(
     customs: &[CustomModel],
     support: &TokenStream,
     flavor: InputOwnership,
+    profile: &TokenStream,
 ) -> Type {
     match type_ {
+        ProviderValueType::Future(future) => {
+            future_input_signature_type(future, customs, support, profile)
+        }
+        ProviderValueType::Callback(callback) => {
+            callback_signature_type(callback, customs, profile, support)
+        }
         ProviderValueType::Scalar(type_) => type_.clone(),
         ProviderValueType::Generic(value) => generic_value_signature_type(value, customs, support),
         ProviderValueType::Declared {
@@ -97,10 +119,10 @@ pub(super) fn provider_input_signature_type(
             ..
         } => match flavor {
             InputOwnership::Borrowed => syn::parse_quote!(
-                <#type_ as #support::ProviderValueForms>::ImmediateInput
+                <#type_ as #support::ProviderContextualValueForms<#profile>>::ImmediateInput
             ),
             InputOwnership::Owned => syn::parse_quote!(
-                <#type_ as #support::ProviderValueForms>::OwnedInput
+                <#type_ as #support::ProviderContextualValueForms<#profile>>::OwnedInput
             ),
         },
         ProviderValueType::Declared {
@@ -109,10 +131,10 @@ pub(super) fn provider_input_signature_type(
             ..
         } => match flavor {
             InputOwnership::Borrowed => syn::parse_quote!(
-                <#type_ as #support::ProviderValueForms>::ImmediateInput
+                <#type_ as #support::ProviderContextualValueForms<#profile>>::ImmediateInput
             ),
             InputOwnership::Owned => syn::parse_quote!(
-                <#type_ as #support::ProviderValueForms>::OwnedInput
+                <#type_ as #support::ProviderContextualValueForms<#profile>>::OwnedInput
             ),
         },
         ProviderValueType::External { payload, .. } => match flavor {
@@ -125,30 +147,31 @@ pub(super) fn provider_input_signature_type(
         },
         ProviderValueType::Custom { index, .. } => {
             let type_ = &customs[*index].ident;
+            let forms = super::custom_context::forms(*index, customs, support, profile);
             match flavor {
-                InputOwnership::Borrowed => {
-                    syn::parse_quote!(<#type_ as #support::ProviderValueForms>::ImmediateInput)
-                }
-                InputOwnership::Owned => {
-                    syn::parse_quote!(<#type_ as #support::ProviderValueForms>::OwnedInput)
-                }
+                InputOwnership::Borrowed => syn::parse_quote!(<#type_ as #forms>::ImmediateInput),
+                InputOwnership::Owned => syn::parse_quote!(<#type_ as #forms>::OwnedInput),
             }
         }
-        ProviderValueType::List(list) => list_signature_type(list, customs, support, flavor),
+        ProviderValueType::List(list) => {
+            list_signature_type(list, customs, support, flavor, profile)
+        }
         ProviderValueType::Tuple(elements) => {
             let types = elements
                 .iter()
-                .map(|element| provider_input_signature_type(element, customs, support, flavor))
+                .map(|element| {
+                    provider_input_signature_type(element, customs, support, flavor, profile)
+                })
                 .collect::<Vec<_>>();
             syn::parse_quote!((#(#types,)*))
         }
         ProviderValueType::Result { success, failure } => {
-            let success = provider_input_signature_type(success, customs, support, flavor);
-            let failure = provider_input_signature_type(failure, customs, support, flavor);
+            let success = provider_input_signature_type(success, customs, support, flavor, profile);
+            let failure = provider_input_signature_type(failure, customs, support, flavor, profile);
             syn::parse_quote!(::core::result::Result<#success, #failure>)
         }
         ProviderValueType::Option { value } => {
-            let value = provider_input_signature_type(value, customs, support, flavor);
+            let value = provider_input_signature_type(value, customs, support, flavor, profile);
             syn::parse_quote!(::core::option::Option<#value>)
         }
     }
@@ -313,16 +336,13 @@ pub(super) fn generic_external_output_signature_type(
 
 pub(super) fn callback_signature_type(
     callback: &CallbackType,
-    generics: &[Ident],
+    customs: &[CustomModel],
     profile: &TokenStream,
     support: &TokenStream,
 ) -> Type {
     let signature = &callback.signature;
-    let codec = callback_codec_type(
-        &callback.codec,
-        generics.iter().map(|ident| quote!(#ident)).collect(),
-    );
-    let context = quote!(#support::ProviderOwnedCallbackContext<#profile, __GeamProvider, #codec>);
+    let forms = callback_runtime_forms(callback, customs, support, profile);
+    let context = quote!(#support::ProviderCallbackContext<#profile, #(#forms),*>);
     let mut path = callback.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
@@ -332,22 +352,57 @@ pub(super) fn callback_signature_type(
     Type::Path(path)
 }
 
+pub(super) fn callback_runtime_forms(
+    callback: &CallbackType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    profile: &TokenStream,
+) -> [TokenStream; 4] {
+    let arguments = callback.arguments.iter().map(|value| {
+        callback_output_signature_type(value, customs, support, InputOwnership::Owned, profile)
+    });
+    let returned = callback_input_signature_type(
+        &callback.return_,
+        customs,
+        support,
+        InputOwnership::Owned,
+        profile,
+    );
+    let host_arguments = callback_host_arguments(callback, customs, support);
+    let host_return = host_input_type(&callback.return_, customs, support, profile);
+    [
+        quote!((#(#arguments,)*)),
+        quote!(#returned),
+        host_arguments,
+        host_return,
+    ]
+}
+
 pub(super) fn callback_output_signature_type(
     type_: &FunctionReturnType,
     customs: &[CustomModel],
     support: &TokenStream,
     flavor: InputOwnership,
+    profile: &TokenStream,
 ) -> Type {
     match type_ {
+        FunctionReturnType::Callback(callback) => {
+            callback_signature_type(callback, customs, profile, support)
+        }
+        FunctionReturnType::Future(future) => {
+            future_input_signature_type(future, customs, support, profile)
+        }
         FunctionReturnType::Value(value) => {
             let value = function_output_from_root(value);
-            function_output_rust_type(&value, customs, support)
+            function_output_rust_type(&value, customs, support, profile)
         }
         FunctionReturnType::Generic(value) => generic_value_signature_type(value, customs, support),
         FunctionReturnType::External(external) => {
             generic_external_output_signature_type(external, customs, support)
         }
-        FunctionReturnType::List(list) => list_signature_type(list, customs, support, flavor),
+        FunctionReturnType::List(list) => {
+            list_signature_type(list, customs, support, flavor, profile)
+        }
     }
 }
 
@@ -367,12 +422,15 @@ pub(super) fn callback_input_signature_type(
     profile: &TokenStream,
 ) -> Type {
     match type_ {
+        FunctionInputType::Callback(callback) => {
+            callback_signature_type(callback, customs, profile, support)
+        }
         FunctionInputType::Future(value) => {
             future_input_signature_type(value, customs, support, profile)
         }
         FunctionInputType::Value(value) => {
             let value = provider_value_from_input_root(value);
-            provider_input_signature_type(&value, customs, support, flavor)
+            provider_input_signature_type(&value, customs, support, flavor, profile)
         }
         FunctionInputType::Generic(value) => generic_value_signature_type(value, customs, support),
         FunctionInputType::External(external) => generic_external_input_signature_type(
@@ -382,8 +440,20 @@ pub(super) fn callback_input_signature_type(
             GenericInputSource::Declared,
             flavor,
         ),
-        FunctionInputType::List(list) => list_signature_type(list, customs, support, flavor),
+        FunctionInputType::List(list) => {
+            list_signature_type(list, customs, support, flavor, profile)
+        }
     }
+}
+
+pub(super) fn future_host_type(
+    future: &super::FutureInputType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    profile: &TokenStream,
+) -> TokenStream {
+    let value = host_input_type(&future.value, customs, support, profile);
+    quote!(#support::HostFutureType<#value, #support::HostWorkSchema<#profile>>)
 }
 
 pub(super) fn future_input_signature_type(
@@ -401,8 +471,7 @@ pub(super) fn future_input_signature_type(
         InputOwnership::Owned,
         profile,
     );
-    let context =
-        quote!(#support::ProviderFutureValueContext<#profile, __GeamProvider, #host, #returned>);
+    let context = quote!(#support::ProviderFutureValueContext<#profile, #host, #returned>);
     let mut path = input.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote!(<#source, #context>));
@@ -414,13 +483,24 @@ pub(super) fn function_output_rust_type(
     type_: &FunctionOutputValueType,
     customs: &[CustomModel],
     support: &TokenStream,
+    profile: &TokenStream,
 ) -> Type {
     match type_ {
+        FunctionOutputValueType::Future(future) => {
+            future_input_signature_type(future, customs, support, profile)
+        }
+        FunctionOutputValueType::Callback(callback) => {
+            callback_signature_type(callback, customs, profile, support)
+        }
         FunctionOutputValueType::Value(value) => match value.as_ref() {
             FunctionOutputLeafType::Scalar(type_)
             | FunctionOutputLeafType::Declared { type_, .. } => type_.clone(),
             FunctionOutputLeafType::External { payload, .. } => syn::parse_quote!(#payload),
-            FunctionOutputLeafType::Custom { rust, .. } => rust.clone(),
+            FunctionOutputLeafType::Custom { index, .. } => {
+                let source = &customs[*index].ident;
+                let forms = super::custom_context::forms(*index, customs, support, profile);
+                syn::parse_quote!(<#source as #forms>::Output)
+            }
         },
         FunctionOutputValueType::Generic(value) => {
             generic_value_signature_type(value, customs, support)
@@ -428,21 +508,21 @@ pub(super) fn function_output_rust_type(
         FunctionOutputValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|element| function_output_rust_type(element, customs, support))
+                .map(|element| function_output_rust_type(element, customs, support, profile))
                 .collect::<Vec<_>>();
             syn::parse_quote!((#(#elements,)*))
         }
         FunctionOutputValueType::Result { success, failure } => {
-            let success = function_output_rust_type(success, customs, support);
-            let failure = function_output_rust_type(failure, customs, support);
+            let success = function_output_rust_type(success, customs, support, profile);
+            let failure = function_output_rust_type(failure, customs, support, profile);
             syn::parse_quote!(::core::result::Result<#success, #failure>)
         }
         FunctionOutputValueType::Option { value } => {
-            let value = function_output_rust_type(value, customs, support);
+            let value = function_output_rust_type(value, customs, support, profile);
             syn::parse_quote!(::core::option::Option<#value>)
         }
         FunctionOutputValueType::Vec(collection) => {
-            let value = function_output_rust_type(&collection.value, customs, support);
+            let value = function_output_rust_type(&collection.value, customs, support, profile);
             syn::parse_quote!(::std::vec::Vec<#value>)
         }
     }
@@ -519,16 +599,11 @@ pub(super) fn function_output_from_root(
 }
 
 pub(super) fn host_argument_type(
-    type_: &FunctionArgumentType,
+    type_: &FunctionInputType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
-    match type_ {
-        FunctionArgumentType::Input(type_) => {
-            host_input_type(type_, customs, support, &quote!(Profile))
-        }
-        FunctionArgumentType::Callback(callback) => callback_host_type(callback, customs, support),
-    }
+    host_input_type(type_, customs, support, &quote!(__GeamProfile))
 }
 
 pub(super) fn host_input_type(
@@ -538,6 +613,7 @@ pub(super) fn host_input_type(
     profile: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        FunctionInputType::Callback(callback) => callback_host_type(callback, customs, support),
         FunctionInputType::Future(value) => {
             let value = host_input_type(&value.value, customs, support, profile);
             quote!(#support::HostFutureType<#value, #support::HostWorkSchema<#profile>>)
@@ -563,6 +639,11 @@ pub(super) fn host_return_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        FunctionReturnType::Callback(callback) => callback_host_type(callback, customs, support),
+        FunctionReturnType::Future(future) => {
+            let value = host_input_type(&future.value, customs, support, &quote!(__GeamProfile));
+            quote!(#support::HostFutureType<#value, #support::HostWorkSchema<__GeamProfile>>)
+        }
         FunctionReturnType::Value(type_) => {
             let type_ = function_output_from_root(type_);
             function_output_host_type(&type_, customs, support)
@@ -584,6 +665,12 @@ pub(super) fn function_output_host_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        FunctionOutputValueType::Future(future) => {
+            future_host_type(future, customs, support, &quote!(__GeamProfile))
+        }
+        FunctionOutputValueType::Callback(callback) => {
+            callback_host_type(callback, customs, support)
+        }
         FunctionOutputValueType::Value(value) => {
             host_value_type(&provider_value_from_output_leaf(value), customs, support)
         }
@@ -628,17 +715,18 @@ pub(super) fn host_value_type(
     support: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        ProviderValueType::Future(future) => {
+            future_host_type(future, customs, support, &quote!(__GeamProfile))
+        }
+        ProviderValueType::Callback(callback) => callback_host_type(callback, customs, support),
         ProviderValueType::Scalar(type_) => quote!(#type_),
         ProviderValueType::Generic(value) => generic_host_type(&value.host, customs, support),
-        ProviderValueType::Declared { type_, .. } => {
-            quote!(<#type_ as #support::ProviderValue>::Host)
-        }
+        ProviderValueType::Declared { type_, .. } => declared_host_type(type_, support),
         ProviderValueType::External { schema, .. } => {
             quote!(#support::HostExternalType<#schema>)
         }
         ProviderValueType::Custom { index, .. } => {
-            let schema = &customs[*index].schema;
-            quote!(#support::HostCustomType<#schema>)
+            super::custom_context::host_type(&customs[*index], customs, support)
         }
         ProviderValueType::List(list) => {
             let item = host_static_value_type(&list.collection.value, customs, support);
@@ -660,38 +748,117 @@ pub(super) fn host_value_type(
     }
 }
 
+pub(super) fn declared_source_type(type_: &Type) -> &Type {
+    if let Type::Path(path) = type_
+        && let Some(source) = &path.qself
+        && path.path.segments.iter().any(|segment| {
+            matches!(
+                segment.ident.to_string().as_str(),
+                "ProviderValueForms" | "ProviderContextualValueForms"
+            )
+        })
+    {
+        &source.ty
+    } else {
+        type_
+    }
+}
+
+pub(super) fn declared_host_type(type_: &Type, support: &TokenStream) -> TokenStream {
+    let source = declared_source_type(type_);
+    quote!(<#source as #support::ProviderContextualValueForms<__GeamProfile>>::Host)
+}
+
 pub(super) fn host_static_value_type(
     type_: &StaticValueType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
+    host_static_value_type_with(
+        type_,
+        customs,
+        support,
+        &|callback| callback_host_type(callback, customs, support),
+        &|future| future_host_type(future, customs, support, &quote!(__GeamProfile)),
+        &|type_| quote!(<#type_ as #support::ProviderContextualValueForms<__GeamProfile>>::Host),
+    )
+}
+
+pub(super) fn host_static_value_type_with(
+    type_: &StaticValueType,
+    customs: &[CustomModel],
+    support: &TokenStream,
+    callback_host: &impl Fn(&CallbackType) -> TokenStream,
+    future_host: &impl Fn(&super::FutureInputType) -> TokenStream,
+    declared_host: &impl Fn(&Type) -> TokenStream,
+) -> TokenStream {
     match type_ {
-        StaticValueType::Scalar(type_) => quote!(#type_),
-        StaticValueType::Declared { type_, .. } => {
-            quote!(<#type_ as #support::ProviderValue>::Host)
+        StaticValueType::List(list) => {
+            let item = host_static_value_type_with(
+                &list.collection.value,
+                customs,
+                support,
+                callback_host,
+                future_host,
+                declared_host,
+            );
+            quote!(#support::HostListType<#item>)
         }
+        StaticValueType::Future(future) => future_host(future),
+        StaticValueType::Callback(callback) => callback_host(callback),
+        StaticValueType::Scalar(type_) => quote!(#type_),
+        StaticValueType::Declared { type_, .. } => declared_host(type_),
         StaticValueType::External { schema, .. } => {
             quote!(#support::HostExternalType<#schema>)
         }
         StaticValueType::Custom { index, .. } => {
-            let schema = &customs[*index].schema;
-            quote!(#support::HostCustomType<#schema>)
+            super::custom_context::host_type(&customs[*index], customs, support)
         }
         StaticValueType::Tuple(elements) => {
             let elements = elements
                 .iter()
-                .map(|element| host_static_value_type(element, customs, support))
+                .map(|element| {
+                    host_static_value_type_with(
+                        element,
+                        customs,
+                        support,
+                        callback_host,
+                        future_host,
+                        declared_host,
+                    )
+                })
                 .collect::<Vec<_>>();
             let elements = host_type_token_sequence(&elements, support);
             quote!(#support::HostTupleType<#elements>)
         }
         StaticValueType::Result { success, failure } => {
-            let success = host_static_value_type(success, customs, support);
-            let failure = host_static_value_type(failure, customs, support);
+            let success = host_static_value_type_with(
+                success,
+                customs,
+                support,
+                callback_host,
+                future_host,
+                declared_host,
+            );
+            let failure = host_static_value_type_with(
+                failure,
+                customs,
+                support,
+                callback_host,
+                future_host,
+                declared_host,
+            );
             quote!(#support::ProviderResult<#success, #failure>)
         }
         StaticValueType::Option { value } => {
-            let value = host_static_value_type(value, customs, support);
+            let value = host_static_value_type_with(
+                value,
+                customs,
+                support,
+                callback_host,
+                future_host,
+                declared_host,
+            );
             quote!(#support::ProviderOption<#value>)
         }
     }
@@ -707,14 +874,17 @@ pub(super) fn generic_host_type(
             quote!(#support::HostTypeParameter<#index>)
         }
         GenericHostType::Scalar(type_) => quote!(#type_),
-        GenericHostType::Declared(type_) => {
+        GenericHostType::SourceParameter(type_) => {
             quote!(<#type_ as #support::ProviderValue>::Host)
+        }
+        GenericHostType::Declared(type_) => {
+            quote!(<#type_ as #support::ProviderContextualValueForms<__GeamProfile>>::Host)
         }
         GenericHostType::External { schema } => {
             quote!(#support::HostExternalType<#schema>)
         }
         GenericHostType::Custom { index } => {
-            let schema = &customs[*index].schema;
+            let schema = super::custom_context::schema_type(&customs[*index], customs);
             quote!(#support::HostCustomType<#schema>)
         }
         GenericHostType::Tuple(elements) => {
@@ -767,7 +937,7 @@ pub(super) fn host_custom_field_type(
 }
 
 pub(super) fn wrapper_argument_type(
-    type_: &FunctionArgumentType,
+    type_: &FunctionInputType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
@@ -775,31 +945,19 @@ pub(super) fn wrapper_argument_type(
 }
 
 pub(super) fn wrapper_argument_type_with_lifetime(
-    type_: &FunctionArgumentType,
-    customs: &[CustomModel],
-    support: &TokenStream,
-    lifetime: &TokenStream,
-) -> TokenStream {
-    match type_ {
-        FunctionArgumentType::Input(type_) => wrapper_input_type(type_, customs, support, lifetime),
-        FunctionArgumentType::Callback(callback) => {
-            let arguments = callback_host_arguments(callback, customs, support);
-            let return_ = host_input_type(&callback.return_, customs, support, &quote!(Profile));
-            quote!(#support::HostCallable<#lifetime, #arguments, #return_>)
-        }
-    }
-}
-
-fn wrapper_input_type(
     type_: &FunctionInputType,
     customs: &[CustomModel],
     support: &TokenStream,
     lifetime: &TokenStream,
 ) -> TokenStream {
     match type_ {
+        FunctionInputType::Callback(callback) => {
+            let host = callback_host_type(callback, customs, support);
+            quote!(<#host as #support::HostType>::Value<#lifetime>)
+        }
         FunctionInputType::Future(value) => {
-            let value = host_input_type(&value.value, customs, support, &quote!(Profile));
-            quote!(#support::HostExternal<#lifetime, #support::HostFutureType<#value, #support::HostWorkSchema<Profile>>>)
+            let value = host_input_type(&value.value, customs, support, &quote!(__GeamProfile));
+            quote!(#support::HostExternal<#lifetime, #support::HostFutureType<#value, #support::HostWorkSchema<__GeamProfile>>>)
         }
         FunctionInputType::Value(type_) => {
             wrapper_input_value_type(type_, customs, support, lifetime)
@@ -819,13 +977,13 @@ fn wrapper_input_type(
     }
 }
 
-fn callback_host_type(
+pub(super) fn callback_host_type(
     callback: &CallbackType,
     customs: &[CustomModel],
     support: &TokenStream,
 ) -> TokenStream {
     let arguments = callback_host_arguments(callback, customs, support);
-    let return_ = host_input_type(&callback.return_, customs, support, &quote!(Profile));
+    let return_ = host_input_type(&callback.return_, customs, support, &quote!(__GeamProfile));
     quote!(#support::HostFunctionType<#arguments, #return_>)
 }
 
@@ -854,7 +1012,7 @@ fn wrapper_input_value_type(
         FunctionInputValueType::Scalar(type_) => quote!(#type_),
         FunctionInputValueType::Declared { type_, .. } => {
             quote!(
-                <<#type_ as #support::ProviderValue>::Host as
+                <<#type_ as #support::ProviderContextualValueForms<__GeamProfile>>::Host as
                     #support::HostType>::Value<#lifetime>
             )
         }
@@ -862,7 +1020,7 @@ fn wrapper_input_value_type(
             quote!(#support::HostExternal<#lifetime, #support::HostExternalType<#schema>>)
         }
         FunctionInputValueType::Custom { index, .. } => {
-            let schema = &customs[*index].schema;
+            let schema = super::custom_context::schema_type(&customs[*index], customs);
             quote!(#support::HostCustom<#lifetime, #support::HostCustomType<#schema>>)
         }
         FunctionInputValueType::Tuple(elements) => {

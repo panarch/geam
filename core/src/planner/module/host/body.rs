@@ -74,6 +74,7 @@ fn plan_hosted_module(
                 constants: module.constants,
                 functions,
                 anonymous_functions: module.anonymous_functions.into_functions(),
+                native_callables: Vec::new(),
             })
         })
 }

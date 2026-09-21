@@ -14,11 +14,26 @@ pub struct HostSpecializationError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostSpecializationErrorReason {
     UndeterminedReturnStorage,
+    UninhabitedCallableCapture { capture: crate::plan::ValueType },
     UninhabitedCallbackArguments { callback: FunctionType },
     ConflictingNativeConversions { type_: crate::plan::ValueType },
 }
 
 impl HostSpecializationError {
+    pub(in crate::plan::execution) fn uninhabited_callable_capture(
+        template: &crate::plan::HostFunctionTemplate,
+        signature: FunctionType,
+        capture: crate::plan::ValueType,
+    ) -> Self {
+        Self {
+            package: template.package().clone(),
+            module: template.module().into(),
+            function: template.name().into(),
+            signature,
+            reason: HostSpecializationErrorReason::UninhabitedCallableCapture { capture },
+        }
+    }
+
     pub(in crate::plan::execution) fn undetermined_return_storage(
         package: EcoString,
         module: EcoString,
@@ -90,6 +105,11 @@ impl HostSpecializationError {
 impl fmt::Display for HostSpecializationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.reason {
+            HostSpecializationErrorReason::UninhabitedCallableCapture { capture } => write!(
+                formatter,
+                "host function `{}::{}.{}` constructs a native callable `{:?}` with uninhabited capture `{:?}`",
+                self.package, self.module, self.function, self.signature, capture,
+            ),
             HostSpecializationErrorReason::UndeterminedReturnStorage => write!(
                 formatter,
                 "host function `{}::{}.{}` has an executable specialization `{:?}` whose successful return storage cannot be determined",
@@ -115,6 +135,34 @@ impl std::error::Error for HostSpecializationError {}
 mod tests {
     use super::{HostSpecializationError, HostSpecializationErrorReason};
     use crate::{FunctionType, ValueType};
+
+    #[test]
+    fn displays_the_uninhabited_native_capture_with_its_specialization() {
+        let signature = FunctionType::new(vec![ValueType::Int], ValueType::Bool);
+        let capture = ValueType::Parameter(crate::plan::TypeParameterId(0));
+        let error = HostSpecializationError {
+            package: "application".into(),
+            module: "pricing".into(),
+            function: "adjust".into(),
+            signature: signature.clone(),
+            reason: HostSpecializationErrorReason::UninhabitedCallableCapture {
+                capture: capture.clone(),
+            },
+        };
+        assert_eq!(error.package(), "application");
+        assert_eq!(error.module(), "pricing");
+        assert_eq!(error.function(), "adjust");
+        assert_eq!(error.signature(), &signature);
+        assert_eq!(
+            error.reason(),
+            &HostSpecializationErrorReason::UninhabitedCallableCapture { capture },
+        );
+        assert_eq!(
+            error.to_string(),
+            "host function `application::pricing.adjust` constructs a native callable `FunctionType { arguments: [Int], return_: Bool }` with uninhabited capture `Parameter(TypeParameterId(0))`",
+        );
+        assert_eq!(error.clone(), error);
+    }
 
     #[test]
     fn exposes_the_undetermined_return_storage_specialization() {

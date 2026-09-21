@@ -110,7 +110,7 @@ jobs:
           - group: 1
             examples: [first_call, package, processes]
           - group: 2
-            examples: [data, io, provider]
+            examples: [data, io, provider, callables]
           - group: 3
             examples: [async_host, session, prepared]
     env:
@@ -536,6 +536,8 @@ jobs:
             examples:
               - example: text_tools
                 test: runs_the_documented_text_tools_provider_across_three_modules
+              - example: callables
+                test: runs_the_documented_callables_provider_with_generic_and_custom_callbacks
               - example: generic_box
                 test: runs_the_documented_generic_box_provider_with_persistent_values
           - group: 3
@@ -599,7 +601,9 @@ jobs:
               cd "examples/provider/$example/provider"
               cargo test --locked
               cargo package --locked
+              (cd ../project && gleam format --check)
               cd "../project/packages/example_$example"
+              gleam format --check
               gleam export hex-tarball
             ' -- "$example" "$test"; then
               echo "::error title=Provider example failed::$example"

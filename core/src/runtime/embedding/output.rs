@@ -1,7 +1,7 @@
 use super::list::EmbeddingList;
 use crate::StringValue;
 use crate::runtime::EvaluatedCustomValue;
-use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedFunctionValue, EvaluatedValue};
+use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
 use crate::runtime::state::list::{ParameterListValueId, StoredListValueId};
 use num_bigint::BigInt;
 
@@ -16,7 +16,7 @@ pub(crate) struct EmbeddingOutput {
     bools: Vec<bool>,
     _parameter_lists: Vec<ParameterListValueId>,
     lists: Vec<StoredListValueId>,
-    _functions: Vec<EvaluatedFunctionValue>,
+    functions: Vec<super::EmbeddingCallable>,
 }
 
 impl EmbeddingOutput {
@@ -38,6 +38,10 @@ impl EmbeddingOutput {
         let mut output = Self::empty();
         output.push_reversed(EvaluatedValue::Custom(value));
         output
+    }
+
+    pub(crate) fn take_function(&mut self) -> super::EmbeddingCallable {
+        take_last(&mut self.functions)
     }
 
     pub(crate) fn take_int(&mut self) -> BigInt {
@@ -98,7 +102,7 @@ impl EmbeddingOutput {
             bools: Vec::new(),
             _parameter_lists: Vec::new(),
             lists: Vec::new(),
-            _functions: Vec::new(),
+            functions: Vec::new(),
         }
     }
 
@@ -120,7 +124,11 @@ impl EmbeddingOutput {
             }
             EvaluatedValue::ParameterList(value) => self._parameter_lists.push(value),
             EvaluatedValue::List(value) => self.lists.push(value),
-            EvaluatedValue::Function(value) => self._functions.push(value),
+            EvaluatedValue::Function(value) => {
+                if let Some(value) = super::EmbeddingCallable::from_value(value) {
+                    self.functions.push(value);
+                }
+            }
         }
     }
 }
@@ -140,6 +148,30 @@ mod tests {
     };
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{ListValueId, ParameterListValueId};
+
+    #[test]
+    fn symbolic_functions_do_not_create_an_invocable_output_column() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn identity(value) { value }
+pub fn main() { #(identity, 42) }
+"#,
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let values = crate::runtime::function::run_tuple(
+            &plan,
+            &mut state,
+            crate::plan::execution::function::TupleFunctionId(0),
+            crate::runtime::HostCallOrigin::Entry,
+            crate::runtime::RetainedValues::empty(),
+        )
+        .unwrap();
+        let mut output = EmbeddingOutput::from_tuple(values);
+        assert!(output.functions.is_empty());
+        assert_eq!(output.take_int(), 42.into());
+        assert!(echo.is_empty());
+    }
 
     #[test]
     fn retains_non_data_runtime_families_without_reinterpreting_them() {
@@ -203,6 +235,6 @@ pub fn main() {
         assert_eq!(output._externals.len(), 1);
         assert_eq!(output._parameter_lists.len(), 1);
         assert_eq!(output.lists.len(), 1);
-        assert_eq!(output._functions.len(), 1);
+        assert_eq!(output.functions.len(), 1);
     }
 }

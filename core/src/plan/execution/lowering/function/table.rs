@@ -11,8 +11,8 @@ pub(super) use builder::{push_core_list_function_function, push_external_list_fu
 pub(in crate::plan::execution::lowering) use family::{
     CoreListFunctionFunctionSignature, ExternalListFunctionFunctionSignature, FunctionTableFamily,
     ListFunctionFunctionSignature, function_function_id, function_function_table_family,
-    function_id, list_function_function_signature, list_function_id, list_function_table_family,
-    stored_function_table_family,
+    function_id, invocable_function_function_id, list_function_function_signature,
+    list_function_id, list_function_table_family, stored_function_table_family,
 };
 pub(in crate::plan::execution::lowering) use host::lowered_host_function;
 pub(in crate::plan::execution::lowering) use profile::ProfiledFunctionEntries;

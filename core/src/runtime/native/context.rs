@@ -21,6 +21,10 @@ impl<'call> NativeValues<'call> {
         Self { lists, metadata }
     }
 
+    pub(crate) fn value_retention(self) -> crate::runtime::ValueRetention {
+        crate::runtime::ValueRetention::new(self.metadata)
+    }
+
     pub fn equal(self, left: &NativeValue, right: &NativeValue) -> bool {
         values_equal(self.lists, left, right)
     }
