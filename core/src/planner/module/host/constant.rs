@@ -30,6 +30,10 @@ pub(super) struct ModuleToPlan {
 pub(super) fn reserve_hosted_constants(
     modules: Vec<LinkedModule>,
 ) -> Result<(ProgramRegistry, Vec<ModuleWithConstants>), PlanError> {
+    let shared_custom_types = modules
+        .iter()
+        .flat_map(|module| module.shared_custom_types.iter().cloned())
+        .collect();
     let external_names = modules
         .iter()
         .flat_map(|module| &module.external_types)
@@ -41,7 +45,8 @@ pub(super) fn reserve_hosted_constants(
         .collect::<Result<Vec<_>, _>>()
         .and_then(|reserved| {
             let (registry_modules, modules): (Vec<_>, Vec<_>) = reserved.into_iter().unzip();
-            let registry = ProgramRegistry::new(registry_modules);
+            let registry = ProgramRegistry::new(registry_modules)
+                .with_shared_custom_types(shared_custom_types);
             for module in &modules {
                 validate_host_custom_schemas(
                     &registry,

@@ -42,6 +42,9 @@ pub(super) enum NativeError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum RegistrationError {
+    SharedCustomType {
+        custom_type: Box<crate::plan::CustomTypeName>,
+    },
     Missing,
     Declaration,
     ReturnKind,

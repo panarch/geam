@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 3,
+        format: 4,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -935,6 +935,7 @@ data::HostedModuleArtifact {
                                     ]),
                                 },
                             ]),
+                            shared: false,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Int,
@@ -968,6 +969,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Int,
@@ -1077,6 +1079,7 @@ data::HostedModuleArtifact {
                                     ]),
                                 },
                             ]),
+                            shared: false,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::Int,
@@ -1110,6 +1113,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Int,
@@ -1236,6 +1240,7 @@ data::HostedModuleArtifact {
                                         ]),
                                     },
                                 ]),
+                                shared: false,
                             },
                             arguments: data::Storage::Static(&[
                                 data::host::RegistrationType::Int,
@@ -1270,6 +1275,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                     arguments: data::Storage::Static(&[
                         data::host::RegistrationType::Int,

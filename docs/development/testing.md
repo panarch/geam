@@ -117,7 +117,9 @@ independently of executor-specific examples.
 The `geam-core` prepared integration target compiles emitted Rust tables and
 loads them through the same evaluator as dynamic programs. Its maintained
 artifacts under `core/tests/fixtures/prepared` cover arithmetic, the complete
-value/function families, native conversions/callbacks, and retained work.
+value/function families, native conversions/callbacks, retained work, and
+producer-authorized opaque custom sharing (including generic callable payloads
+and missing grants).
 Tests compare fresh preparation with these exact artifacts as well as checking
 explicit runtime values, diagnostics and owner isolation.
 Emission owner tests keep exact, indented Rust expressions beside their inputs,

@@ -16,6 +16,7 @@ pub(in crate::planner) enum ModuleConstantResolutionError {
 pub(in crate::planner) struct ProgramRegistry {
     by_name: HashMap<EcoString, ModuleId>,
     modules: Vec<ModuleRegistry>,
+    shared_custom_types: HashSet<CustomTypeName>,
 }
 
 pub(in crate::planner) struct ModuleRegistry {
@@ -34,7 +35,23 @@ impl ProgramRegistry {
             .enumerate()
             .map(|(index, module)| (module.name.clone(), ModuleId::new(index)))
             .collect();
-        Self { by_name, modules }
+        Self {
+            by_name,
+            modules,
+            shared_custom_types: HashSet::new(),
+        }
+    }
+
+    pub(in crate::planner) fn with_shared_custom_types(
+        mut self,
+        types: HashSet<CustomTypeName>,
+    ) -> Self {
+        self.shared_custom_types = types;
+        self
+    }
+
+    pub(in crate::planner) fn shares_custom_type(&self, name: &CustomTypeName) -> bool {
+        self.shared_custom_types.contains(name)
     }
 
     pub(in crate::planner) fn module_name(&self, module: ModuleId) -> &EcoString {

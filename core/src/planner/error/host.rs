@@ -22,6 +22,19 @@ pub enum ExternalTypeProviderLinkReason {
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum SharedCustomTypeProviderLinkReason {
+    #[error("source module is not linked")]
+    MissingModule,
+    #[error("custom type declaration is missing")]
+    MissingDeclaration,
+    #[error("shared custom schema mismatch: expected {expected:?}, got {actual:?}")]
+    SchemaMismatch {
+        expected: HostCustomTypeSchema,
+        actual: HostCustomTypeSchema,
+    },
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum HostProviderLinkReason {
     #[error(
         "native callable construction cycle through {package}::{module}.{function} expands type parameters without bound"
@@ -61,6 +74,8 @@ pub enum HostProviderLinkReason {
         actual_scheme: TypeScheme,
         actual_type: FunctionType,
     },
+    #[error("custom type {custom_type:?} requires a sharing registration from its source owner")]
+    MissingSharedCustomType { custom_type: CustomTypeName },
     #[error("custom type {custom_type:?} is missing")]
     MissingCustomType { custom_type: CustomTypeName },
     #[error("custom type {custom_type:?} is not visible to the host function")]
@@ -98,6 +113,40 @@ pub enum HostProviderLinkReason {
 #[cfg(test)]
 mod tests {
     use super::HostProviderLinkReason;
+
+    #[test]
+    fn sharing_schema_diagnostic_reports_both_exact_contracts() {
+        let reason = super::SharedCustomTypeProviderLinkReason::SchemaMismatch {
+            expected: crate::HostCustomTypeSchema::new("app", "handles", "Handle", 0, [])
+                .with_shared_access(true),
+            actual: crate::HostCustomTypeSchema::new("app", "handles", "Handle", 1, [])
+                .with_shared_access(true),
+        };
+        assert_eq!(
+            reason.to_string(),
+            concat!(
+                "shared custom schema mismatch: expected HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 0, constructors: [], shared: true }, ",
+                "got HostCustomTypeSchema { package: \"app\", module: \"handles\", name: \"Handle\", parameter_count: 1, constructors: [], shared: true }",
+            )
+        );
+        assert_eq!(reason.clone(), reason);
+    }
+
+    #[test]
+    fn missing_custom_sharing_names_the_source_owner() {
+        let reason = HostProviderLinkReason::MissingSharedCustomType {
+            custom_type: crate::plan::CustomTypeName::new(
+                "producer".into(),
+                "handles".into(),
+                "Handle".into(),
+            ),
+        };
+        assert_eq!(
+            reason.to_string(),
+            "custom type CustomTypeName { package: \"producer\", module: \"handles\", name: \"Handle\" } requires a sharing registration from its source owner"
+        );
+        assert_eq!(reason.clone(), reason);
+    }
 
     #[test]
     fn native_callable_diagnostics_identify_the_exact_declaration_and_contract() {

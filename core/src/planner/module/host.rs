@@ -3,6 +3,7 @@ mod callable;
 mod constant;
 mod declaration;
 mod link;
+mod shared_custom;
 
 use crate::frontend::{HostedTypedProgram, HostedTypedProgramModule};
 use crate::host::{

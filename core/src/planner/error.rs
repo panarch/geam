@@ -5,7 +5,9 @@ mod host;
 mod invalid;
 mod unsupported;
 
-pub use host::{ExternalTypeProviderLinkReason, HostProviderLinkReason};
+pub use host::{
+    ExternalTypeProviderLinkReason, HostProviderLinkReason, SharedCustomTypeProviderLinkReason,
+};
 pub use invalid::{
     InvalidBitArraySegmentOptionsReason, InvalidCallShapeReason, InvalidCaseShapeReason,
     InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
@@ -20,6 +22,14 @@ pub use unsupported::{
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum PlanError {
+    #[error("shared custom type provider {package}::{module}.{type_}: {reason}")]
+    SharedCustomTypeProviderLink {
+        package: EcoString,
+        module: EcoString,
+        type_: EcoString,
+        reason: Box<SharedCustomTypeProviderLinkReason>,
+    },
+
     #[error("external type provider {package}::{module}.{type_}: {reason}")]
     ExternalTypeProviderLink {
         package: EcoString,

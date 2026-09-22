@@ -11,6 +11,7 @@ use ecow::EcoString;
 use gleam_compiler_core::ast::TypedFunction;
 use std::collections::{HashMap, HashSet};
 
+pub(super) use custom::host_custom_type_schema;
 pub(super) use custom::{validate_host_custom_schemas, validate_host_schemas};
 
 pub(super) struct LinkedModule {
@@ -19,6 +20,7 @@ pub(super) struct LinkedModule {
     pub(super) module_name: EcoString,
     pub(super) source_context: Option<SourceContext>,
     pub(super) custom_types: Vec<crate::plan::CustomTypeDefinition>,
+    pub(super) shared_custom_types: Vec<crate::plan::CustomTypeName>,
     pub(super) external_types: Vec<crate::plan::ExternalTypeDefinition>,
     pub(super) functions_by_name: HashMap<EcoString, FunctionInfo>,
     pub(super) functions: Vec<LinkedFunction>,
@@ -80,6 +82,7 @@ fn link_hosted_module(
             functions,
             constants,
             providers,
+            shared_custom_types,
         } => {
             let role = if id == root {
                 root_role
@@ -101,6 +104,7 @@ fn link_hosted_module(
                         module_name,
                         source_context,
                         custom_types,
+                        shared_custom_types,
                         external_types: module_external_types,
                         functions_by_name: table.by_name,
                         functions,

@@ -48,6 +48,7 @@ pub struct HostProviderModuleDeclaration {
     pub(super) identity: HostModuleIdentity,
     pub(super) functions: RegisteredFunctionSet<HostFunctionBinding<(), ()>>,
     pub(super) external_types: RegisteredExternalTypes,
+    pub(super) shared_custom_types: super::shared_custom::RegisteredSharedCustomTypes,
     pub(super) callables: super::callable::RegisteredCallableSet<HostFunctionBinding<(), ()>>,
 }
 
@@ -158,6 +159,7 @@ impl HostProviderModuleDeclaration {
             identity,
             functions: RegisteredFunctionSet::new(),
             external_types: RegisteredExternalTypes::new(),
+            shared_custom_types: super::shared_custom::RegisteredSharedCustomTypes::new(),
             callables: super::callable::RegisteredCallableSet::new(),
         })
     }
@@ -199,6 +201,15 @@ impl HostProviderModuleDeclaration {
                 <Schema::Completion as CompletionKind>::binding(),
             )
         })?;
+        Ok(self)
+    }
+
+    /// Declares the source owner's sharing grant without a Rust implementation.
+    pub fn with_shared_custom_type<Schema: super::HostCustomSchema>(
+        mut self,
+    ) -> Result<Self, HostRegistrationError> {
+        self.shared_custom_types
+            .register(&self.identity, super::HostCustomTypeSchema::of::<Schema>())?;
         Ok(self)
     }
 
@@ -319,6 +330,7 @@ impl HostDeclarations {
                 module: module.identity.module,
                 functions: module.functions.into_registered(&mut bindings),
                 external_types: module.external_types.into_vec(),
+                shared_custom_types: module.shared_custom_types.into_vec(),
             });
             callables.extend(module.callables.into_registered(&mut bindings));
         }

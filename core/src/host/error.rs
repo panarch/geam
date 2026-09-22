@@ -18,6 +18,21 @@ pub enum HostRegistrationError {
         function: EcoString,
     },
 
+    #[error(
+        "host module {package}::{module} cannot share custom type {custom_type:?} owned by another module"
+    )]
+    SharedCustomTypeOwner {
+        package: EcoString,
+        module: EcoString,
+        custom_type: crate::plan::CustomTypeName,
+    },
+
+    #[error("shared custom type name {type_} in module {module} is invalid")]
+    InvalidSharedCustomTypeName { module: EcoString, type_: EcoString },
+
+    #[error("custom type {type_} was shared more than once in module {module}")]
+    DuplicateSharedCustomType { module: EcoString, type_: EcoString },
+
     #[error("host external type name {type_} in module {module} is invalid")]
     InvalidExternalTypeName { module: EcoString, type_: EcoString },
 

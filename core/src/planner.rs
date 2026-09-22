@@ -18,8 +18,9 @@ pub use error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidFunctionShapeReason,
     InvalidModuleReferenceReason, InvalidPatternShapeReason, InvalidPipelineShapeReason,
     InvalidRecordUpdateShapeReason, InvalidTypedAstReason, InvalidUseShapeReason, PatternKind,
-    PlanError, RecordUpdateArgumentOrigin, UnsupportedBitArraySegmentReason,
-    UnsupportedFunctionReason, UnsupportedPatternKind, UnsupportedTopLevelKind,
+    PlanError, RecordUpdateArgumentOrigin, SharedCustomTypeProviderLinkReason,
+    UnsupportedBitArraySegmentReason, UnsupportedFunctionReason, UnsupportedPatternKind,
+    UnsupportedTopLevelKind,
 };
 pub use host_requirement::{RequiredHostFunction, required_host_functions};
 pub(crate) use module::{

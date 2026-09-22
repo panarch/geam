@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 3,
+        format: 4,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2663,6 +2663,7 @@ data::HostedModuleArtifact {
                                     ]),
                                 },
                             ]),
+                            shared: false,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
@@ -2702,6 +2703,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),
@@ -2929,6 +2931,7 @@ data::HostedModuleArtifact {
                                     ]),
                                 },
                             ]),
+                            shared: false,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
@@ -2968,6 +2971,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),
@@ -3288,6 +3292,7 @@ data::HostedModuleArtifact {
                                     ]),
                                 },
                             ]),
+                            shared: false,
                         },
                         arguments: data::Storage::Static(&[
                             data::host::RegistrationType::String,
@@ -3327,6 +3332,7 @@ data::HostedModuleArtifact {
                                 ]),
                             },
                         ]),
+                        shared: false,
                     },
                 ]),
                 construction_externals: data::Storage::Static(&[]),

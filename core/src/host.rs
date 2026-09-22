@@ -11,6 +11,7 @@ mod future;
 mod module;
 pub mod native;
 mod profile;
+mod shared_custom;
 mod type_;
 mod value;
 

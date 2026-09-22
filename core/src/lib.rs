@@ -75,7 +75,8 @@ pub use plan::{
 };
 pub use planner::{
     ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError, RequiredHostFunction,
-    plan_host_program, plan_module, plan_module_with_source, plan_program, required_host_functions,
+    SharedCustomTypeProviderLinkReason, plan_host_program, plan_module, plan_module_with_source,
+    plan_program, required_host_functions,
 };
 pub use provider::List;
 pub use runtime::{

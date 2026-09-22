@@ -250,16 +250,10 @@ impl HostFunctionSchemaRegistration {
         self.captures =
             <Types as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
         let mut custom_schemas = self.custom_schemas.into_vec();
-        let mut visited = custom_schemas
-            .iter()
-            .map(|schema| {
-                (
-                    schema.package().clone(),
-                    schema.module().clone(),
-                    schema.name().clone(),
-                )
-            })
-            .collect();
+        // Captures may name the same source types through different Rust schema
+        // declarations. Walk their contracts independently before deduplicating
+        // equal schemas; source names cannot prove their nested fields agree.
+        let mut visited = std::collections::HashSet::new();
         <Types as crate::host::HostAbiTypeSequence>::collect_custom_schemas(
             &mut custom_schemas,
             &mut visited,
@@ -1043,7 +1037,7 @@ mod tests {
 
         assert_eq!(
             format!("{schema:?}"),
-            r#"HostFunctionSchema { name: "origin", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Custom(CustomType { name: CustomTypeName { package: "host_shapes", module: "host/shape", name: "Shape" }, arguments: [] }) }, custom_schemas: [HostCustomTypeSchema { package: "host_shapes", module: "host/shape", name: "Shape", parameter_count: 0, constructors: [HostCustomConstructorSchema { name: "Circle", fields: [HostCustomFieldSchema { label: Some("radius"), type_: Float }] }] }] }"#,
+            r#"HostFunctionSchema { name: "origin", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Custom(CustomType { name: CustomTypeName { package: "host_shapes", module: "host/shape", name: "Shape" }, arguments: [] }) }, custom_schemas: [HostCustomTypeSchema { package: "host_shapes", module: "host/shape", name: "Shape", parameter_count: 0, constructors: [HostCustomConstructorSchema { name: "Circle", fields: [HostCustomFieldSchema { label: Some("radius"), type_: Float }] }], shared: false }] }"#,
         );
     }
 
