@@ -7,6 +7,9 @@ static ARITHMETIC: data::ModuleArtifact<std::convert::Infallible> =
 static VALUES: data::ModuleArtifact<std::convert::Infallible> =
     include!("fixtures/prepared/values.rs");
 
+static NESTED_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/nested_patterns.rs");
+
 #[path = "support/work_fixture.rs"]
 mod work_fixture;
 #[path = "fixtures/prepared/work_provider.rs"]
@@ -17,6 +20,48 @@ static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
 static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/entry.rs");
 static ENTRY_WORK: data::HostedEntryArtifact = include!("fixtures/prepared/entry_work.rs");
 static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/entry_failure.rs");
+
+#[test]
+fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
+    use geam_core::StringValue;
+
+    let source = include_str!("fixtures/prepared/nested_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/nested_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = NESTED_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                module.call(&main, (), &mut echo).unwrap().as_str(),
+                "present:missing:failed:nested:empty:none:done"
+            );
+            assert!(echo.is_empty());
+        }
+    }
+}
 
 #[test]
 fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {

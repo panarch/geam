@@ -37,6 +37,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     values.function(FunctionDeclaration::<(), BigInt>::new("fail"))?;
     values.function(FunctionDeclaration::<(BigInt,), BigInt>::new("assertion"))?;
 
+    let patterns = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/nested_patterns.gleam"),
+    )?;
+    let (patterns, _) = ModuleBuilder::new(patterns)?
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
+
     let native = geam_core::compile_typed_host_program(
         "application",
         "main",
@@ -76,6 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             callable_declarations::prepare_native_views().emit_rust(),
         ),
         ("values.rs", values.prepare().emit_rust()),
+        ("nested_patterns.rs", patterns.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
         (
