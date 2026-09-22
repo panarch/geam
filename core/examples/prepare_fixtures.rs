@@ -45,6 +45,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let sparse = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/sparse_patterns.gleam"),
+    )?;
+    let (sparse, _) = ModuleBuilder::new(sparse)?
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
+
     let native = geam_core::compile_typed_host_program(
         "application",
         "main",
@@ -85,6 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
+        ("sparse_patterns.rs", sparse.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
         (

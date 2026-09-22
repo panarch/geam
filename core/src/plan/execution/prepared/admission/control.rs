@@ -802,62 +802,91 @@ pub fn main() { inspect(Error("failed")) }
 
     #[test]
     fn requires_every_incoming_path_to_establish_a_constructor() {
-        let typed = crate::compile_typed_module("example", "src/example.gleam", "pub type Choice { First(Int) Second(Int) } fn read(base: Int, x) { case x { First(n) -> base + n Second(n) -> base + n } } pub fn main() { read(0, First(42)) }").unwrap();
-        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
-        let common = &plan.program.common;
-        let types = Types::admit(
-            &common.list_types,
-            &common.custom_types,
-            &common.external_types,
-            &common.value_shapes,
-        )
-        .unwrap();
-        let (slot, local) = plan.program.functions.value_returns.int_functions.iter()
-            .flat_map(|function| function.body().block_graph().blocks())
-            .flat_map(|block| block.params())
-            .filter_map(|slot| match &slot.local {
-                ParamLocal::Custom(local) => Some((slot, local)),
-                _ => None,
-            })
-            .find(|(slot, _)| matches!(types.shape(slot.shape), Ok(ValueShapeDescriptor::Custom(id)) if types.custom_shape_descriptor(*id).unwrap().constructor == CustomConstructorRefinement::Any))
+        for (remainder, complete) in [
+            ("Second(n) -> base + n", true),
+            ("Second(_) -> base", false),
+        ] {
+            let source = format!(
+                r#"
+pub type Choice {{ First(Int) Second(Int) }}
+fn read(base: Int, value: Choice) {{
+  case value {{
+    First(n) -> base + n
+    {remainder}
+  }}
+}}
+pub fn main() {{ read(0, First(42)) }}
+"#
+            );
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let common = &plan.program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
             .unwrap();
-        for (bypass, cycle) in [(false, false), (true, false), (false, true), (true, true)] {
-            let graph = branch_graph(
-                slot,
-                CustomConstructorId {
-                    type_id: local.shape.type_id,
-                    index: 0,
-                },
-                bypass,
-                cycle,
-            );
-            let blocks = Blocks::admit(&graph).unwrap();
-            let control = Control {
-                blocks: &blocks,
-                types: &types,
-            };
-            let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
+            let (slot, local) = plan.program.functions.value_returns.int_functions.iter()
+                .flat_map(|function| function.body().block_graph().blocks())
+                .flat_map(|block| block.params())
+                .filter_map(|slot| match &slot.local {
+                    ParamLocal::Custom(local) => Some((slot, local)),
+                    _ => None,
+                })
+                .find(|(slot, _)| matches!(types.shape(slot.shape), Ok(ValueShapeDescriptor::Custom(id)) if types.custom_shape_descriptor(*id).unwrap().constructor == CustomConstructorRefinement::Any))
+                .unwrap();
             assert_eq!(
-                control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
-                !bypass
+                common.custom_types.types[local.shape.type_id.index()]
+                    .constructors
+                    .iter()
+                    .map(|constructor| constructor.id.index)
+                    .collect::<Vec<_>>(),
+                if complete { vec![0, 1] } else { vec![0] },
             );
-            assert_eq!(
-                control.proves(BlockId(1), &parameter.local, ConstructorFact::IsNot(1)),
-                !bypass
-            );
-            assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
-            assert!(!control.proves(BlockId(2), &slot.local, ConstructorFact::Is(1)));
-            assert!(!control.proves(BlockId(99), &slot.local, ConstructorFact::Is(0)));
-            assert!(!control.proves(
-                BlockId(1),
-                &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(99)),
-                ConstructorFact::Is(0)
-            ));
-            let mut locals = Locals::default();
-            locals.define(parameter, &types).unwrap();
-            control.refine(BlockId(1), parameter, &mut locals);
-            assert_eq!(locals.allows_constructor(&parameter.local, 1), bypass);
-            assert!(locals.allows_constructor(&parameter.local, 0));
+            for (bypass, cycle) in [(false, false), (true, false), (false, true), (true, true)] {
+                let graph = branch_graph(
+                    slot,
+                    CustomConstructorId {
+                        type_id: local.shape.type_id,
+                        index: 0,
+                    },
+                    bypass,
+                    cycle,
+                );
+                let blocks = Blocks::admit(&graph).unwrap();
+                let control = Control {
+                    blocks: &blocks,
+                    types: &types,
+                };
+                let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
+                assert_eq!(
+                    control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
+                    !bypass
+                );
+                assert_eq!(
+                    control.proves(BlockId(1), &parameter.local, ConstructorFact::IsNot(1)),
+                    !bypass
+                );
+                assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
+                assert_eq!(
+                    control.proves(BlockId(2), &slot.local, ConstructorFact::Is(1)),
+                    complete,
+                );
+                assert!(!control.proves(BlockId(99), &slot.local, ConstructorFact::Is(0)));
+                assert!(!control.proves(
+                    BlockId(1),
+                    &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(99)),
+                    ConstructorFact::Is(0)
+                ));
+                let mut locals = Locals::default();
+                locals.define(parameter, &types).unwrap();
+                control.refine(BlockId(1), parameter, &mut locals);
+                assert_eq!(locals.allows_constructor(&parameter.local, 1), bypass);
+                assert!(locals.allows_constructor(&parameter.local, 0));
+            }
         }
     }
 

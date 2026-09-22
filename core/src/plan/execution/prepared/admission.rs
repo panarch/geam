@@ -697,6 +697,58 @@ pub fn main() { inspect(Value(Error("failed"))) }
         );
     }
 
+    #[test]
+    fn exhaustive_field_reads_require_the_unconstructed_variant_metadata() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+pub type Builder { Builder(name: Option(String)) }
+fn start(builder: Builder) -> String {
+  case builder.name {
+    None -> "unnamed"
+    Some(name) -> name
+  }
+}
+pub fn main() { start(Builder(None)) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        let option = owned_mut(&mut artifact.program.custom_types.types)
+            .iter_mut()
+            .find(|type_| type_.type_.name.as_str() == "Option")
+            .unwrap();
+        assert_eq!(
+            option
+                .constructors
+                .iter()
+                .map(|constructor| constructor.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Some", "None"],
+        );
+        // A sparse table is valid only if it still describes every retained use.
+        // Removing the never-constructed Some must not authorize its field read.
+        option.constructors = option.constructors[1..].to_vec().into();
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 2,
+                        index: 0,
+                        error: super::instruction::InstructionError::CustomField { index: 0 },
+                    }
+                ),
+            }))
+        );
+    }
+
     fn artifact(prepared: PreparedModule) -> ModuleArtifact<Infallible> {
         let common = Arc::try_unwrap(prepared.program.common).ok().unwrap();
         let functions = owned(prepared.program.functions);
