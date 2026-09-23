@@ -5,6 +5,20 @@ use thiserror::Error;
 /// A failure while selecting typed functions from a Gleam module.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum BindingError {
+    #[error("Rust views do not match the exact types of native callable {package}:{module}.{name}")]
+    NativeCallableView {
+        package: EcoString,
+        module: EcoString,
+        name: EcoString,
+    },
+    #[error(
+        "native callable {package}:{module}.{name} is missing or has an incompatible declaration"
+    )]
+    NativeCallable {
+        package: EcoString,
+        module: EcoString,
+        name: EcoString,
+    },
     #[error("function {name} does not exist in the Gleam module")]
     MissingFunction { name: EcoString },
     #[error("function {name} is not public")]
@@ -29,7 +43,10 @@ pub enum BindingError {
 }
 
 impl BindingError {
-    pub(super) fn standard_type_mismatch(name: EcoString, type_: CustomTypeName) -> Self {
+    pub(in crate::embedding) fn standard_type_mismatch(
+        name: EcoString,
+        type_: CustomTypeName,
+    ) -> Self {
         Self::StandardTypeMismatch {
             name,
             package: type_.package().clone(),
@@ -47,6 +64,22 @@ mod tests {
     #[test]
     fn displays_each_named_binding_failure() {
         let cases = [
+            (
+                BindingError::NativeCallableView {
+                    package: "application".into(),
+                    module: "pricing".into(),
+                    name: "adjust".into(),
+                },
+                "Rust views do not match the exact types of native callable application:pricing.adjust",
+            ),
+            (
+                BindingError::NativeCallable {
+                    package: "application".into(),
+                    module: "pricing".into(),
+                    name: "adjust".into(),
+                },
+                "native callable application:pricing.adjust is missing or has an incompatible declaration",
+            ),
             (
                 BindingError::MissingFunction {
                     name: "missing".into(),

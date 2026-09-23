@@ -20,7 +20,7 @@ where
     /// native Future's completion retains the same output and permission types.
     pub fn return_future<Constructions: HostTypeSequence>(
         self,
-        _constructions: HostConstructions<'call, Constructions>,
+        constructions: HostConstructions<'call, Constructions>,
         start: impl for<'work> FnOnce(
             HostFutureContext<'work, Profile, Provider, Constructions>,
         ) -> Pin<
@@ -40,6 +40,7 @@ where
         let context = self.runtime.work();
         let codec = self.runtime.codec_scope();
         let origin = self.runtime.origin();
+        let callable_base = constructions.callable_base();
         let native = move |dependencies| async move {
             let mut scope = NativeScope;
             start(HostFutureContext::new(
@@ -48,13 +49,16 @@ where
                 dependencies,
                 codec,
                 origin,
+                callable_base,
             ))
             .await
         };
-        let work =
-            self.runtime
-                .work()
-                .native(native, self.runtime.codec_scope(), self.runtime.origin());
+        let work = self.runtime.work().native(
+            native,
+            self.runtime.codec_scope(),
+            self.runtime.origin(),
+            callable_base,
+        );
         self.return_work(work)
     }
 }

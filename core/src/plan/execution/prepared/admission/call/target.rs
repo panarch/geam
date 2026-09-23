@@ -993,7 +993,8 @@ where
     }
 }
 
-impl<Graph: function::ExecutionGraphProfile> Target for function::ProfiledFunctionFunctionId<Graph>
+impl<Graph: function::ExecutionGraphProfile, Symbolic: Target> Target
+    for function::ProfiledFunctionFunctionId<Graph, Symbolic>
 where
     Graph::ExternalFunctionFunctionId: Target,
     Graph::ExternalListFunctionFunctionId: Target,

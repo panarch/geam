@@ -4,6 +4,22 @@ pub(super) fn push_function_field(output: &mut String, index: usize, function: &
     push_function_field_with(output, index, function, "Function", DataType::rust_type);
 }
 
+pub(super) fn push_preparation_binding(
+    output: &mut String,
+    pattern: &str,
+    owner: &str,
+    function: &FunctionBinding,
+) {
+    let type_ = TypeExpression::Apply(
+        "FunctionDeclaration",
+        vec![
+            TypeExpression::Tuple(function.arguments.iter().map(DataType::rust_type).collect()),
+            function.return_type.rust_type(),
+        ],
+    );
+    output.push_str(&format!("    let declaration: {} = FunctionDeclaration::new({:?});\n    let {pattern} = {owner}.function(declaration)?;\n", type_.inline(), function.gleam_name));
+}
+
 fn push_function_field_with(
     output: &mut String,
     index: usize,
@@ -106,13 +122,20 @@ impl DataType {
             Self::Option(item) => TypeExpression::Apply("Option", vec![item.rust_type()]),
             Self::List(item) => TypeExpression::Apply("List", vec![item.rust_type()]),
             Self::Future(item) => TypeExpression::Apply("FutureType", vec![item.rust_type()]),
+            Self::Function(arguments, return_) => TypeExpression::Apply(
+                "CallableType",
+                vec![
+                    TypeExpression::Tuple(arguments.iter().map(Self::rust_type).collect()),
+                    return_.rust_type(),
+                ],
+            ),
             Self::Named(index) => TypeExpression::Name(format!("Type{index}")),
         }
     }
 
     fn input_type(&self, parameters: &mut Vec<String>) -> TypeExpression {
         match self {
-            Self::List(_) | Self::Future(_) | Self::Named(_) => {
+            Self::List(_) | Self::Future(_) | Self::Named(_) | Self::Function(_, _) => {
                 let name = format!("Input{}", parameters.len());
                 parameters.push(name.clone());
                 TypeExpression::Name(name)

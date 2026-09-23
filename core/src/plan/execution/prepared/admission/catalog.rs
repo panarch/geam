@@ -15,6 +15,8 @@ pub(super) struct Catalog<'data> {
 }
 
 pub(super) struct Function<'data> {
+    pub family: FunctionTableFamily,
+    pub index: usize,
     pub parameters: &'data [ParamLocal],
     pub parameter_shapes: &'data [ValueShapeId],
     pub return_: ValueShapeId,
@@ -175,7 +177,7 @@ impl<'data> Catalog<'data> {
         let contract = self.raw.functions[range.clone()]
             .get(index)
             .ok_or(CatalogError::MissingFunction { family, index })?;
-        Ok(self.view(contract))
+        Ok(self.view(family, index, contract))
     }
 
     pub(super) fn family(
@@ -185,11 +187,19 @@ impl<'data> Catalog<'data> {
         let range = &self.raw.families[family as usize];
         self.raw.functions[range.clone()]
             .iter()
-            .map(|contract| self.view(contract))
+            .enumerate()
+            .map(move |(index, contract)| self.view(family, index, contract))
     }
 
-    fn view(&self, contract: &'data FunctionContract) -> Function<'data> {
+    fn view(
+        &self,
+        family: FunctionTableFamily,
+        index: usize,
+        contract: &'data FunctionContract,
+    ) -> Function<'data> {
         Function {
+            family,
+            index,
             parameters: &self.raw.parameters[contract.parameters.clone()],
             parameter_shapes: &contract.parameter_shapes,
             return_: contract.return_,

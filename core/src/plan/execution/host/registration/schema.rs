@@ -19,6 +19,7 @@ pub struct CustomSchema {
     pub name: Text,
     pub parameter_count: usize,
     pub constructors: Table<ConstructorSchema>,
+    pub shared: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +87,7 @@ impl CustomSchema {
             module: schema.module().clone().into(),
             name: schema.name().clone().into(),
             parameter_count: schema.parameter_count(),
+            shared: schema.requires_shared_access(),
             constructors: schema
                 .constructors()
                 .iter()
@@ -109,6 +111,7 @@ impl CustomSchema {
             && self.module.as_str() == schema.module().as_str()
             && self.name.as_str() == schema.name().as_str()
             && self.parameter_count == schema.parameter_count()
+            && self.shared == schema.requires_shared_access()
             && same(&self.constructors, schema.constructors(), |left, right| {
                 left.name.as_str() == right.name().as_str()
                     && same(&left.fields, right.fields(), |left, right| {
@@ -238,6 +241,7 @@ impl Emit for CustomSchema {
             name,
             parameter_count,
             constructors,
+            shared,
         } = self;
         output.structure(
             "host::CustomSchema",
@@ -247,6 +251,7 @@ impl Emit for CustomSchema {
                 ("name", name),
                 ("parameter_count", parameter_count),
                 ("constructors", constructors),
+                ("shared", shared),
             ],
         );
     }
@@ -518,6 +523,7 @@ data::host::SchemaType::External {
             ],
         );
         let expected = CustomSchema {
+            shared: false,
             package: "app".into(),
             module: "types".into(),
             name: "Box".into(),
@@ -546,9 +552,13 @@ data::host::SchemaType::External {
         };
         assert_eq!(CustomSchema::from_schema(&source), expected);
         assert!(expected.matches(&source));
-        assert_eq!(
-            Rust::expression(&expected),
-            r#"
+        let shared = source.clone().with_shared_access(true);
+        let required = CustomSchema::from_schema(&shared);
+        assert!(required.matches(&shared));
+        assert!(!required.matches(&source));
+        assert!(!expected.matches(&shared));
+        assert_eq!(required.clone(), required);
+        let expression = r#"
 data::host::CustomSchema {
     package: data::Text::Static("app"),
     module: data::Text::Static("types"),
@@ -573,8 +583,13 @@ data::host::CustomSchema {
             fields: data::Storage::Static(&[]),
         },
     ]),
+    shared: false,
 }"#
-            .trim_start_matches('\n')
+        .trim_start_matches('\n');
+        assert_eq!(Rust::expression(&expected), expression);
+        assert_eq!(
+            Rust::expression(&required),
+            expression.replace("shared: false", "shared: true")
         );
         for (package, module, name, count) in [
             ("other", "types", "Box", 1),

@@ -74,7 +74,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -173,7 +173,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -269,7 +269,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -362,7 +362,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -437,7 +437,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -525,7 +525,7 @@ where
                 EvaluatedCustomFunction::Function(function) => Ok(V::Call {
                     function: function.runtime_id(),
                     origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                    inputs: inputs_with_captures(environment, args, function.captures()),
+                    inputs: inputs_with_captures(environment, args, function.capture_frame()),
                 }),
                 EvaluatedCustomFunction::Constructor(function) => {
                     Ok(V::Ready(EvaluatedCustomValue::from_fields(
@@ -611,7 +611,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -730,7 +730,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => {
@@ -793,7 +793,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         I::TupleIndex { tuple, index } => tuple_projection(
@@ -943,7 +943,7 @@ where
 pub(in crate::runtime) fn inputs_with_captures(
     environment: &BlockEnvironment,
     args: &[ParamLocal],
-    captures: &[crate::runtime::EvaluatedCapture],
+    captures: &crate::runtime::captures::Captures,
 ) -> super::super::environment::RetainedValues {
     let mut inputs = environment.retain(args);
     inputs.append_captures(captures);

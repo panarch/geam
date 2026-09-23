@@ -122,7 +122,7 @@ where
 
 impl<T: EmbeddingValue> EmbeddingValue for List<T> {
     const VARIANT_COUNT: usize = T::VARIANT_COUNT;
-    const LIST_COUNTS: [usize; 11] = {
+    const LIST_COUNTS: [usize; 12] = {
         let mut counts = T::LIST_COUNTS;
         counts[T::LIST_FAMILY as usize] += 1;
         counts
@@ -144,6 +144,9 @@ impl<T: EmbeddingValue> EmbeddingValue for List<T> {
     fn collect_lists(lists: &mut Vec<LibraryValueType>) {
         lists.push(T::library_type());
         T::collect_lists(lists);
+    }
+    fn collect_callables(callables: &mut Vec<crate::plan::LibraryCallableSignature>) {
+        T::collect_callables(callables);
     }
 }
 

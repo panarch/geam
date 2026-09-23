@@ -213,7 +213,7 @@ pub fn main() {
             };
             (entry("sum"), entry("halt"))
         };
-        let (execution, entries) =
+        let (execution, entries, _) =
             HostedProgram::from_library_plan(plan, sum, vec![halt]).expect("transfer execution");
 
         let parameter_counts = (0..4)

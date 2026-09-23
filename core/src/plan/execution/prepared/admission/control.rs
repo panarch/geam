@@ -28,11 +28,25 @@ struct Query {
     block: BlockId,
     place: Place,
     fact: ConstructorFact,
+    assumptions: Vec<Assumption>,
+}
+
+// Constructor hypotheses are relative to the query's immutable root. They are
+// used only while proving that a failed nested pattern excludes its parent.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct Assumption {
+    path: Vec<Projection>,
+    constructor: usize,
 }
 
 enum Visit {
     Enter(Query),
     Leave(Query),
+}
+
+enum PatternVisit<'data> {
+    Enter(&'data MatchPattern, Place, Vec<Assumption>),
+    Leave(*const MatchPattern),
 }
 
 impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
@@ -90,19 +104,19 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             block,
             place: Place::local(Address::of(local)),
             fact,
+            assumptions: Vec::new(),
         })];
         let mut active = HashMap::new();
         let mut complete = HashSet::new();
         while let Some(visit) = pending.pop() {
             let (query, block) = match visit {
-                Visit::Enter(mut query) => {
+                Visit::Enter(query) => {
                     let Some(block) = self.blocks.find_block(query.block) else {
                         return false;
                     };
-                    let Some(place) = query.place.in_block(block) else {
+                    let Some(query) = query.normalize(self.blocks) else {
                         return false;
                     };
-                    query.place = place;
                     (query, block)
                 }
                 Visit::Leave(query) => {
@@ -111,17 +125,20 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     continue;
                 }
             };
-            if complete.contains(&query) {
+            if query.assumptions.iter().any(|assumption| {
+                assumption.path == query.place.path && query.fact.holds(assumption.constructor)
+            }) || complete.contains(&query)
+            {
                 continue;
             }
             let key = (query.block, query.place.root, query.fact);
-            if let Some(path) = active.get(&key) {
-                if path == &query.place.path {
+            if let Some((path, assumptions)) = active.get(&key) {
+                if path == &query.place.path && assumptions == &query.assumptions {
                     continue;
                 }
                 return false;
             }
-            active.insert(key, query.place.path.clone());
+            active.insert(key, (query.place.path.clone(), query.assumptions.clone()));
             pending.push(Visit::Leave(query.clone()));
             let parameter = block
                 .params()
@@ -135,7 +152,8 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     .find(|slot| Address::of(&slot.local) == query.place.root)
             });
             let Some(slot) = slot else { return false };
-            if let Some(shape) = self.projected_shape(slot.shape, &query.place.path)
+            if let Some(shape) =
+                self.projected_shape(slot.shape, &query.place.path, &query.assumptions)
                 && let Ok(ValueShapeDescriptor::Custom(id)) = self.types.shape(shape)
             {
                 let shape = &self.types.shapes.custom_shapes[id.0];
@@ -182,37 +200,83 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 {
                     continue;
                 }
-                let source = match input.value {
-                    Input::Local(source) => query.place.with_root(Address::of(source)),
+                let mut source = query.clone();
+                source.block = input.block;
+                match input.value {
+                    Input::Local(local) => source.place.root = Address::of(local),
                     Input::Binding { index, matcher } => {
-                        let Some(path) =
-                            place::binding_path(&matcher.pattern, index, &query.place.path)
-                        else {
-                            return false;
-                        };
-                        Place {
-                            root: Address::of(&matcher.subject),
-                            path,
+                        source.place.root = Address::of(&matcher.subject);
+                        for path in std::iter::once(&mut source.place.path).chain(
+                            source
+                                .assumptions
+                                .iter_mut()
+                                .map(|assumption| &mut assumption.path),
+                        ) {
+                            let Some(mapped) = place::binding_path(&matcher.pattern, index, path)
+                            else {
+                                return false;
+                            };
+                            *path = mapped;
                         }
                     }
-                };
-                let Some(source) = source.normalize(input.block, self.blocks) else {
+                }
+                let Some(source) = source.normalize(self.blocks) else {
                     return false;
                 };
-                if let Some(requirements) =
-                    self.condition(input.block, input.condition, &source, query.fact)
-                {
+                if let Some(requirements) = self.condition(
+                    input.block,
+                    input.condition,
+                    &source.place,
+                    source.fact,
+                    &source.assumptions,
+                ) {
                     pending.extend(requirements.into_iter().map(Visit::Enter));
                 } else {
-                    pending.push(Visit::Enter(Query {
-                        block: input.block,
-                        place: source,
-                        fact: query.fact,
-                    }));
+                    pending.push(Visit::Enter(source));
                 }
             }
         }
         true
+    }
+
+    fn projected_shape(
+        &self,
+        mut shape: ValueShapeId,
+        path: &[Projection],
+        assumptions: &[Assumption],
+    ) -> Option<ValueShapeId> {
+        for (depth, projection) in path.iter().enumerate() {
+            shape = match (projection, self.types.shapes.shapes.get(shape.index())?) {
+                (Projection::Tuple(index), ValueShapeDescriptor::Tuple(fields)) => {
+                    *fields.get(*index)?
+                }
+                (Projection::List(_), ValueShapeDescriptor::List(item)) => *item,
+                (Projection::Custom(index), ValueShapeDescriptor::Custom(id)) => {
+                    let custom = &self.types.shapes.custom_shapes[id.0];
+                    let constructor = match custom.constructor {
+                        CustomConstructorRefinement::Exact(constructor) => constructor,
+                        CustomConstructorRefinement::Any => {
+                            assumptions
+                                .iter()
+                                .find(|assumption| assumption.path == path[..depth])?
+                                .constructor
+                        }
+                    };
+                    let constructor = self.types.customs.types[custom.type_id.index()]
+                        .constructors
+                        .iter()
+                        .find(|candidate| candidate.id.index == constructor)?;
+                    let field = constructor.fields.get(*index)?;
+                    if let FieldRefinement::Argument(index) = &field.refinement {
+                        custom.arguments[*index]
+                    } else {
+                        field.shape
+                    }
+                }
+                _ => return None,
+            };
+        }
+        Some(shape)
     }
 
     fn condition(
@@ -221,6 +285,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         condition: Condition<'data>,
         source: &Place,
         fact: ConstructorFact,
+        assumptions: &[Assumption],
     ) -> Option<Vec<Query>> {
         let Condition::Match { matcher, success } = condition else {
             return None;
@@ -258,6 +323,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                         block,
                         place: parent.clone(),
                         fact: ConstructorFact::Is(constructor.index),
+                        assumptions: assumptions.to_vec(),
                     });
                     (index, fields)
                 }
@@ -271,40 +337,45 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             pattern = fields.get(*index)?;
             parent.path.push(*projection);
         }
-        match_proves(pattern, false, fact).then_some(requirements)
-    }
-
-    fn projected_shape(
-        &self,
-        mut shape: ValueShapeId,
-        path: &[Projection],
-    ) -> Option<ValueShapeId> {
-        for projection in path {
-            shape = match (projection, self.types.shapes.shapes.get(shape.index())?) {
-                (Projection::Tuple(index), ValueShapeDescriptor::Tuple(fields)) => {
-                    *fields.get(*index)?
-                }
-                (Projection::List(_), ValueShapeDescriptor::List(item)) => *item,
-                (Projection::Custom(index), ValueShapeDescriptor::Custom(id)) => {
-                    let custom = &self.types.shapes.custom_shapes[id.0];
-                    let CustomConstructorRefinement::Exact(constructor) = custom.constructor else {
-                        return None;
-                    };
-                    let constructor = self.types.customs.types[custom.type_id.index()]
-                        .constructors
-                        .iter()
-                        .find(|candidate| candidate.id.index == constructor)?;
-                    let field = constructor.fields.get(*index)?;
-                    if let FieldRefinement::Argument(index) = &field.refinement {
-                        custom.arguments[*index]
-                    } else {
-                        field.shape
-                    }
-                }
-                _ => return None,
-            };
+        if match_proves(pattern, false, fact) {
+            return Some(requirements);
         }
-        Some(shape)
+        let (constructor, fields) = custom(pattern)?;
+        if fact != ConstructorFact::IsNot(constructor) {
+            return None;
+        }
+        let mut assumptions = assumptions.to_vec();
+        let parent_constructor = Assumption {
+            path: parent.path.clone(),
+            constructor,
+        };
+        if !assumptions.contains(&parent_constructor) {
+            assumptions.push(parent_constructor);
+        }
+        // A failed C(fields) excludes C only if all fields would have matched
+        // under the hypothesis that this same immutable value is C. Discharge
+        // those obligations on the predecessor, before the failed match.
+        for (index, field) in fields.iter().enumerate() {
+            let mut field_place = parent.clone();
+            field_place.path.push(Projection::Custom(index));
+            pattern_requirements(block, field, field_place, &assumptions, &mut requirements)?;
+        }
+        Some(requirements)
+    }
+}
+
+impl Query {
+    fn normalize<Graph: ExecutionGraphProfile>(
+        mut self,
+        blocks: &Blocks<'_, Graph>,
+    ) -> Option<Self> {
+        let base = Place::local(self.place.root).normalize(self.block, blocks)?;
+        self.place.root = base.root;
+        self.place.path.splice(..0, base.path.iter().copied());
+        for assumption in &mut self.assumptions {
+            assumption.path.splice(..0, base.path.iter().copied());
+        }
+        Some(self)
     }
 }
 
@@ -315,6 +386,17 @@ impl ConstructorFact {
             Self::IsNot(excluded) => constructor != excluded,
         }
     }
+}
+
+fn match_proves(pattern: &MatchPattern, success: bool, fact: ConstructorFact) -> bool {
+    let Some((index, fields)) = custom(pattern) else {
+        return false;
+    };
+    if success {
+        return fact.holds(index);
+    }
+    matches!(fact, ConstructorFact::IsNot(excluded) if excluded == index)
+        && fields.iter().all(irrefutable)
 }
 
 fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
@@ -333,17 +415,6 @@ fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
             _ => return None,
         }
     }
-}
-
-fn match_proves(pattern: &MatchPattern, success: bool, fact: ConstructorFact) -> bool {
-    let Some((index, fields)) = custom(pattern) else {
-        return false;
-    };
-    if success {
-        return fact.holds(index);
-    }
-    matches!(fact, ConstructorFact::IsNot(excluded) if excluded == index)
-        && fields.iter().all(irrefutable)
 }
 
 fn irrefutable(pattern: &MatchPattern) -> bool {
@@ -376,6 +447,66 @@ fn irrefutable(pattern: &MatchPattern) -> bool {
     true
 }
 
+fn pattern_requirements(
+    block: BlockId,
+    pattern: &MatchPattern,
+    place: Place,
+    assumptions: &[Assumption],
+    requirements: &mut Vec<Query>,
+) -> Option<()> {
+    let mut pending = vec![PatternVisit::Enter(pattern, place, assumptions.to_vec())];
+    let mut active = HashSet::new();
+    while let Some(visit) = pending.pop() {
+        let (pattern, place, mut assumptions) = match visit {
+            PatternVisit::Enter(pattern, place, assumptions) => (pattern, place, assumptions),
+            PatternVisit::Leave(key) => {
+                active.remove(&key);
+                continue;
+            }
+        };
+        let key = pattern as *const MatchPattern;
+        if !active.insert(key) {
+            return None;
+        }
+        pending.push(PatternVisit::Leave(key));
+        let (fields, custom) = match pattern {
+            MatchPattern::Bind(_) | MatchPattern::Discard => continue,
+            MatchPattern::Alias { pattern, .. } => {
+                pending.push(PatternVisit::Enter(pattern, place, assumptions));
+                continue;
+            }
+            MatchPattern::Tuple(fields) => (fields, false),
+            MatchPattern::Custom {
+                constructor,
+                fields,
+            } => {
+                requirements.push(Query {
+                    block,
+                    place: place.clone(),
+                    fact: ConstructorFact::Is(constructor.index),
+                    assumptions: assumptions.to_vec(),
+                });
+                assumptions.push(Assumption {
+                    path: place.path.clone(),
+                    constructor: constructor.index,
+                });
+                (fields, true)
+            }
+            _ => return None,
+        };
+        for (index, field) in fields.iter().enumerate() {
+            let mut child = place.clone();
+            child.path.push(if custom {
+                Projection::Custom(index)
+            } else {
+                Projection::Tuple(index)
+            });
+            pending.push(PatternVisit::Enter(field, child, assumptions.clone()));
+        }
+    }
+    Some(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -392,8 +523,21 @@ mod tests {
     use std::convert::Infallible;
 
     #[test]
-    fn requires_every_incoming_path_to_establish_a_constructor() {
-        let typed = crate::compile_typed_module("example", "src/example.gleam", "pub type Choice { First(Int) Second(Int) } fn read(base: Int, x) { case x { First(n) -> base + n Second(n) -> base + n } } pub fn main() { read(0, First(42)) }").unwrap();
+    fn conditional_exclusions_reuse_parent_hypotheses_and_reject_unknown_fields() {
+        use super::{Assumption, Condition, Place};
+
+        let source = r#"
+pub type Option(a) { Some(a) None }
+fn inspect(value: Result(Option(Int), String)) -> String {
+  case value {
+    Ok(Some(_)) -> "present"
+    Ok(None) -> "missing"
+    Error(reason) -> reason
+  }
+}
+pub fn main() { inspect(Error("failed")) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let common = &plan.program.common;
         let types = Types::admit(
@@ -403,52 +547,346 @@ mod tests {
             &common.value_shapes,
         )
         .unwrap();
-        let (slot, local) = plan.program.functions.value_returns.int_functions.iter()
-            .flat_map(|function| function.body().block_graph().blocks())
-            .flat_map(|block| block.params())
-            .filter_map(|slot| match &slot.local {
-                ParamLocal::Custom(local) => Some((slot, local)),
+        let graph = plan.program.functions.value_returns.string_functions[1]
+            .body()
+            .block_graph();
+        let matchers = graph
+            .blocks
+            .iter()
+            .filter_map(|block| match &block.terminator {
+                Terminator::Match(matcher) => Some(matcher),
                 _ => None,
             })
-            .find(|(slot, _)| matches!(types.shape(slot.shape), Ok(ValueShapeDescriptor::Custom(id)) if types.custom_shape_descriptor(*id).unwrap().constructor == CustomConstructorRefinement::Any))
+            .collect::<Vec<_>>();
+        assert_eq!(matchers.len(), 2);
+        let mut matcher = matchers[0].clone();
+        let blocks = Blocks::admit(graph).unwrap();
+        let control = Control {
+            blocks: &blocks,
+            types: &types,
+        };
+        let subject = Place::local(super::Address::of(&matcher.subject));
+        let parent = Assumption {
+            path: Vec::new(),
+            constructor: 0,
+        };
+        let obligations = control
+            .condition(
+                graph.entry,
+                Condition::Match {
+                    matcher: &matcher,
+                    success: false,
+                },
+                &subject,
+                ConstructorFact::IsNot(0),
+                std::slice::from_ref(&parent),
+            )
             .unwrap();
-        for (bypass, cycle) in [(false, false), (true, false), (false, true), (true, true)] {
-            let graph = branch_graph(
-                slot,
-                CustomConstructorId {
-                    type_id: local.shape.type_id,
+        assert_eq!(obligations.len(), 1);
+        assert!(obligations[0].fact == ConstructorFact::Is(0));
+        assert_eq!(obligations[0].assumptions.len(), 1);
+        assert!(obligations[0].assumptions[0] == parent);
+
+        for pattern in [
+            MatchPattern::Bool(true),
+            MatchPattern::Custom {
+                constructor: CustomConstructorId {
+                    type_id: crate::plan::execution::type_::CustomTypeId(0),
                     index: 0,
                 },
-                bypass,
-                cycle,
+                fields: vec![MatchPattern::Bool(true)].into(),
+            },
+        ] {
+            matcher.pattern = pattern;
+            assert!(
+                control
+                    .condition(
+                        graph.entry,
+                        Condition::Match {
+                            matcher: &matcher,
+                            success: false
+                        },
+                        &subject,
+                        ConstructorFact::IsNot(0),
+                        &[],
+                    )
+                    .is_none()
             );
-            let blocks = Blocks::admit(&graph).unwrap();
+        }
+    }
+
+    #[test]
+    fn nested_pattern_obligations_keep_parent_hypotheses_and_reject_unknown_matches() {
+        use super::{Assumption, Place, Projection, pattern_requirements};
+        use crate::plan::execution::graph::TupleLocalId;
+        use crate::plan::execution::type_::CustomTypeId;
+
+        let root = Place::local(TupleLocalId(0).into());
+        let parent = Assumption {
+            path: Vec::new(),
+            constructor: 7,
+        };
+        let leaf = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(0),
+                index: 2,
+            },
+            fields: vec![MatchPattern::Bind(MatchPatternBinding::new(0))].into(),
+        };
+        let nested = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(1),
+                index: 3,
+            },
+            fields: vec![leaf].into(),
+        };
+        static SHARED: MatchPattern = MatchPattern::Discard;
+        let pattern = MatchPattern::Tuple(
+            vec![
+                MatchPattern::Alias {
+                    pattern: Box::new(nested).into(),
+                    binding: MatchPatternBinding::new(1),
+                },
+                MatchPattern::Alias {
+                    pattern: Node::Static(&SHARED),
+                    binding: MatchPatternBinding::new(2),
+                },
+                MatchPattern::Alias {
+                    pattern: Node::Static(&SHARED),
+                    binding: MatchPatternBinding::new(3),
+                },
+            ]
+            .into(),
+        );
+        let mut obligations = Vec::new();
+        assert_eq!(
+            pattern_requirements(
+                BlockId(4),
+                &pattern,
+                root.clone(),
+                std::slice::from_ref(&parent),
+                &mut obligations
+            ),
+            Some(())
+        );
+        assert_eq!(obligations.len(), 2);
+        for (query, constructor, path, assumed) in [
+            (
+                &obligations[0],
+                3,
+                vec![Projection::Tuple(0)],
+                vec![(Vec::new(), 7)],
+            ),
+            (
+                &obligations[1],
+                2,
+                vec![Projection::Tuple(0), Projection::Custom(0)],
+                vec![(Vec::new(), 7), (vec![Projection::Tuple(0)], 3)],
+            ),
+        ] {
+            assert_eq!(query.block, BlockId(4));
+            assert_eq!(
+                query.place,
+                Place {
+                    root: root.root,
+                    path
+                }
+            );
+            assert!(query.fact == ConstructorFact::Is(constructor));
+            assert_eq!(
+                query
+                    .assumptions
+                    .iter()
+                    .map(|a| (a.path.clone(), a.constructor))
+                    .collect::<Vec<_>>(),
+                assumed
+            );
+        }
+        static CYCLE: MatchPattern = MatchPattern::Alias {
+            pattern: Node::Static(&CYCLE),
+            binding: MatchPatternBinding { index: 0 },
+        };
+        for unknown in [&MatchPattern::Bool(true), &CYCLE] {
+            assert_eq!(
+                pattern_requirements(
+                    BlockId(4),
+                    unknown,
+                    root.clone(),
+                    std::slice::from_ref(&parent),
+                    &mut Vec::new()
+                ),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn nested_exclusions_require_every_incoming_path_and_survive_unchanged_loops() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+fn inspect(value: Result(Option(Int), String)) -> String {
+  case value {
+    Ok(Some(_)) -> "present"
+    Ok(None) -> "missing"
+    Error(reason) -> reason
+  }
+}
+pub fn main() { inspect(Error("failed")) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan.program.functions.value_returns.string_functions[1]
+            .body()
+            .block_graph();
+        assert_eq!(graph.blocks.len(), 5);
+        let source = &graph.block(BlockId(4)).params()[0].local;
+        for (bypass, cycle, expected) in [
+            (false, false, true),
+            (true, false, false),
+            (false, true, true),
+            (true, true, false),
+        ] {
+            let mut bodies = Vec::new();
+            for (index, block) in graph.blocks().enumerate() {
+                let mut terminator = block.terminator().clone();
+                if let Terminator::Match(matcher) = &mut terminator
+                    && index == 0
+                    && bypass
+                {
+                    matcher.success.target = BlockId(4);
+                    matcher.success.args =
+                        vec![MatchEdgeArgument::Value(matcher.subject.clone())].into();
+                }
+                if index == 4 && cycle {
+                    terminator = Terminator::Jump(Jump {
+                        edge: Edge::new(
+                            BlockId(4),
+                            vec![source.clone()],
+                            Transfer {
+                                families: Table::Static(&[]),
+                            },
+                        ),
+                    });
+                }
+                bodies.push(ProfiledBlock::new(
+                    block.params().to_vec(),
+                    block.instructions().to_vec(),
+                    terminator,
+                ));
+            }
+            let raw: ProfiledBlockGraph<Infallible> =
+                ProfiledBlockGraph::from_parts(graph.entry, bodies);
+            let blocks = Blocks::admit(&raw).unwrap();
             let control = Control {
                 blocks: &blocks,
                 types: &types,
             };
-            let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
             assert_eq!(
-                control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
-                !bypass
+                control.proves(BlockId(4), source, ConstructorFact::IsNot(0)),
+                expected
             );
             assert_eq!(
-                control.proves(BlockId(1), &parameter.local, ConstructorFact::IsNot(1)),
-                !bypass
+                control.proves(BlockId(4), source, ConstructorFact::Is(1)),
+                expected
             );
-            assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
-            assert!(!control.proves(BlockId(2), &slot.local, ConstructorFact::Is(1)));
-            assert!(!control.proves(BlockId(99), &slot.local, ConstructorFact::Is(0)));
-            assert!(!control.proves(
-                BlockId(1),
-                &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(99)),
-                ConstructorFact::Is(0)
-            ));
-            let mut locals = Locals::default();
-            locals.define(parameter, &types).unwrap();
-            control.refine(BlockId(1), parameter, &mut locals);
-            assert_eq!(locals.allows_constructor(&parameter.local, 1), bypass);
-            assert!(locals.allows_constructor(&parameter.local, 0));
+        }
+    }
+
+    #[test]
+    fn requires_every_incoming_path_to_establish_a_constructor() {
+        for (remainder, complete) in [
+            ("Second(n) -> base + n", true),
+            ("Second(_) -> base", false),
+        ] {
+            let source = format!(
+                r#"
+pub type Choice {{ First(Int) Second(Int) }}
+fn read(base: Int, value: Choice) {{
+  case value {{
+    First(n) -> base + n
+    {remainder}
+  }}
+}}
+pub fn main() {{ read(0, First(42)) }}
+"#
+            );
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let common = &plan.program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
+            .unwrap();
+            let (slot, local) = plan.program.functions.value_returns.int_functions.iter()
+                .flat_map(|function| function.body().block_graph().blocks())
+                .flat_map(|block| block.params())
+                .filter_map(|slot| match &slot.local {
+                    ParamLocal::Custom(local) => Some((slot, local)),
+                    _ => None,
+                })
+                .find(|(slot, _)| matches!(types.shape(slot.shape), Ok(ValueShapeDescriptor::Custom(id)) if types.custom_shape_descriptor(*id).unwrap().constructor == CustomConstructorRefinement::Any))
+                .unwrap();
+            assert_eq!(
+                common.custom_types.types[local.shape.type_id.index()]
+                    .constructors
+                    .iter()
+                    .map(|constructor| constructor.id.index)
+                    .collect::<Vec<_>>(),
+                if complete { vec![0, 1] } else { vec![0] },
+            );
+            for (bypass, cycle) in [(false, false), (true, false), (false, true), (true, true)] {
+                let graph = branch_graph(
+                    slot,
+                    CustomConstructorId {
+                        type_id: local.shape.type_id,
+                        index: 0,
+                    },
+                    bypass,
+                    cycle,
+                );
+                let blocks = Blocks::admit(&graph).unwrap();
+                let control = Control {
+                    blocks: &blocks,
+                    types: &types,
+                };
+                let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
+                assert_eq!(
+                    control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
+                    !bypass
+                );
+                assert_eq!(
+                    control.proves(BlockId(1), &parameter.local, ConstructorFact::IsNot(1)),
+                    !bypass
+                );
+                assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
+                assert_eq!(
+                    control.proves(BlockId(2), &slot.local, ConstructorFact::Is(1)),
+                    complete,
+                );
+                assert!(!control.proves(BlockId(99), &slot.local, ConstructorFact::Is(0)));
+                assert!(!control.proves(
+                    BlockId(1),
+                    &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(99)),
+                    ConstructorFact::Is(0)
+                ));
+                let mut locals = Locals::default();
+                locals.define(parameter, &types).unwrap();
+                control.refine(BlockId(1), parameter, &mut locals);
+                assert_eq!(locals.allows_constructor(&parameter.local, 1), bypass);
+                assert!(locals.allows_constructor(&parameter.local, 0));
+            }
         }
     }
 
@@ -921,14 +1359,14 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             (vec![Projection::Tuple(99)], None),
             (vec![Projection::Custom(0)], None),
         ] {
-            assert_eq!(control.projected_shape(root, &path), expected);
+            assert_eq!(control.projected_shape(root, &path, &[]), expected);
         }
         assert_eq!(
-            control.projected_shape(ValueShapeId(99_999), &[Projection::Tuple(0)]),
+            control.projected_shape(ValueShapeId(99_999), &[Projection::Tuple(0)], &[]),
             None
         );
         let item = control
-            .projected_shape(root, &[Projection::Tuple(2), Projection::List(99)])
+            .projected_shape(root, &[Projection::Tuple(2), Projection::List(99)], &[])
             .unwrap();
         assert_eq!(
             types.shape_type(item).unwrap(),
@@ -972,7 +1410,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             types: &types,
         };
         assert_eq!(
-            control.projected_shape(missing_shape, &[Projection::Custom(0)]),
+            control.projected_shape(missing_shape, &[Projection::Custom(0)], &[]),
             None
         );
     }
@@ -1081,6 +1519,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                 },
                 &source,
                 ConstructorFact::IsNot(3),
+                &[],
             );
             assert_eq!(requirements.is_some(), expected);
             if let Some(requirements) = requirements {
@@ -1100,7 +1539,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                             success: true
                         },
                         &source,
-                        ConstructorFact::Is(3)
+                        ConstructorFact::Is(3),
+                        &[],
                     )
                     .is_some()
             );
@@ -1123,7 +1563,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                                 root: TupleLocalId(root).into(),
                                 path
                             },
-                            ConstructorFact::IsNot(3)
+                            ConstructorFact::IsNot(3),
+                            &[],
                         )
                         .is_none()
                 );
@@ -1170,7 +1611,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                         root: TupleLocalId(0).into(),
                         path: vec![Projection::Tuple(0)]
                     },
-                    ConstructorFact::IsNot(3)
+                    ConstructorFact::IsNot(3),
+                    &[],
                 )
                 .is_none()
         );

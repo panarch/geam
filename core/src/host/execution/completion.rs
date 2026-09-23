@@ -4,8 +4,8 @@ use crate::host::{
 };
 use std::marker::PhantomData;
 
-type CompletionCodec<Profile> =
-    dyn FnOnce(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError> + Send;
+type CompletionCodec<Profile> = dyn FnOnce(&mut dyn HostCallRuntime<Profile>, usize) -> Result<HostValueToken, HostCallError>
+    + Send;
 
 /// An owned result and its exact codec, waiting for the originating execution.
 ///
@@ -41,9 +41,12 @@ where
         + 'static,
     ) -> Self {
         Self {
-            codec: Box::new(move |runtime| {
-                complete(HostCall::new(runtime), HostConstructions::new())
-                    .map(|completion| completion.token)
+            codec: Box::new(move |runtime, callable_base| {
+                complete(
+                    HostCall::new(runtime),
+                    HostConstructions::with_base(callable_base),
+                )
+                .map(|completion| completion.token)
             }),
             signature: PhantomData,
         }
@@ -52,7 +55,8 @@ where
     pub(crate) fn complete(
         self,
         runtime: &mut dyn HostCallRuntime<Profile>,
+        callable_base: usize,
     ) -> Result<HostValueToken, HostCallError> {
-        (self.codec)(runtime)
+        (self.codec)(runtime, callable_base)
     }
 }

@@ -24,22 +24,25 @@ use crate::plan::{
 use std::convert::Infallible;
 
 #[derive(Clone)]
-pub(super) struct Entry<External = crate::plan::ExternalType> {
+pub(super) struct Entry<External: crate::plan::LibraryProfile = crate::plan::ExternalType> {
     template: crate::plan::FunctionTemplateId,
     return_: LibraryValueType<External>,
     input_variants: Box<[LibraryVariant]>,
     input_lists: Box<[LibraryValueType]>,
+    callables: Box<[crate::plan::LibraryCallableSignature]>,
 }
 
 pub(super) struct Reserved<Function> {
     key: SpecializationKey,
     function: specialization::Representability<Function>,
     inputs: LibraryInputConstructions,
+    callables: Vec<crate::plan::execution::LibraryCallable>,
 }
 
 pub(super) struct Sealed<Function> {
     function: Function,
     inputs: LibraryInputConstructions,
+    callables: Vec<crate::plan::execution::LibraryCallable>,
 }
 
 pub(super) enum ReservedEntry<Graph: ExecutionGraphProfile = HostedExecutionGraph> {
@@ -53,6 +56,7 @@ pub(super) enum ReservedEntry<Graph: ExecutionGraphProfile = HostedExecutionGrap
     Bool(Reserved<BoolFunctionId>),
     Nil(Reserved<NilFunctionId>),
     List(Reserved<LibraryListFunctionId<Graph>>),
+    Function(Reserved<crate::plan::execution::LibraryCallableEntry<Graph>>),
     Tuple {
         reserved: Reserved<TupleFunctionId>,
         return_type: Vec<crate::plan::execution::type_::ValueType>,
@@ -70,6 +74,7 @@ pub(super) enum SealedEntry<Graph: ExecutionGraphProfile = HostedExecutionGraph>
     Bool(Sealed<BoolFunctionId>),
     Nil(Sealed<NilFunctionId>),
     List(Sealed<LibraryListFunctionId<Graph>>),
+    Function(Sealed<crate::plan::execution::LibraryCallableEntry<Graph>>),
     Tuple {
         sealed: Sealed<TupleFunctionId>,
         return_type: Vec<crate::plan::execution::type_::ValueType>,
@@ -103,6 +108,7 @@ pub(super) struct EntryIds<Graph: ExecutionGraphProfile = HostedExecutionGraph> 
     nils: Vec<LibraryFunctionEntry<NilFunctionId>>,
     tuples: Vec<LibraryFunctionEntry<TupleFunctionId>>,
     lists: Vec<LibraryFunctionEntry<LibraryListFunctionId<Graph>>>,
+    functions: Vec<LibraryFunctionEntry<crate::plan::execution::LibraryCallableEntry<Graph>>>,
 }
 
 #[derive(Default)]
@@ -118,6 +124,7 @@ struct InputLists {
     nils: Vec<crate::plan::execution::type_::NilListTypeId>,
     tuples: Vec<crate::plan::execution::type_::TupleListTypeId>,
     lists: Vec<crate::plan::execution::type_::ListListTypeId>,
+    functions: Vec<crate::plan::execution::type_::FunctionListTypeId>,
 }
 
 impl<Graph: ExecutionGraphProfile> Default for EntryIds<Graph> {
@@ -134,6 +141,7 @@ impl<Graph: ExecutionGraphProfile> Default for EntryIds<Graph> {
             nils: Vec::new(),
             tuples: Vec::new(),
             lists: Vec::new(),
+            functions: Vec::new(),
         }
     }
 }
@@ -150,6 +158,19 @@ impl Entries {
         SpecializationKey::monomorphic(self.first.template())
     }
 
+    pub(super) fn invalid_callback(
+        &self,
+        context: &LoweringContext,
+    ) -> Option<(crate::plan::FunctionTemplateId, crate::plan::FunctionType)> {
+        for entry in std::iter::once(&self.first).chain(&self.remaining) {
+            let key = SpecializationKey::monomorphic(entry.template);
+            if let Some(callback) = invalid_callback(&entry.callables, &key, context) {
+                return Some((entry.template, callback));
+            }
+        }
+        None
+    }
+
     pub(super) fn reserve(&self, context: &mut LoweringContext) -> ReservedEntries {
         ReservedEntries {
             first: self.first.reserve(context),
@@ -160,6 +181,26 @@ impl Entries {
                 .collect(),
         }
     }
+}
+
+pub(super) fn invalid_callback(
+    callables: &[crate::plan::LibraryCallableSignature],
+    key: &SpecializationKey,
+    context: &LoweringContext,
+) -> Option<crate::plan::FunctionType> {
+    let mut pending: Vec<_> = callables.iter().collect();
+    while let Some(callable) = pending.pop() {
+        let shape = callable_shape(&callable.type_, key.substitution());
+        if shape
+            .arguments()
+            .iter()
+            .any(|argument| !context.representations.is_inhabited(argument))
+        {
+            return Some(callable.type_.clone());
+        }
+        pending.extend(&callable.callables);
+    }
+    None
 }
 
 impl ReservedEntries {
@@ -203,19 +244,26 @@ impl SealedEntries {
     }
 }
 
-impl<External> From<LibraryEntry<External>> for Entry<External> {
+impl<External: crate::plan::LibraryProfile> From<LibraryEntry<External>> for Entry<External> {
     fn from(entry: LibraryEntry<External>) -> Self {
-        let (template, return_, input_variants, input_lists) = entry.into_parts();
+        let (template, return_, input_variants, input_lists, callables) = entry.into_parts();
         Self {
             template,
             return_,
             input_variants,
             input_lists,
+            callables,
         }
     }
 }
 
-pub(super) trait LibraryExternal: Clone {
+pub(super) trait LibraryExternal: crate::plan::LibraryProfile {
+    fn reserve_callable(
+        value: &Self::Callable,
+        key: SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> specialization::Representability<crate::plan::execution::LibraryCallableEntry<Self::Graph>>;
+
     type Graph: ExecutionGraphProfile;
 
     fn specialize(
@@ -239,6 +287,15 @@ pub(super) trait LibraryExternal: Clone {
 
 impl LibraryExternal for Infallible {
     type Graph = Infallible;
+
+    fn reserve_callable(
+        value: &Self::Callable,
+        _: SpecializationKey,
+        _: &mut LoweringContext,
+    ) -> specialization::Representability<crate::plan::execution::LibraryCallableEntry<Self::Graph>>
+    {
+        match *value {}
+    }
 
     fn specialize(&self, _: &SpecializedTypeSubstitution) -> SpecializedExternalValueShape {
         match *self {}
@@ -264,6 +321,30 @@ impl LibraryExternal for Infallible {
 
 impl LibraryExternal for crate::plan::ExternalType {
     type Graph = HostedExecutionGraph;
+
+    fn reserve_callable(
+        value: &Self::Callable,
+        key: SpecializationKey,
+        context: &mut LoweringContext,
+    ) -> specialization::Representability<crate::plan::execution::LibraryCallableEntry<Self::Graph>>
+    {
+        let shape = callable_shape(value, key.substitution());
+        let family =
+            function_lowering::function_function_table_family(&shape, &context.representations);
+        context
+            .provisional_specialization(key, family)
+            .map(
+                |specialization| crate::plan::execution::LibraryCallableEntry {
+                    function: function_lowering::invocable_function_function_id(
+                        &shape,
+                        specialization.index,
+                        &mut context.types,
+                        &context.representations,
+                    ),
+                    type_: context.lower_concrete_function_type(&shape),
+                },
+            )
+    }
 
     fn specialize(
         &self,
@@ -316,31 +397,37 @@ impl<External: LibraryExternal> Entry<External> {
         let key = SpecializationKey::monomorphic(self.template());
         let inputs =
             context.library_input_constructions(&key, &self.input_variants, &self.input_lists);
+        let callables = context.library_callables(&key, &self.callables);
         match &self.return_ {
             LibraryValueType::Int => ReservedEntry::Int(Reserved {
                 function: context.reserve_int_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::Float => ReservedEntry::Float(Reserved {
                 function: context.reserve_float_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::String => ReservedEntry::String(Reserved {
                 function: context.reserve_string_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::BitArray => ReservedEntry::BitArray(Reserved {
                 function: context.reserve_bit_array_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::UtfCodepoint => ReservedEntry::UtfCodepoint(Reserved {
                 function: context.reserve_utf_codepoint_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::Custom(type_) => {
                 let shape = SpecializedCustomValueShape::instantiate(
@@ -352,22 +439,26 @@ impl<External: LibraryExternal> Entry<External> {
                     function: context.reserve_custom_entry(key.clone(), return_shape),
                     key,
                     inputs,
+                    callables,
                 })
             }
             LibraryValueType::External(type_) => ReservedEntry::External(Reserved {
                 function: type_.reserve(key.clone(), context),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::Bool => ReservedEntry::Bool(Reserved {
                 function: context.reserve_bool_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::Nil => ReservedEntry::Nil(Reserved {
                 function: context.reserve_nil_entry(key.clone()),
                 key,
                 inputs,
+                callables,
             }),
             LibraryValueType::List(item) => {
                 let specialized_item =
@@ -388,8 +479,15 @@ impl<External: LibraryExternal> Entry<External> {
                     key,
                     function,
                     inputs,
+                    callables,
                 })
             }
+            LibraryValueType::Function(type_) => ReservedEntry::Function(Reserved {
+                function: External::reserve_callable(type_, key.clone(), context),
+                key,
+                inputs,
+                callables,
+            }),
             LibraryValueType::Tuple(elements) => {
                 let return_type = elements
                     .iter()
@@ -406,6 +504,7 @@ impl<External: LibraryExternal> Entry<External> {
                         function: context.reserve_tuple_entry(key.clone()),
                         key,
                         inputs,
+                        callables,
                     },
                     return_type,
                 }
@@ -432,6 +531,7 @@ impl<Graph: ExecutionGraphProfile> ReservedEntry<Graph> {
             Self::Bool(reserved) => map_sealed(reserved, SealedEntry::Bool),
             Self::Nil(reserved) => map_sealed(reserved, SealedEntry::Nil),
             Self::List(reserved) => map_sealed(reserved, SealedEntry::List),
+            Self::Function(reserved) => map_sealed(reserved, SealedEntry::Function),
             Self::Tuple {
                 reserved,
                 return_type,
@@ -454,10 +554,17 @@ fn map_sealed<Function, Graph: ExecutionGraphProfile>(
         key,
         function,
         inputs,
+        callables,
     } = reserved;
     (
         key,
-        function.map(|function| map(Sealed { function, inputs })),
+        function.map(|function| {
+            map(Sealed {
+                function,
+                inputs,
+                callables,
+            })
+        }),
     )
 }
 
@@ -465,6 +572,10 @@ impl<Graph: ExecutionGraphProfile> SealedEntry<Graph> {
     pub(super) fn runtime_id(&self) -> ProfiledRuntimeFunctionId<Graph> {
         let core = ProfiledRuntimeFunctionId::Core;
         match self {
+            Self::Function(sealed) => core(ProfiledCoreRuntimeFunctionId::Function {
+                id: Graph::function_value_target(&sealed.function.function),
+                return_type: sealed.function.type_.clone(),
+            }),
             Self::Int(sealed) => core(ProfiledCoreRuntimeFunctionId::Int(sealed.function)),
             Self::Float(sealed) => core(ProfiledCoreRuntimeFunctionId::Float(sealed.function)),
             Self::String(sealed) => core(ProfiledCoreRuntimeFunctionId::String(sealed.function)),
@@ -550,6 +661,15 @@ fn library_list_function_id<External: LibraryExternal>(
                 types.tuple_list_type(&items),
             ))
         }
+        LibraryValueType::Function(item) => LibraryListFunctionId::Function(
+            crate::plan::execution::function::FunctionListFunctionId::new(
+                index,
+                types.function_list_type(&callable_shape(
+                    External::callable_type(item),
+                    substitution,
+                )),
+            ),
+        ),
         LibraryValueType::List(item) => {
             let item = library_stored_shape(&**item, substitution);
             LibraryListFunctionId::List(ListListFunctionId::new(
@@ -563,6 +683,7 @@ fn library_list_function_id<External: LibraryExternal>(
 impl<Graph: ExecutionGraphProfile> EntryIds<Graph> {
     pub(super) fn push(&mut self, entry: SealedEntry<Graph>) {
         match entry {
+            SealedEntry::Function(sealed) => self.functions.push(sealed.into_entry()),
             SealedEntry::Int(sealed) => self.ints.push(sealed.into_entry()),
             SealedEntry::Float(sealed) => self.floats.push(sealed.into_entry()),
             SealedEntry::String(sealed) => self.strings.push(sealed.into_entry()),
@@ -590,6 +711,7 @@ impl<Graph: ExecutionGraphProfile> EntryIds<Graph> {
             nils: self.nils.into(),
             tuples: self.tuples.into(),
             lists: self.lists.into(),
+            functions: self.functions.into(),
         }
     }
 }
@@ -608,13 +730,14 @@ impl InputLists {
             nils: self.nils.into(),
             tuples: self.tuples.into(),
             lists: self.lists.into(),
+            functions: self.functions.into(),
         }
     }
 }
 
 impl<Function> Sealed<Function> {
     fn into_entry(self) -> LibraryFunctionEntry<Function> {
-        LibraryFunctionEntry::new(self.function, self.inputs)
+        LibraryFunctionEntry::new(self.function, self.inputs, self.callables.into())
     }
 }
 
@@ -650,14 +773,56 @@ fn library_stored_shape<External: LibraryExternal>(
                 })
                 .collect(),
         ),
+        LibraryValueType::Function(type_) => StoredValueShape::Function(Box::new(callable_shape(
+            External::callable_type(type_),
+            substitution,
+        ))),
         LibraryValueType::List(item) => StoredValueShape::List(Box::new(
             library_stored_shape(&**item, substitution).to_specialized(),
         )),
     }
 }
 
+fn callable_shape(
+    type_: &crate::plan::FunctionType,
+    substitution: &SpecializedTypeSubstitution,
+) -> super::specialization::SpecializedFunctionShape {
+    super::specialization::SpecializedFunctionShape::instantiate(
+        &crate::plan::FunctionShape::from_function_type(type_.clone()),
+        substitution,
+    )
+}
+
 impl LoweringContext {
-    fn library_input_constructions(
+    pub(super) fn library_callables(
+        &mut self,
+        key: &SpecializationKey,
+        callables: &[crate::plan::LibraryCallableSignature],
+    ) -> Vec<crate::plan::execution::LibraryCallable> {
+        callables
+            .iter()
+            .map(|callable| self.library_callable(key, callable))
+            .collect()
+    }
+
+    pub(super) fn library_callable(
+        &mut self,
+        key: &SpecializationKey,
+        callable: &crate::plan::LibraryCallableSignature,
+    ) -> crate::plan::execution::LibraryCallable {
+        let shape = callable_shape(&callable.type_, key.substitution());
+        crate::plan::execution::LibraryCallable {
+            type_: self.lower_concrete_function_type(&shape),
+            inputs: self.library_input_constructions(
+                key,
+                &callable.input_variants,
+                &callable.input_lists,
+            ),
+            callables: self.library_callables(key, &callable.callables).into(),
+        }
+    }
+
+    pub(super) fn library_input_constructions(
         &mut self,
         key: &SpecializationKey,
         variants: &[LibraryVariant],
@@ -685,6 +850,10 @@ impl LoweringContext {
         lists: &mut InputLists,
     ) {
         match item {
+            LibraryValueType::Function(type_) => lists.functions.push(
+                self.types
+                    .function_list_type(&callable_shape(type_, substitution)),
+            ),
             LibraryValueType::Int => lists.ints.push(self.types.int_list_type()),
             LibraryValueType::Float => lists.floats.push(self.types.float_list_type()),
             LibraryValueType::String => lists.strings.push(self.types.string_list_type()),

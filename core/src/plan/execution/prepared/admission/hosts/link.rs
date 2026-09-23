@@ -4,12 +4,17 @@ use crate::host::{
     HostProviderSet, HostValueFunction, RegisteredHostConstructions,
 };
 use crate::plan::execution::host::{HostFunctionTables, HostedFunction, HostedFunctionMetadata};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub(in crate::plan::execution::prepared::admission) struct NativeFunctions<
     'data,
     Profile: HostProfile,
 > {
+    // Populated by the ordinary function-table admission walk, before callable
+    // construction links are checked. This scratch state never enters execution.
+    pub(super) callable_bindings:
+        RefCell<HashMap<crate::plan::execution::host::HostCallableEntry, (bool, usize)>>,
     pub(super) registrations: Vec<Registration>,
     pub(super) external_types: Vec<crate::host::HostExternalTypeSchema>,
     pub(super) values: Vec<(
@@ -35,25 +40,46 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
         never_functions: &'data [HostedFunctionMetadata],
         hosts: HostProviderSet<Profile>,
     ) -> Result<Self, NativeError> {
-        let (modules, providers, implementations) = hosts.into_registered();
+        let (modules, providers, callables, implementations) = hosts.into_registered();
         let mut external_types = Vec::new();
+        let mut shared_custom_types = HashMap::new();
         let sources = modules
             .into_iter()
             .map(|module| {
                 let (package, module, functions) = module.into_parts();
-                (package, module, functions, Vec::new())
+                (package, module, functions, Vec::new(), Vec::new())
             })
-            .chain(providers.into_iter().map(|module| module.into_parts()));
+            .chain(providers.into_iter().map(|module| module.into_parts()))
+            .chain(callables.into_iter().map(|callable| {
+                (
+                    callable.identity.package,
+                    callable.identity.module,
+                    vec![callable.function],
+                    Vec::new(),
+                    Vec::new(),
+                )
+            }));
         let mut registrations = Vec::new();
         let mut index = HashMap::new();
-        for (package, module, functions, schemas) in sources {
+        for (package, module, functions, schemas, shared) in sources {
             external_types.extend(schemas);
+            for schema in shared {
+                shared_custom_types.insert(
+                    (
+                        schema.package().clone(),
+                        schema.module().clone(),
+                        schema.name().clone(),
+                    ),
+                    schema,
+                );
+            }
             for function in functions {
                 let (schema, constructions, implementation) = function.into_parts();
                 let key = (
                     package.to_string(),
                     module.to_string(),
                     schema.name().to_string(),
+                    schema.is_callable(),
                 );
                 let slot = registrations.len();
                 index.insert(key, (slot, implementation));
@@ -68,6 +94,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 metadata.package().to_string(),
                 metadata.module().to_string(),
                 metadata.name().to_string(),
+                metadata.registration.callable,
             );
             let failure = |reason| NativeError::Registration {
                 package: key.0.clone(),
@@ -84,6 +111,28 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 .matches(&registered.schema, &registered.constructions)
             {
                 return Err(failure(RegistrationError::Declaration));
+            }
+            for required in registered
+                .schema
+                .custom_schemas()
+                .iter()
+                .chain(registered.constructions.custom_schemas())
+            {
+                if required.requires_shared_access()
+                    && shared_custom_types.get(&(
+                        required.package().clone(),
+                        required.module().clone(),
+                        required.name().clone(),
+                    )) != Some(required)
+                {
+                    return Err(failure(RegistrationError::SharedCustomType {
+                        custom_type: Box::new(crate::plan::CustomTypeName::new(
+                            required.package().clone(),
+                            required.module().clone(),
+                            required.name().clone(),
+                        )),
+                    }));
+                }
             }
             Ok((*slot, implementations.implementation(*implementation)))
         };
@@ -104,6 +153,7 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
             nevers.push((metadata, implementation.clone(), slot));
         }
         Ok(Self {
+            callable_bindings: RefCell::new(HashMap::new()),
             registrations,
             external_types,
             values,
@@ -149,6 +199,166 @@ mod tests {
     use crate::host::{HostModule, HostProviderModule, HostProviderSet};
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn prepared_consumers_require_the_selected_producers_exact_sharing_grant() {
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCustom,
+            HostCustomConstructorDefinition, HostCustomConstructorList,
+            HostCustomConstructorListEnd, HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
+            HostProvider, StatelessHostProfile,
+        };
+        use std::sync::Arc;
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        struct Schema;
+        struct Constructor;
+        struct Replaced;
+        impl HostCustomSchema for Schema {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "handles";
+            const NAME: &'static str = "Handle";
+            const PARAMETER_COUNT: usize = 0;
+            const SHARED: bool = true;
+            type Constructors =
+                HostCustomConstructorList<Constructor, HostCustomConstructorListEnd>;
+        }
+        impl HostCustomSchema for Replaced {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "handles";
+            const NAME: &'static str = "Handle";
+            const PARAMETER_COUNT: usize = 0;
+            type Constructors = HostCustomConstructorListEnd;
+        }
+        impl HostCustomConstructorDefinition for Constructor {
+            const NAME: &'static str = "Handle";
+            type Fields = HostCustomFieldListEnd;
+        }
+        type Handle = HostCustomType<Schema>;
+        fn retain<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Handle>,
+            value: HostCustom<'call, Handle>,
+        ) -> Result<HostCallCompletion<'call, Handle>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            Ok(call.return_value(value))
+        }
+        fn probe<'call>(
+            call: HostCall<'call, StatelessHostProfile, Provider, bool>,
+            _: crate::HostConstructions<'call, crate::HostTypeList<Handle, crate::HostTypeListEnd>>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            Ok(call.return_value(true))
+        }
+        let hosts = |grant| {
+            let owner = HostProviderModule::new("app", "handles").unwrap();
+            let owner = match grant {
+                0 => owner,
+                1 => owner.with_shared_custom_type::<Schema>().unwrap(),
+                _ => owner.with_shared_custom_type::<Replaced>().unwrap(),
+            };
+            HostProviderSet::from_providers([
+                owner,
+                HostProviderModule::new("app", "main")
+                    .unwrap()
+                    .with_scoped_function::<Provider, (Handle,), Handle, _>("retain", retain)
+                    .unwrap()
+                    .with_scoped_function_and_constructions::<Provider, (), bool, crate::HostTypeList<Handle, crate::HostTypeListEnd>, _>("probe", probe)
+                    .unwrap(),
+            ])
+            .unwrap()
+        };
+        let compile = || {
+            crate::compile_typed_host_program(
+                "app",
+                "main",
+                [crate::PackageSource::new(
+                    "app",
+                    Vec::<&str>::new(),
+                    [
+                        crate::ModuleSource::new(
+                            "handles",
+                            "handles.gleam",
+                            "pub opaque type Handle { Handle }\npub fn make() { Handle }",
+                        ),
+                        crate::ModuleSource::new(
+                            "main",
+                            "main.gleam",
+                            r#"
+import handles
+@external(erlang, "native", "retain")
+fn retain(value: handles.Handle) -> handles.Handle
+@external(erlang, "native", "probe")
+fn probe() -> Bool
+pub fn main() { retain(handles.make()) probe() Nil }
+"#,
+                        ),
+                    ],
+                )],
+                hosts(1),
+            )
+            .unwrap()
+        };
+        let mut execution = crate::HostedExecution::try_from_module_plan(
+            crate::plan_host_program(compile()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Nil
+        );
+        let (_, callbacks) = crate::plan::execution::lowering::lower_hosted(
+            crate::plan_host_program(compile()).unwrap(),
+        )
+        .unwrap();
+        let (values, nevers) = callbacks.into_metadata();
+        let values = values
+            .into_vec()
+            .into_iter()
+            .map(|value| Arc::try_unwrap(value).ok().unwrap())
+            .collect::<Vec<_>>();
+        assert!(nevers.is_empty());
+        assert_eq!(values.len(), 2);
+        NativeFunctions::new(&values, &[], hosts(1)).unwrap();
+        for metadata in &values {
+            for grant in [0, 2] {
+                assert_eq!(
+                    NativeFunctions::new(std::slice::from_ref(metadata), &[], hosts(grant)).err(),
+                    Some(NativeError::Registration {
+                        package: "app".into(),
+                        module: "main".into(),
+                        function: metadata.name().into(),
+                        reason: RegistrationError::SharedCustomType {
+                            custom_type: Box::new(crate::plan::CustomTypeName::new(
+                                "app".into(),
+                                "handles".into(),
+                                "Handle".into()
+                            )),
+                        },
+                    })
+                );
+            }
+        }
+        let mut altered = values;
+        altered.sort_by_key(|metadata| metadata.name() != "retain");
+        let mut registration = (*altered[0].registration).clone();
+        let mut schemas = registration.custom_schemas.to_vec();
+        schemas[0].shared = false;
+        registration.custom_schemas = schemas.into();
+        altered[0].registration = Box::new(registration).into();
+        assert_eq!(
+            NativeFunctions::new(&altered, &[], hosts(1)).err(),
+            Some(NativeError::Registration {
+                package: "app".into(),
+                module: "main".into(),
+                function: "retain".into(),
+                reason: RegistrationError::Declaration,
+            })
+        );
+    }
 
     #[test]
     fn source_less_functions_use_external_types_registered_with_the_source_declaration() {

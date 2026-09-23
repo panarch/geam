@@ -9,6 +9,16 @@ pub type Box(item)
 @external(erlang, "dynamic_provider", "Snapshot")
 pub type Snapshot
 
+pub type Envelope {
+  Count(declarations.Count)
+}
+
+@external(erlang, "dynamic_provider", "restore_envelope")
+fn restore_envelope(value: Dynamic) -> Result(Int, Nil)
+
+@external(erlang, "dynamic_provider", "restore_envelope_list")
+fn restore_envelope_list(value: Dynamic) -> Result(Int, Nil)
+
 @external(erlang, "dynamic_provider", "box_value")
 fn box_value(value: item) -> Box(item)
 
@@ -70,6 +80,15 @@ fn list_summary(values: List(item), expected: item) -> #(Int, Bool)
 fn list_length(values: List(item)) -> Int
 
 fn check_list_values() {
+  let assert Ok(7) = restore_envelope(cast(Count(declarations.Count(7))))
+  let assert Error(Nil) = restore_envelope(cast(7))
+  let assert Ok(11) =
+    restore_envelope_list(
+      cast([Count(declarations.Count(5)), Count(declarations.Count(11))]),
+    )
+  let assert Error(Nil) =
+    restore_envelope_list(cast([Count(declarations.Count(5))]))
+  let assert Error(Nil) = restore_envelope_list(cast([7]))
   let assert 0 = list_length([])
   let assert 3 = list_length([1, 2, 3])
   let assert #(0, False) = list_summary([], 1)
@@ -122,7 +141,8 @@ pub fn transfer_flow() {
       && !has_exact_type(first, "zero"),
     restore_int_list_length(typed_list) == Ok(2),
     is_token(token_value) && !is_token(first) && is_box(boxed),
-    token_text(token_value) == Ok("opaque") && box_contains_nine(boxed) == Ok(True),
+    token_text(token_value) == Ok("opaque")
+      && box_contains_nine(boxed) == Ok(True),
     boxed_token_text(boxed_token) == Ok("opaque"),
     #(
       tuple_size(#(1, "two", True)) == 3 && tuple_size(1) == 0,

@@ -18,6 +18,7 @@ pub(in crate::embedding) struct EmbeddingProject {
     pub(super) output_path: Utf8PathBuf,
     pub(super) dependencies: Vec<cargo_metadata::Dependency>,
     pub(super) generation: Generation,
+    pub(super) declarations: Option<Utf8PathBuf>,
     pub(super) workspace_root: Utf8PathBuf,
 }
 
@@ -25,6 +26,7 @@ pub(in crate::embedding) struct EmbeddingProject {
 #[serde(default, deny_unknown_fields)]
 struct EmbeddingConfiguration {
     generate: Generation,
+    declarations: Option<Utf8PathBuf>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -121,6 +123,17 @@ impl EmbeddingProject {
             },
         )?;
         let root = manifest.with_file_name("");
+        if let Some(path) = &configuration.declarations
+            && (path.extension() != Some("rs")
+                || !path
+                    .components()
+                    .all(|component| matches!(component, camino::Utf8Component::Normal(_))))
+        {
+            return Err(CliError::InvalidEmbeddingProject {
+                package: package_name, manifest,
+                reason: "embedding `declarations` must name a Rust module relative to the Cargo package, such as src/callables.rs".to_owned(),
+            });
+        }
         let output_path = root.join("src/geam_bindings.rs");
         Ok(Self {
             package_name,
@@ -130,6 +143,7 @@ impl EmbeddingProject {
             output_path,
             dependencies: package.dependencies.clone(),
             generation: configuration.generate,
+            declarations: configuration.declarations,
             workspace_root: metadata.workspace_root.clone(),
         })
     }
@@ -340,7 +354,7 @@ module = "another_module"
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, expected `generate`; embedding uses gleam/ and the Cargo package name",
+                "invalid Rust embedding project for package inventory at {}: invalid [package.metadata.geam.embedding]: unknown field `module`, expected `generate` or `declarations`; embedding uses gleam/ and the Cargo package name",
                 fixture.root.join("Cargo.toml"),
             )
         );
@@ -458,6 +472,42 @@ module = "another_module"
                 _directory: directory,
                 root,
             }
+        }
+    }
+
+    #[test]
+    fn declaration_module_paths_are_explicit_and_package_relative() {
+        for path in [
+            "",
+            "/tmp/declarations.rs",
+            "../declarations.rs",
+            "src/../declarations.rs",
+            "src/declarations.txt",
+        ] {
+            let fixture = ProjectFixture::new(&format!(
+                "[package]\nname = 'inventory'\nversion = '0.1.0'\n[package.metadata.geam.embedding]\ndeclarations = {path:?}\n[workspace]\n"
+            ));
+            let error =
+                EmbeddingProject::load_with(&fixture.root, &SystemCargoMetadata).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "invalid Rust embedding project for package inventory at {}: embedding `declarations` must name a Rust module relative to the Cargo package, such as src/callables.rs",
+                    fixture.root.join("Cargo.toml")
+                )
+            );
+            assert!(!fixture.root.join("Cargo.lock").exists());
+        }
+        for path in ["declarations.rs", "src/declarations.rs"] {
+            let fixture = ProjectFixture::new(&format!(
+                "[package]\nname = 'inventory'\nversion = '0.1.0'\n[package.metadata.geam.embedding]\ngenerate = 'dynamic'\ndeclarations = {path:?}\n[workspace]\n"
+            ));
+            let project = EmbeddingProject::load_with(&fixture.root, &SystemCargoMetadata).unwrap();
+            assert_eq!(
+                project.declarations.as_deref(),
+                Some(camino::Utf8Path::new(path))
+            );
+            assert!(!fixture.root.join("Cargo.lock").exists());
         }
     }
 }

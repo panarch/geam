@@ -21,6 +21,7 @@ pub(crate) struct BorrowedValue<'value> {
     lists: &'value [StoredListValueId],
     parameter_lists: &'value [ParameterListValueId],
     externals: &'value [EvaluatedExternalValue],
+    functions: crate::runtime::embedding::CallableView<'value>,
 }
 
 impl<'value> BorrowedValue<'value> {
@@ -42,9 +43,16 @@ impl<'value> BorrowedValue<'value> {
             EvaluatedValue::List(value) => row.lists = slice::from_ref(value),
             EvaluatedValue::External(value) => row.externals = slice::from_ref(value),
             EvaluatedValue::ParameterList(value) => row.parameter_lists = slice::from_ref(value),
-            EvaluatedValue::Function(_) | EvaluatedValue::Nil => {}
+            EvaluatedValue::Function(value) => {
+                row.functions = crate::runtime::embedding::CallableView::new(value)
+            }
+            EvaluatedValue::Nil => {}
         }
         row
+    }
+
+    pub(crate) fn function(&self) -> crate::runtime::EmbeddingCallable {
+        self.functions.retain()
     }
 
     pub(crate) fn int(&self) -> &'value BigInt {
@@ -110,6 +118,7 @@ impl<'value> BorrowedValue<'value> {
             lists: &[],
             parameter_lists: &[],
             externals: &[],
+            functions: crate::runtime::embedding::CallableView::default(),
         }
     }
 }
@@ -146,9 +155,14 @@ impl BorrowedValue<'_> {
             StoredListValueId::Custom(value) => item!(value, custom_values, customs),
             StoredListValueId::External(value) => item!(value, external_values, externals),
             StoredListValueId::List(value) => item!(value, list_values, lists),
-            StoredListValueId::Nil(_)
-            | StoredListValueId::Function(_)
-            | StoredListValueId::ParameterList(_) => (index
+            StoredListValueId::Function(value) => {
+                storage.function_values(value).get(index).map(|value| {
+                    let mut row = BorrowedValue::empty();
+                    row.functions = crate::runtime::embedding::CallableView::new(value);
+                    read(row)
+                })
+            }
+            StoredListValueId::Nil(_) | StoredListValueId::ParameterList(_) => (index
                 < storage.list_len(&value.clone().into()))
             .then(|| read(BorrowedValue::empty())),
         }

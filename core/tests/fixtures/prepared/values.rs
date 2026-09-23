@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 2,
+    format: 4,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -16823,8 +16823,10 @@ pub fn assertion(value: Int) -> Int {
                         nils: data::Storage::Static(&[]),
                         tuples: data::Storage::Static(&[]),
                         lists: data::Storage::Static(&[]),
+                        functions: data::Storage::Static(&[]),
                     },
                 },
+                callables: data::Storage::Static(&[]),
             },
             data::program::LibraryFunctionEntry {
                 function: data::function::IntFunctionId(1),
@@ -16842,8 +16844,10 @@ pub fn assertion(value: Int) -> Int {
                         nils: data::Storage::Static(&[]),
                         tuples: data::Storage::Static(&[]),
                         lists: data::Storage::Static(&[]),
+                        functions: data::Storage::Static(&[]),
                     },
                 },
+                callables: data::Storage::Static(&[]),
             },
             data::program::LibraryFunctionEntry {
                 function: data::function::IntFunctionId(2),
@@ -16861,8 +16865,10 @@ pub fn assertion(value: Int) -> Int {
                         nils: data::Storage::Static(&[]),
                         tuples: data::Storage::Static(&[]),
                         lists: data::Storage::Static(&[]),
+                        functions: data::Storage::Static(&[]),
                     },
                 },
+                callables: data::Storage::Static(&[]),
             },
         ]),
         floats: data::Storage::Static(&[]),
@@ -16875,6 +16881,7 @@ pub fn assertion(value: Int) -> Int {
         nils: data::Storage::Static(&[]),
         tuples: data::Storage::Static(&[]),
         lists: data::Storage::Static(&[]),
+        functions: data::Storage::Static(&[]),
     },
     exports: data::Storage::Static(&[
         data::Export {

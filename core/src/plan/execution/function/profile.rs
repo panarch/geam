@@ -46,6 +46,7 @@ pub trait ExecutionGraphProfile:
     type ExternalFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type ExternalListFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type RuntimeFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
+    type InvocableFunctionFunctionId: Debug + Clone + PartialEq + Eq + Send + Sync;
     type ExternalInstruction: ExternalInstructionView<Function = Self::ExternalFunctionId>
         + Clone
         + Send
@@ -55,6 +56,10 @@ pub trait ExecutionGraphProfile:
         + Send
         + Sync;
     type ExternalFunctionInstruction: ExternalFunctionInstructionView + Clone + Send + Sync;
+
+    fn function_value_target(
+        id: &Self::InvocableFunctionFunctionId,
+    ) -> Self::RuntimeFunctionFunctionId;
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId;
 
@@ -152,9 +157,16 @@ impl ExecutionGraphProfile for Infallible {
     type ExternalFunctionFunctionId = Infallible;
     type ExternalListFunctionFunctionId = Infallible;
     type RuntimeFunctionFunctionId = ProfiledFunctionFunctionId<Infallible>;
+    type InvocableFunctionFunctionId = Infallible;
     type ExternalInstruction = Infallible;
     type ExternalListInstruction = Infallible;
     type ExternalFunctionInstruction = Infallible;
+
+    fn function_value_target(
+        id: &Self::InvocableFunctionFunctionId,
+    ) -> Self::RuntimeFunctionFunctionId {
+        match *id {}
+    }
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId {
         match *id {}
@@ -313,9 +325,16 @@ impl ExecutionGraphProfile for HostedExecutionGraph {
     type ExternalFunctionFunctionId = ExternalFunctionFunctionId;
     type ExternalListFunctionFunctionId = ExternalListFunctionFunctionId;
     type RuntimeFunctionFunctionId = RuntimeFunctionFunctionTarget;
+    type InvocableFunctionFunctionId = RuntimeFunctionFunctionTarget<Infallible>;
     type ExternalInstruction = ExternalInstruction;
     type ExternalListInstruction = ExternalListInstruction;
     type ExternalFunctionInstruction = ExternalFunctionInstruction;
+
+    fn function_value_target(
+        id: &Self::InvocableFunctionFunctionId,
+    ) -> Self::RuntimeFunctionFunctionId {
+        id.value_target()
+    }
 
     fn external_function(id: &Self::ExternalFunctionId) -> ExternalFunctionId {
         *id

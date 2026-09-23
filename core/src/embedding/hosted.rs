@@ -18,7 +18,7 @@ pub struct HostedModuleBuilder<Profile: HostProfile> {
 
 /// Collects one or more typed function bindings before hosted sealing.
 pub struct HostedModuleBindings<Profile: HostProfile> {
-    inner: Bindings<HostedLibraryModulePlan<Profile>>,
+    pub(super) inner: Bindings<HostedLibraryModulePlan<Profile>>,
 }
 
 /// One sealed hosted execution shared by all selected function handles.
@@ -28,6 +28,7 @@ pub struct HostedModuleBindings<Profile: HostProfile> {
 pub struct HostedModule<Profile: HostProfile> {
     pub(in crate::embedding) execution: HostedExecution<Profile>,
     pub(in crate::embedding) entries: LibraryFunctionEntries,
+    pub(in crate::embedding) native_callables: crate::plan::execution::NativeLibraryConstructions,
     pub(in crate::embedding) owner: Arc<()>,
 }
 
@@ -86,10 +87,12 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
             owner,
             exports: _,
         } = self.inner.into_parts();
-        let (execution, entries) = HostedExecution::try_from_library_plan(plan, first, remaining)?;
+        let (execution, entries, native_callables) =
+            HostedExecution::try_from_library_plan(plan, first, remaining)?;
         Ok(HostedModule {
             execution,
             entries,
+            native_callables,
             owner,
         })
     }

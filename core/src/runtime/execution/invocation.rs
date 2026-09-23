@@ -43,6 +43,12 @@ struct Mapped<'plan, Plan: ExecutableRuntimePlan, Input, Map> {
 impl<'plan, Plan: ExecutableRuntimePlan + 'plan, Output: Send + 'plan>
     Invocation<'plan, Plan, Output>
 {
+    pub(in crate::runtime) fn cancelled() -> Self {
+        Self {
+            inner: Box::new(Cancelled),
+        }
+    }
+
     pub(in crate::runtime) fn ready(value: Output) -> Self {
         Self {
             inner: Box::new(Ready(value)),
@@ -97,6 +103,18 @@ impl<'plan, Plan: ExecutableRuntimePlan + 'plan, Output: Send + 'plan>
         budget: NonZeroUsize,
     ) -> Waiting<'plan, Output> {
         self.inner.submit(context, budget)
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan, Output: Send + 'plan> Invoke<'plan, Plan, Output>
+    for Cancelled
+{
+    fn submit(
+        self: Box<Self>,
+        _context: &ServiceContext<Plan>,
+        _budget: NonZeroUsize,
+    ) -> Waiting<'plan, Output> {
+        Box::pin(std::future::ready(Err(Cancelled)))
     }
 }
 

@@ -228,6 +228,8 @@ mod tests {
         let expected_shapes = [ValueShapeId(0)];
         let expected_captures = [capture.clone()];
         let contract = Function {
+            family: crate::plan::execution::function::FunctionTableFamily::Int,
+            index: 0,
             parameters: &expected_parameters,
             parameter_shapes: &expected_shapes,
             return_: ValueShapeId(0),

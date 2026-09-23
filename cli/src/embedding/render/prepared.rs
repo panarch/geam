@@ -14,26 +14,55 @@ pub(super) fn push_plain_load(output: &mut String, bindings: &PlainBindings) {
 }
 
 pub(super) fn push_hosted_load(output: &mut String, bindings: &HostedBindings) {
+    push_hosted_load_with(output, bindings, false);
+}
+
+pub(super) fn push_hosted_load_with(
+    output: &mut String,
+    bindings: &HostedBindings,
+    application: bool,
+) {
     let components = &bindings.components;
     let parameters = generics(components);
-    output.push_str(&format!(
-        "pub fn load{parameters}() -> Result<(HostedModule<{}>, Functions), PreparedError>",
-        profile_type(components),
-    ));
-    push_bounds_open(output, bindings.boundary.geam_alias.as_str(), components);
+    if application {
+        output.push_str("pub fn load<Application: HostProfile>(\n    providers: HostProviderSet<Application>,\n) -> Result<(PreparedHostedModuleBindings<Application>, Functions), PreparedError> {\n");
+    } else {
+        let profile = profile_type(components);
+        output.push_str(&format!(
+            "pub fn load{parameters}() -> Result<(HostedModule<{profile}>, Functions), PreparedError>"
+        ));
+        push_bounds_open(output, bindings.boundary.geam_alias.as_str(), components);
+    }
     let registration = if parameters.is_empty() {
         "host_providers()".to_owned()
     } else {
         format!("host_providers::{parameters}()")
     };
     output.push_str(&format!(
-        "    let mut bindings = program::PROGRAM.load({registration}?)?;\n",
+        "    let mut bindings = program::PROGRAM.load({})?;\n",
+        if application {
+            "providers".to_owned()
+        } else {
+            format!("{registration}?")
+        }
     ));
-    push_loaded_bindings(output, &bindings.boundary);
+    push_loaded_bindings_with(
+        output,
+        &bindings.boundary,
+        if application {
+            "bindings"
+        } else {
+            "bindings.seal()"
+        },
+    );
     output.push_str("}\n");
 }
 
 fn push_loaded_bindings(output: &mut String, bindings: &PlainBindings) {
+    push_loaded_bindings_with(output, bindings, "bindings.seal()");
+}
+
+fn push_loaded_bindings_with(output: &mut String, bindings: &PlainBindings, result: &str) {
     for (index, function) in bindings.functions().enumerate() {
         push_binding(
             output,
@@ -43,7 +72,45 @@ fn push_loaded_bindings(output: &mut String, bindings: &PlainBindings) {
             "function",
         );
     }
-    push_binding_result(output, bindings, "Functions", "bindings.seal()");
+    push_binding_result(output, bindings, "Functions", result);
+}
+
+pub(in crate::embedding) fn application_helper(
+    bindings: &HostedBindings,
+    declarations: &Utf8Path,
+) -> String {
+    let mut output = hosted(bindings, Utf8Path::new("gleam"), Generation::Dynamic);
+    output.push_str(&format!(
+        "\n#[path = {:?}]\nmod application_declarations;\n",
+        declarations.as_str()
+    ));
+    push_helper_arguments(&mut output);
+    let alias = bindings.boundary.geam_alias.as_str();
+    let registration = match bindings.components.capabilities() {
+        HostedCapabilities::None => "host_providers".to_owned(),
+        HostedCapabilities::Io => format!("host_providers::<Vec<{alias}::gleam_stdlib::IoOutput>>"),
+        HostedCapabilities::IoAndTime => format!(
+            "host_providers::<Vec<{alias}::gleam_stdlib::IoOutput>, {alias}::gleam_time::SystemTimeSource>"
+        ),
+    };
+    output.push_str(&format!("    let declarations = application_declarations::declare({registration}()?.into_declarations())?;\n    let program = {alias}::compile_declared_host_project(root, ROOT_MODULE, declarations)?\n"));
+    push_source_paths(&mut output);
+    output.push_str(&format!(
+        "    let builder = {alias}::embedding::HostPreparation::new(program)?;\n"
+    ));
+    // Declaration preparation selects the same named entries, without creating
+    // runtime handles or linking any of the application's Rust implementations.
+    super::value::push_preparation_binding(
+        &mut output,
+        "mut bindings",
+        "builder",
+        &bindings.boundary.first,
+    );
+    for function in &bindings.boundary.remaining {
+        super::value::push_preparation_binding(&mut output, "_", "bindings", function);
+    }
+    output.push_str("    application_declarations::select(&mut bindings)?;\n    std::fs::write(destination, bindings.prepare()?.emit_rust())?;\n    Ok(())\n}\n");
+    output
 }
 
 pub(in crate::embedding) fn plain_helper(bindings: &PlainBindings) -> String {
@@ -94,7 +161,10 @@ fn push_source_paths(output: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{hosted_helper, plain_helper, push_hosted_load, push_plain_load};
+    use super::{
+        application_helper, hosted_helper, plain_helper, push_hosted_load, push_hosted_load_with,
+        push_plain_load,
+    };
     use crate::builtin::BuiltInProvider;
     use crate::embedding::boundary::{DataType, FunctionBinding, PlainBindings};
     use crate::embedding::identifier::RustIdentifier;
@@ -199,6 +269,53 @@ mod tests {
                 )
             );
             assert!(!helper.contains("mod program;"));
+
+            let mut source = String::new();
+            push_hosted_load_with(&mut source, &bindings, true);
+            assert_eq!(
+                source,
+                r#"pub fn load<Application: HostProfile>(
+    providers: HostProviderSet<Application>,
+) -> Result<(PreparedHostedModuleBindings<Application>, Functions), PreparedError> {
+    let mut bindings = program::PROGRAM.load(providers)?;
+    let function_0 = bindings.function(FunctionDeclaration::new("double"))?;
+    Ok((
+        bindings,
+        Functions {
+            double: function_0.with_input_shape(),
+        },
+    ))
+}
+"#
+            );
+            let helper = application_helper(
+                &bindings,
+                camino::Utf8Path::new("/application/src/declarations.rs"),
+            );
+            let (_, declaration_and_main) = helper.split_once("\n#[path = ").unwrap();
+            assert_eq!(
+                declaration_and_main,
+                format!(
+                    r#""/application/src/declarations.rs"]
+mod application_declarations;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {{
+    let mut arguments = std::env::args().skip(1);
+    let root = arguments.next().ok_or("missing Gleam project path")?;
+    let destination = arguments.next().ok_or("missing prepared output path")?;
+    let declarations = application_declarations::declare({preparation}()?.into_declarations())?;
+    let program = runtime::compile_declared_host_project(root, ROOT_MODULE, declarations)?
+        .map_source_paths(|package, module, _| format!("{{package}}/src/{{module}}.gleam").into());
+    let builder = runtime::embedding::HostPreparation::new(program)?;
+    let declaration: FunctionDeclaration<(BigInt,), BigInt> = FunctionDeclaration::new("double");
+    let mut bindings = builder.function(declaration)?;
+    application_declarations::select(&mut bindings)?;
+    std::fs::write(destination, bindings.prepare()?.emit_rust())?;
+    Ok(())
+}}
+"#
+                )
+            );
         }
     }
 }

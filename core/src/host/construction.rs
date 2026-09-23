@@ -47,6 +47,7 @@ type CallScopedMarker<'call, Type> = PhantomData<fn(&'call ()) -> (&'call (), Ty
 /// }
 /// ```
 pub struct HostConstructions<'call, Types: HostTypeSequence> {
+    callable_base: usize,
     marker: CallScopedMarker<'call, Types>,
 }
 
@@ -71,14 +72,24 @@ pub struct HostConstructions<'call, Types: HostTypeSequence> {
 /// }
 /// ```
 pub struct HostConstruction<'call, Type: HostType> {
+    pub(super) callable_index: usize,
     marker: CallScopedMarker<'call, Type>,
 }
 
 impl<'call, Types: HostTypeSequence> HostConstructions<'call, Types> {
     pub(crate) fn new() -> Self {
+        Self::with_base(0)
+    }
+
+    pub(crate) fn with_base(callable_base: usize) -> Self {
         Self {
+            callable_base,
             marker: PhantomData,
         }
+    }
+
+    pub(crate) fn callable_base(&self) -> usize {
+        self.callable_base
     }
 
     /// Selects the exact construction type registered at `Index`.
@@ -87,6 +98,8 @@ impl<'call, Types: HostTypeSequence> HostConstructions<'call, Types> {
         Types: HostTypeAt<Index>,
     {
         HostConstruction {
+            callable_index: self.callable_base
+                + crate::host::type_::construction_callable_index::<Types, Index>(),
             marker: PhantomData,
         }
     }

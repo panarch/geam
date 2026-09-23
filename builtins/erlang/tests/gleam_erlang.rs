@@ -7,6 +7,8 @@ use geam_stdlib::GleamStdlibRunState;
 mod callbacks;
 #[path = "../../../tests/support/execution_host.rs"]
 mod execution_fixture;
+#[path = "gleam_erlang/services.rs"]
+mod services;
 #[path = "gleam_erlang/surface.rs"]
 mod surface;
 #[path = "../../../tests/support/workspace_dependencies.rs"]

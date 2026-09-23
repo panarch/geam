@@ -1,5 +1,5 @@
 use super::{
-    HostAbiTypeSequence, HostCustomIdentity, HostCustomTypeSchema, HostSchemaType, HostType,
+    HostAbiTypeSequence, HostCustomSchemaId, HostCustomTypeSchema, HostSchemaType, HostType,
     HostTypeDescriptor, HostTypeSequence, private,
 };
 use crate::host::{HostScopedValue, HostTuple};
@@ -28,7 +28,7 @@ impl<Elements: HostAbiTypeSequence> private::Abi for HostTupleType<Elements> {
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Elements as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
     }

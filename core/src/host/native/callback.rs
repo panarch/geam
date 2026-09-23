@@ -493,6 +493,7 @@ pub fn failing() {
                     recorded.execution.clone(),
                     recorded.codec.clone(),
                     recorded.origin.clone(),
+                    0,
                 );
             let value = if invalid {
                 NativeValue::symbol("not_an_integer")
@@ -597,6 +598,7 @@ pub fn failing() {
                     recorded.execution.clone(),
                     recorded.codec.clone(),
                     recorded.origin.clone(),
+                    0,
                 );
             let mut typed = Box::pin(recorded.typed.invoke(&context, typed_inputs, typed_output));
             let mut cx = Context::from_waker(Waker::noop());
@@ -621,6 +623,7 @@ pub fn failing() {
             second.execution,
             second.codec,
             second.origin,
+            0,
         );
         let native = host.block_on(first.native.invoke(&context, first.input));
         assert_eq!(

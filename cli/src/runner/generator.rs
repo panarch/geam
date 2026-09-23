@@ -1,10 +1,11 @@
 use crate::builtin::BuiltInProvider;
+use crate::provider::{ProviderBinding, ServiceBinding, ServiceComposition};
 
-pub(super) fn render_source(provider_aliases: &[String]) -> String {
+pub(super) fn render_source(provider_aliases: &[ProviderBinding]) -> String {
     render_host(provider_aliases) + RUNNER_TEMPLATE
 }
 
-pub(super) fn render_application(provider_aliases: &[String]) -> String {
+pub(super) fn render_application(provider_aliases: &[ProviderBinding]) -> String {
     let packages = runner_components(provider_aliases)
         .into_iter()
         .filter_map(|component| match component.initialization {
@@ -21,6 +22,7 @@ struct RunnerComponent {
     field: String,
     type_path: String,
     initialization: ComponentInitialization,
+    execution_service: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,26 +38,31 @@ impl RunnerComponent {
     fn built_in(provider: BuiltInProvider) -> Self {
         match provider {
             BuiltInProvider::Stdlib => Self {
+                execution_service: false,
                 field: "stdlib".to_owned(),
                 type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
                 initialization: ComponentInitialization::Stdlib,
             },
             BuiltInProvider::Json => Self {
+                execution_service: false,
                 field: "json".to_owned(),
                 type_path: "geam::gleam_json::Component".to_owned(),
                 initialization: ComponentInitialization::Unit,
             },
             BuiltInProvider::Time => Self {
+                execution_service: false,
                 field: "time".to_owned(),
                 type_path: "geam::gleam_time::Component".to_owned(),
                 initialization: ComponentInitialization::SystemTime,
             },
             BuiltInProvider::Erlang => Self {
+                execution_service: true,
                 field: "erlang".to_owned(),
                 type_path: "geam::gleam_erlang::Component<Profile>".to_owned(),
                 initialization: ComponentInitialization::PackageResources,
             },
             BuiltInProvider::Geam => Self {
+                execution_service: false,
                 field: "future".to_owned(),
                 type_path: "geam::FutureComponent".to_owned(),
                 initialization: ComponentInitialization::Unit,
@@ -63,10 +70,17 @@ impl RunnerComponent {
         }
     }
 
-    fn external(alias: String) -> Self {
+    fn external(binding: ProviderBinding) -> Self {
+        let alias = binding.alias;
+        let parameter = if binding.composition.profile_parameter {
+            "<Profile>"
+        } else {
+            ""
+        };
         Self {
+            execution_service: binding.composition.execution_service,
             field: alias.clone(),
-            type_path: format!("{alias}::Component"),
+            type_path: format!("{alias}::Component{parameter}"),
             initialization: ComponentInitialization::Configured {
                 package: provider_package(&alias).to_owned(),
             },
@@ -151,7 +165,7 @@ impl RunnerComponent {
     }
 }
 
-fn runner_components(provider_aliases: &[String]) -> Vec<RunnerComponent> {
+fn runner_components(provider_aliases: &[ProviderBinding]) -> Vec<RunnerComponent> {
     let mut provider_aliases = provider_aliases.to_vec();
     provider_aliases.sort();
     provider_aliases.dedup();
@@ -163,8 +177,38 @@ fn runner_components(provider_aliases: &[String]) -> Vec<RunnerComponent> {
         .collect()
 }
 
-fn render_host(provider_aliases: &[String]) -> String {
+fn render_host(provider_aliases: &[ProviderBinding]) -> String {
     let components = runner_components(provider_aliases);
+    let services = if provider_aliases.iter().any(|binding| {
+        binding.composition.execution_service || !binding.composition.required_services.is_empty()
+    }) {
+        let mut bindings = components
+            .iter()
+            .filter(|component| component.execution_service)
+            .map(|component| ServiceBinding {
+                component: component.type_path.clone(),
+                state_field: component.field.clone(),
+            });
+        bindings
+            .next()
+            .map(|first| ServiceComposition::new("geam", first, bindings))
+    } else {
+        None
+    };
+    let execution_state = services
+        .as_ref()
+        .map(ServiceComposition::type_expression)
+        .unwrap_or_else(|| "geam::gleam_erlang::ErlangExecution".to_owned());
+    let initialization = services
+        .as_ref()
+        .map(ServiceComposition::initialization)
+        .unwrap_or_default();
+    let mut service_profiles = String::new();
+    if let Some(services) = &services {
+        for (index, service) in services.iter().enumerate() {
+            service_profiles.push_str(&format!("impl geam::HostServiceProfile<{}> for Profile {{\n    fn service(state: &mut Self::ExecutionState) -> &mut {} {{\n        {}\n    }}\n}}\n\n", service.component, services.state_type(service), services.projection(index)));
+        }
+    }
     let store_fields = components
         .iter()
         .map(RunnerComponent::store_field)
@@ -209,6 +253,17 @@ fn render_host(provider_aliases: &[String]) -> String {
     };
 
     HOST_TEMPLATE
+        .replace("__EXECUTION_STATE__", &execution_state)
+        .replace("__INITIALIZE_EXECUTION__", &initialization)
+        .replace("__SERVICE_PROFILES__", &service_profiles)
+        .replace(
+            "__ERLANG_EXECUTION__",
+            if services.is_some() {
+                "&mut state.first"
+            } else {
+                "state"
+            },
+        )
         .replace("__STORE_FIELDS__", &store_fields)
         .replace("__STATE_FIELDS__", &state_fields)
         .replace("__COMPONENT_PROFILES__", &component_profiles)
@@ -246,14 +301,15 @@ struct Profile;
 impl geam::HostProfile for Profile {
     type RunState = RunState;
     type ExternalStores = Stores;
-    type ExecutionState = geam::gleam_erlang::ErlangExecution;
-}
+    type ExecutionState = __EXECUTION_STATE__;
+__INITIALIZE_EXECUTION__}
 
 impl geam::HostWorkProfile for Profile {
     type Work = geam::FutureComponent;
 }
 
 __COMPONENT_PROFILES__
+__SERVICE_PROFILES__
 
 impl geam::gleam_stdlib::GleamStdlibHostProfile for Profile {
     type Io = CliIoSink;
@@ -265,7 +321,7 @@ impl geam::gleam_time::GleamTimeHostProfile for Profile {
 
 impl geam::gleam_erlang::GleamErlangHostProfile for Profile {
     fn erlang_execution(state: &mut Self::ExecutionState) -> &mut geam::gleam_erlang::ErlangExecution {
-        state
+        __ERLANG_EXECUTION__
     }
 }
 
@@ -436,6 +492,55 @@ mod tests {
         ComponentInitialization, RunnerComponent, render_application, render_host, render_source,
         runner_components,
     };
+    use crate::provider::{ProviderBinding, ProviderComposition};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn composes_each_service_once_and_projects_profile_dependent_consumers() {
+        let producer = ProviderBinding {
+            alias: "geam_provider_tickets".to_owned(),
+            composition: ProviderComposition {
+                profile_parameter: false,
+                execution_service: true,
+                required_services: BTreeSet::new(),
+            },
+        };
+        let consumer = ProviderBinding {
+            alias: "geam_provider_requests".to_owned(),
+            composition: ProviderComposition {
+                profile_parameter: true,
+                execution_service: false,
+                required_services: BTreeSet::from([
+                    "gleam_erlang".to_owned(),
+                    "tickets".to_owned(),
+                ]),
+            },
+        };
+        let source = render_source(&[producer.clone(), consumer, producer]);
+        assert!(source.contains("type ExecutionState = geam::execution::ExecutionServices<<geam::gleam_erlang::Component<Profile> as geam::HostExecutionService>::State, geam::execution::ExecutionServices<<geam_provider_tickets::Component as geam::HostExecutionService>::State, ()>>;"));
+        assert!(source.contains("impl geam::HostComponentProfile<geam_provider_requests::Component<Profile>> for Profile"));
+        assert!(!source.contains("HostServiceProfile<geam_provider_requests"));
+        for (component, field, projection) in [
+            (
+                "geam::gleam_erlang::Component<Profile>",
+                "erlang",
+                "&mut state.first",
+            ),
+            (
+                "geam_provider_tickets::Component",
+                "geam_provider_tickets",
+                "&mut state.rest.first",
+            ),
+        ] {
+            assert_eq!(source.matches(&format!("<{component} as geam::HostExecutionService>::initialize_service(&mut state.{field})")).count(), 1);
+            assert!(source.contains(&format!("impl geam::HostServiceProfile<{component}> for Profile {{\n    fn service(state: &mut Self::ExecutionState) -> &mut <{component} as geam::HostExecutionService>::State {{\n        {projection}\n    }}\n}}")));
+        }
+        assert!(source.contains("fn erlang_execution(state: &mut Self::ExecutionState) -> &mut geam::gleam_erlang::ErlangExecution {\n        &mut state.first\n"));
+        let initialization = source.find("fn initialize_execution").unwrap();
+        let run = source.find("fn run(").unwrap();
+        assert!(initialization < run);
+        assert!(!source[run..].contains("initialize_service"));
+    }
 
     #[test]
     fn deployed_entry_uses_prepared_data_and_runtime_inputs_without_parsing_arguments() {
@@ -482,47 +587,54 @@ fn main() -> std::process::ExitCode {
     #[test]
     fn renders_static_profiles_and_initialization_in_sorted_component_order() {
         let aliases = [
-            "geam_provider_zeta".to_owned(),
-            "geam_provider_alpha".to_owned(),
-            "geam_provider_alpha".to_owned(),
+            "geam_provider_zeta".into(),
+            "geam_provider_alpha".into(),
+            "geam_provider_alpha".into(),
         ];
         assert_eq!(
             runner_components(&aliases),
             [
                 RunnerComponent {
+                    execution_service: false,
                     field: "stdlib".to_owned(),
                     type_path: "geam::gleam_stdlib::Component<CliIoSink>".to_owned(),
                     initialization: ComponentInitialization::Stdlib,
                 },
                 RunnerComponent {
+                    execution_service: false,
                     field: "json".to_owned(),
                     type_path: "geam::gleam_json::Component".to_owned(),
                     initialization: ComponentInitialization::Unit,
                 },
                 RunnerComponent {
+                    execution_service: false,
                     field: "time".to_owned(),
                     type_path: "geam::gleam_time::Component".to_owned(),
                     initialization: ComponentInitialization::SystemTime,
                 },
                 RunnerComponent {
+                    execution_service: true,
                     field: "erlang".to_owned(),
                     type_path: "geam::gleam_erlang::Component<Profile>".to_owned(),
                     initialization: ComponentInitialization::PackageResources,
                 },
                 RunnerComponent {
+                    execution_service: false,
                     field: "future".to_owned(),
                     type_path: "geam::FutureComponent".to_owned(),
                     initialization: ComponentInitialization::Unit,
                 },
                 RunnerComponent {
-                    field: "geam_provider_alpha".to_owned(),
+                    execution_service: false,
+                    field: "geam_provider_alpha".into(),
                     type_path: "geam_provider_alpha::Component".to_owned(),
                     initialization: ComponentInitialization::Configured {
                         package: "alpha".to_owned(),
                     },
                 },
                 RunnerComponent {
-                    field: "geam_provider_zeta".to_owned(),
+                    execution_service: false,
+                    field: "geam_provider_zeta".into(),
                     type_path: "geam_provider_zeta::Component".to_owned(),
                     initialization: ComponentInitialization::Configured {
                         package: "zeta".to_owned(),
@@ -631,10 +743,7 @@ fn main() -> std::process::ExitCode {
         }
         assert_eq!(
             source,
-            render_source(&[
-                "geam_provider_alpha".to_owned(),
-                "geam_provider_zeta".to_owned(),
-            ])
+            render_source(&["geam_provider_alpha".into(), "geam_provider_zeta".into(),])
         );
     }
 }

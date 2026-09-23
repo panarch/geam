@@ -1,5 +1,5 @@
 use super::{
-    HostAbiType, HostAbiTypeSequence, HostCustomIdentity, HostCustomTypeSchema, HostSchemaType,
+    HostAbiType, HostAbiTypeSequence, HostCustomSchemaId, HostCustomTypeSchema, HostSchemaType,
     HostType, HostTypeDescriptor, HostTypeSequence, private,
 };
 use crate::host::{HostCallable, HostScopedValue, HostValue};
@@ -61,7 +61,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
         <Return as HostAbiType>::collect_custom_schemas(output, visited);
@@ -100,7 +100,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
         <Return as HostAbiType>::collect_custom_schemas(output, visited);

@@ -11,8 +11,11 @@ use crate::plan::execution::type_::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProfiledFunctionFunctionId<Graph: ExecutionGraphProfile> {
-    Generic(GenericFunctionFunctionId),
+pub enum ProfiledFunctionFunctionId<
+    Graph: ExecutionGraphProfile,
+    Symbolic = GenericFunctionFunctionId,
+> {
+    Generic(Symbolic),
     Never(NeverFunctionFunctionId),
     Int(IntFunctionFunctionId),
     Float(FloatFunctionFunctionId),
@@ -305,6 +308,29 @@ impl FunctionFunctionFunctionId {
     }
 }
 
+impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph, std::convert::Infallible> {
+    pub(in crate::plan::execution::function) fn value_target(
+        &self,
+    ) -> ProfiledFunctionFunctionId<Graph> {
+        match self {
+            Self::Generic(value) => match *value {},
+            Self::Never(id) => ProfiledFunctionFunctionId::Never(id.clone()),
+            Self::Int(id) => ProfiledFunctionFunctionId::Int(*id),
+            Self::Float(id) => ProfiledFunctionFunctionId::Float(*id),
+            Self::String(id) => ProfiledFunctionFunctionId::String(*id),
+            Self::BitArray(id) => ProfiledFunctionFunctionId::BitArray(*id),
+            Self::UtfCodepoint(id) => ProfiledFunctionFunctionId::UtfCodepoint(*id),
+            Self::Custom(id) => ProfiledFunctionFunctionId::Custom(id.clone()),
+            Self::External(id) => ProfiledFunctionFunctionId::External(id.clone()),
+            Self::Bool(id) => ProfiledFunctionFunctionId::Bool(*id),
+            Self::Nil(id) => ProfiledFunctionFunctionId::Nil(*id),
+            Self::Tuple(id) => ProfiledFunctionFunctionId::Tuple(*id),
+            Self::List(id) => ProfiledFunctionFunctionId::List(id.clone()),
+            Self::Function(id) => ProfiledFunctionFunctionId::Function(id.clone()),
+        }
+    }
+}
+
 #[cfg(test)]
 impl<Graph: ExecutionGraphProfile> ProfiledFunctionFunctionId<Graph> {
     pub(crate) fn generic(&self) -> Option<GenericFunctionFunctionId> {
@@ -418,7 +444,8 @@ where
     }
 }
 
-impl<Graph: ExecutionGraphProfile> Emit for ProfiledFunctionFunctionId<Graph>
+impl<Graph: ExecutionGraphProfile, Symbolic: Emit> Emit
+    for ProfiledFunctionFunctionId<Graph, Symbolic>
 where
     Graph::ExternalFunctionFunctionId: Emit,
     ProfiledListFunctionFunctionId<Graph>: Emit,
@@ -832,7 +859,34 @@ mod emission_tests {
             ValueType::Parameter(crate::plan::TypeParameterId(0)),
         );
         let inner = FunctionType::new(Vec::new(), ValueType::Int);
-        let cases: [(ProfiledFunctionFunctionId<HostedExecutionGraph>, &str); 14] = [
+        let (generic, expected): (ProfiledFunctionFunctionId<HostedExecutionGraph>, &str) = (
+                ProfiledFunctionFunctionId::Generic(GenericFunctionFunctionId {
+                    index: 2,
+                    type_: GenericFunctionType::from_shapes(
+                        symbolic.clone(),
+                        FunctionShape::new(ValueShapeId(3), symbolic.clone()),
+                    ),
+                }),
+                r#"
+data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunctionFunctionId {
+    index: 2,
+    type_: data::type_::GenericFunctionType {
+        type_: data::type_::FunctionType {
+            arguments: data::Storage::Static(&[]),
+            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+        },
+        shape: data::type_::FunctionShape {
+            shape_id: data::type_::ValueShapeId(3),
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
+            },
+        },
+    },
+})"#.trim_start_matches('\n'),
+            );
+        assert_eq!(Rust::expression(&generic), expected);
+        let cases: [(ProfiledFunctionFunctionId<HostedExecutionGraph, std::convert::Infallible>, &str); 13] = [
             (
                 ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(2)),
                 "data::function::ProfiledFunctionFunctionId::Int(data::function::IntFunctionFunctionId(2))",
@@ -864,32 +918,6 @@ mod emission_tests {
             (
                 ProfiledFunctionFunctionId::Tuple(TupleFunctionFunctionId(2)),
                 "data::function::ProfiledFunctionFunctionId::Tuple(data::function::TupleFunctionFunctionId(2))",
-            ),
-            (
-                ProfiledFunctionFunctionId::Generic(GenericFunctionFunctionId {
-                    index: 2,
-                    type_: GenericFunctionType::from_shapes(
-                        symbolic.clone(),
-                        FunctionShape::new(ValueShapeId(3), symbolic.clone()),
-                    ),
-                }),
-                r#"
-data::function::ProfiledFunctionFunctionId::Generic(data::function::GenericFunctionFunctionId {
-    index: 2,
-    type_: data::type_::GenericFunctionType {
-        type_: data::type_::FunctionType {
-            arguments: data::Storage::Static(&[]),
-            return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
-        },
-        shape: data::type_::FunctionShape {
-            shape_id: data::type_::ValueShapeId(3),
-            type_: data::type_::FunctionType {
-                arguments: data::Storage::Static(&[]),
-                return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
-            },
-        },
-    },
-})"#.trim_start_matches('\n'),
             ),
             (
                 ProfiledFunctionFunctionId::Never(NeverFunctionFunctionId {
@@ -1016,6 +1044,7 @@ data::function::ProfiledFunctionFunctionId::Function(data::function::FunctionFun
         ];
         for (id, expected) in cases {
             assert_eq!(Rust::expression(&id), expected);
+            assert_eq!(Rust::expression(&id.value_target()), expected);
         }
     }
 

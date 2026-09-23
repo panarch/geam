@@ -154,11 +154,12 @@ pub(crate) struct LibraryModulePlan {
 }
 
 #[derive(Clone)]
-pub(crate) struct LibraryEntry<External = super::ExternalType> {
+pub(crate) struct LibraryEntry<External: LibraryProfile = super::ExternalType> {
     template: FunctionTemplateId,
     return_: LibraryValueType<External>,
     input_variants: Box<[LibraryVariant]>,
     input_lists: Box<[LibraryValueType]>,
+    callables: Box<[LibraryCallableSignature]>,
 }
 
 pub(crate) type LibraryEntryParts<External> = (
@@ -166,7 +167,45 @@ pub(crate) type LibraryEntryParts<External> = (
     LibraryValueType<External>,
     Box<[LibraryVariant]>,
     Box<[LibraryValueType]>,
+    Box<[LibraryCallableSignature]>,
 );
+
+pub(crate) trait LibraryProfile: Clone {
+    type Callable: Clone;
+
+    fn callable_type(value: &Self::Callable) -> &super::FunctionType;
+}
+
+impl LibraryProfile for super::ExternalType {
+    type Callable = super::FunctionType;
+
+    fn callable_type(value: &Self::Callable) -> &super::FunctionType {
+        value
+    }
+}
+
+impl LibraryProfile for std::convert::Infallible {
+    type Callable = Self;
+
+    fn callable_type(value: &Self) -> &super::FunctionType {
+        match *value {}
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct LibraryCallableSignature {
+    pub(crate) type_: super::FunctionType,
+    pub(crate) input_variants: Vec<LibraryVariant>,
+    pub(crate) input_lists: Vec<LibraryValueType>,
+    pub(crate) callables: Vec<LibraryCallableSignature>,
+}
+
+pub(crate) struct LibraryNativeSignature {
+    pub(crate) invocation: LibraryCallableSignature,
+    pub(crate) captures: Vec<super::ValueType>,
+    pub(crate) capture_variants: Vec<LibraryVariant>,
+    pub(crate) capture_lists: Vec<LibraryValueType>,
+}
 
 #[derive(Clone)]
 pub(crate) struct LibraryVariant {
@@ -181,7 +220,7 @@ impl LibraryVariant {
 }
 
 #[derive(Clone)]
-pub(crate) enum LibraryValueType<External = super::ExternalType> {
+pub(crate) enum LibraryValueType<External: LibraryProfile = super::ExternalType> {
     Int,
     Float,
     String,
@@ -193,6 +232,7 @@ pub(crate) enum LibraryValueType<External = super::ExternalType> {
     Nil,
     Tuple(Vec<super::ValueType>),
     List(Box<LibraryValueType<External>>),
+    Function(External::Callable),
 }
 
 impl LibraryValueType {
@@ -210,11 +250,12 @@ impl LibraryValueType {
             Self::Nil => ValueType::Nil,
             Self::Tuple(elements) => ValueType::Tuple(elements.clone()),
             Self::List(item) => ValueType::List(Box::new(item.value_type())),
+            Self::Function(type_) => ValueType::Function(Box::new(type_.clone())),
         }
     }
 }
 
-impl<External> LibraryEntry<External> {
+impl<External: LibraryProfile> LibraryEntry<External> {
     pub(crate) fn new(
         template: FunctionTemplateId,
         return_: LibraryValueType<External>,
@@ -226,11 +267,17 @@ impl<External> LibraryEntry<External> {
             return_,
             input_variants: input_variants.into_boxed_slice(),
             input_lists: input_lists.into_boxed_slice(),
+            callables: Box::new([]),
         }
     }
 
     pub(crate) fn return_(&self) -> &LibraryValueType<External> {
         &self.return_
+    }
+
+    pub(crate) fn with_callables(mut self, callables: Vec<LibraryCallableSignature>) -> Self {
+        self.callables = callables.into_boxed_slice();
+        self
     }
 
     pub(crate) fn into_parts(self) -> LibraryEntryParts<External> {
@@ -239,6 +286,7 @@ impl<External> LibraryEntry<External> {
             self.return_,
             self.input_variants,
             self.input_lists,
+            self.callables,
         )
     }
 }

@@ -1,3 +1,4 @@
+mod callable;
 mod native;
 mod parameter;
 mod return_;
@@ -16,12 +17,12 @@ use crate::host::HostProfile;
 use crate::plan::execution::LibraryFunctionEntries;
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::host::{
-    HostFunctionTables, HostSpecializationError, HostedExecutionProfile,
+    HostBindingTables, HostFunctionTables, HostSpecializationError, HostedExecutionProfile,
 };
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::{
-    HostedLibraryModulePlan, HostedLibraryModulePlanParts, HostedModulePlan, HostedModulePlanParts,
-    HostedPlannedModule, LibraryEntry, ModuleId,
+    HostedModulePlan, HostedModulePlanParts, HostedPlannedModule, LibraryEntry, ModuleId,
+    ProfiledHostedLibraryModulePlan, ProfiledHostedLibraryModulePlanParts,
 };
 use std::collections::HashSet;
 use table::HostFunctionRegistry;
@@ -51,29 +52,34 @@ pub(in crate::plan::execution) fn lower_hosted<Profile: HostProfile>(
     .map(|(program, host_functions, ())| (program, host_functions))
 }
 
-pub(in crate::plan::execution) fn lower_hosted_library<Profile: HostProfile>(
-    module_plan: HostedLibraryModulePlan<Profile>,
+type LoweredHostedLibrary<Value, Never> = (
+    ExecutionProgram<HostedExecutionProfile>,
+    HostBindingTables<Value, Never>,
+    LibraryFunctionEntries,
+    crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
+);
+
+pub(in crate::plan::execution) fn lower_hosted_library<Value: Clone, Never: Clone>(
+    module_plan: ProfiledHostedLibraryModulePlan<crate::host::HostFunctionBinding<Value, Never>>,
     first: LibraryEntry,
     remaining: Vec<LibraryEntry>,
-) -> Result<
-    (
-        ExecutionProgram<HostedExecutionProfile>,
-        HostFunctionTables<Profile>,
-        LibraryFunctionEntries,
-    ),
-    HostSpecializationError,
-> {
-    let HostedLibraryModulePlanParts {
+) -> Result<LoweredHostedLibrary<Value, Never>, HostSpecializationError> {
+    let ProfiledHostedLibraryModulePlanParts {
         root,
         modules,
         implementation_bindings,
+        callables,
     } = module_plan.into_parts();
     let implementations = HostFunctionRegistry::new(implementation_bindings);
     lower_hosted_entries(
         HostedLoweringInput { root, modules },
-        library::Entries::new(first, remaining),
+        LibraryEntries {
+            functions: library::Entries::new(first, remaining),
+            callables,
+        },
         implementations,
     )
+    .map(|(program, functions, (entries, callables))| (program, functions, entries, callables))
 }
 
 impl LoweringContext {
@@ -124,51 +130,70 @@ struct MainEntry {
     template: crate::plan::FunctionTemplateId,
 }
 
+struct LibraryEntries {
+    functions: library::Entries,
+    callables: Vec<crate::plan::LibraryNativeCallable>,
+}
+
 trait HostedEntries {
     type Reserved;
     type Output;
 
     fn initial_key(&self) -> SpecializationKey;
 
+    fn invalid_callback(
+        &self,
+        _context: &LoweringContext,
+    ) -> Option<(crate::plan::FunctionTemplateId, crate::plan::FunctionType)> {
+        None
+    }
+
     fn reserve(
         &self,
         templates: &HostTemplateCatalog,
         context: &mut LoweringContext,
-    ) -> Self::Reserved;
+    ) -> Result<Self::Reserved, HostSpecializationError>;
 
     fn seal(reserved: Self::Reserved) -> SpecializationOutcome<(RuntimeFunctionId, Self::Output)>;
 }
 
-type LoweredHostedEntries<Entries, Profile> = (
+type LoweredHostedEntries<Entries, Value, Never> = (
     ExecutionProgram<HostedExecutionProfile>,
-    HostFunctionTables<Profile>,
+    HostBindingTables<Value, Never>,
     <Entries as HostedEntries>::Output,
 );
 
-fn lower_hosted_entries<Entries, Profile>(
+fn lower_hosted_entries<Entries, Value, Never>(
     input: HostedLoweringInput,
     entries: Entries,
-    implementations: HostFunctionRegistry<Profile>,
-) -> Result<LoweredHostedEntries<Entries, Profile>, HostSpecializationError>
+    implementations: HostFunctionRegistry<Value, Never>,
+) -> Result<LoweredHostedEntries<Entries, Value, Never>, HostSpecializationError>
 where
     Entries: HostedEntries,
-    Profile: HostProfile,
+    Value: Clone,
+    Never: Clone,
 {
     let HostedLoweringInput { root, modules } = input;
     let mut module_contexts = Vec::with_capacity(modules.len());
+    let mut module_packages = Vec::with_capacity(modules.len());
     let mut templates = HostTemplateCatalog::new();
     let mut constant_templates = Vec::with_capacity(modules.len());
     let mut custom_types = Vec::new();
 
     for module in modules {
         let parts = module.into_parts();
+        module_packages.push(parts.package);
         module_contexts.push(ExecutionModuleContext::new(
             parts.module,
             parts.source_context,
         ));
         custom_types.extend(parts.custom_types);
         constant_templates.push(parts.constants);
-        templates.push_module(parts.functions, parts.anonymous_functions);
+        templates.push_module(
+            parts.functions,
+            parts.anonymous_functions,
+            parts.native_callables,
+        );
     }
 
     let initial = SpecializationState {
@@ -193,7 +218,21 @@ where
                 entries.initial_key(),
                 erased_specializations,
             );
-            let reserved_entries = entries.reserve(&templates, &mut context);
+            if let Some((id, callback)) = entries.invalid_callback(&context) {
+                let template = templates.get(id);
+                let name = match template {
+                    HostLoweringTemplate::Gleam(template) => template.name().to_string(),
+                    HostLoweringTemplate::Host(template) => template.name().to_string(),
+                };
+                return Err(HostSpecializationError::uninhabited_callback_arguments(
+                    module_packages[id.module().index()].clone(),
+                    module_contexts[id.module().index()].module.as_str().into(),
+                    name.into(),
+                    template.signature().shape().type_(),
+                    callback,
+                ));
+            }
+            let reserved_entries = entries.reserve(&templates, &mut context)?;
             let mut host_functions = implementations.lowering();
 
             while let Some(key) = context.pending.pop_front() {
@@ -269,7 +308,7 @@ impl HostedEntries for MainEntry {
         &self,
         templates: &HostTemplateCatalog,
         context: &mut LoweringContext,
-    ) -> Self::Reserved {
+    ) -> Result<Self::Reserved, HostSpecializationError> {
         let key = self.initial_key();
         let return_shape = templates
             .get(self.template)
@@ -278,7 +317,7 @@ impl HostedEntries for MainEntry {
             .return_shape();
         let value_shape = SpecializedValueShape::instantiate(return_shape, key.substitution());
         let return_ = context.representations.inhabitation(&value_shape);
-        context.reserve_main(key, return_)
+        Ok(context.reserve_main(key, return_))
     }
 
     fn seal(reserved: Self::Reserved) -> SpecializationOutcome<(RuntimeFunctionId, Self::Output)> {
@@ -286,24 +325,79 @@ impl HostedEntries for MainEntry {
     }
 }
 
-impl HostedEntries for library::Entries {
-    type Reserved = library::ReservedEntries;
-    type Output = LibraryFunctionEntries;
+impl HostedEntries for LibraryEntries {
+    type Reserved = (
+        library::ReservedEntries,
+        Vec<crate::plan::execution::LibraryNativeConstruction>,
+    );
+    type Output = (
+        LibraryFunctionEntries,
+        crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
+    );
 
     fn initial_key(&self) -> SpecializationKey {
-        library::Entries::initial_key(self)
+        self.functions.initial_key()
+    }
+
+    fn invalid_callback(
+        &self,
+        context: &LoweringContext,
+    ) -> Option<(crate::plan::FunctionTemplateId, crate::plan::FunctionType)> {
+        self.functions.invalid_callback(context).or_else(|| {
+            let key = self.initial_key();
+            self.callables.iter().find_map(|entry| {
+                library::invalid_callback(
+                    std::slice::from_ref(&entry.signature.invocation),
+                    &key,
+                    context,
+                )
+                .map(|callback| (entry.template.id(), callback))
+            })
+        })
     }
 
     fn reserve(
         &self,
         _templates: &HostTemplateCatalog,
         context: &mut LoweringContext,
-    ) -> Self::Reserved {
-        library::Entries::reserve(self, context)
+    ) -> Result<Self::Reserved, HostSpecializationError> {
+        let functions = self.functions.reserve(context);
+        let key = self.initial_key();
+        let callables = self
+            .callables
+            .iter()
+            .map(|entry| {
+                let construction = callable::seal_construction(
+                    &entry.template,
+                    &entry.declaration,
+                    &entry.target,
+                    key.substitution(),
+                    context,
+                )?;
+                Ok(crate::plan::execution::LibraryNativeConstruction {
+                    declaration:
+                        crate::plan::execution::host::CallableRegistration::from_registered(
+                            &entry.declaration,
+                        ),
+                    construction,
+                    invocation: context.library_callable(&key, &entry.signature.invocation),
+                    captures: context.library_input_constructions(
+                        &key,
+                        &entry.signature.capture_variants,
+                        &entry.signature.capture_lists,
+                    ),
+                })
+            })
+            .collect::<Result<Vec<_>, HostSpecializationError>>()?;
+        Ok((functions, callables))
     }
 
     fn seal(reserved: Self::Reserved) -> SpecializationOutcome<(RuntimeFunctionId, Self::Output)> {
-        reserved.seal().map(library::SealedEntries::finish)
+        reserved
+            .0
+            .seal()
+            .map(library::SealedEntries::finish)
+            .map(|(main, entries)| (main, (entries, reserved.1.into())))
     }
 }
 
@@ -457,7 +551,7 @@ mod tests {
                 .expect("identity")
                 .signature()
                 .id();
-            let (_, _, entries) = super::lower_hosted_library(
+            let (_, _, entries, _) = super::lower_hosted_library(
                 plan,
                 LibraryEntry::new(template, return_type, variants, lists),
                 Vec::new(),
@@ -528,7 +622,7 @@ pub fn second(value: Int) { math.add(value, 2) }
         let first = entry("first");
         let second = entry("second");
 
-        let (_, host_functions, entries) =
+        let (_, host_functions, entries, _) =
             lower_hosted_library(plan, first, vec![second]).expect("entries should seal");
 
         assert_eq!(entries.ints.len(), 2);

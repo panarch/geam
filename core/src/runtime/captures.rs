@@ -2,16 +2,22 @@ use super::EvaluatedCapture;
 use super::drain::DrainQueue;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone)]
 pub(crate) struct CaptureStorage {
     releases: Arc<DrainQueue<Vec<EvaluatedCapture>>>,
+    domain: ExecutionDomain,
 }
 
 #[derive(Clone, Default)]
 pub(in crate::runtime) struct Captures {
     lease: Option<Arc<CaptureLease>>,
+    domain: Option<ExecutionDomain>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::runtime) struct ExecutionDomain(u64);
 
 struct CaptureLease {
     values: Vec<EvaluatedCapture>,
@@ -22,26 +28,43 @@ impl Default for CaptureStorage {
     fn default() -> Self {
         Self {
             releases: Arc::new(DrainQueue::new()),
+            domain: ExecutionDomain::new(),
         }
     }
 }
 
 impl CaptureStorage {
+    pub(in crate::runtime) fn for_execution(&self) -> Self {
+        Self {
+            releases: Arc::clone(&self.releases),
+            domain: ExecutionDomain::new(),
+        }
+    }
+
+    pub(in crate::runtime) fn domain(&self) -> ExecutionDomain {
+        self.domain
+    }
+
     pub(in crate::runtime) fn capture(&self, values: Vec<EvaluatedCapture>) -> Captures {
-        if values.is_empty() {
-            Captures::default()
-        } else {
-            Captures {
-                lease: Some(Arc::new(CaptureLease {
+        Captures {
+            lease: if values.is_empty() {
+                None
+            } else {
+                Some(Arc::new(CaptureLease {
                     values,
                     storage: self.clone(),
-                })),
-            }
+                }))
+            },
+            domain: Some(self.domain),
         }
     }
 }
 
 impl Captures {
+    pub(in crate::runtime) fn domain(&self) -> Option<ExecutionDomain> {
+        self.domain
+    }
+
     pub(in crate::runtime) fn values(&self) -> &[EvaluatedCapture] {
         self.lease.as_ref().map_or(&[], |lease| &lease.values)
     }
@@ -50,11 +73,12 @@ impl Captures {
 // This is storage-handle identity, not Gleam function identity or value equality.
 impl PartialEq for Captures {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.lease, &other.lease) {
-            (None, None) => true,
-            (Some(left), Some(right)) => Arc::ptr_eq(left, right),
-            _ => false,
-        }
+        self.domain == other.domain
+            && match (&self.lease, &other.lease) {
+                (None, None) => true,
+                (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
     }
 }
 
@@ -63,7 +87,15 @@ impl fmt::Debug for Captures {
         formatter
             .debug_struct("Captures")
             .field("lease", &self.lease.as_ref().map(Arc::as_ptr))
+            .field("domain", &self.domain)
             .finish()
+    }
+}
+
+impl ExecutionDomain {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
     }
 }
 
@@ -90,9 +122,15 @@ mod tests {
         let storage = CaptureStorage::default();
         let empty = storage.capture(Vec::new());
         assert!(empty.lease.is_none());
-        assert_eq!(empty, Captures::default());
+        assert_ne!(empty, Captures::default());
         assert_eq!(empty.values(), &[]);
-        assert_eq!(format!("{empty:?}"), "Captures { lease: None }");
+        assert_eq!(
+            format!("{empty:?}"),
+            format!(
+                "Captures {{ lease: None, domain: Some({:?}) }}",
+                storage.domain()
+            ),
+        );
         assert_eq!(Arc::strong_count(&storage.releases), 1);
 
         let first = storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), 42.into())]);
@@ -114,7 +152,11 @@ mod tests {
         assert!(Arc::ptr_eq(&lease.storage.releases, &storage.releases));
         assert_eq!(
             format!("{first:?}"),
-            format!("Captures {{ lease: Some({:p}) }}", Arc::as_ptr(lease)),
+            format!(
+                "Captures {{ lease: Some({:p}), domain: Some({:?}) }}",
+                Arc::as_ptr(lease),
+                storage.domain(),
+            ),
         );
         assert_eq!(Arc::strong_count(&storage.releases), 3);
         let weak = Arc::downgrade(lease);
@@ -125,6 +167,34 @@ mod tests {
         assert_eq!(Arc::strong_count(&storage.releases), 2);
         drop(second);
         assert_eq!(Arc::strong_count(&storage.releases), 1);
+    }
+
+    #[test]
+    fn capture_storage_identity_keeps_its_execution_even_without_a_lease() {
+        let storage = CaptureStorage::default();
+        let captures = storage.capture(Vec::new());
+        let alias = captures.clone();
+        let same_execution = storage.capture(Vec::new());
+        let other_execution = storage.for_execution().capture(Vec::new());
+        assert_eq!(captures.domain(), Some(storage.domain()));
+        assert_eq!(captures.values(), &[]);
+        assert!(captures.lease.is_none());
+        assert_eq!(captures, alias);
+        assert_eq!(captures, same_execution);
+        assert_ne!(captures, other_execution);
+        assert_ne!(captures, Captures::default());
+        assert_eq!(
+            format!("{captures:?}"),
+            format!(
+                "Captures {{ lease: None, domain: Some(ExecutionDomain({})) }}",
+                storage.domain().0,
+            ),
+        );
+        assert_eq!(Captures::default().domain(), None);
+        assert_eq!(
+            format!("{:?}", Captures::default()),
+            "Captures { lease: None, domain: None }"
+        );
     }
 
     #[test]
@@ -288,13 +358,14 @@ pub fn main() {
     }
 
     #[test]
-    fn opaque_native_callbacks_release_once_across_threads_and_a_single_destructor_unwind() {
+    fn mixed_callbacks_release_once_across_threads_and_a_single_destructor_unwind() {
         use crate::host::{
-            HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal,
+            HostCall, HostCallCompletion, HostCallError, HostCallable, HostCallableSchema,
+            HostCaptures, HostConstructions, HostCreatedFunction, HostExternal,
             HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
             HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
             HostFunctionType, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
-            HostStoredValue, HostTypeList, HostTypeListEnd,
+            HostReturns, HostStoredValue, HostTypeIndex0, HostTypeList, HostTypeListEnd,
         };
         use num_bigint::BigInt;
         use std::cell::Cell;
@@ -363,6 +434,48 @@ pub fn main() {
                 context.inspect_stored_value(&value.callback)
             }
         }
+        struct Wrapper;
+        impl HostCallableSchema for Wrapper {
+            const PACKAGE: &'static str = "application";
+            const MODULE: &'static str = "library";
+            const NAME: &'static str = "wrapper";
+            type Arguments = Arguments;
+            type Return = BigInt;
+            type Captures = HostTypeList<Callback, HostTypeListEnd>;
+            type Constructions = HostTypeListEnd;
+            type Completion = HostReturns;
+        }
+        type Factory = HostTypeList<HostCreatedFunction<Wrapper>, HostTypeListEnd>;
+        fn wrap<'call>(
+            mut call: HostCall<'call, Profile, Provider, Callback>,
+            constructions: HostConstructions<'call, Factory>,
+            previous: HostCallable<'call, Arguments, BigInt>,
+        ) -> Result<HostCallCompletion<'call, Callback>, HostCallError> {
+            let callback =
+                call.construct_function(constructions.at::<HostTypeIndex0>(), (previous, ()));
+            Ok(call.return_value(callback))
+        }
+        fn wrapper<'call>(
+            call: HostCall<'call, Profile, Provider, BigInt>,
+            captures: HostCaptures<'call, HostTypeList<Callback, HostTypeListEnd>>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            value: BigInt,
+        ) -> Result<crate::HostCallContinuation<'call, BigInt>, HostCallError> {
+            let (callback, ()) = call.captures(captures);
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    let result = callback
+                        .invoke(&context, move |_, _| (value, ()), |_, _, value| Ok(value))
+                        .await
+                        .unwrap();
+                    Ok(crate::HostOwnedCompletion::new(move |call, _| {
+                        Ok(call.return_value(result))
+                    }))
+                })
+            }))
+        }
+
         fn hold<'call>(
             mut call: HostCall<'call, Profile, Provider, Held>,
             callback: HostCallable<'call, Arguments, BigInt>,
@@ -396,8 +509,10 @@ pub fn main() {
             Ok(call.return_value(callback))
         }
 
-        for source in [
-            r#"
+        for (native_wrappers, source) in [
+            (
+                false,
+                r#"
 pub type Holder
 @external(erlang, "native", "hold")
 fn hold(callback: fn(Int) -> Int) -> Holder
@@ -418,7 +533,10 @@ pub fn main() {
   #(chain(2000, fn(value: Int) { value }))
 }
 "#,
-            r#"
+            ),
+            (
+                false,
+                r#"
 pub type Holder
 @external(erlang, "native", "hold")
 fn hold(callback: fn(Int) -> Int) -> Holder
@@ -442,6 +560,33 @@ pub fn main() {
   #(chain(2000, fn(value: Int) { value }))
 }
 "#,
+            ),
+            (
+                true,
+                r#"
+pub type Holder
+@external(erlang, "native", "hold")
+fn hold(callback: fn(Int) -> Int) -> Holder
+@external(erlang, "native", "open")
+fn open(value: Holder) -> fn(Int) -> Int
+@external(erlang, "native", "wrap")
+fn wrap(callback: fn(Int) -> Int) -> fn(Int) -> Int
+fn chain(n, previous) {
+  case n {
+    0 -> previous
+    _ -> {
+      let held = hold(previous)
+      chain(n - 1, wrap(fn(value) { open(held)(value) + 1 }))
+    }
+  }
+}
+pub fn main() {
+  let check = chain(4, fn(value: Int) { value })
+  let assert 5 = check(1)
+  #(chain(2000, fn(value: Int) { value }))
+}
+"#,
+            ),
         ] {
             for panic_at in [None, Some(500)] {
                 let provider = HostProviderModule::new("application", "library")
@@ -452,6 +597,12 @@ pub fn main() {
                     .unwrap()
                     .with_scoped_function::<Provider, (Held,), Callback, _>("open", open)
                     .unwrap();
+                let provider = if native_wrappers {
+                    provider.with_resumable_callable::<Provider, Wrapper, (BigInt,), _>(wrapper).unwrap()
+                        .with_scoped_function_and_constructions::<Provider, (Callback,), Callback, Factory, _>("wrap", wrap).unwrap()
+                } else {
+                    provider
+                };
                 let typed = crate::compile_typed_host_program(
                     "application",
                     "library",
@@ -504,7 +655,10 @@ pub fn main() {
                 drop(context);
                 assert_eq!(state.created, 2004);
                 assert_eq!(drops.load(Ordering::SeqCst), 4);
-                assert_eq!(Arc::strong_count(&capture_owner.releases), 2002);
+                assert_eq!(
+                    Arc::strong_count(&capture_owner.releases),
+                    2002 + 2000 * usize::from(native_wrappers)
+                );
                 drop(execution);
                 drop(host);
                 drop(state);
@@ -512,10 +666,17 @@ pub fn main() {
                 let mut workers = Vec::new();
                 for value in [values.clone(), values.clone(), values.clone(), values] {
                     let barrier = Arc::clone(&barrier);
-                    workers.push(std::thread::spawn(move || {
-                        barrier.wait();
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(value)))
-                    }));
+                    workers.push(
+                        std::thread::Builder::new()
+                            .stack_size(256 * 1024)
+                            .spawn(move || {
+                                barrier.wait();
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    drop(value)
+                                }))
+                            })
+                            .expect("bounded-stack native owner thread"),
+                    );
                 }
                 let panics = workers
                     .into_iter()

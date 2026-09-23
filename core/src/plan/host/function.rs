@@ -9,6 +9,9 @@ pub struct HostFunctionTemplate {
     site: crate::plan::HostCallSite,
     layout: Box<[HostParameter]>,
     parameters: Box<[crate::host::HostTypeDescriptor]>,
+    captures: Box<[crate::host::HostTypeDescriptor]>,
+    callable: bool,
+    callable_constructions: Box<[crate::plan::FunctionInstantiation]>,
     return_: crate::host::HostTypeDescriptor,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
@@ -28,6 +31,9 @@ impl HostFunctionTemplate {
             site,
             layout: schema.layout().to_vec().into_boxed_slice(),
             parameters: schema.parameters().to_vec().into_boxed_slice(),
+            captures: schema.captures().to_vec().into_boxed_slice(),
+            callable: schema.is_callable(),
+            callable_constructions: Box::new([]),
             return_: schema.return_type().clone(),
             custom_schemas: schema.custom_schemas().to_vec().into_boxed_slice(),
             external_schemas: schema.external_schemas().to_vec().into_boxed_slice(),
@@ -61,6 +67,25 @@ impl HostFunctionTemplate {
 
     pub(crate) fn parameters(&self) -> &[crate::host::HostTypeDescriptor] {
         &self.parameters
+    }
+
+    pub(crate) fn is_callable(&self) -> bool {
+        self.callable
+    }
+
+    pub(crate) fn captures(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.captures
+    }
+
+    pub(crate) fn callable_constructions(&self) -> &[crate::plan::FunctionInstantiation] {
+        &self.callable_constructions
+    }
+
+    pub(crate) fn bind_callable_constructions(
+        &mut self,
+        targets: Box<[crate::plan::FunctionInstantiation]>,
+    ) {
+        self.callable_constructions = targets;
     }
 
     pub(crate) fn return_type(&self) -> &crate::host::HostTypeDescriptor {

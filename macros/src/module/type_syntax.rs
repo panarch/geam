@@ -155,6 +155,29 @@ pub(super) fn is_qualified_type_path(type_: &Type) -> bool {
     )
 }
 
+pub(super) fn is_qualified_generic_declaration(type_: &Type) -> bool {
+    let Type::Path(TypePath { qself: None, path }) = type_ else {
+        return false;
+    };
+    path.segments.len() > 1
+        && path.segments.last().is_some_and(|segment| {
+            matches!(segment.arguments, PathArguments::AngleBracketed(_))
+                && !matches!(
+                    segment.ident.to_string().as_str(),
+                    "Value"
+                        | "List"
+                        | "Vec"
+                        | "Callback"
+                        | "Future"
+                        | "Option"
+                        | "Result"
+                        | "HostResult"
+                        | "Call"
+                        | "External"
+                )
+        })
+}
+
 pub(super) fn is_declared_provider_type(type_: &Type) -> syn::Result<bool> {
     let Type::Path(TypePath { qself: None, path }) = type_ else {
         return Ok(false);

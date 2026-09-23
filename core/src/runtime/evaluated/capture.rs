@@ -193,6 +193,37 @@ impl EvaluatedCapture {
         &self.kind
     }
 
+    pub(in crate::runtime) fn into_value(self) -> EvaluatedValue {
+        use EvaluatedCaptureKind as Capture;
+        match self.kind {
+            Capture::Int { value, .. } => EvaluatedValue::Int(value),
+            Capture::Float { value, .. } => EvaluatedValue::Float(value),
+            Capture::String { value, .. } => EvaluatedValue::String(value),
+            Capture::BitArray { value, .. } => EvaluatedValue::BitArray(value),
+            Capture::UtfCodepoint { value, .. } => EvaluatedValue::UtfCodepoint(value),
+            Capture::Custom { value, .. } => EvaluatedValue::Custom(value),
+            Capture::External { value, .. } => EvaluatedValue::External(value),
+            Capture::Bool { value, .. } => EvaluatedValue::Bool(value),
+            Capture::Tuple { value, .. } => EvaluatedValue::Tuple(value),
+            Capture::Nil { .. } => EvaluatedValue::Nil,
+            Capture::List(value) => value.into_value(),
+            Capture::IntFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::FloatFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::StringFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::BitArrayFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::UtfCodepointFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::CustomFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::ExternalFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::BoolFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::NilFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::TupleFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::ListFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::FunctionFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::GenericFunction { value, .. } => EvaluatedValue::Function(value.into()),
+            Capture::NeverFunction { value, .. } => EvaluatedValue::Function(value.into()),
+        }
+    }
+
     pub(in crate::runtime) fn int(local: IntLocalId, value: BigInt) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Int { local, value })
     }
@@ -336,6 +367,29 @@ impl EvaluatedCapture {
         value: EvaluatedNeverFunction,
     ) -> Self {
         Self::from_kind(EvaluatedCaptureKind::NeverFunction { local, value })
+    }
+}
+
+impl EvaluatedListCapture {
+    fn into_value(self) -> EvaluatedValue {
+        use crate::runtime::state::list::ListValueId;
+        let value = match self {
+            Self::Parameter { value, .. } => ListValueId::Parameter(value),
+            Self::ParameterList { value, .. } => ListValueId::ParameterList(value),
+            Self::Int { value, .. } => ListValueId::Int(value),
+            Self::String { value, .. } => ListValueId::String(value),
+            Self::BitArray { value, .. } => ListValueId::BitArray(value),
+            Self::UtfCodepoint { value, .. } => ListValueId::UtfCodepoint(value),
+            Self::Custom { value, .. } => ListValueId::Custom(value),
+            Self::External { value, .. } => ListValueId::External(value),
+            Self::Float { value, .. } => ListValueId::Float(value),
+            Self::Bool { value, .. } => ListValueId::Bool(value),
+            Self::Nil { value, .. } => ListValueId::Nil(value),
+            Self::Tuple { value, .. } => ListValueId::Tuple(value),
+            Self::List { value, .. } => ListValueId::List(value),
+            Self::Function { value, .. } => ListValueId::Function(value),
+        };
+        EvaluatedValue::from(value)
     }
 }
 

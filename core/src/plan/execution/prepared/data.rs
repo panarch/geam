@@ -14,16 +14,17 @@ pub mod profile {
 pub mod host {
     pub use crate::plan::execution::host::construction::ConstructionIndex;
     pub use crate::plan::execution::host::function::{
-        HostCallParameter, HostConstructionTypes, HostFunctionId, HostNeverFunctionId,
-        HostTypeArgument, HostedFunctionMetadata, HostedFunctionParameters, HostedFunctionTarget,
+        HostCallParameter, HostCallableConstruction, HostCallableEntry, HostConstructionTypes,
+        HostFunctionId, HostNeverFunctionId, HostTypeArgument, HostedFunctionMetadata,
+        HostedFunctionParameters, HostedFunctionTarget,
     };
     pub use crate::plan::execution::host::native::{
         NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
         NativeConversions,
     };
     pub use crate::plan::execution::host::registration::{
-        ConstructorSchema, CustomSchema, ExternalSchema, FieldSchema, RegistrationContract,
-        RegistrationParameter, RegistrationType, SchemaType,
+        CallableRegistration, ConstructorSchema, CustomSchema, ExternalSchema, FieldSchema,
+        RegistrationContract, RegistrationParameter, RegistrationType, SchemaType,
     };
 }
 
@@ -98,6 +99,7 @@ pub mod function {
         TupleListFunctionId, UtfCodepointListFunctionId,
     };
     pub use crate::plan::execution::function::list_return::table::ListFunctionTables;
+    pub use crate::plan::execution::function::parameters::FunctionTableFamily;
     pub use crate::plan::execution::function::parameters::{FunctionCatalog, FunctionContract};
     pub use crate::plan::execution::function::runtime::{
         FunctionReturnFamily, GenericCallableId, ProfiledCoreRuntimeFunctionId,
@@ -207,8 +209,9 @@ pub mod graph {
 
 pub mod program {
     pub use crate::plan::execution::{
-        ExecutionModuleContext, LibraryFunctionEntries, LibraryFunctionEntry,
-        LibraryInputConstructions, LibraryListConstructions,
+        ExecutionModuleContext, LibraryCallable, LibraryCallableEntry, LibraryFunctionEntries,
+        LibraryFunctionEntry, LibraryInputConstructions, LibraryListConstructions,
+        LibraryNativeConstruction,
     };
 }
 

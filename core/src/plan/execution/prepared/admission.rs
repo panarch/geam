@@ -1,6 +1,7 @@
 mod block;
 mod body;
 mod call;
+mod callables;
 mod catalog;
 mod constant;
 mod control;
@@ -32,18 +33,29 @@ pub use error::PreparedError;
 pub(crate) struct AdmittedHostedModule<Profile: crate::HostProfile> {
     pub(crate) program:
         AdmittedModule<'static, crate::plan::execution::host::HostedExecutionProfile>,
-    hosts: hosts::NativeFunctions<'static, Profile>,
+    hosts: crate::plan::execution::host::HostFunctionTables<Profile>,
+    callables: &'static [crate::plan::execution::LibraryNativeConstruction],
 }
 
 pub(crate) struct AdmittedModule<'data, Profile: ExecutionProfile> {
     artifact: &'data ModuleArtifact<Profile>,
+    views: AdmittedViews<'data>,
+}
+
+struct AdmittedViews<'data> {
+    exports: &'data [super::Export],
     types: type_::Types<'data>,
     inputs: Vec<&'data crate::plan::execution::LibraryInputConstructions>,
+    callables: Vec<&'data [crate::plan::execution::LibraryCallable]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum SelectionError {
     Binding(crate::embedding::BindingError),
+    Callable {
+        name: ecow::EcoString,
+        error: callables::CallableError,
+    },
     Input {
         name: ecow::EcoString,
         error: input::InputError,
@@ -86,8 +98,18 @@ pub(super) fn hosted<Profile: crate::HostProfile>(
         providers,
     )
     .map_err(PreparedError::from)?;
-    let program = module(&artifact.module, &hosts).map_err(PreparedError::from)?;
-    Ok(AdmittedHostedModule { program, hosts })
+    let (types, catalog) =
+        program(&artifact.module.program, &hosts).map_err(PreparedError::from)?;
+    hosts
+        .library_callables(&artifact.callables, &catalog, &types)
+        .map_err(PreparedError::from)?;
+    let program = module_entries::<_, hosts::NativeError>(&artifact.module, types, &catalog)
+        .map_err(PreparedError::from)?;
+    Ok(AdmittedHostedModule {
+        program,
+        hosts: hosts.into_tables(),
+        callables: &artifact.callables,
+    })
 }
 
 pub(super) fn hosted_entry<Profile: crate::HostProfile>(
@@ -129,21 +151,41 @@ fn module<'data, Profile: ExecutionProfile, Host: functions::Hosts<Profile>>(
 where
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId: call::Target,
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::RuntimeFunctionFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::InvocableFunctionFunctionId: call::Target,
     <<Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: operand::Operand,
 {
     let (types, catalog) = program(&artifact.program, hosts)?;
-    let inputs = entry::all(
+    module_entries(artifact, types, &catalog)
+}
+
+fn module_entries<'data, Profile: ExecutionProfile, HostError>(
+    artifact: &'data ModuleArtifact<Profile>,
+    types: type_::Types<'data>,
+    catalog: &catalog::Catalog<'data>,
+) -> Result<AdmittedModule<'data, Profile>, Error<HostError>>
+where
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::RuntimeFunctionFunctionId: call::Target,
+    <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::InvocableFunctionFunctionId: call::Target,
+{
+    let (inputs, callables) = entry::all(
         &artifact.program.main,
         &artifact.entries,
         &artifact.exports,
-        &catalog,
+        catalog,
         &types,
     )
     .map_err(Error::Entries)?;
     Ok(AdmittedModule {
         artifact,
-        types,
-        inputs,
+        views: AdmittedViews {
+            exports: &artifact.exports,
+            types,
+            inputs,
+            callables,
+        },
     })
 }
 
@@ -174,25 +216,114 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
+    hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
     Ok((types, catalog))
 }
 
 impl<Profile: crate::HostProfile> AdmittedHostedModule<Profile> {
+    pub(crate) fn select_callable(
+        &self,
+        declaration: &crate::host::RegisteredCallableConstruction,
+        signature: &crate::plan::LibraryNativeSignature,
+        standard: &[crate::plan::StandardVariant],
+    ) -> Result<usize, PreparedError> {
+        let mut mismatch = None;
+        for (slot, entry) in self
+            .callables
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.declaration.matches(declaration))
+        {
+            match self.callable_mapping(entry, declaration, signature, standard) {
+                Ok(()) => return Ok(slot),
+                Err(error) => mismatch = Some(error),
+            }
+        }
+        Err(mismatch.unwrap_or_else(|| {
+            PreparedError::from(SelectionError::Binding(
+                crate::embedding::BindingError::NativeCallable {
+                    package: declaration.identity.package.clone(),
+                    module: declaration.identity.module.clone(),
+                    name: declaration.identity.name.clone(),
+                },
+            ))
+        }))
+    }
+
+    fn callable_mapping(
+        &self,
+        entry: &crate::plan::execution::LibraryNativeConstruction,
+        declaration: &crate::host::RegisteredCallableConstruction,
+        signature: &crate::plan::LibraryNativeSignature,
+        standard: &[crate::plan::StandardVariant],
+    ) -> Result<(), PreparedError> {
+        let name = declaration.identity.name.clone();
+        callables::mapping(
+            std::slice::from_ref(&entry.invocation),
+            std::slice::from_ref(&signature.invocation),
+            &self.program.views.types,
+        )
+        .map_err(|error| {
+            PreparedError::from(SelectionError::Callable {
+                name: name.clone(),
+                error,
+            })
+        })?;
+        input::mapping(
+            &entry.captures,
+            &signature.capture_variants,
+            &signature.capture_lists,
+            standard,
+            &self.program.views.types,
+        )
+        .map_err(|error| {
+            PreparedError::from(SelectionError::Input {
+                name: name.clone(),
+                error,
+            })
+        })?;
+        for (expected, actual) in signature
+            .captures
+            .iter()
+            .zip(entry.construction.captures.iter())
+        {
+            let actual = &self.program.views.types.shape_types()[actual.shape().index()];
+            if !self.program.views.types.metadata_matches_value(
+                &crate::plan::execution::type_::TypeMetadata::from_public(expected),
+                actual,
+            ) {
+                return Err(PreparedError::from(SelectionError::Callable {
+                    name,
+                    error: callables::CallableError::Signature,
+                }));
+            }
+        }
+        if signature.captures.len() != entry.construction.captures.len() {
+            return Err(PreparedError::from(SelectionError::Callable {
+                name,
+                error: callables::CallableError::Signature,
+            }));
+        }
+        Ok(())
+    }
+
     pub(crate) fn into_execution(
         self,
     ) -> (
         crate::HostedExecution<Profile>,
         crate::plan::execution::LibraryFunctionEntries,
+        crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
     ) {
         let artifact = self.program.artifact;
         let execution = crate::plan::execution::HostedProgram {
             program: artifact.program.execution(),
-            host_functions: self.hosts.into_tables(),
+            host_functions: self.hosts,
         };
         (
             crate::HostedExecution::from_program(execution),
             artifact.entries.borrowed(),
+            crate::plan::execution::storage::Table::Static(self.callables),
         )
     }
 }
@@ -205,11 +336,26 @@ impl<Profile: ExecutionProfile> AdmittedModule<'_, Profile> {
         variants: &[crate::plan::LibraryVariant],
         lists: &[crate::plan::LibraryValueType],
         standard: &[crate::plan::StandardVariant],
+        callables: &[crate::plan::LibraryCallableSignature],
+    ) -> Result<usize, super::PreparedError> {
+        self.views
+            .select(name, expected, variants, lists, standard, callables)
+    }
+}
+
+impl AdmittedViews<'_> {
+    fn select(
+        &self,
+        name: ecow::EcoString,
+        expected: crate::plan::FunctionType,
+        variants: &[crate::plan::LibraryVariant],
+        lists: &[crate::plan::LibraryValueType],
+        standard: &[crate::plan::StandardVariant],
+        callables: &[crate::plan::LibraryCallableSignature],
     ) -> Result<usize, super::PreparedError> {
         use crate::embedding::BindingError;
 
         let Some((index, export)) = self
-            .artifact
             .exports
             .iter()
             .enumerate()
@@ -236,8 +382,17 @@ impl<Profile: ExecutionProfile> AdmittedModule<'_, Profile> {
                 },
             )));
         }
-        input::mapping(self.inputs[index], variants, lists, standard, &self.types)
-            .map_err(|error| super::PreparedError::from(SelectionError::Input { name, error }))?;
+        input::mapping(self.inputs[index], variants, lists, standard, &self.types).map_err(
+            |error| {
+                super::PreparedError::from(SelectionError::Input {
+                    name: name.clone(),
+                    error,
+                })
+            },
+        )?;
+        callables::mapping(self.callables[index], callables, &self.types).map_err(|error| {
+            super::PreparedError::from(SelectionError::Callable { name, error })
+        })?;
         Ok(export.slot)
     }
 }
@@ -410,6 +565,190 @@ mod tests {
         );
     }
 
+    #[test]
+    fn admits_exhaustive_nested_constructor_failures() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+fn inspect(value: Result(Option(Int), String)) -> String {
+  case value {
+    Ok(Some(_)) -> "present"
+    Ok(None) -> "missing"
+    Error(reason) -> reason
+  }
+}
+pub fn main() { inspect(Ok(Some(42))) <> inspect(Ok(None)) <> inspect(Error("failed")) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        assert_eq!(
+            bindings
+                .seal()
+                .call(&function, (), &mut Vec::new())
+                .unwrap()
+                .as_str(),
+            "presentmissingfailed"
+        );
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        // Repeating Some instead of excluding None leaves a possible Ok value.
+        // Its Option payload must never be admitted as Error's String field.
+        use crate::plan::execution::graph::Terminator;
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.string_functions)[1];
+        let mut matches = owned_mut(&mut function.body.block_graph.blocks)
+            .iter_mut()
+            .filter_map(|header| match &mut header.terminator {
+                Terminator::Match(matcher) => Some(matcher),
+                _ => None,
+            });
+        let repeated = matches.next().unwrap().pattern.clone();
+        matches.next().unwrap().pattern = repeated;
+        assert!(matches.next().is_none());
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 4,
+                        index: 0,
+                        error: super::instruction::InstructionError::OutputType,
+                    }
+                ),
+            }))
+        );
+    }
+
+    #[test]
+    fn nested_exclusions_preserve_hypotheses_through_match_bindings() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+pub type Envelope { Value(Result(Option(Int), String)) Empty }
+fn inspect(envelope: Envelope) -> String {
+  case envelope {
+    Value(value) -> case value {
+      Ok(Some(_)) -> "present"
+      Ok(None) -> "missing"
+      Error(reason) -> reason
+    }
+    Empty -> "empty"
+  }
+}
+pub fn main() { inspect(Value(Error("failed"))) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        assert_eq!(
+            bindings
+                .seal()
+                .call(&function, (), &mut Vec::new())
+                .unwrap()
+                .as_str(),
+            "failed"
+        );
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        use crate::plan::execution::graph::Terminator;
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.string_functions)[1];
+        let mut matches = owned_mut(&mut function.body.block_graph.blocks)
+            .iter_mut()
+            .filter_map(|header| match &mut header.terminator {
+                Terminator::Match(matcher) => Some(matcher),
+                _ => None,
+            });
+        // Keep the outer Value binding and replace only the nested None case.
+        matches.next().unwrap();
+        let repeated = matches.next().unwrap().pattern.clone();
+        matches.next().unwrap().pattern = repeated;
+        assert!(matches.next().is_none());
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 5,
+                        index: 0,
+                        error: super::instruction::InstructionError::OutputType,
+                    }
+                ),
+            }))
+        );
+    }
+
+    #[test]
+    fn exhaustive_field_reads_require_the_unconstructed_variant_metadata() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+pub type Builder { Builder(name: Option(String)) }
+fn start(builder: Builder) -> String {
+  case builder.name {
+    None -> "unnamed"
+    Some(name) -> name
+  }
+}
+pub fn main() { start(Builder(None)) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        let option = owned_mut(&mut artifact.program.custom_types.types)
+            .iter_mut()
+            .find(|type_| type_.type_.name.as_str() == "Option")
+            .unwrap();
+        assert_eq!(
+            option
+                .constructors
+                .iter()
+                .map(|constructor| constructor.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Some", "None"],
+        );
+        // A sparse table is valid only if it still describes every retained use.
+        // Removing the never-constructed Some must not authorize its field read.
+        option.constructors = option.constructors[1..].to_vec().into();
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 2,
+                        index: 0,
+                        error: super::instruction::InstructionError::CustomField { index: 0 },
+                    }
+                ),
+            }))
+        );
+    }
+
     fn artifact(prepared: PreparedModule) -> ModuleArtifact<Infallible> {
         let common = Arc::try_unwrap(prepared.program.common).ok().unwrap();
         let functions = owned(prepared.program.functions);
@@ -431,6 +770,297 @@ mod tests {
             },
             entries: prepared.entries,
             exports: prepared.exports,
+        }
+    }
+
+    #[test]
+    fn native_selection_checks_executable_types_and_input_graphs_beyond_declaration_keys() {
+        use crate::plan::execution::host::registration::RegistrationType;
+        use crate::plan::execution::prepared::HostedModuleArtifact;
+        use crate::plan::{
+            FunctionType, LibraryCallableSignature, LibraryEntry, LibraryNativeSignature,
+            LibraryValueType, ValueType,
+        };
+        use crate::{
+            HostCallableSchema, HostCaptures, HostConstructions, HostReturns, HostTypeList,
+            HostTypeListEnd, HostTypeSequence,
+        };
+        type End = HostTypeListEnd;
+        type One<T> = HostTypeList<T, End>;
+        struct Add<Args, Captures>(std::marker::PhantomData<(Args, Captures)>);
+        impl<Args: HostTypeSequence, Captures: HostTypeSequence> HostCallableSchema
+            for Add<Args, Captures>
+        {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "private/bodies";
+            const NAME: &'static str = "add";
+            type Arguments = Args;
+            type Return = BigInt;
+            type Captures = Captures;
+            type Constructions = End;
+            type Completion = HostReturns;
+        }
+        type Original = Add<One<BigInt>, One<bool>>;
+        struct Provider;
+        impl HostProvider<NativeProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn add<'call>(
+            mut call: HostCall<'call, NativeProfile, Provider, BigInt>,
+            captures: HostCaptures<'call, One<bool>>,
+            _: HostConstructions<'call, End>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            assert_eq!(call.captures(captures), (true, ()));
+            Ok(call.return_value(value + 2))
+        }
+        let hosts = || {
+            HostProviderSet::new([])
+                .unwrap()
+                .with_callable::<Provider, Original, (BigInt,), _>(add)
+                .unwrap()
+        };
+        #[derive(Clone, Copy)]
+        enum Change {
+            None,
+            Missing,
+            Argument,
+            CaptureType,
+            CaptureCount,
+            InvocationInput,
+            CaptureInput,
+            ConstructionCount,
+            LibraryTarget,
+        }
+        for (change, expected) in [
+            (Change::None, None),
+            (
+                Change::ConstructionCount,
+                Some(
+                    "invalid prepared program: Hosts(Contract { value: true, index: 0, reason: Callable }); regenerate the prepared program",
+                ),
+            ),
+            (
+                Change::LibraryTarget,
+                Some(
+                    "prepared provider registration mismatch: Call(Callable); regenerate with the matching providers",
+                ),
+            ),
+            (
+                Change::Missing,
+                Some(
+                    "native callable app:private/bodies.add is missing or has an incompatible declaration",
+                ),
+            ),
+            (
+                Change::Argument,
+                Some(
+                    "function add has incompatible prepared callable contracts: Signature; regenerate with the matching declarations",
+                ),
+            ),
+            (
+                Change::CaptureType,
+                Some(
+                    "function add has incompatible prepared callable contracts: Signature; regenerate with the matching declarations",
+                ),
+            ),
+            (
+                Change::CaptureCount,
+                Some(
+                    "function add has incompatible prepared callable contracts: Signature; regenerate with the matching declarations",
+                ),
+            ),
+            (
+                Change::InvocationInput,
+                Some(
+                    "function add has incompatible prepared callable contracts: Input(ListCount { family: Int, expected: 0, actual: 1 }); regenerate with the matching declarations",
+                ),
+            ),
+            (
+                Change::CaptureInput,
+                Some(
+                    "function add has incompatible prepared Rust inputs: ListCount { family: Int, expected: 0, actual: 1 }; regenerate with the matching declarations",
+                ),
+            ),
+        ] {
+            let typed = crate::compile_typed_host_program(
+                "app",
+                "main",
+                [crate::PackageSource::new(
+                    "app",
+                    Vec::<&str>::new(),
+                    [crate::ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        "pub fn main() { [42] }",
+                    )],
+                )],
+                hosts(),
+            )
+            .unwrap();
+            let mut plan = crate::planner::plan_host_library_program(typed).unwrap();
+            plan.callable(
+                crate::host::RegisteredCallableConstruction::of::<Original>(),
+                LibraryNativeSignature {
+                    invocation: LibraryCallableSignature {
+                        type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                        input_variants: vec![],
+                        input_lists: vec![],
+                        callables: vec![],
+                    },
+                    captures: vec![ValueType::Bool],
+                    capture_variants: vec![],
+                    capture_lists: vec![],
+                },
+            )
+            .unwrap();
+            let main = plan
+                .functions()
+                .iter()
+                .find(|function| function.name() == "main")
+                .unwrap()
+                .signature()
+                .id();
+            let (program, hosts_metadata, entries, mut callables) =
+                crate::plan::execution::lowering::lower_hosted_library(
+                    plan,
+                    LibraryEntry::new(
+                        main,
+                        LibraryValueType::List(Box::new(LibraryValueType::Int)),
+                        vec![],
+                        vec![],
+                    ),
+                    vec![],
+                )
+                .unwrap();
+            let common = Arc::try_unwrap(program.common).ok().unwrap();
+            let list = crate::plan::execution::type_::IntListTypeId::new(
+                crate::plan::execution::type_::ListTypeId(0),
+            );
+            assert_eq!(
+                common.list_types.types.as_ref(),
+                &[crate::plan::execution::type_::ListStorageTypeId::Int(list)]
+            );
+            let callable = &mut owned_mut(&mut callables)[0];
+            match change {
+                Change::None | Change::ConstructionCount | Change::LibraryTarget => {}
+                Change::Missing => {}
+                Change::Argument => {
+                    callable.declaration.arguments = vec![RegistrationType::Bool].into()
+                }
+                Change::CaptureType => {
+                    callable.declaration.captures = vec![RegistrationType::Int].into()
+                }
+                Change::CaptureCount => callable.declaration.captures = Vec::new().into(),
+                Change::InvocationInput => {
+                    callable.invocation.inputs.lists.ints = vec![list].into()
+                }
+                Change::CaptureInput => callable.captures.lists.ints = vec![list].into(),
+            }
+            // The callable declaration is a selection key. Every executable link
+            // remains the real lowered body, and selection must compare those
+            // links against the fresh Rust view before returning a handle.
+            let (values, nevers) = hosts_metadata.into_metadata();
+            let artifact = Box::leak(Box::new(HostedModuleArtifact {
+                module: ModuleArtifact {
+                    format: FORMAT_VERSION,
+                    program: ProgramTables {
+                        root: common.root,
+                        modules: common.modules,
+                        main: common.main,
+                        functions: *owned(program.functions),
+                        constants: *owned(common.constants),
+                        function_parameters: Arc::try_unwrap(common.function_parameters)
+                            .ok()
+                            .unwrap(),
+                        list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
+                        custom_types: Arc::try_unwrap(common.custom_types).ok().unwrap(),
+                        external_types: Arc::try_unwrap(common.external_types).ok().unwrap(),
+                        value_shapes: *owned(common.value_shapes),
+                    },
+                    entries,
+                    exports: vec![super::super::Export::new(
+                        "main".into(),
+                        FunctionType::new(vec![], ValueType::List(Box::new(ValueType::Int))),
+                        0,
+                    )]
+                    .into(),
+                },
+                value_functions: values
+                    .into_vec()
+                    .into_iter()
+                    .map(Arc::try_unwrap)
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()
+                    .unwrap()
+                    .into(),
+                never_functions: nevers
+                    .into_vec()
+                    .into_iter()
+                    .map(Arc::try_unwrap)
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()
+                    .unwrap()
+                    .into(),
+                callables,
+            }));
+            if matches!(change, Change::ConstructionCount) {
+                // An artifact cannot grant a private body an extra construction
+                // permission that its fresh declaration does not contain.
+                owned_mut(&mut artifact.value_functions)[0]
+                    .constructions
+                    .callables = vec![artifact.callables[0].construction.clone()].into();
+            }
+            if matches!(change, Change::LibraryTarget) {
+                // The real source main is not a registered private body.
+                owned_mut(&mut artifact.callables)[0].construction.target =
+                    artifact.module.program.main.clone();
+            }
+            if matches!(change, Change::ConstructionCount | Change::LibraryTarget) {
+                assert_eq!(
+                    artifact
+                        .load(hosts())
+                        .err()
+                        .map(|error| error.to_string())
+                        .as_deref(),
+                    expected
+                );
+                continue;
+            }
+            let mut bindings = artifact.load(hosts()).unwrap();
+            let error = match change {
+                Change::Argument => bindings.callable::<Add<One<bool>, One<bool>>>().err(),
+                Change::CaptureType => bindings.callable::<Add<One<BigInt>, One<BigInt>>>().err(),
+                Change::CaptureCount => bindings.callable::<Add<One<BigInt>, End>>().err(),
+                Change::Missing => bindings.callable::<Add<One<bool>, End>>().err(),
+                Change::InvocationInput | Change::CaptureInput => {
+                    bindings.callable::<Original>().err()
+                }
+                Change::None | Change::ConstructionCount | Change::LibraryTarget => {
+                    let factory = bindings.callable::<Original>().unwrap();
+                    let mut module = bindings.seal();
+                    let host = crate::execution_fixture::TestHost::default();
+                    host.block_on(module.with_execution(
+                        &host,
+                        &mut (),
+                        &mut drop,
+                        async |scope| {
+                            let callback = scope.construct(&factory, (true, ())).unwrap();
+                            assert_eq!(
+                                scope.invoke(&callback, (40.into(),)).await.unwrap(),
+                                BigInt::from(42)
+                            );
+                        },
+                    ))
+                    .unwrap();
+                    None
+                }
+            };
+            assert_eq!(error.as_ref().map(ToString::to_string).as_deref(), expected);
         }
     }
 
@@ -460,7 +1090,7 @@ mod tests {
         artifact.format = 1;
         assert_eq!(
             plain(&artifact).err().unwrap().to_string(),
-            "prepared format 1 is incompatible with format 2; regenerate the prepared program"
+            "prepared format 1 is incompatible with format 4; regenerate the prepared program"
         );
         artifact.format = FORMAT_VERSION;
 
@@ -536,7 +1166,7 @@ mod tests {
         let admitted = plain(&artifact).unwrap();
         assert!(std::ptr::eq(admitted.artifact, &artifact));
         assert!(std::ptr::eq(
-            admitted.inputs[0],
+            admitted.views.inputs[0],
             &artifact.entries.ints[0].inputs
         ));
     }
@@ -570,7 +1200,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 2; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
                 ),
             ),
             (
@@ -638,6 +1268,7 @@ mod tests {
             let inputs = LibraryInputConstructions {
                 variants: Storage::Static(&[]),
                 lists: LibraryListConstructions {
+                    functions: Vec::new().into(),
                     ints: Storage::Static(&[]),
                     floats: Storage::Static(&[]),
                     strings: Storage::Static(&[]),
@@ -652,6 +1283,7 @@ mod tests {
                 },
             };
             let artifact = Box::leak(Box::new(HostedModuleArtifact {
+                callables: crate::plan::execution::storage::Table::Static(&[]),
                 module: ModuleArtifact {
                     format: if change == Change::Format {
                         1
@@ -673,6 +1305,7 @@ mod tests {
                         value_shapes: *owned(common.value_shapes),
                     },
                     entries: LibraryFunctionEntries {
+                        functions: Vec::new().into(),
                         ints: Storage::Static(&[]),
                         floats: Storage::Static(&[]),
                         strings: Storage::Static(&[]),
@@ -682,6 +1315,7 @@ mod tests {
                         externals: Storage::Static(&[]),
                         bools: Storage::Static(&[]),
                         nils: vec![LibraryFunctionEntry {
+                            callables: Vec::new().into(),
                             function: NilFunctionId(0),
                             inputs,
                         }]
@@ -773,7 +1407,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 2; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
                 ),
             ),
             (
@@ -867,6 +1501,144 @@ mod tests {
     }
 
     #[test]
+    fn fresh_opaque_and_callable_custom_views_must_match_the_prepared_capabilities() {
+        use crate::plan::execution::prepared::HostedModuleArtifact;
+        use crate::plan::{
+            FunctionType, LibraryCallableSignature, LibraryEntry, LibraryValueType, ValueType,
+        };
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    "pub fn main() -> Result(fn(Int) -> Int, Int) { Ok(fn(value) { value + 1 }) }",
+                )],
+            )],
+            HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let plan = crate::planner::plan_host_library_program(typed).unwrap();
+        let main = plan
+            .functions()
+            .iter()
+            .find(|function| function.name() == "main")
+            .unwrap()
+            .signature()
+            .id();
+        type Return = Result<crate::embedding::CallableType<(BigInt,), BigInt>, BigInt>;
+        let returned = crate::plan::CustomType::new(
+            crate::plan::CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Int,
+                ))),
+                ValueType::Int,
+            ],
+        );
+        let signature = FunctionType::new(vec![], ValueType::Custom(returned.clone()));
+        let callbacks = vec![LibraryCallableSignature {
+            type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            input_variants: vec![],
+            input_lists: vec![],
+            callables: vec![],
+        }];
+        let (program, hosts, entries, callables) =
+            crate::plan::execution::lowering::lower_hosted_library(
+                plan,
+                LibraryEntry::new(main, LibraryValueType::Custom(returned), vec![], vec![])
+                    .with_callables(callbacks.clone()),
+                vec![],
+            )
+            .unwrap();
+        let common = Arc::try_unwrap(program.common).ok().unwrap();
+        let (values, nevers) = hosts.into_metadata();
+        assert!(values.is_empty());
+        assert!(nevers.is_empty());
+        let artifact = Box::leak(Box::new(HostedModuleArtifact {
+            module: ModuleArtifact {
+                format: FORMAT_VERSION,
+                program: ProgramTables {
+                    root: common.root,
+                    modules: common.modules,
+                    main: common.main,
+                    functions: *owned(program.functions),
+                    constants: *owned(common.constants),
+                    function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
+                    list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
+                    custom_types: Arc::try_unwrap(common.custom_types).ok().unwrap(),
+                    external_types: Arc::try_unwrap(common.external_types).ok().unwrap(),
+                    value_shapes: *owned(common.value_shapes),
+                },
+                entries,
+                exports: vec![super::super::Export::new(
+                    "main".into(),
+                    signature.clone(),
+                    0,
+                )]
+                .into(),
+            },
+            value_functions: vec![].into(),
+            never_functions: vec![].into(),
+            callables,
+        }));
+        let admitted = super::hosted(
+            artifact,
+            HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            admitted
+                .program
+                .select("main".into(), signature.clone(), &[], &[], &[], &callbacks)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            admitted
+                .program
+                .select("main".into(), signature, &[], &[], &[], &[])
+                .unwrap_err()
+                .to_string(),
+            "function main has incompatible prepared callable contracts: Count { expected: 0, actual: 1 }; regenerate with the matching declarations"
+        );
+        let mut bindings = artifact
+            .load(HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap())
+            .unwrap();
+        type Opaque = <crate::provider::ProviderResult<
+            crate::HostFunctionType<crate::HostTypeList<BigInt, crate::HostTypeListEnd>, BigInt>,
+            BigInt,
+        > as crate::embedding::NativeType>::Shape;
+        assert_eq!(
+            bindings
+                .function(FunctionDeclaration::<(), Opaque>::new("main"))
+                .err()
+                .unwrap()
+                .to_string(),
+            "function main has incompatible prepared callable contracts: Count { expected: 0, actual: 1 }; regenerate with the matching declarations"
+        );
+        let entry = bindings
+            .function(FunctionDeclaration::<(), Return>::new("main"))
+            .unwrap();
+        let mut module = bindings.seal();
+        let host = crate::execution_fixture::TestHost::default();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                let callback = scope.call(&entry, ()).await.unwrap().unwrap();
+                assert_eq!(
+                    scope.invoke(&callback, (BigInt::from(41),)).await.unwrap(),
+                    BigInt::from(42)
+                );
+            }),
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn selects_only_matching_names_signatures_and_rust_input_mappings() {
         use crate::plan::{FunctionType, LibraryValueType, ValueType};
 
@@ -929,7 +1701,7 @@ pub fn same(value: Int) -> Int { value }
         for (name, signature, expected) in cases {
             assert_eq!(
                 admitted
-                    .select(name.into(), signature, &[], &[], &[])
+                    .select(name.into(), signature, &[], &[], &[], &[])
                     .map_err(|error| error.to_string()),
                 expected.map_err(str::to_owned)
             );
@@ -941,7 +1713,8 @@ pub fn same(value: Int) -> Int { value }
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     &[],
                     &[LibraryValueType::Int],
-                    &[]
+                    &[],
+                    &[],
                 )
                 .unwrap_err()
                 .to_string(),
@@ -954,7 +1727,8 @@ pub fn same(value: Int) -> Int { value }
                     FunctionType::new(vec![ValueType::Int], ValueType::Int),
                     &[],
                     &[],
-                    &[]
+                    &[],
+                    &[],
                 )
                 .unwrap(),
             0
@@ -975,7 +1749,7 @@ pub fn same(value: Int) -> Int { value }
         owned_mut(&mut Storage::Static(&42u32));
     }
 
-    fn owned<Data: ?Sized>(storage: Storage<Data>) -> Box<Data> {
+    pub(super) fn owned<Data: ?Sized>(storage: Storage<Data>) -> Box<Data> {
         match storage {
             Storage::Owned(data) => data,
             Storage::Static(_) => panic!("the preparation fixture must own its data"),

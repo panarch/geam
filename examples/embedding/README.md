@@ -17,6 +17,7 @@ tests.
 | [`session`](session) | Retain opaque Gleam data and pass it to later calls |
 | [`execution`](execution) | Drive and cancel a running Gleam entry without blocking the Rust host |
 | [`processes`](processes) | Retain a live Gleam service's Pid and Subject across Rust calls |
+| [`callables`](callables) | Create app-local Rust functions and pass typed callbacks through Gleam |
 | [`prepared`](prepared) | Include the Gleam program in the Rust executable |
 
 Start with [`first_call`](first_call) and follow each README's next step through

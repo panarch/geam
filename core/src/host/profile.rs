@@ -75,6 +75,30 @@ where
         }
     }
 
+    pub(crate) fn into_provider<Other: HostProvider<Profile>>(
+        self,
+    ) -> HostCall<'call, Profile, Other, Return> {
+        HostCall::new(self.runtime)
+    }
+
+    pub(crate) fn with_codec<Other, Constructions, Output>(
+        &mut self,
+        constructions: &crate::HostConstructions<'_, Constructions>,
+        operation: impl for<'codec> FnOnce(
+            HostCall<'codec, Profile, Other, ()>,
+            crate::HostConstructions<'codec, Constructions>,
+        ) -> Output,
+    ) -> Output
+    where
+        Other: HostProvider<Profile>,
+        Constructions: crate::HostTypeSequence,
+    {
+        operation(
+            HostCall::new(self.runtime),
+            crate::HostConstructions::with_base(constructions.callable_base()),
+        )
+    }
+
     pub fn state(&mut self) -> &mut Provider::State {
         Provider::project(self.runtime.state())
     }
@@ -82,6 +106,15 @@ where
     /// Accesses services owned by this execution domain, not by retained values.
     pub fn execution_state(&mut self) -> &mut Profile::ExecutionState {
         self.runtime.execution_state()
+    }
+
+    /// Borrows one statically selected producer's service in this domain.
+    pub fn service<Service>(&mut self) -> &mut Service::State
+    where
+        Service: crate::host::HostExecutionService,
+        Profile: crate::host::HostServiceProfile<Service>,
+    {
+        Profile::service(self.runtime.execution_state())
     }
 
     /// Borrows domain services and read-only native value operations separately.
@@ -108,6 +141,16 @@ where
         self.runtime.execution().unit().cloned()
     }
 
+    /// Requires a source invocation's identity while borrowing the call.
+    /// Value codecs outside an invocation have no process and return a host failure.
+    pub fn require_execution_unit(
+        &self,
+    ) -> Result<crate::execution::ExecutionUnit, crate::host::HostCallError> {
+        self.execution_unit().ok_or_else(|| {
+            crate::HostFailure::new("native operation requires a source invocation").into()
+        })
+    }
+
     /// Runs an operation that requires a source invocation's identity.
     /// Value codecs outside an invocation fail before the operation is called.
     pub fn with_execution_unit<Output>(
@@ -117,9 +160,7 @@ where
             crate::execution::ExecutionUnit,
         ) -> Result<Output, crate::host::HostCallError>,
     ) -> Result<Output, crate::host::HostCallError> {
-        let unit = self.execution_unit().ok_or_else(|| {
-            crate::HostFailure::new("native operation requires a source invocation")
-        })?;
+        let unit = self.require_execution_unit()?;
         operation(self, unit)
     }
 
@@ -214,6 +255,31 @@ where
         slot: HostFunctionArgumentSlot,
     ) -> crate::host::HostCallable<'call, Arguments, FunctionReturn> {
         crate::host::HostCallable::new(self.runtime.function(slot))
+    }
+
+    /// Reads the immutable captures of this native callable invocation.
+    pub fn captures<Types: HostTypeSequence>(
+        &self,
+        _: crate::host::HostCaptures<'call, Types>,
+    ) -> Types::Values<'call> {
+        crate::host::type_::from_tokens::<Types, Profile>(
+            self.runtime,
+            self.runtime.capture_tokens(),
+        )
+    }
+
+    /// Creates a fresh instance of one declared native body with immutable captures.
+    pub fn construct_function<Schema: crate::HostCallableSchema>(
+        &mut self,
+        construction: HostConstruction<'call, crate::HostCreatedFunction<Schema>>,
+        captures: <Schema::Captures as HostTypeSequence>::Values<'call>,
+    ) -> crate::HostCallable<'call, Schema::Arguments, Schema::Return> {
+        let mut values = Vec::new();
+        crate::host::type_::into_scoped_values::<Schema::Captures>(captures, &mut values);
+        crate::HostCallable::new(
+            self.runtime
+                .build_function(construction.callable_index, values.into_boxed_slice()),
+        )
     }
 
     pub fn list_len<Item>(&self, value: HostList<'call, Item>) -> usize {
@@ -326,6 +392,21 @@ where
         Constructor: HostCustomConstructor,
     {
         let fields = self.runtime.take_custom_fields(value.token);
+        crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
+    }
+
+    /// Reads the remaining constructor after the provider has excluded every
+    /// preceding constructor in the linked schema. The original value remains
+    /// usable by subsequent operations in this call.
+    #[doc(hidden)]
+    pub fn provider_borrow_remaining_custom_fields<Constructor>(
+        &mut self,
+        value: HostCustom<'call, Constructor::Custom>,
+    ) -> <Constructor::Fields as HostTypeSequence>::Values<'call>
+    where
+        Constructor: HostCustomConstructor,
+    {
+        let fields = self.runtime.custom_fields(value.token);
         crate::host::type_::from_tokens::<Constructor::Fields, Profile>(self.runtime, &fields)
     }
 
@@ -574,19 +655,6 @@ where
     }
 
     #[doc(hidden)]
-    pub fn provider_retained_input_list<Item, HostItem, Decoder>(
-        &self,
-        value: HostList<'call, HostItem>,
-        decoder: Decoder,
-    ) -> crate::provider::List<Item, crate::provider::ProviderInputListContext<Decoder>>
-    where
-        HostItem: HostType,
-        Decoder: crate::provider::ProviderListItemDecoder<Item>,
-    {
-        crate::provider::ProviderInputListContext::new(self.retain_list_value(value), decoder)
-    }
-
-    #[doc(hidden)]
     pub fn provider_list_from_input<Item, HostItem, Decoder>(
         &mut self,
         value: crate::provider::List<Item, crate::provider::ProviderListContext<HostItem, Decoder>>,
@@ -696,6 +764,10 @@ where
         >::store(
             self.runtime.external_stores()
         ))
+    }
+
+    pub(crate) fn value_retention(&self) -> crate::runtime::ValueRetention {
+        self.runtime.native_values().value_retention()
     }
 
     pub(crate) fn retain_value<Type: HostType>(
@@ -1345,9 +1417,22 @@ pub fn main() { #(active(), converted(42), converted(0)) }
         assert_eq!(error.is_some(), call.custom_constructor(choice) == 1);
         if let Some((value, ())) = ok {
             assert_eq!(value, BigInt::from(42));
-        }
-        if let Some((message, ())) = error {
+        } else {
+            let (message, ()) = call
+                .provider_borrow_remaining_custom_fields::<ProviderError<BigInt, StringValue>>(
+                    choice,
+                );
             assert_eq!(message, "failed");
+            let (again, ()) = call
+                .provider_borrow_remaining_custom_fields::<ProviderError<BigInt, StringValue>>(
+                    choice,
+                );
+            assert_eq!(again, "failed");
+            assert_eq!(
+                call.custom_fields::<ProviderError<BigInt, StringValue>>(choice),
+                Some(("failed".into(), ()))
+            );
+            assert_eq!(call.inspect::<Choice>(choice), "Error(\"failed\")");
         }
         assert_eq!(
             call.inspect::<HostListType<BigInt>>(values),

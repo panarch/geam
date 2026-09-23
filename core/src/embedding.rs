@@ -22,12 +22,14 @@
 //! Hosted compilation also performs the selected provider registration.
 
 mod binding;
+mod callable;
 mod error;
 mod execution;
 mod hosted;
 mod input;
 mod list;
 mod opaque;
+mod preparation;
 mod prepared;
 mod project;
 mod value;
@@ -36,6 +38,9 @@ mod work;
 pub use crate::plan::execution::prepared::{PreparedError, PreparedHostedModule, PreparedModule};
 pub use crate::{BitArrayValue, StringValue};
 pub use binding::{BindingError, FunctionDeclaration, ModuleBindings, ModuleBuilder};
+pub use callable::{Callable, CallableType, NativeCallable};
+#[doc(hidden)]
+pub use callable::{NativeArguments, NativeCaptures, NativeType};
 pub use ecow::EcoString;
 pub use error::CallError;
 pub use execution::ExecutionScope;
@@ -45,6 +50,7 @@ pub use input::InputShape;
 pub use list::{Iter, List};
 pub use num_bigint::BigInt;
 pub use opaque::{Custom, CustomType, External, ExternalType, NamedTypeSchema};
+pub use preparation::{HostPreparation, HostPreparationBindings};
 pub use prepared::{PreparedHostedModuleBindings, PreparedModuleBindings};
 pub use project::{HostedProject, HostedProjectError, Project};
 pub use work::{

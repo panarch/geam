@@ -1,0 +1,7 @@
+error: `#[geam::callable]` must be inside a `#[geam::module]` inline module
+ --> tests/ui/callable_outside_module.rs:1:1
+  |
+1 | #[geam_macros::callable(factory = Detached)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `geam_macros::callable` (in Nightly builds, run with -Z macro-backtrace for more info)

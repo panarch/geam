@@ -38,7 +38,7 @@ pub(crate) struct FunctionParameterView<'parameters> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum FunctionTableFamily {
+pub enum FunctionTableFamily {
     Never,
     Int,
     Float,
@@ -319,6 +319,69 @@ impl Emit for FunctionCatalog {
     }
 }
 
+impl crate::plan::execution::prepared::rust::Emit for FunctionTableFamily {
+    fn emit(&self, output: &mut crate::plan::execution::prepared::rust::Rust) {
+        output.path(match self {
+            Self::Never => "function::FunctionTableFamily::Never",
+            Self::Int => "function::FunctionTableFamily::Int",
+            Self::Float => "function::FunctionTableFamily::Float",
+            Self::String => "function::FunctionTableFamily::String",
+            Self::BitArray => "function::FunctionTableFamily::BitArray",
+            Self::UtfCodepoint => "function::FunctionTableFamily::UtfCodepoint",
+            Self::Custom => "function::FunctionTableFamily::Custom",
+            Self::External => "function::FunctionTableFamily::External",
+            Self::Bool => "function::FunctionTableFamily::Bool",
+            Self::Nil => "function::FunctionTableFamily::Nil",
+            Self::Tuple => "function::FunctionTableFamily::Tuple",
+            Self::ParameterList => "function::FunctionTableFamily::ParameterList",
+            Self::IntList => "function::FunctionTableFamily::IntList",
+            Self::StringList => "function::FunctionTableFamily::StringList",
+            Self::BitArrayList => "function::FunctionTableFamily::BitArrayList",
+            Self::UtfCodepointList => "function::FunctionTableFamily::UtfCodepointList",
+            Self::CustomList => "function::FunctionTableFamily::CustomList",
+            Self::ExternalList => "function::FunctionTableFamily::ExternalList",
+            Self::FloatList => "function::FunctionTableFamily::FloatList",
+            Self::BoolList => "function::FunctionTableFamily::BoolList",
+            Self::NilList => "function::FunctionTableFamily::NilList",
+            Self::TupleList => "function::FunctionTableFamily::TupleList",
+            Self::ParameterListList => "function::FunctionTableFamily::ParameterListList",
+            Self::ListList => "function::FunctionTableFamily::ListList",
+            Self::FunctionList => "function::FunctionTableFamily::FunctionList",
+            Self::IntFunction => "function::FunctionTableFamily::IntFunction",
+            Self::FloatFunction => "function::FunctionTableFamily::FloatFunction",
+            Self::StringFunction => "function::FunctionTableFamily::StringFunction",
+            Self::BitArrayFunction => "function::FunctionTableFamily::BitArrayFunction",
+            Self::UtfCodepointFunction => "function::FunctionTableFamily::UtfCodepointFunction",
+            Self::CustomFunction => "function::FunctionTableFamily::CustomFunction",
+            Self::ExternalFunction => "function::FunctionTableFamily::ExternalFunction",
+            Self::BoolFunction => "function::FunctionTableFamily::BoolFunction",
+            Self::NilFunction => "function::FunctionTableFamily::NilFunction",
+            Self::TupleFunction => "function::FunctionTableFamily::TupleFunction",
+            Self::GenericFunction => "function::FunctionTableFamily::GenericFunction",
+            Self::NeverFunction => "function::FunctionTableFamily::NeverFunction",
+            Self::ParameterListFunction => "function::FunctionTableFamily::ParameterListFunction",
+            Self::ParameterListListFunction => {
+                "function::FunctionTableFamily::ParameterListListFunction"
+            }
+            Self::IntListFunction => "function::FunctionTableFamily::IntListFunction",
+            Self::StringListFunction => "function::FunctionTableFamily::StringListFunction",
+            Self::BitArrayListFunction => "function::FunctionTableFamily::BitArrayListFunction",
+            Self::UtfCodepointListFunction => {
+                "function::FunctionTableFamily::UtfCodepointListFunction"
+            }
+            Self::CustomListFunction => "function::FunctionTableFamily::CustomListFunction",
+            Self::ExternalListFunction => "function::FunctionTableFamily::ExternalListFunction",
+            Self::FloatListFunction => "function::FunctionTableFamily::FloatListFunction",
+            Self::BoolListFunction => "function::FunctionTableFamily::BoolListFunction",
+            Self::NilListFunction => "function::FunctionTableFamily::NilListFunction",
+            Self::TupleListFunction => "function::FunctionTableFamily::TupleListFunction",
+            Self::ListListFunction => "function::FunctionTableFamily::ListListFunction",
+            Self::FunctionListFunction => "function::FunctionTableFamily::FunctionListFunction",
+            Self::FunctionFunction => "function::FunctionTableFamily::FunctionFunction",
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::FunctionCatalogEntry;
@@ -343,6 +406,226 @@ mod tests {
         UtfCodepointListTypeId, ValueType,
     };
     use std::convert::Infallible;
+
+    #[test]
+    fn emitted_native_function_families_have_exact_prepared_paths() {
+        let cases = [
+            (
+                FunctionTableFamily::Never,
+                "data::function::FunctionTableFamily::Never",
+            ),
+            (
+                FunctionTableFamily::Int,
+                "data::function::FunctionTableFamily::Int",
+            ),
+            (
+                FunctionTableFamily::Float,
+                "data::function::FunctionTableFamily::Float",
+            ),
+            (
+                FunctionTableFamily::String,
+                "data::function::FunctionTableFamily::String",
+            ),
+            (
+                FunctionTableFamily::BitArray,
+                "data::function::FunctionTableFamily::BitArray",
+            ),
+            (
+                FunctionTableFamily::UtfCodepoint,
+                "data::function::FunctionTableFamily::UtfCodepoint",
+            ),
+            (
+                FunctionTableFamily::Custom,
+                "data::function::FunctionTableFamily::Custom",
+            ),
+            (
+                FunctionTableFamily::External,
+                "data::function::FunctionTableFamily::External",
+            ),
+            (
+                FunctionTableFamily::Bool,
+                "data::function::FunctionTableFamily::Bool",
+            ),
+            (
+                FunctionTableFamily::Nil,
+                "data::function::FunctionTableFamily::Nil",
+            ),
+            (
+                FunctionTableFamily::Tuple,
+                "data::function::FunctionTableFamily::Tuple",
+            ),
+            (
+                FunctionTableFamily::ParameterList,
+                "data::function::FunctionTableFamily::ParameterList",
+            ),
+            (
+                FunctionTableFamily::IntList,
+                "data::function::FunctionTableFamily::IntList",
+            ),
+            (
+                FunctionTableFamily::StringList,
+                "data::function::FunctionTableFamily::StringList",
+            ),
+            (
+                FunctionTableFamily::BitArrayList,
+                "data::function::FunctionTableFamily::BitArrayList",
+            ),
+            (
+                FunctionTableFamily::UtfCodepointList,
+                "data::function::FunctionTableFamily::UtfCodepointList",
+            ),
+            (
+                FunctionTableFamily::CustomList,
+                "data::function::FunctionTableFamily::CustomList",
+            ),
+            (
+                FunctionTableFamily::ExternalList,
+                "data::function::FunctionTableFamily::ExternalList",
+            ),
+            (
+                FunctionTableFamily::FloatList,
+                "data::function::FunctionTableFamily::FloatList",
+            ),
+            (
+                FunctionTableFamily::BoolList,
+                "data::function::FunctionTableFamily::BoolList",
+            ),
+            (
+                FunctionTableFamily::NilList,
+                "data::function::FunctionTableFamily::NilList",
+            ),
+            (
+                FunctionTableFamily::TupleList,
+                "data::function::FunctionTableFamily::TupleList",
+            ),
+            (
+                FunctionTableFamily::ParameterListList,
+                "data::function::FunctionTableFamily::ParameterListList",
+            ),
+            (
+                FunctionTableFamily::ListList,
+                "data::function::FunctionTableFamily::ListList",
+            ),
+            (
+                FunctionTableFamily::FunctionList,
+                "data::function::FunctionTableFamily::FunctionList",
+            ),
+            (
+                FunctionTableFamily::IntFunction,
+                "data::function::FunctionTableFamily::IntFunction",
+            ),
+            (
+                FunctionTableFamily::FloatFunction,
+                "data::function::FunctionTableFamily::FloatFunction",
+            ),
+            (
+                FunctionTableFamily::StringFunction,
+                "data::function::FunctionTableFamily::StringFunction",
+            ),
+            (
+                FunctionTableFamily::BitArrayFunction,
+                "data::function::FunctionTableFamily::BitArrayFunction",
+            ),
+            (
+                FunctionTableFamily::UtfCodepointFunction,
+                "data::function::FunctionTableFamily::UtfCodepointFunction",
+            ),
+            (
+                FunctionTableFamily::CustomFunction,
+                "data::function::FunctionTableFamily::CustomFunction",
+            ),
+            (
+                FunctionTableFamily::ExternalFunction,
+                "data::function::FunctionTableFamily::ExternalFunction",
+            ),
+            (
+                FunctionTableFamily::BoolFunction,
+                "data::function::FunctionTableFamily::BoolFunction",
+            ),
+            (
+                FunctionTableFamily::NilFunction,
+                "data::function::FunctionTableFamily::NilFunction",
+            ),
+            (
+                FunctionTableFamily::TupleFunction,
+                "data::function::FunctionTableFamily::TupleFunction",
+            ),
+            (
+                FunctionTableFamily::GenericFunction,
+                "data::function::FunctionTableFamily::GenericFunction",
+            ),
+            (
+                FunctionTableFamily::NeverFunction,
+                "data::function::FunctionTableFamily::NeverFunction",
+            ),
+            (
+                FunctionTableFamily::ParameterListFunction,
+                "data::function::FunctionTableFamily::ParameterListFunction",
+            ),
+            (
+                FunctionTableFamily::ParameterListListFunction,
+                "data::function::FunctionTableFamily::ParameterListListFunction",
+            ),
+            (
+                FunctionTableFamily::IntListFunction,
+                "data::function::FunctionTableFamily::IntListFunction",
+            ),
+            (
+                FunctionTableFamily::StringListFunction,
+                "data::function::FunctionTableFamily::StringListFunction",
+            ),
+            (
+                FunctionTableFamily::BitArrayListFunction,
+                "data::function::FunctionTableFamily::BitArrayListFunction",
+            ),
+            (
+                FunctionTableFamily::UtfCodepointListFunction,
+                "data::function::FunctionTableFamily::UtfCodepointListFunction",
+            ),
+            (
+                FunctionTableFamily::CustomListFunction,
+                "data::function::FunctionTableFamily::CustomListFunction",
+            ),
+            (
+                FunctionTableFamily::ExternalListFunction,
+                "data::function::FunctionTableFamily::ExternalListFunction",
+            ),
+            (
+                FunctionTableFamily::FloatListFunction,
+                "data::function::FunctionTableFamily::FloatListFunction",
+            ),
+            (
+                FunctionTableFamily::BoolListFunction,
+                "data::function::FunctionTableFamily::BoolListFunction",
+            ),
+            (
+                FunctionTableFamily::NilListFunction,
+                "data::function::FunctionTableFamily::NilListFunction",
+            ),
+            (
+                FunctionTableFamily::TupleListFunction,
+                "data::function::FunctionTableFamily::TupleListFunction",
+            ),
+            (
+                FunctionTableFamily::ListListFunction,
+                "data::function::FunctionTableFamily::ListListFunction",
+            ),
+            (
+                FunctionTableFamily::FunctionListFunction,
+                "data::function::FunctionTableFamily::FunctionListFunction",
+            ),
+            (
+                FunctionTableFamily::FunctionFunction,
+                "data::function::FunctionTableFamily::FunctionFunction",
+            ),
+        ];
+        for (family, expected) in cases {
+            assert_eq!(
+                crate::plan::execution::prepared::rust::Rust::expression(&family),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn catalog_groups_and_orders_parameters_without_rebuilding_on_read() {

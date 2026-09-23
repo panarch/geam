@@ -1,5 +1,5 @@
 use super::{
-    HostAbiType, HostCustomIdentity, HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor,
+    HostAbiType, HostCustomSchemaId, HostCustomTypeSchema, HostSchemaType, HostTypeDescriptor,
     private,
 };
 use crate::host::HostScopedValue;
@@ -33,9 +33,15 @@ pub(crate) trait HostAbiTypeSequence: HostTypeSequence {
         <Self as private::Sequence>::schema_types()
     }
 
+    fn callable_constructions() -> Vec<crate::host::RegisteredCallableConstruction> {
+        let mut callables = Vec::with_capacity(<Self as private::Sequence>::CALLABLE_COUNT);
+        <Self as private::Sequence>::collect_callable_constructions(&mut callables);
+        callables
+    }
+
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Self as private::Sequence>::collect_custom_schemas(output, visited);
     }
@@ -46,7 +52,8 @@ pub(crate) trait HostAbiTypeSequence: HostTypeSequence {
 }
 
 /// Selects one type from a recursive host type sequence by position.
-pub trait HostTypeAt<Index>: HostTypeSequence {
+#[allow(private_bounds)]
+pub trait HostTypeAt<Index>: HostTypeSequence + private::ConstructionPosition<Index> {
     type Type: super::HostType;
 }
 
@@ -66,6 +73,19 @@ where
     type Type = <Tail as HostTypeAt<Index>>::Type;
 }
 
+impl<Head: HostAbiType, Tail: HostTypeSequence> private::ConstructionPosition<HostTypeIndex0>
+    for HostTypeList<Head, Tail>
+{
+    const CALLABLE_INDEX: usize = 0;
+}
+
+impl<Head: HostAbiType, Tail: HostTypeAt<Index>, Index>
+    private::ConstructionPosition<HostTypeIndexNext<Index>> for HostTypeList<Head, Tail>
+{
+    const CALLABLE_INDEX: usize = <Head as private::Abi>::CALLABLE_CONSTRUCTION
+        + <Tail as private::ConstructionPosition<Index>>::CALLABLE_INDEX;
+}
+
 impl<Types: HostTypeSequence> HostAbiTypeSequence for Types {}
 
 impl HostTypeSequence for HostTypeListEnd {
@@ -73,6 +93,7 @@ impl HostTypeSequence for HostTypeListEnd {
 }
 
 impl private::Sequence for HostTypeListEnd {
+    const CALLABLE_COUNT: usize = 0;
     fn descriptors() -> Vec<HostTypeDescriptor> {
         Vec::new()
     }
@@ -81,9 +102,11 @@ impl private::Sequence for HostTypeListEnd {
         Vec::new()
     }
 
+    fn collect_callable_constructions(_: &mut Vec<crate::host::RegisteredCallableConstruction>) {}
+
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
+        _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
     }
 
@@ -114,6 +137,9 @@ where
     Head: HostAbiType,
     Tail: HostAbiTypeSequence,
 {
+    const CALLABLE_COUNT: usize =
+        <Head as private::Abi>::CALLABLE_CONSTRUCTION + <Tail as private::Sequence>::CALLABLE_COUNT;
+
     fn descriptors() -> Vec<HostTypeDescriptor> {
         let mut types = vec![<Head as HostAbiType>::descriptor()];
         types.extend(<Tail as HostAbiTypeSequence>::descriptors());
@@ -126,9 +152,16 @@ where
         types
     }
 
+    fn collect_callable_constructions(
+        output: &mut Vec<crate::host::RegisteredCallableConstruction>,
+    ) {
+        <Head as private::Abi>::collect_callable_constructions(output);
+        <Tail as private::Sequence>::collect_callable_constructions(output);
+    }
+
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Head as HostAbiType>::collect_custom_schemas(output, visited);
         <Tail as HostAbiTypeSequence>::collect_custom_schemas(output, visited);

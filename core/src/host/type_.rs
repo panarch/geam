@@ -1,3 +1,4 @@
+mod created_function;
 mod custom;
 mod external;
 mod function;
@@ -8,12 +9,13 @@ mod schema;
 mod sequence;
 mod tuple;
 
+pub use created_function::HostCreatedFunction;
 pub use custom::{
     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
     HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomConstructorSchema,
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostSchemaType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostNominalCustomField, HostSchemaType,
 };
 pub use function::HostFunctionType;
 pub use list::HostListType;
@@ -37,6 +39,9 @@ pub trait HostType: private::Sealed + private::Abi + Send + Sync + 'static {
 }
 
 type HostCustomIdentity = (EcoString, EcoString, EcoString);
+// Only a cycle guard while collecting statically declared Rust schemas. Source
+// linkage and execution continue to use the package-qualified nominal identity.
+pub(super) type HostCustomSchemaId = std::any::TypeId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HostTypeDescriptor {
@@ -79,7 +84,7 @@ pub(crate) trait HostAbiType: HostType {
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Self as private::Abi>::collect_custom_schemas(output, visited);
     }
@@ -445,15 +450,31 @@ impl HostTypeDescriptor {
     }
 }
 
+pub(crate) fn construction_callable_index<Types: HostTypeAt<Index>, Index>() -> usize {
+    <Types as private::ConstructionPosition<Index>>::CALLABLE_INDEX
+}
+
+pub(crate) const fn construction_callable_count<Types: HostTypeSequence>() -> usize {
+    <Types as private::Sequence>::CALLABLE_COUNT
+}
+
 mod private {
+    pub(crate) trait ConstructionPosition<Index> {
+        const CALLABLE_INDEX: usize;
+    }
     pub(crate) trait Sealed {}
 
     pub(crate) trait Abi {
+        const CALLABLE_CONSTRUCTION: usize = 0;
         fn descriptor() -> super::HostTypeDescriptor;
         fn schema_type() -> super::HostSchemaType;
         fn collect_custom_schemas(
             _output: &mut Vec<super::HostCustomTypeSchema>,
-            _visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+            _visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,
+        ) {
+        }
+        fn collect_callable_constructions(
+            _output: &mut Vec<crate::host::RegisteredCallableConstruction>,
         ) {
         }
         fn into_scoped(value: <Self as super::HostType>::Value<'_>) -> super::HostScopedValue
@@ -468,11 +489,15 @@ mod private {
     }
 
     pub(crate) trait Sequence {
+        const CALLABLE_COUNT: usize;
         fn descriptors() -> Vec<super::HostTypeDescriptor>;
         fn schema_types() -> Vec<super::HostSchemaType>;
+        fn collect_callable_constructions(
+            output: &mut Vec<crate::host::RegisteredCallableConstruction>,
+        );
         fn collect_custom_schemas(
             output: &mut Vec<super::HostCustomTypeSchema>,
-            visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+            visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,
         );
         fn into_scoped_values(
             values: <Self as super::HostTypeSequence>::Values<'_>,
@@ -492,7 +517,7 @@ mod private {
         fn schemas() -> Vec<super::HostCustomConstructorSchema>;
         fn collect_custom_schemas(
             output: &mut Vec<super::HostCustomTypeSchema>,
-            visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+            visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,
         );
     }
 
@@ -500,7 +525,7 @@ mod private {
         fn schemas() -> Vec<super::HostCustomFieldSchema>;
         fn collect_custom_schemas(
             output: &mut Vec<super::HostCustomTypeSchema>,
-            visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+            visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,
         );
     }
 

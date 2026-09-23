@@ -14,10 +14,12 @@
 #[cfg(feature = "geam-builtin")]
 pub use geam_builtin::embedding::{Future, FutureType};
 pub use geam_core::embedding::{
-    BigInt, BindingError, BitArrayValue, CallError, Completed, Custom, CustomType, EcoString,
-    ExecutionScope, External, ExternalType, Function, FunctionDeclaration, HostedModule,
-    HostedModuleBindings, HostedModuleBuilder, HostedProject, HostedProjectError, InputShape, Iter,
-    List, Module, ModuleBindings, ModuleBuilder, NamedTypeSchema, ObservationError, PreparedError,
-    PreparedHostedModule, PreparedHostedModuleBindings, PreparedModule, PreparedModuleBindings,
-    Project, ReadValue, SharedExecutionError, SharedList, SourceType, StringValue,
+    BigInt, BindingError, BitArrayValue, CallError, Callable, CallableType, Completed, Custom,
+    CustomType, EcoString, ExecutionScope, External, ExternalType, Function, FunctionDeclaration,
+    HostPreparation, HostPreparationBindings, HostedModule, HostedModuleBindings,
+    HostedModuleBuilder, HostedProject, HostedProjectError, InputShape, Iter, List, Module,
+    ModuleBindings, ModuleBuilder, NamedTypeSchema, NativeCallable, ObservationError,
+    PreparedError, PreparedHostedModule, PreparedHostedModuleBindings, PreparedModule,
+    PreparedModuleBindings, Project, ReadValue, SharedExecutionError, SharedList, SourceType,
+    StringValue,
 };

@@ -1,5 +1,5 @@
 use super::manifest::ProviderSource;
-use super::metadata::ProviderMetadata;
+use super::metadata::{ProviderBinding, ProviderMetadata};
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::command::AddProvider;
 use crate::error::CliError;
@@ -36,6 +36,37 @@ pub(super) fn resolve_selection(
     progress: &mut Progress<'_>,
 ) -> Result<ProviderMetadata, CliError> {
     resolve_selection_with(project_root, selection, &SystemCargoMetadata, progress)
+}
+
+pub(super) fn selected_bindings<'selection>(
+    project_root: &Utf8Path,
+    selections: impl Iterator<Item = &'selection super::manifest::ProviderSelection>,
+) -> Result<Vec<ProviderBinding>, CliError> {
+    selected_bindings_with(project_root, selections, &SystemCargoMetadata)
+}
+
+fn selected_bindings_with<'selection>(
+    project_root: &Utf8Path,
+    mut selections: impl Iterator<Item = &'selection super::manifest::ProviderSelection>,
+    loader: &dyn CargoMetadataLoader,
+) -> Result<Vec<ProviderBinding>, CliError> {
+    let Some(first) = selections.next() else {
+        return Ok(Vec::new());
+    };
+    let metadata = loader.load(
+        project_root,
+        &project_root.join("Cargo.toml"),
+        CargoMetadataMode::Locked,
+        &mut Progress::Hidden,
+    )?;
+    std::iter::once(first)
+        .chain(selections)
+        .map(|selection| {
+            let package = resolved_dependency(&metadata, &selection.alias())?;
+            ProviderMetadata::from_package(package)
+                .map(|metadata| metadata.binding(selection.alias()))
+        })
+        .collect()
 }
 
 fn resolve_with(
@@ -537,16 +568,18 @@ mod tests {
         canonical_provider_path, canonical_provider_path_from, clone_git_for_inspection,
         clone_git_for_inspection_with, complete_package_identity, inspect_workspace,
         parse_registry_specification, resolve_selection_with, resolve_with, resolve_with_candidate,
-        resolved_dependency,
+        resolved_dependency, selected_bindings_with,
     };
     use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
     use crate::command::AddProvider;
     use crate::error::CliError;
     use crate::progress::Progress;
     use crate::provider::manifest::{ProviderSelection, ProviderSource};
+    use crate::provider::metadata::{ProviderBinding, ProviderComposition};
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::Metadata;
     use std::cell::RefCell;
+    use std::collections::BTreeSet;
     use std::fs;
     use std::io;
     use std::path::Path;
@@ -602,6 +635,137 @@ mod tests {
                 reason: "fixture stop".to_owned(),
             })
         }
+    }
+
+    #[test]
+    fn resolves_selected_composition_from_one_locked_graph_in_selection_order() {
+        let project = utf8_tempdir();
+        let images = provider_package("geam-images", "images", "1.0.0");
+        let tickets = provider_package("geam-tickets", "tickets", "1.0.0");
+        let ticket_manifest = tickets.path().join("Cargo.toml");
+        let source = fs::read_to_string(&ticket_manifest).unwrap().replace("schema = 1", "schema = 2\ncomponent = \"profile\"\nexecution-service = true\nrequires-services = [\"gleam_erlang\"]");
+        fs::write(ticket_manifest, source).unwrap();
+        fs::create_dir(project.join("src")).unwrap();
+        fs::write(project.join("src/main.rs"), "fn main() {}\n").unwrap();
+        fs::write(project.join("Cargo.toml"), format!(
+            "[package]\nname = \"fixture-runner\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[dependencies]\ngeam_provider_images = {{ package = \"geam-images\", path = {:?} }}\ngeam_provider_tickets = {{ package = \"geam-tickets\", path = {:?} }}\n[workspace]\n",
+            utf8_path(&images).as_str(), utf8_path(&tickets).as_str(),
+        )).unwrap();
+        let metadata = SystemCargoMetadata
+            .load(
+                &project,
+                &project.join("Cargo.toml"),
+                CargoMetadataMode::Resolve,
+                &mut Progress::Hidden,
+            )
+            .unwrap();
+        struct RecordingLoader {
+            metadata: Metadata,
+            calls: RefCell<Vec<(Utf8PathBuf, Utf8PathBuf, CargoMetadataMode)>>,
+        }
+        impl CargoMetadataLoader for RecordingLoader {
+            fn load(
+                &self,
+                directory: &Utf8Path,
+                manifest: &Utf8Path,
+                mode: CargoMetadataMode,
+                _progress: &mut Progress<'_>,
+            ) -> Result<Metadata, CliError> {
+                self.calls
+                    .borrow_mut()
+                    .push((directory.to_owned(), manifest.to_owned(), mode));
+                Ok(self.metadata.clone())
+            }
+        }
+        let loader = RecordingLoader {
+            metadata,
+            calls: RefCell::new(Vec::new()),
+        };
+        let selections = [
+            ProviderSelection::new(
+                "tickets".to_owned(),
+                "geam-tickets".to_owned(),
+                ProviderSource::Path {
+                    path: utf8_path(&tickets),
+                },
+            ),
+            ProviderSelection::new(
+                "images".to_owned(),
+                "geam-images".to_owned(),
+                ProviderSource::Path {
+                    path: utf8_path(&images),
+                },
+            ),
+        ];
+        assert_eq!(
+            selected_bindings_with(&project, selections.iter(), &loader).unwrap(),
+            [
+                ProviderBinding {
+                    alias: "geam_provider_tickets".to_owned(),
+                    composition: ProviderComposition {
+                        profile_parameter: true,
+                        execution_service: true,
+                        required_services: BTreeSet::from(["gleam_erlang".to_owned()]),
+                    }
+                },
+                ProviderBinding::from("geam_provider_images"),
+            ]
+        );
+        assert_eq!(
+            *loader.calls.borrow(),
+            [(
+                project.clone(),
+                project.join("Cargo.toml"),
+                CargoMetadataMode::Locked
+            )]
+        );
+        let missing = ProviderSelection::new(
+            "absent".to_owned(),
+            "geam-absent".to_owned(),
+            ProviderSource::Path {
+                path: project.join("absent"),
+            },
+        );
+        assert!(
+            matches!(selected_bindings_with(&project, [missing].iter(), &loader), Err(CliError::MissingResolvedDependency { alias }) if alias == "geam_provider_absent")
+        );
+        let mut metadata = loader.metadata;
+        let tickets = metadata
+            .packages
+            .iter_mut()
+            .find(|package| package.name.as_str() == "geam-tickets")
+            .unwrap();
+        tickets.metadata["geam"]["provider"]["component"] = serde_json::json!("unknown");
+        assert!(
+            matches!(selected_bindings_with(&project, selections.iter(), &FixedLoader(metadata)), Err(CliError::InvalidProviderMetadata { package, reason }) if package == "geam-tickets" && reason == "component must be \"plain\" or \"profile\"")
+        );
+    }
+
+    #[test]
+    fn skips_resolution_without_selections_and_preserves_resolution_errors() {
+        let project = Utf8Path::new("/application");
+        let loader = RecordingFailingLoader {
+            call: RefCell::new(None),
+        };
+        assert_eq!(
+            selected_bindings_with(project, std::iter::empty(), &loader).unwrap(),
+            []
+        );
+        assert!(loader.call.borrow().is_none());
+        let selection = ProviderSelection::new(
+            "images".to_owned(),
+            "geam-images".to_owned(),
+            ProviderSource::Path {
+                path: "/provider".into(),
+            },
+        );
+        assert!(
+            matches!(selected_bindings_with(project, std::iter::once(&selection), &loader), Err(CliError::InvalidCargoMetadata { manifest, reason }) if manifest == project.join("Cargo.toml") && reason == "fixture stop")
+        );
+        assert_eq!(
+            *loader.call.borrow(),
+            Some((project.join("Cargo.toml"), CargoMetadataMode::Locked))
+        );
     }
 
     #[test]

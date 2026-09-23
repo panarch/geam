@@ -191,7 +191,7 @@ fn generate(
         package.require_geam_feature("geam-builtin", "to generate hosted embedding bindings")?;
     }
     let (source, preparation) = match requirements {
-        [] if bindings.needs_scope() => {
+        [] if bindings.needs_scope() || package.declarations().is_some() => {
             let hosted = HostedBindings {
                 components: if bindings.has_future() {
                     HostedComponents::from_builtin(BuiltInProvider::Geam)
@@ -200,7 +200,7 @@ fn generate(
                 },
                 boundary: bindings,
             };
-            render_hosted(&package, &hosted)
+            render_hosted(&package, &hosted)?
         }
         [] => (
             render::plain(&bindings, package.project_path(), package.generation()),
@@ -225,7 +225,7 @@ fn generate(
                 &remaining_packages,
                 &resolved_project,
             )?;
-            render_hosted(&package, &hosted)
+            render_hosted(&package, &hosted)?
         }
     };
     let program = preparation
@@ -241,17 +241,40 @@ fn generate(
 fn render_hosted(
     package: &EmbeddingPackage,
     bindings: &HostedBindings,
-) -> (String, Option<prepared::Preparation>) {
-    (
-        render::hosted(bindings, package.project_path(), package.generation()),
+) -> Result<(String, Option<prepared::Preparation>), CliError> {
+    use sha2::{Digest, Sha256};
+    let mut source = render::hosted_with_application(
+        bindings,
+        package.project_path(),
+        package.generation(),
+        package.declarations().is_some(),
+    );
+    let declaration_path = package
+        .declarations()
+        .map(|path| package.manifest().with_file_name("").join(path));
+    if let Some(path) = &declaration_path {
+        let contents = std::fs::read(path).map_err(|error| CliError::FileRead {
+            path: path.clone(),
+            error,
+        })?;
+        source.push_str(&format!(
+            "\n// Application declarations: sha256:{:x}\n",
+            Sha256::digest(&contents)
+        ));
+    }
+    Ok((
+        source,
         package
             .generation()
             .prepared()
             .then(|| prepared::Preparation {
-                source: render::hosted_helper(bindings),
+                source: match declaration_path {
+                    Some(path) => render::application_helper(bindings, &path),
+                    None => render::hosted_helper(bindings),
+                },
                 artifact: prepared::Artifact::Hosted,
             }),
-    )
+    ))
 }
 
 fn report(writer: &mut dyn Write, message: std::fmt::Arguments<'_>) -> Result<(), CliError> {
@@ -446,6 +469,144 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_declaration_checks_track_the_entry_file_without_compiling_application_rust() {
+        for write_project in [
+            ApplicationFixture::write_plain_project,
+            ApplicationFixture::write_hosted_project,
+        ] {
+            let fixture = ApplicationFixture::new();
+            write_project(&fixture);
+            fixture.set_generation("dynamic");
+            let manifest_path = fixture.root.join("Cargo.toml");
+            let mut manifest = fs::read_to_string(&manifest_path)
+                .unwrap()
+                .parse::<toml_edit::DocumentMut>()
+                .unwrap();
+            manifest["package"]["metadata"]["geam"]["embedding"]["declarations"] =
+                toml_edit::value("src/declarations.rs");
+            fs::write(&manifest_path, manifest.to_string()).unwrap();
+            let declaration = fixture.root.join("src/declarations.rs");
+            fs::write(
+                &declaration,
+                "compile_error!(\"dynamic check must not compile declarations\");\n",
+            )
+            .unwrap();
+            fs::write(
+                fixture.root.join("build.rs"),
+                "compile_error!(\"application build script must not run\");\n",
+            )
+            .unwrap();
+            fixture.generate_lockfile();
+            sync(&fixture.root).unwrap();
+            check(&fixture.root).unwrap();
+            let before = fixture.managed_inputs();
+            fs::write(
+                &declaration,
+                "compile_error!(\"changed declaration input\");\n",
+            )
+            .unwrap();
+            assert!(
+                matches!(check(&fixture.root), Err(CliError::EmbeddingBindingsOutOfDate { output, .. })
+                if output == fixture.root.join("src/geam_bindings.rs"))
+            );
+            assert_eq!(fixture.managed_inputs(), before);
+            sync(&fixture.root).unwrap();
+            check(&fixture.root).unwrap();
+            fs::remove_file(&declaration).unwrap();
+            let before = fixture.managed_inputs();
+            assert!(
+                matches!(check(&fixture.root), Err(CliError::FileRead { path, .. }) if path == declaration)
+            );
+            assert_eq!(fixture.managed_inputs(), before);
+            assert!(
+                matches!(sync(&fixture.root), Err(CliError::FileRead { path, .. }) if path == declaration)
+            );
+            assert_eq!(fixture.managed_inputs(), before);
+        }
+    }
+
+    #[test]
+    fn declaration_preparation_tracks_transitive_native_schemas_without_application_targets() {
+        for mode in ["prepared", "both"] {
+            let fixture = ApplicationFixture::new();
+            fixture.write_plain_project();
+            fixture.set_generation(mode);
+            let manifest_path = fixture.root.join("Cargo.toml");
+            let mut manifest = fs::read_to_string(&manifest_path)
+                .unwrap()
+                .parse::<toml_edit::DocumentMut>()
+                .unwrap();
+            manifest["package"]["metadata"]["geam"]["embedding"]["declarations"] =
+                toml_edit::value("src/declarations.rs");
+            fs::write(&manifest_path, manifest.to_string()).unwrap();
+            fs::write(
+                fixture.root.join("build.rs"),
+                "compile_error!(\"application build script must not run\");\n",
+            )
+            .unwrap();
+            fs::write(
+                fixture.root.join("src/main.rs"),
+                "compile_error!(\"application bodies must not compile during preparation\");\n",
+            )
+            .unwrap();
+            fs::create_dir_all(fixture.root.join("src/declarations")).unwrap();
+            fs::write(
+                fixture.root.join("src/declarations.rs"),
+                r#"#[path = "declarations/native.rs"]
+mod native;
+use runtime::{HostDeclarations, HostRegistrationError};
+use runtime::embedding::{BindingError, HostPreparationBindings};
+pub fn declare(base: HostDeclarations) -> Result<HostDeclarations, HostRegistrationError> {
+    base.with_callable::<native::Add>()
+}
+pub fn select(bindings: &mut HostPreparationBindings) -> Result<(), BindingError> {
+    bindings.callable::<native::Add>()
+}
+"#,
+            )
+            .unwrap();
+            let native_path = fixture.root.join("src/declarations/native.rs");
+            let native = r#"use runtime::{HostCallableSchema, HostReturns, HostTypeList, HostTypeListEnd};
+use runtime::embedding::BigInt;
+pub struct Add;
+impl HostCallableSchema for Add {
+    const PACKAGE: &'static str = "plain_embedding_application";
+    const MODULE: &'static str = "application/callbacks";
+    const NAME: &'static str = "add";
+    type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+    type Return = BigInt;
+    type Captures = HostTypeList<BigInt, HostTypeListEnd>;
+    type Constructions = HostTypeListEnd;
+    type Completion = HostReturns;
+}
+"#;
+            fs::write(&native_path, native).unwrap();
+            fixture.generate_lockfile();
+            sync(&fixture.root).unwrap();
+            check(&fixture.root).unwrap();
+            let original = fixture.managed_inputs();
+            sync(&fixture.root).unwrap();
+            assert_eq!(fixture.managed_inputs(), original);
+            fs::write(&native_path, native.replace("\"add\"", "\"changed\"")).unwrap();
+            assert!(
+                matches!(check(&fixture.root), Err(CliError::EmbeddingBindingsOutOfDate { output, .. })
+                if output == fixture.root.join("src/geam_bindings/program.rs"))
+            );
+            assert_eq!(fixture.managed_inputs(), original);
+            sync(&fixture.root).unwrap();
+            check(&fixture.root).unwrap();
+            let current = fixture.managed_inputs();
+            assert_ne!(current, original);
+            fs::write(&native_path, "compile_error!(\"invalid declaration\");\n").unwrap();
+            assert!(matches!(
+                sync(&fixture.root),
+                Err(CliError::ProcessFailure { stderr, .. }) if stderr.contains("invalid declaration")
+            ));
+            assert_eq!(fixture.managed_inputs(), current);
+        }
+    }
+
+    #[test]
     fn prepared_check_detects_body_drift_without_running_application_build_scripts() {
         let fixture = ApplicationFixture::new();
         fixture.write_plain_project();
@@ -558,10 +719,10 @@ mod tests {
                 program.split_once("\n// Preparation inputs: ").unwrap();
             assert_eq!(after_program, before_program);
             assert_ne!(after_fingerprint, before_fingerprint);
-            assert!(program.contains("{\n    format: 2,"));
+            assert!(program.contains("{\n    format: 4,"));
             fs::write(
                 &child,
-                program.replacen("{\n    format: 2,", "{\n    format: 0,", 1),
+                program.replacen("{\n    format: 4,", "{\n    format: 0,", 1),
             )
             .unwrap();
             let incompatible = fixture.managed_inputs();
@@ -1106,7 +1267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fixture
                 .root
                 .join("gleam/src/plain_embedding_application.gleam"),
-            "pub fn unsupported(_value: List(fn(Int) -> Int)) -> Int { 1 }\n",
+            "pub fn unsupported(_value: List(fn(Int, Int, Int, Int, Int, Int, Int, Int) -> Int)) -> Int { 1 }\n",
         )
         .expect("unsupported boundary fixture should be written");
         for operation in [sync, check] {

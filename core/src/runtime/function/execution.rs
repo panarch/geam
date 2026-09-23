@@ -144,23 +144,30 @@ where
             mut returns,
         } = self;
         match position {
-            Position::Entry { origin, inputs } => match function.entry(plan) {
-                ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
-                    function,
-                    returns,
-                    position: Position::Graph {
-                        body: entry.body(),
-                        execution: GraphExecution::new(
-                            entry.body().function_body().block_graph().as_view(),
-                            inputs,
-                        ),
-                    },
-                })),
-                ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
-                    Id::prepare_host(plan, origin, target, inputs),
-                    |value| Ok(Progress::Complete(value)),
-                ))),
-            },
+            Position::Entry { origin, inputs } => {
+                if let Some(cancelled) =
+                    plan.reject_foreign_callable(&inputs, Some(state.captures().domain()))
+                {
+                    return Ok(Progress::Host(cancelled));
+                }
+                match function.entry(plan) {
+                    ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
+                        function,
+                        returns,
+                        position: Position::Graph {
+                            body: entry.body(),
+                            execution: GraphExecution::new(
+                                entry.body().function_body().block_graph().as_view(),
+                                inputs,
+                            ),
+                        },
+                    })),
+                    ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
+                        Id::prepare_host(plan, origin, target, inputs),
+                        |value| Ok(Progress::Complete(value)),
+                    ))),
+                }
+            }
             Position::Graph { body, execution } => {
                 match execution.advance(plan, state, &mut returns, remaining)? {
                     GraphProgress::Host(invoke) => {

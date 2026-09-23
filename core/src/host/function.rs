@@ -8,6 +8,9 @@ use ecow::EcoString;
 use std::collections::BTreeSet;
 use std::fmt;
 
+pub(super) use adapter::{
+    HostCallableAdapter, HostCallableSignature, HostSignature, ResumableHostCallableAdapter,
+};
 #[cfg(test)]
 pub(crate) use argument::CallArguments;
 #[cfg(test)]
@@ -19,7 +22,9 @@ pub(crate) use argument::{
     HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot,
 };
 pub(crate) use return_::HostNeverFunction;
-pub(crate) use return_::{HostCallReturn, HostFunctionImplementation, HostValueFunction};
+pub(crate) use return_::{
+    HostCallReturn, HostFunctionBinding, HostFunctionImplementation, HostValueFunction,
+};
 #[cfg(test)]
 pub(crate) use return_::{
     expect_immediate_call, expect_never_implementation, expect_value_implementation,
@@ -192,6 +197,8 @@ pub struct HostFunctionSchema {
     scheme: TypeScheme,
     layout: Box<[HostParameter]>,
     parameters: Box<[crate::host::HostTypeDescriptor]>,
+    captures: Box<[crate::host::HostTypeDescriptor]>,
+    callable: bool,
     return_: crate::host::HostTypeDescriptor,
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
@@ -201,14 +208,32 @@ pub struct HostFunctionSchema {
 pub(super) struct HostFunctionSchemaRegistration {
     pub(super) layout: Box<[HostParameter]>,
     pub(super) parameters: Box<[crate::host::HostTypeDescriptor]>,
+    pub(super) captures: Box<[crate::host::HostTypeDescriptor]>,
+    pub(super) callable: bool,
     pub(super) return_: crate::host::HostTypeDescriptor,
     pub(super) custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
 }
 
-pub(crate) struct HostFunctionDefinition<Profile: HostProfile> {
+pub(crate) struct RegisteredHostDefinition<Implementation> {
     schema: HostFunctionSchema,
     constructions: RegisteredHostConstructions,
-    implementation: HostFunctionImplementation<Profile>,
+    implementation: Implementation,
+}
+
+pub(crate) type HostFunctionDefinition<Profile> =
+    RegisteredHostDefinition<HostFunctionImplementation<Profile>>;
+
+impl<Value, Never> RegisteredHostDefinition<HostFunctionBinding<Value, Never>> {
+    pub(super) fn into_declaration(self) -> RegisteredHostDefinition<HostFunctionBinding<(), ()>> {
+        RegisteredHostDefinition {
+            schema: self.schema,
+            constructions: self.constructions,
+            implementation: match self.implementation {
+                HostFunctionBinding::Value(_) => HostFunctionBinding::Value(()),
+                HostFunctionBinding::Never(_) => HostFunctionBinding::Never(()),
+            },
+        }
+    }
 }
 
 pub(crate) struct RegisteredHostConstructions {
@@ -216,6 +241,26 @@ pub(crate) struct RegisteredHostConstructions {
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
     native_rules: Option<Box<[crate::host::HostTypeDescriptor]>>,
+    callables: Box<[crate::host::RegisteredCallableConstruction]>,
+}
+
+impl HostFunctionSchemaRegistration {
+    pub(super) fn with_captures<Types: crate::HostTypeSequence>(mut self) -> Self {
+        self.callable = true;
+        self.captures =
+            <Types as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
+        let mut custom_schemas = self.custom_schemas.into_vec();
+        // Captures may name the same source types through different Rust schema
+        // declarations. Walk their contracts independently before deduplicating
+        // equal schemas; source names cannot prove their nested fields agree.
+        let mut visited = std::collections::HashSet::new();
+        <Types as crate::host::HostAbiTypeSequence>::collect_custom_schemas(
+            &mut custom_schemas,
+            &mut visited,
+        );
+        self.custom_schemas = custom_schemas.into_boxed_slice();
+        self
+    }
 }
 
 impl HostFunctionSchema {
@@ -233,6 +278,14 @@ impl HostFunctionSchema {
 
     pub(crate) fn parameters(&self) -> &[crate::host::HostTypeDescriptor] {
         &self.parameters
+    }
+
+    pub(crate) fn is_callable(&self) -> bool {
+        self.callable
+    }
+
+    pub(crate) fn captures(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.captures
     }
 
     pub(crate) fn layout(&self) -> &[HostParameter] {
@@ -262,7 +315,7 @@ impl HostFunctionSchema {
             .collect();
         let return_type = registration.return_.value_type();
         let mut type_parameters = BTreeSet::new();
-        for parameter in &registration.parameters {
+        for parameter in registration.parameters.iter().chain(&registration.captures) {
             parameter.collect_type_parameters(&mut type_parameters);
         }
         registration
@@ -277,7 +330,7 @@ impl HostFunctionSchema {
         }
         let mut external_schemas = Vec::new();
         let mut external_identities = std::collections::HashSet::new();
-        for parameter in &registration.parameters {
+        for parameter in registration.parameters.iter().chain(&registration.captures) {
             parameter.collect_external_schemas(&mut external_schemas, &mut external_identities);
         }
         registration
@@ -288,6 +341,8 @@ impl HostFunctionSchema {
             scheme: TypeScheme::new(type_parameters.len()),
             layout: registration.layout,
             parameters: registration.parameters,
+            captures: registration.captures,
+            callable: registration.callable,
             return_: registration.return_,
             custom_schemas: registration.custom_schemas,
             external_schemas: external_schemas.into_boxed_slice(),
@@ -311,6 +366,7 @@ impl RegisteredHostConstructions {
             custom_schemas,
             external_schemas: external_schemas.into_boxed_slice(),
             native_rules: None,
+            callables: Box::new([]),
         }
     }
 
@@ -318,7 +374,7 @@ impl RegisteredHostConstructions {
         Self::new(Box::new([]), Box::new([]))
     }
 
-    fn for_sequence<Constructions: crate::host::HostTypeSequence>() -> Self {
+    pub(super) fn for_sequence<Constructions: crate::host::HostTypeSequence>() -> Self {
         let types =
             <Constructions as crate::host::HostAbiTypeSequence>::descriptors().into_boxed_slice();
         let mut custom_schemas = Vec::new();
@@ -327,7 +383,35 @@ impl RegisteredHostConstructions {
             &mut custom_schemas,
             &mut visited,
         );
+        let callables =
+            <Constructions as crate::host::HostAbiTypeSequence>::callable_constructions();
         Self::new(types, custom_schemas.into_boxed_slice())
+            .with_callables(callables.into_boxed_slice())
+    }
+
+    fn with_callables(
+        mut self,
+        callables: Box<[crate::host::RegisteredCallableConstruction]>,
+    ) -> Self {
+        let mut external_schemas = self.external_schemas.into_vec();
+        let mut visited = external_schemas
+            .iter()
+            .map(|schema| {
+                (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                )
+            })
+            .collect();
+        for callable in &callables {
+            for capture in &callable.captures {
+                capture.collect_external_schemas(&mut external_schemas, &mut visited);
+            }
+        }
+        self.external_schemas = external_schemas.into_boxed_slice();
+        self.callables = callables;
+        self
     }
 
     pub(crate) fn native_rules(&self) -> Option<&[crate::host::HostTypeDescriptor]> {
@@ -336,6 +420,20 @@ impl RegisteredHostConstructions {
 
     pub(crate) fn types(&self) -> &[crate::host::HostTypeDescriptor] {
         &self.types
+    }
+
+    pub(crate) fn callables(&self) -> &[crate::host::RegisteredCallableConstruction] {
+        &self.callables
+    }
+
+    pub(crate) fn validation_types(
+        &self,
+    ) -> impl Iterator<Item = &crate::host::HostTypeDescriptor> {
+        self.types.iter().chain(
+            self.callables
+                .iter()
+                .flat_map(|callable| callable.captures.iter()),
+        )
     }
 
     pub(crate) fn custom_schemas(&self) -> &[crate::host::HostCustomTypeSchema] {
@@ -350,6 +448,11 @@ impl RegisteredHostConstructions {
         let mut parameters = BTreeSet::new();
         for type_ in &self.types {
             type_.collect_type_parameters(&mut parameters);
+        }
+        for callable in &self.callables {
+            for capture in &callable.captures {
+                capture.collect_type_parameters(&mut parameters);
+            }
         }
         parameters
             .into_iter()
@@ -383,6 +486,11 @@ impl fmt::Debug for HostFunctionSchema {
             .field("name", &self.name)
             .field("scheme", &self.scheme)
             .field("type_", &self.type_);
+        if self.callable {
+            debug
+                .field("callable", &self.callable)
+                .field("captures", &self.captures);
+        }
         if !self.custom_schemas.is_empty() {
             debug.field("custom_schemas", &self.custom_schemas);
         }
@@ -394,6 +502,50 @@ impl fmt::Debug for HostFunctionSchema {
 }
 
 impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
+    pub(super) fn new_resumable_callable<Provider, Schema, Arguments, Function>(
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: crate::HostCallableSchema,
+        Function: crate::host::ResumableHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        let registration = <Function as adapter::ResumableHostCallableAdapter<
+            Profile,
+            Provider,
+            Schema,
+            Arguments,
+            Schema::Completion,
+        >>::register(function);
+        Self::from_registration_with_constructions(
+            Schema::NAME.into(),
+            registration,
+            RegisteredHostConstructions::for_sequence::<Schema::Constructions>(),
+        )
+    }
+
+    pub(super) fn new_callable<Provider, Schema, Arguments, Function>(
+        function: Function,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Schema: crate::HostCallableSchema,
+        Function: crate::host::ScopedHostCallable<Profile, Provider, Schema, Arguments>,
+    {
+        let registration = <Function as adapter::HostCallableAdapter<
+            Profile,
+            Provider,
+            Schema,
+            Arguments,
+            Schema::Completion,
+        >>::register(function);
+        Self::from_registration_with_constructions(
+            Schema::NAME.into(),
+            registration,
+            RegisteredHostConstructions::for_sequence::<Schema::Constructions>(),
+        )
+    }
+
     pub(crate) fn new<Arguments, Return, Function>(
         name: EcoString,
         function: Function,
@@ -501,6 +653,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
                 });
             }
         }
+        let callables = self.constructions.callables;
         let mut types = self.constructions.types.into_vec();
         types.extend(rules.iter().cloned());
         let mut custom_schemas = self.constructions.custom_schemas.into_vec();
@@ -509,6 +662,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             types.into_boxed_slice(),
             custom_schemas.into_boxed_slice(),
         );
+        self.constructions = self.constructions.with_callables(callables);
         self.constructions.native_rules = Some(rules);
         self.constructions.validate_for(&self.schema)?;
         Ok(self)
@@ -547,17 +701,27 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         registration: adapter::ScopedHostFunctionRegistration<Profile>,
         constructions: RegisteredHostConstructions,
     ) -> Result<Self, crate::HostRegistrationError> {
-        let schema = HostFunctionSchemaRegistration {
-            layout: registration.parameters,
-            parameters: registration.parameter_types,
-            return_: registration.return_type,
-            custom_schemas: registration.custom_schemas,
-        };
-        HostFunctionSchema::from_registration(name, schema).and_then(|schema| {
+        Self::from_parts(
+            name,
+            registration.schema,
+            constructions,
+            registration.implementation,
+        )
+    }
+}
+
+impl<Implementation> RegisteredHostDefinition<Implementation> {
+    pub(super) fn from_parts(
+        name: EcoString,
+        registration: HostFunctionSchemaRegistration,
+        constructions: RegisteredHostConstructions,
+        implementation: Implementation,
+    ) -> Result<Self, crate::HostRegistrationError> {
+        HostFunctionSchema::from_registration(name, registration).and_then(|schema| {
             constructions.validate_for(&schema).map(|()| Self {
                 schema,
                 constructions,
-                implementation: registration.implementation,
+                implementation,
             })
         })
     }
@@ -571,7 +735,7 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
     ) -> (
         HostFunctionSchema,
         RegisteredHostConstructions,
-        HostFunctionImplementation<Profile>,
+        Implementation,
     ) {
         (self.schema, self.constructions, self.implementation)
     }
@@ -824,6 +988,22 @@ mod tests {
     }
 
     #[test]
+    fn schema_debug_includes_native_capture_types_outside_the_source_signature() {
+        use super::adapter::HostSignature;
+        type Captures = crate::HostTypeList<BigInt, crate::HostTypeListEnd>;
+        let (signature, _) = <() as HostSignature<bool>>::signature();
+        let schema = HostFunctionSchema::from_registration(
+            "captured".into(),
+            signature.with_captures::<Captures>(),
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{schema:?}"),
+            r#"HostFunctionSchema { name: "captured", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Bool }, callable: true, captures: [Int] }"#
+        );
+    }
+
+    #[test]
     fn schema_debug_includes_custom_definitions_not_derived_from_the_function_type() {
         let custom_schema = HostCustomTypeSchema::new(
             "host_shapes",
@@ -847,6 +1027,8 @@ mod tests {
             scheme: crate::plan::TypeScheme::new(0),
             layout: Box::new([]),
             parameters: Box::new([]),
+            captures: Box::new([]),
+            callable: false,
             type_: crate::plan::FunctionType::new(Vec::new(), return_.value_type()),
             return_,
             custom_schemas: vec![custom_schema].into_boxed_slice(),
@@ -855,7 +1037,7 @@ mod tests {
 
         assert_eq!(
             format!("{schema:?}"),
-            r#"HostFunctionSchema { name: "origin", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Custom(CustomType { name: CustomTypeName { package: "host_shapes", module: "host/shape", name: "Shape" }, arguments: [] }) }, custom_schemas: [HostCustomTypeSchema { package: "host_shapes", module: "host/shape", name: "Shape", parameter_count: 0, constructors: [HostCustomConstructorSchema { name: "Circle", fields: [HostCustomFieldSchema { label: Some("radius"), type_: Float }] }] }] }"#,
+            r#"HostFunctionSchema { name: "origin", scheme: TypeScheme { parameters: [] }, type_: FunctionType { arguments: [], return_: Custom(CustomType { name: CustomTypeName { package: "host_shapes", module: "host/shape", name: "Shape" }, arguments: [] }) }, custom_schemas: [HostCustomTypeSchema { package: "host_shapes", module: "host/shape", name: "Shape", parameter_count: 0, constructors: [HostCustomConstructorSchema { name: "Circle", fields: [HostCustomFieldSchema { label: Some("radius"), type_: Float }] }], shared: false }] }"#,
         );
     }
 
@@ -872,6 +1054,8 @@ mod tests {
             scheme: crate::plan::TypeScheme::new(1),
             layout: Box::new([]),
             parameters: Box::new([]),
+            captures: Box::new([]),
+            callable: false,
             type_: crate::plan::FunctionType::new(Vec::new(), return_.value_type()),
             return_,
             custom_schemas: Box::new([]),
@@ -889,7 +1073,7 @@ mod tests {
         let mut registration = <_ as super::adapter::HostFunctionAdapter<(), bool>>::register::<
             TestHostProfile,
         >(|| true);
-        registration.return_type = HostTypeDescriptor::Parameter(2);
+        registration.schema.return_ = HostTypeDescriptor::Parameter(2);
         let error = HostFunctionDefinition::from_registration(
             "identity".into(),
             registration.into_immediate(),
@@ -971,7 +1155,7 @@ mod tests {
             .gleam_body()
             .expect("source body");
         let entry = LibraryEntry::new(entry.id(), LibraryValueType::Bool, Vec::new(), Vec::new());
-        let (plan, entries) =
+        let (plan, entries, _) =
             HostedProgram::from_library_plan(plan, entry, Vec::new()).expect("sealed executable");
         let mut state = TestRunState {
             counter: 4,

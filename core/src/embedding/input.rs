@@ -3,7 +3,7 @@ use crate::plan::execution::type_::CustomConstructorId;
 use crate::plan::execution::{LibraryInputConstructions, LibraryListConstructions};
 use crate::runtime::{
     EmbeddingCustomInput, EmbeddingInputStorage, EmbeddingInputValue, EmbeddingTupleInput,
-    RetainedInputs, RetainedValues,
+    RetainedValues,
 };
 use std::sync::Arc;
 
@@ -35,7 +35,10 @@ pub(super) trait ArgumentsInput<Input>: Arguments {
 pub(super) trait ScopedArgumentsInput<Input, Scope = ()>: Arguments {
     fn owners_match(input: &Input, owner: &Arc<()>) -> bool;
 
-    fn into_inputs(input: Input, constructions: &LibraryInputConstructions) -> RetainedInputs;
+    fn into_inputs<Inputs: FromIterator<crate::runtime::EmbeddingInput>>(
+        input: Input,
+        constructions: &LibraryInputConstructions,
+    ) -> Inputs;
 }
 
 pub(super) trait ScopedInputValue<Input, Scope = ()>: EmbeddingValue {
@@ -81,7 +84,7 @@ pub(super) struct InputConstructions<'a> {
     variants: &'a [[CustomConstructorId; 2]],
     lists: &'a LibraryListConstructions,
     next_variant: usize,
-    next_lists: [usize; 11],
+    next_lists: [usize; 12],
 }
 
 pub(super) enum ListFamily {
@@ -96,15 +99,16 @@ pub(super) enum ListFamily {
     Tuple,
     List,
     External,
+    Function,
 }
 
 impl InputConstructions<'_> {
-    fn new(constructions: &LibraryInputConstructions) -> InputConstructions<'_> {
+    pub(super) fn new(constructions: &LibraryInputConstructions) -> InputConstructions<'_> {
         InputConstructions {
             variants: constructions.variants(),
             lists: constructions.lists(),
             next_variant: 0,
-            next_lists: [0; 11],
+            next_lists: [0; 12],
         }
     }
 
@@ -144,7 +148,7 @@ impl InputConstructions<'_> {
     }
 }
 
-pub(super) const fn add_list_counts(left: [usize; 11], right: [usize; 11]) -> [usize; 11] {
+pub(super) const fn add_list_counts(left: [usize; 12], right: [usize; 12]) -> [usize; 12] {
     let mut counts = left;
     let mut index = 0;
     while index < counts.len() {
@@ -359,18 +363,14 @@ macro_rules! async_arguments {
                 true $(&& $type::owners_match($value, owner))+
             }
 
-            fn into_inputs(
+            fn into_inputs<Inputs: FromIterator<crate::runtime::EmbeddingInput>>(
                 input: ($($input,)+),
                 constructions: &LibraryInputConstructions,
-            ) -> RetainedInputs {
+            ) -> Inputs {
                 let ($($value,)+) = input;
                 let mut constructions = InputConstructions::new(constructions);
                 let storage = EmbeddingInputStorage::default();
-                let mut inputs = RetainedInputs::empty();
-                $(inputs.push_input(
-                    $type::into_runtime($value, &mut constructions, &storage).into_input()
-                );)+
-                inputs
+                [$($type::into_runtime($value, &mut constructions, &storage).into_input(),)+].into_iter().collect()
             }
         }
     };
@@ -399,8 +399,11 @@ impl<Scope> ScopedArgumentsInput<(), Scope> for () {
         true
     }
 
-    fn into_inputs(_input: (), _constructions: &LibraryInputConstructions) -> RetainedInputs {
-        RetainedInputs::empty()
+    fn into_inputs<Inputs: FromIterator<crate::runtime::EmbeddingInput>>(
+        _input: (),
+        _constructions: &LibraryInputConstructions,
+    ) -> Inputs {
+        std::iter::empty().collect()
     }
 }
 

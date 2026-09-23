@@ -40,6 +40,10 @@ impl fmt::Display for PreparedError {
                 "prepared provider registration mismatch: {error:?}; regenerate with the matching providers"
             ),
             Kind::Selection(admission::SelectionError::Binding(error)) => error.fmt(output),
+            Kind::Selection(admission::SelectionError::Callable { name, error }) => write!(
+                output,
+                "function {name} has incompatible prepared callable contracts: {error:?}; regenerate with the matching declarations"
+            ),
             Kind::Selection(admission::SelectionError::Input { name, error }) => write!(
                 output,
                 "function {name} has incompatible prepared Rust inputs: {error:?}; regenerate with the matching declarations"
@@ -57,7 +61,8 @@ impl std::error::Error for PreparedError {
             | Kind::Artifact(_)
             | Kind::Hosted(_)
             | Kind::Registration(_)
-            | Kind::Selection(admission::SelectionError::Input { .. }) => None,
+            | Kind::Selection(admission::SelectionError::Input { .. })
+            | Kind::Selection(admission::SelectionError::Callable { .. }) => None,
         }
     }
 }
@@ -179,6 +184,17 @@ mod tests {
                     },
                 }),
                 "function echo has incompatible prepared Rust inputs: VariantCount { expected: 1, actual: 0 }; regenerate with the matching declarations",
+                false,
+            ),
+            (
+                PreparedError::from(admission::SelectionError::Callable {
+                    name: "echo".into(),
+                    error: admission::callables::CallableError::Count {
+                        expected: 1,
+                        actual: 0,
+                    },
+                }),
+                "function echo has incompatible prepared callable contracts: Count { expected: 1, actual: 0 }; regenerate with the matching declarations",
                 false,
             ),
         ];

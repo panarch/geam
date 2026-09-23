@@ -14,8 +14,8 @@ pub(super) struct DynamicBuilder<
     Profile: GleamJsonHostProfile,
     Provider: HostProvider<Profile>,
 > {
-    pub(super) call: &'borrow mut HostCall<'call, Profile, Provider, JsonDynamicResult>,
-    pub(super) constructions: &'borrow ProviderConstructions<'call, DecodeRequirements>,
+    pub(super) call: &'borrow mut HostCall<'call, Profile, Provider, JsonDynamicResult<Profile>>,
+    pub(super) constructions: &'borrow ProviderConstructions<'call, DecodeRequirements<Profile>>,
 }
 
 impl<'call, Profile, Provider> DynamicBuilder<'_, 'call, Profile, Provider>
@@ -27,7 +27,7 @@ where
         &mut self,
         value: Type::Value<'call>,
     ) -> HostExternal<'call, Dynamic> {
-        create_dynamic_value::<Profile, Provider, JsonDynamicResult, Type>(
+        create_dynamic_value::<Profile, Provider, JsonDynamicResult<Profile>, Type>(
             self.call,
             self.constructions.select::<DecodeDynamicIndex>().token(),
             value,

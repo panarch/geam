@@ -62,14 +62,15 @@ pub(super) fn seal_host_types(
         context,
     };
 
-    for descriptor in template.parameters() {
+    for descriptor in template.parameters().iter().chain(template.captures()) {
         sealing.seal(descriptor);
     }
     sealing.seal(template.return_type());
-    for descriptor in constructions.types() {
+    for descriptor in constructions.validation_types() {
         sealing.seal(descriptor);
     }
-    let types = sealing.finish();
+    let mut types = sealing.finish();
+    types.callables = super::callable::seal(template, constructions, key, context)?.into();
     let Some((rules, customs)) = native else {
         return Ok(types);
     };
@@ -272,7 +273,7 @@ fn first_uninhabited_callback(
         visiting: HashSet::new(),
     };
 
-    for parameter in template.parameters() {
+    for parameter in template.parameters().iter().chain(template.captures()) {
         if let Some(callback) = search.find(parameter) {
             return Some(callback);
         }

@@ -1,5 +1,5 @@
 use super::{
-    HostAbiType, HostCustomIdentity, HostCustomTypeSchema, HostSchemaType, HostType,
+    HostAbiType, HostCustomSchemaId, HostCustomTypeSchema, HostSchemaType, HostType,
     HostTypeDescriptor, private,
 };
 use crate::host::{HostList, HostScopedValue};
@@ -26,7 +26,7 @@ impl<Item: HostAbiType> private::Abi for HostListType<Item> {
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Item as HostAbiType>::collect_custom_schemas(output, visited);
     }

@@ -49,6 +49,9 @@ pub type Catalog
 @external(erlang, "provider_sdk", "decorate")
 pub fn decorate(value: String, transform: fn(String) -> String) -> String
 
+@external(erlang, "provider_sdk", "make_transform")
+pub fn make_transform(prefix: String) -> fn(String) -> String
+
 @external(erlang, "provider_sdk", "catalog_new")
 pub fn catalog_new() -> Catalog
 
@@ -79,7 +82,12 @@ pub fn main() {
   assert empty != catalog
   assert catalog == matching
   assert sdk.catalog_hash(catalog) == sdk.catalog_hash(matching)
-  let summary = sdk.summarize(decorated, fn(value) { value <> "?" })
+  let transform = sdk.make_transform("native:")
+  let alias = transform
+  assert alias == transform
+  assert transform != sdk.make_transform("native:")
+  assert alias("x") == "native:x"
+  let summary = sdk.summarize(decorated, transform)
   #(catalog, summary)
 }
 "#;
@@ -120,10 +128,10 @@ pub fn main() {
 
     assert_eq!(
         returned.inspect().to_string(),
-        r#"#(Catalog([#("one", "sdk:item!")]), Summary(count: 1, items: ["sdk:item!?"]))"#,
+        r#"#(Catalog([#("one", "sdk:item!")]), Summary(count: 1, items: ["native:sdk:item!"]))"#,
     );
     assert_eq!(state.provider.prefix(), "sdk:");
-    assert_eq!(state.provider.calls(), 1);
+    assert_eq!(state.provider.calls(), 3);
 }
 
 #[test]

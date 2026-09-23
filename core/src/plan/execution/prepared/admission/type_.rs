@@ -266,6 +266,12 @@ impl<'data> Types<'data> {
         Ok(())
     }
 
+    pub(super) fn function_type(&self, function: &FunctionType) -> Result<(), TypeError> {
+        let mut roots = Vec::new();
+        Self::function_roots(function, &mut roots);
+        self.walk(roots)
+    }
+
     pub(super) fn value(&self, value: &ValueType) -> Result<(), TypeError> {
         self.walk(vec![TypeRef::Value(value)])
     }

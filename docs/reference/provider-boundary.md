@@ -33,6 +33,10 @@ before this document describes the generated and low-level contracts.
 
 ## Value Type Provider Authoring
 
+The [execution service contract](execution-services.md) describes static service
+dependencies, domain initialization, producer projections, and reuse of the
+Erlang process provider's original values.
+
 The
 [value-types example](../../examples/provider/value_types)
 is the canonical map
@@ -82,7 +86,7 @@ Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
 payload forms supported by the macro; external arguments remain immutable
 payload views and external returns remain owned payloads.
 
-A top-level Gleam `List(T)` argument maps to opaque `List<T>`. Retaining
+A Gleam `List(T)` argument maps to opaque `List<T>`. Retaining
 that view and asking for its length are O(1); `get` locates an item in O(log n)
 and decodes only the requested item. Returning a received `List<T>` passes
 through the original runtime List, while returning `Vec<T>` constructs one
@@ -113,12 +117,13 @@ fn reverse(values: List<StringValue>) -> Vec<StringValue> {
 }
 ```
 
-List items support scalar, external, directional custom, Result, and Option
-values plus recursive tuples of those values. External items are opaque guards
-that dereference to the provider payload without cloning it. Function inputs
-may nest a List view inside a tuple, Result, or Option, but a List item cannot
-itself be a List or Vec. A pass-through `List<T>` return remains top-level;
-newly constructed and nested source Lists use owned `Vec<T>` output values.
+List items support scalar, external, directional custom, Result, Option,
+callback, and explicit Future values plus recursive tuples and retained Lists.
+External items are opaque guards that dereference to the provider payload
+without cloning it. A List may appear inside a tuple, Result, Option, custom
+field, or another List. Returning a received List preserves its storage in
+these typed positions. Use `Vec<T>` for an explicitly constructed source List;
+input List items use retained `List<T>` rather than `Vec<T>`.
 
 ## Custom Value Provider Authoring
 
@@ -309,11 +314,12 @@ configuration omits both declarations; Geam supplies unit state and rejects
 unexpected configuration instead of ignoring it.
 
 The current macro surface supports scalars, native tuples composed from
-supported leaves, top-level Lists with lazy item access or Vec construction,
+supported leaves, retained Lists with lazy item access or Vec construction,
 non-recursive custom values, Rust `Result`/`Option` mapped to their standard
 source types, constructorless external values, generic retained values, and
-typed callbacks. Existential retained values use the explicit
-`provider::advanced` API; nested Lists remain unsupported.
+typed callbacks, Rust-created functions, and explicit Future values. These
+forms compose recursively in supported typed positions. Existential retained
+values use the explicit `provider::advanced` API.
 
 ## Typed Callback Invocation
 
@@ -350,6 +356,74 @@ function returning `T`. The current Gleam execution is suspended while the
 Rust future is pending; the caller's executor drives its completion. It does
 not construct or implicitly observe a source Future. This differs from the
 unmarked async function below, which returns explicit work to Gleam.
+
+## Rust-created Function Values
+
+The [callables example](../../examples/provider/callables) returns functions
+from Rust without inventing Gleam externals for their private bodies:
+
+```rust
+#[geam::callable(factory = Add)]
+fn add(#[geam::capture] offset: BigInt, value: BigInt) -> BigInt {
+    offset + value
+}
+
+#[geam::function]
+fn make_adder(
+    #[geam::call] call: &mut Call<()>,
+    #[geam::factory] factory: Factory<Add>,
+    offset: BigInt,
+) -> HostResult<Callback<fn(BigInt) -> BigInt>> {
+    call.create(&factory, (offset,))
+}
+```
+
+Import `BigInt`, `Call`, `Callback`, `Factory`, and `HostResult` from
+`geam::provider` and put both functions inside a `#[geam::module]`. The public
+Gleam factory is `fn make_adder(Int) -> fn(Int) -> Int`. Capture parameters are
+immutable inputs retained at construction; the other parameters are supplied
+at invocation. An optional `#[geam::call]` accesses the original provider state.
+Factory parameters follow the mutable Call and precede source arguments. The
+macro derives the exact capture tuple and permission from the body declaration;
+an undeclared factory or wrong capture type fails Rust compilation.
+
+Callable bodies support zero through seven source arguments. Their captures
+are a separate typed sequence. `#[geam::callable(factory = Forward, await)]`
+permits an async body to await `call.invoke`, bounded state access, or native
+work while still returning its ordinary source result. An owned async creator
+uses `call.create(&factory, captures).await`; an immediate creator uses the
+synchronous operation shown above.
+
+Generic declarations use `Value<Item>` for opaque values and
+`Callback<fn(Value<Argument>) -> Value<Output>>` for a callable with independent
+input and result parameters. Factories use the corresponding
+`Factory<Forward<Argument, Output>>`. Parameters must be bound by the creating
+function's signature. Registration specializes the declaration; authors do not
+register each concrete type separately. Callbacks can be arguments or results
+of other callbacks and occur inside declared custom fields, List, Tuple,
+Result, Option, and explicit Future shapes. Input and output directions remain
+explicit, including generated custom input enums.
+
+A fresh construction has a fresh source function identity. Cloning, container
+pass-through, or wrapping retains the previous function and its captures.
+Inspection hides Rust addresses and capture contents. Invocation reuses the
+sealed target; passing a retained value does not copy its payload or walk a
+wrapper chain. Concurrent invocations own separate arguments and pending state.
+They share only the original provider state accessed through bounded calls.
+Cancellation and scope closure use the existing execution lifecycle.
+
+`Value<fn(...) -> ...>` remains opaque, and native Dynamic inspection cannot
+produce a callback permission. A typed callback or work handle retains its
+original execution endpoint; foreign or closed execution cannot reactivate it.
+Returning a `Future<T>` preserves the source work value without observing it.
+
+Low-level providers declare `HostCallableSchema` and register a real body with
+`HostProviderModule::with_callable` or `with_resumable_callable`. They request
+`HostCreatedFunction<Schema>` in their construction list and use
+`HostCall::construct_function` with its token. The body's `HostCaptures` reads
+the declared capture sequence. `HostReturns` and `HostDiverges` retain the
+existing value and never-completion contracts. The independently locked
+[Provider SDK](../../tests/fixtures/provider_sdk) executes this public path.
 
 ## Explicit Async Functions
 

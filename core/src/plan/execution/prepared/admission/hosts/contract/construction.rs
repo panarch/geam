@@ -36,8 +36,9 @@ pub(super) fn admit(
     for descriptor in declarations
         .parameters()
         .iter()
+        .chain(declarations.captures())
         .chain([declarations.return_type()])
-        .chain(registration.constructions.types())
+        .chain(registration.constructions.validation_types())
     {
         walk.descriptor(descriptor, arguments)?;
     }
@@ -299,6 +300,140 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
+    fn captured_types_and_permitted_callable_captures_are_complete_construction_roots() {
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostCallableSchema, HostCaptures,
+            HostConstructions, HostCreatedFunction, HostFunctionDeclaration, HostFunctionType,
+            HostList, HostListType, HostProvider, HostReturns, HostTypeIndex0, HostTypeList,
+            HostTypeListEnd,
+        };
+        type End = HostTypeListEnd;
+        type Items = HostListType<num_bigint::BigInt>;
+        type Captures = HostTypeList<Items, End>;
+        type Predicate = HostFunctionType<End, bool>;
+        type Constructions = HostTypeList<HostCreatedFunction<HasItems>, End>;
+        struct HasItems;
+        impl HostCallableSchema for HasItems {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "main";
+            const NAME: &'static str = "has_items";
+            type Arguments = End;
+            type Return = bool;
+            type Captures = Captures;
+            type Constructions = End;
+            type Completion = HostReturns;
+        }
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn has_items<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, bool>,
+            captures: HostCaptures<'call, Captures>,
+            _: HostConstructions<'call, End>,
+        ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+            assert_eq!(call.state(), &mut ());
+            let (items, ()) = call.captures(captures);
+            let nonempty = call.list_len(items) != 0;
+            Ok(call.return_value(nonempty))
+        }
+        fn make<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Predicate>,
+            constructions: HostConstructions<'call, Constructions>,
+            items: HostList<'call, num_bigint::BigInt>,
+        ) -> Result<HostCallCompletion<'call, Predicate>, HostCallError> {
+            let function =
+                call.construct_function(constructions.at::<HostTypeIndex0>(), (items, ()));
+            Ok(call.return_value(function))
+        }
+        fn spare<'call>(
+            call: HostCall<'call, StatelessHostProfile, Provider, ()>,
+            _: HostConstructions<'call, Constructions>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            Ok(call.return_value(()))
+        }
+        const MAKE: HostFunctionDeclaration<(Items,), Predicate, Constructions> =
+            HostFunctionDeclaration::new("make");
+        const SPARE: HostFunctionDeclaration<(), (), Constructions> =
+            HostFunctionDeclaration::new("spare");
+        let hosts = || {
+            HostProviderSet::from_providers([HostProviderModule::new("app", "main")
+                .unwrap()
+                .with_declared_function::<Provider, _, _, _, _>(MAKE, make)
+                .unwrap()
+                .with_declared_function::<Provider, _, _, _, _>(SPARE, spare)
+                .unwrap()])
+            .unwrap()
+            .with_callable::<Provider, HasItems, (), _>(has_items)
+            .unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "make")
+fn make(items: List(Int)) -> fn() -> Bool
+@external(erlang, "native", "spare")
+fn spare() -> Nil
+pub fn main() { spare() make([42])() }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            hosts(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            crate::Value::Bool(true)
+        );
+        let (program, mut metadata, _) = lowered(source, hosts());
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let (_, providers, callables, _) = hosts().into_registered();
+        let registrations = providers
+            .into_iter()
+            .flat_map(|module| module.functions)
+            .chain(callables.into_iter().map(|callable| callable.function))
+            .map(|function| {
+                let (schema, constructions, _) = function.into_parts();
+                Registration {
+                    schema,
+                    constructions,
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(metadata.len(), 3);
+        for entry in &mut metadata {
+            let registration = registrations
+                .iter()
+                .find(|registration| registration.schema.name() == entry.name())
+                .unwrap();
+            assert_eq!(entry.constructions.lists.entries.len(), 1);
+            assert_eq!(admit(entry, registration, &[], &types), Ok(()));
+            entry.constructions.lists.entries = Vec::new().into();
+            assert_eq!(
+                admit(entry, registration, &[], &types),
+                Err(ContractError::Construction)
+            );
+        }
+    }
+
+    #[test]
     fn construction_indexes_require_sorted_unique_nominal_keys_and_existing_targets() {
         let typed = crate::compile_typed_module(
             "example",
@@ -429,7 +564,7 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
             &common.value_shapes,
         )
         .unwrap();
-        let (_, mut providers, _) = hosts().into_registered();
+        let (_, mut providers, _, _) = hosts().into_registered();
         let (schema, _, _) = providers.remove(0).functions.remove(0).into_parts();
         let box_schema = HostCustomTypeSchema::new(
             "app",
@@ -493,6 +628,7 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
             .collect::<Vec<_>>();
         customs.sort_by(|a, b| a.0.cmp(&b.0));
         let indexes = HostConstructionTypes {
+            callables: Vec::new().into(),
             lists: ConstructionIndex {
                 entries: lists.into(),
             },
@@ -815,6 +951,7 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
         .unwrap();
         let list = common.list_types.types[0].list_type();
         let indexes = HostConstructionTypes {
+            callables: Vec::new().into(),
             lists: ConstructionIndex {
                 entries: vec![(TypeMetadata::List(Node::Static(&TypeMetadata::Int)), list)].into(),
             },

@@ -13,6 +13,8 @@ type, compatibility, or runtime behavior.
   binding ownership, supported Rust data, retained Lists, and provider state.
 - [Host provider boundary](provider-boundary.md) defines provider type mappings,
   components, external storage, state, callbacks, and runner composition.
+- [Execution services](execution-services.md) defines shared service ownership,
+  provider dependencies, typed process values, and domain lifecycle.
 - [Runtime semantics](runtime-semantics.md) defines values, equality, control
   flow, host re-entry, IO, errors, and execution-plan behavior.
 

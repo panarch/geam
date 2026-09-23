@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
+#[path = "prepared_embedding/services.rs"]
+mod services;
+
+#[path = "prepared_embedding/process_consumers.rs"]
+mod process_consumers;
+
 #[test]
 fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let directory = tempfile::tempdir().unwrap();
@@ -12,6 +18,12 @@ fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let target = repository.join("target/prepared-acceptance");
     fs::create_dir_all(application.join("src")).unwrap();
     fs::create_dir_all(application.join(".cargo")).unwrap();
+    checked(command("git", &application).args(["init", "--quiet"]));
+    fs::write(
+        application.join(".gitignore"),
+        "/src/geam_bindings/program.rs\n",
+    )
+    .unwrap();
     fs::write(application.join("Cargo.toml"), format!(
         "[package]\nname = 'prepared-consumer'\nversion = '0.1.0'\nedition = '2024'\nlicense = 'Apache-2.0'\ndescription = 'Prepared embedding acceptance'\ninclude = ['src/**', 'Cargo.toml', 'Cargo.lock']\n[dependencies]\ngeam = {{ version = '={}', default-features = false, features = ['embedding'] }}\nmiette = '7'\n[workspace]\n",
         env!("CARGO_PKG_VERSION"),
@@ -173,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
     )
     .unwrap();
     let unexpected = root.join("unexpected-tool-call");
+    checked(command("git", &application).args(["check-ignore", "src/geam_bindings/program.rs"]));
     let started = Instant::now();
     checked(
         command("cargo", &application)
@@ -219,6 +232,109 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
     assert_eq!(output.stdout, b"42\n");
     assert_eq!(output.stderr, b"");
     assert!(!unexpected.exists());
+}
+
+#[test]
+fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(directory.path()).unwrap();
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = repository.join("examples/embedding/callables");
+    let application = root.join("application");
+    let target = repository.join("target/prepared-acceptance");
+    fs::create_dir_all(application.join(".cargo")).unwrap();
+    copy_directory(&source.join("src"), &application.join("src"));
+    copy_directory(&source.join("gleam/src"), &application.join("gleam/src"));
+    let program = application.join("src/geam_bindings/program.rs");
+    if program.exists() {
+        fs::remove_file(&program).unwrap();
+    }
+    // Exercise Windows-style checkout line endings on every CI platform.
+    for file in [
+        "src/callbacks.rs",
+        "src/pricing.rs",
+        "src/main.rs",
+        "src/declarations.rs",
+        "src/geam_bindings.rs",
+    ] {
+        let path = application.join(file);
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(path, content.replace("\r\n", "\n").replace('\n', "\r\n")).unwrap();
+    }
+    for file in ["Cargo.lock", "gleam/gleam.toml", "gleam/manifest.toml"] {
+        fs::copy(source.join(file), application.join(file)).unwrap();
+    }
+    let mut manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(source.join("Cargo.toml")).unwrap()).unwrap();
+    manifest["patch"]["crates-io"]["geam"]["path"] = repository.to_str().unwrap().into();
+    fs::write(
+        application.join("Cargo.toml"),
+        toml::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    let target_path = target.to_str().unwrap();
+    let config = toml::toml! {
+        [net]
+        offline = true
+        [build]
+        target-dir = target_path
+    };
+    fs::write(
+        application.join(".cargo/config.toml"),
+        toml::to_string(&config).unwrap(),
+    )
+    .unwrap();
+    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
+    let files = managed_files(&application);
+    checked(command("cargo", &application).args(["fmt", "--all"]));
+    assert_eq!(managed_files(&application), files);
+    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
+    let content = fs::read_to_string(&program).unwrap();
+    fs::write(&program, content.replace('\n', "\r\n")).unwrap();
+    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
+    assert_eq!(managed_files(&application), files);
+
+    let declarations = application.join("src/declarations.rs");
+    let original = fs::read_to_string(&declarations).unwrap();
+    fs::write(
+        &declarations,
+        format!("{original}\n// changed declaration input\n"),
+    )
+    .unwrap();
+    let stale = command(env!("CARGO_BIN_EXE_geam"), &application)
+        .args(["embedding", "check"])
+        .output()
+        .unwrap();
+    assert!(!stale.status.success(), "{stale:?}");
+    assert!(String::from_utf8_lossy(&stale.stderr).contains("missing or stale"));
+    assert_eq!(managed_files(&application), files);
+    fs::write(declarations, original).unwrap();
+    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
+    assert_eq!(managed_files(&application), files);
+
+    let output = checked(command("cargo", &application).args(["run", "--quiet", "--locked"]));
+    assert_eq!(
+        output.stdout,
+        b"dynamic: 15, 17, 19\nprepared: 15, 17, 19\n"
+    );
+    assert_eq!(output.stderr, b"");
+
+    let deploy = root.join("deployment");
+    fs::create_dir(&deploy).unwrap();
+    let executable = binary_path(&deploy, "callables");
+    fs::copy(
+        binary_path(&target.join("debug"), "geam-rust-embedding-callables"),
+        &executable,
+    )
+    .unwrap();
+    fs::remove_dir_all(&application).unwrap();
+    let output = checked(
+        command(executable, &deploy)
+            .arg("--prepared")
+            .env("PATH", ""),
+    );
+    assert_eq!(output.stdout, b"prepared: 15, 17, 19\n");
+    assert_eq!(output.stderr, b"");
 }
 
 fn command(program: impl AsRef<std::ffi::OsStr>, directory: &Path) -> Command {

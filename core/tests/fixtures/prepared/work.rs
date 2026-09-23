@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 2,
+        format: 4,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -3275,8 +3275,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::CustomFunctionId {
@@ -3300,8 +3302,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             externals: data::Storage::Static(&[
@@ -3324,8 +3328,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3346,8 +3352,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3368,8 +3376,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3390,8 +3400,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
                 data::program::LibraryFunctionEntry {
                     function: data::function::ExternalFunctionId {
@@ -3412,8 +3424,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             bools: data::Storage::Static(&[]),
@@ -3435,11 +3449,14 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             nils: data::Storage::Static(&[]),
                             tuples: data::Storage::Static(&[]),
                             lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
                         },
                     },
+                    callables: data::Storage::Static(&[]),
                 },
             ]),
             lists: data::Storage::Static(&[]),
+            functions: data::Storage::Static(&[]),
         },
         exports: data::Storage::Static(&[
             data::Export {
@@ -3595,6 +3612,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "ready", data::source::SourceSpan::new(60, 86)),
             signature: data::type_::FunctionMetadata {
@@ -3620,6 +3638,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                 call: data::Storage::Static(&[
                     data::host::HostCallParameter::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3644,6 +3663,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3656,6 +3676,9 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                 parameters: data::Storage::Static(&[
                     data::host::RegistrationType::Parameter(0),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3686,6 +3709,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "map", data::source::SourceSpan::new(139, 187)),
             signature: data::type_::FunctionMetadata {
@@ -3743,6 +3767,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         arity: 1,
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3767,6 +3792,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3801,6 +3827,9 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         return_: data::Storage::Static(&data::host::RegistrationType::Parameter(0)),
                     },
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3835,6 +3864,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "all", data::source::SourceSpan::new(325, 358)),
             signature: data::type_::FunctionMetadata {
@@ -3873,6 +3903,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         },
                     })),
                 ]),
+                captures: data::Storage::Static(&[]),
             },
             constructions: data::host::HostConstructionTypes {
                 lists: data::host::ConstructionIndex {
@@ -3915,6 +3946,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                     roots: data::Storage::Static(&[]),
                     nodes: data::Storage::Static(&[]),
                 },
+                callables: data::Storage::Static(&[]),
             },
             type_: data::type_::FunctionType {
                 arguments: data::Storage::Static(&[
@@ -3937,6 +3969,9 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         ]),
                     })),
                 ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
                 return_: data::host::RegistrationType::External {
                     schema: data::host::ExternalSchema {
                         package: data::Text::Static("work_fixture"),
@@ -3970,4 +4005,5 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
         },
     ]),
     never_functions: data::Storage::Static(&[]),
+    callables: data::Storage::Static(&[]),
 }

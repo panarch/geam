@@ -23,6 +23,10 @@ impl<Implementation> ProfiledHostImplementationBinding<Implementation> {
         }
     }
 
+    pub(crate) fn template(&self) -> FunctionTemplateId {
+        self.template
+    }
+
     pub(crate) fn into_parts(
         self,
     ) -> (
@@ -31,5 +35,16 @@ impl<Implementation> ProfiledHostImplementationBinding<Implementation> {
         Arc<Implementation>,
     ) {
         (self.template, self.constructions, self.implementation)
+    }
+}
+
+impl<Value, Never>
+    ProfiledHostImplementationBinding<crate::host::HostFunctionBinding<Value, Never>>
+{
+    pub(crate) fn returns_value(&self) -> bool {
+        matches!(
+            &*self.implementation,
+            crate::host::HostFunctionBinding::Value(_)
+        )
     }
 }

@@ -110,7 +110,7 @@ jobs:
           - group: 1
             examples: [first_call, package, processes]
           - group: 2
-            examples: [data, io, provider]
+            examples: [data, io, provider, callables]
           - group: 3
             examples: [async_host, session, prepared]
     env:
@@ -163,6 +163,9 @@ jobs:
             echo "::group::Embedding example: $example"
             if ! bash -e -o pipefail -c '
               cd "examples/embedding/$1"
+              case "$1" in
+                prepared|callables) "$RUNNER_TEMP/checkout-geam/bin/geam" embedding sync ;;
+              esac
               "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
               (cd gleam && gleam format --check)
               cargo fmt --all --check
@@ -381,7 +384,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt
+          components: rustfmt, clippy
           cache: false
           rustflags: ""
 
@@ -399,6 +402,15 @@ jobs:
 
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
+
+      - name: Fetch independently locked callable consumer dependencies
+        run: cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
+
+      - name: Fetch independently locked service consumer dependencies
+        shell: bash
+        run: |
+          cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
         run: cargo test --package geam --test prepared_embedding --test standalone_build --locked
@@ -532,10 +544,14 @@ jobs:
                 test: runs_the_documented_tag_set_provider_without_configuration
               - example: native_records
                 test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
+              - example: process_service
+                test: runs_the_process_service_provider_on_the_builtin_mailbox
           - group: 2
             examples:
               - example: text_tools
                 test: runs_the_documented_text_tools_provider_across_three_modules
+              - example: callables
+                test: runs_the_documented_callables_provider_with_generic_and_custom_callbacks
               - example: generic_box
                 test: runs_the_documented_generic_box_provider_with_persistent_values
           - group: 3
@@ -599,7 +615,9 @@ jobs:
               cd "examples/provider/$example/provider"
               cargo test --locked
               cargo package --locked
+              (cd ../project && gleam format --check)
               cd "../project/packages/example_$example"
+              gleam format --check
               gleam export hex-tarball
             ' -- "$example" "$test"; then
               echo "::error title=Provider example failed::$example"
@@ -608,6 +626,50 @@ jobs:
             echo "::endgroup::"
           done <<< "$examples"
           exit "$status"
+
+  otp-service-consumer:
+    name: Original OTP service consumer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tests/fixtures/otp_service/provider -> target
+
+      - name: Fetch locked consumer dependencies
+        run: |
+          cargo fetch --locked
+          cargo fetch --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --locked
+
+      - name: Verify original source hashes and manual host contracts
+        run: cargo test --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --locked
+
+      - name: Verify fixture source formatting
+        run: gleam format --check tests/fixtures/otp_service/project/src
+
+      - name: Verify OTP callbacks in the standalone host
+        run: cargo test --package geam --test provider_examples --locked -- --exact otp_service::runs_profile_dependent_otp_callbacks_in_the_generated_standalone_host
+
 
   external-provider-sdk:
     name: External provider SDK

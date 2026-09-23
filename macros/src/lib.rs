@@ -44,3 +44,14 @@ pub fn function(_arguments: TokenStream, item: TokenStream) -> TokenStream {
     error.extend(proc_macro2::TokenStream::from(item));
     error.into()
 }
+
+#[proc_macro_attribute]
+pub fn callable(_arguments: TokenStream, item: TokenStream) -> TokenStream {
+    let mut error = syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`#[geam::callable]` must be inside a `#[geam::module]` inline module",
+    )
+    .into_compile_error();
+    error.extend(proc_macro2::TokenStream::from(item));
+    error.into()
+}

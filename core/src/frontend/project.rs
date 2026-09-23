@@ -136,6 +136,28 @@ pub fn compile_typed_host_project<Profile: HostProfile>(
     .map_err(ProjectError::from)
 }
 
+/// Compiles a resolved project from static declarations only, without native bodies.
+pub fn compile_declared_host_project(
+    project_root: impl Into<Utf8PathBuf>,
+    root_module: impl Into<EcoString>,
+    declarations: crate::HostDeclarations,
+) -> Result<super::DeclaredTypedProgram, ProjectError> {
+    let project = load_project(project_root.into(), root_module.into())?;
+    let selected_source_modules = project
+        .modules
+        .iter()
+        .map(|module| (module.package.clone(), module.module.name.clone()))
+        .collect();
+    super::program::compile_parsed_declared_program(
+        project.root_package,
+        project.root_module,
+        project.modules,
+        declarations.select_source_providers(&selected_source_modules),
+        WarningEmitter::null(),
+    )
+    .map_err(ProjectError::from)
+}
+
 struct ParsedProject {
     root_package: EcoString,
     root_module: EcoString,
@@ -530,6 +552,82 @@ mod tests {
                 b"invalid-\xff.gleam".to_vec(),
             ))])
         }
+    }
+
+    #[test]
+    fn declaration_only_projects_select_providers_and_keep_portable_source_paths() {
+        use crate::{HostDeclarations, HostFunctionDeclaration, HostProviderModuleDeclaration};
+        let project = tempdir().unwrap();
+        let root = project_root(&project);
+        write_file(
+            &root,
+            "gleam.toml",
+            "name = \"application\"\nversion = \"1.0.0\"\n",
+        );
+        write_file(&root, "manifest.toml", "packages = []\n[requirements]\n");
+        write_file(
+            &root,
+            "src/main.gleam",
+            "import used\npub fn main() { used.value() }",
+        );
+        write_file(
+            &root,
+            "src/used.gleam",
+            "@external(erlang, \"native\", \"value\")\npub fn value() -> Int",
+        );
+        write_file(&root, "src/unused.gleam", "unselected invalid source");
+        let declarations = || {
+            HostDeclarations::from_providers(["unused", "used"].map(|module| {
+                HostProviderModuleDeclaration::new("application", module)
+                    .unwrap()
+                    .with_function(HostFunctionDeclaration::<(), BigInt>::new("value"))
+                    .unwrap()
+            }))
+            .unwrap()
+        };
+        let mut mapped = Vec::new();
+        let program = super::compile_declared_host_project(root.clone(), "main", declarations())
+            .unwrap()
+            .map_source_paths(|package, module, original| {
+                assert_eq!(original, root.join(format!("src/{module}.gleam")));
+                mapped.push((package.to_owned(), module.to_owned()));
+                format!("portable/{module}.gleam").into()
+            });
+        assert_eq!(program.root_package(), "application");
+        assert_eq!(program.root_module(), "main");
+        assert_eq!(
+            mapped,
+            [
+                ("application".to_owned(), "used".to_owned()),
+                ("application".to_owned(), "main".to_owned())
+            ]
+        );
+        let (_, modules, providers, callables, _) = program.into_parts();
+        assert_eq!(modules.len(), 2);
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].module, "used");
+        assert!(callables.is_empty());
+
+        write_file(
+            &root,
+            "src/main.gleam",
+            "pub fn main() { unknown_variable }",
+        );
+        let error = super::compile_declared_host_project(root.clone(), "main", declarations())
+            .err()
+            .unwrap();
+        assert_eq!(error.to_string(), "failed to analyse Gleam module");
+        fs::remove_file(root.join("gleam.toml")).unwrap();
+        let error = super::compile_declared_host_project(root.clone(), "main", declarations())
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "failed to read Gleam package config {}",
+                root.join("gleam.toml")
+            )
+        );
     }
 
     #[test]
@@ -987,7 +1085,7 @@ pub fn value() -> Int
             .expect("read-only selected source loading");
         assert_eq!(program.root_package(), "application");
         assert_eq!(program.root_module(), "main");
-        let (root_index, modules, providers, _) = program.into_parts();
+        let (root_index, modules, providers, _, _) = program.into_parts();
         assert_eq!(root_index, 1);
         assert_eq!(modules.len(), 2);
         assert_eq!(providers.len(), 1);
@@ -1010,7 +1108,7 @@ pub fn value() -> Int
             Vec::new(),
             Vec::new(),
         );
-        let (plan, entries) =
+        let (plan, entries, _) =
             crate::plan::execution::HostedProgram::from_library_plan(plan, entry, Vec::new())
                 .expect("sealed project");
         let mut state = ();

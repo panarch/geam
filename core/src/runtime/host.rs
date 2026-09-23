@@ -3,12 +3,12 @@ mod invoke;
 mod scoped;
 
 pub(in crate::runtime) use self::call::RuntimeHostCall;
-pub(super) use self::invoke::{invoke_never, invoke_value};
+pub(super) use self::invoke::{host_call_error, invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
 pub(crate) use self::scoped::{
     StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems, StoredRuntimeValue,
+    StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,
 };
 use crate::host::{
     HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostTupleToken,
@@ -19,6 +19,7 @@ use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 
 struct PreparedHostCall {
     arguments: RetainedValues,
+    captures: Vec<HostValueToken>,
     value_arguments: Vec<HostValueToken>,
     list_arguments: Vec<HostListToken>,
     tuple_arguments: Vec<HostTupleToken>,
@@ -29,8 +30,12 @@ struct PreparedHostCall {
 }
 
 impl PreparedHostCall {
-    fn new(parameters: &[HostCallParameter], inputs: RetainedValues) -> Self {
-        let environment = BlockEnvironment::from_retained(inputs);
+    fn new(
+        parameters: &[HostCallParameter],
+        capture_parameters: &[crate::plan::execution::graph::ParamSlot],
+        inputs: RetainedValues,
+    ) -> Self {
+        let mut environment = BlockEnvironment::from_retained(inputs);
         let mut arguments = RetainedValues::empty();
         let mut scoped = ScopedValues::default();
         let mut value_arguments = Vec::new();
@@ -77,8 +82,15 @@ impl PreparedHostCall {
             }
         }
 
+        let mut captures = capture_parameters
+            .iter()
+            .rev()
+            .map(|slot| scoped.push(environment.take_capture_value(&slot.local)))
+            .collect::<Vec<_>>();
+        captures.reverse();
         Self {
             arguments,
+            captures,
             value_arguments,
             list_arguments,
             tuple_arguments,

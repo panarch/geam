@@ -1,3 +1,4 @@
+mod capture;
 mod transfer;
 mod value;
 
@@ -21,14 +22,13 @@ use crate::plan::execution::graph::{
     UtfCodepointFunctionLocalId, UtfCodepointListLocalId, UtfCodepointLocalId,
 };
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture,
-    EvaluatedCaptureKind, EvaluatedCoreFunctionFunction, EvaluatedCustomFunction,
-    EvaluatedCustomValue, EvaluatedExternalFunction, EvaluatedExternalFunctionFunction,
-    EvaluatedExternalListFunction, EvaluatedExternalValue, EvaluatedFloatFunction,
-    EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedGenericFunction,
-    EvaluatedIntFunction, EvaluatedListCapture, EvaluatedListFunction, EvaluatedNeverFunction,
-    EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCaptureKind,
+    EvaluatedCoreFunctionFunction, EvaluatedCustomFunction, EvaluatedCustomValue,
+    EvaluatedExternalFunction, EvaluatedExternalFunctionFunction, EvaluatedExternalListFunction,
+    EvaluatedExternalValue, EvaluatedFloatFunction, EvaluatedFunctionFunction,
+    EvaluatedFunctionValue, EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListCapture,
+    EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
+    EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
@@ -99,6 +99,7 @@ pub(in crate::runtime) struct BlockEnvironment {
 
 pub(crate) struct RetainedValues {
     values: Box<BlockValues>,
+    callable_domain: Option<crate::runtime::captures::ExecutionDomain>,
 }
 
 impl BlockEnvironment {
@@ -667,9 +668,17 @@ impl BlockEnvironment {
 }
 
 impl RetainedValues {
+    pub(in crate::runtime) fn belongs_to(
+        &self,
+        domain: Option<crate::runtime::captures::ExecutionDomain>,
+    ) -> bool {
+        self.callable_domain.is_none() || self.callable_domain == domain
+    }
+
     pub(crate) fn empty() -> Self {
         Self {
             values: Box::default(),
+            callable_domain: None,
         }
     }
 
@@ -729,8 +738,12 @@ impl RetainedValues {
         self.values.tuples.push(value);
     }
 
-    pub(in crate::runtime) fn append_captures(&mut self, captures: &[EvaluatedCapture]) {
-        for capture in captures {
+    pub(in crate::runtime) fn append_captures(
+        &mut self,
+        captures: &crate::runtime::captures::Captures,
+    ) {
+        self.callable_domain = captures.domain();
+        for capture in captures.values() {
             match capture.kind() {
                 EvaluatedCaptureKind::Int { value, .. } => self.values.ints.push(value.clone()),
                 EvaluatedCaptureKind::Float { value, .. } => self.values.floats.push(*value),

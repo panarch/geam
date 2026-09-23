@@ -7,6 +7,12 @@ static ARITHMETIC: data::ModuleArtifact<std::convert::Infallible> =
 static VALUES: data::ModuleArtifact<std::convert::Infallible> =
     include!("fixtures/prepared/values.rs");
 
+static NESTED_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/nested_patterns.rs");
+
+static SPARSE_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/sparse_patterns.rs");
+
 #[path = "support/work_fixture.rs"]
 mod work_fixture;
 #[path = "fixtures/prepared/work_provider.rs"]
@@ -17,6 +23,154 @@ static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
 static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/entry.rs");
 static ENTRY_WORK: data::HostedEntryArtifact = include!("fixtures/prepared/entry_work.rs");
 static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/entry_failure.rs");
+
+#[path = "fixtures/prepared/shared_provider.rs"]
+mod shared_provider;
+
+static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
+
+#[test]
+fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
+    assert_eq!(
+        shared_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/shared_custom.rs").trim()
+    );
+    assert_eq!(
+        SHARED_CUSTOM
+            .load(shared_provider::hosts(false))
+            .err()
+            .unwrap()
+            .to_string(),
+        "prepared provider registration mismatch: Registration { package: \"consumer\", module: \"consumer\", function: \"retain\", reason: SharedCustomType { custom_type: CustomTypeName { package: \"producer\", module: \"handles\", name: \"Handle\" } } }; regenerate with the matching providers"
+    );
+    SHARED_CUSTOM.load(shared_provider::hosts(true)).unwrap();
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main) = if prepared {
+                let mut bindings = SHARED_CUSTOM.load(shared_provider::hosts(true)).unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), (BigInt, BigInt)>::new("main"))
+                    .unwrap();
+                (bindings.seal(), main)
+            } else {
+                let typed = geam_core::compile_typed_host_program(
+                    "consumer",
+                    "consumer",
+                    shared_provider::packages(),
+                    shared_provider::hosts(true),
+                )
+                .unwrap();
+                let (bindings, main) = geam_core::embedding::HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), (BigInt, BigInt)>::new("main"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            scope.call(&main, ()).await.unwrap()
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(result, (42.into(), 42.into()));
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
+    use geam_core::StringValue;
+
+    let source = include_str!("fixtures/prepared/nested_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/nested_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = NESTED_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                module.call(&main, (), &mut echo).unwrap().as_str(),
+                "present:missing:failed:nested:empty:none:done"
+            );
+            assert!(echo.is_empty());
+        }
+    }
+}
+
+#[test]
+fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
+    use geam_core::StringValue;
+
+    let source = include_str!("fixtures/prepared/sparse_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/sparse_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = SPARSE_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                module.call(&main, (), &mut echo).unwrap().as_str(),
+                "unnamed:empty:number:fallback"
+            );
+            assert!(echo.is_empty());
+        }
+    }
+}
 
 #[test]
 fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {
@@ -112,7 +266,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 1 is incompatible with format 2; regenerate the prepared program"
+        "prepared format 1 is incompatible with format 4; regenerate the prepared program"
     );
 }
 
@@ -983,4 +1137,427 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
         .unwrap();
     assert_eq!(value, (true, true, BigInt::from(43)));
     assert!(echo.is_empty());
+}
+
+#[path = "fixtures/prepared/callable_declarations.rs"]
+mod callable_declarations;
+#[path = "fixtures/prepared/callable_provider.rs"]
+mod callable_provider;
+
+// This ordinary application module is absent from the declaration-only helper.
+mod pricing {
+    pub(super) fn add(base: num_bigint::BigInt, value: num_bigint::BigInt) -> num_bigint::BigInt {
+        base + value
+    }
+}
+
+static CALLABLES: data::HostedModuleArtifact = include!("fixtures/prepared/callables.rs");
+
+#[cfg(feature = "tokio")]
+static EMBEDDED_CALLABLES: data::HostedModuleArtifact =
+    include!("fixtures/prepared/callable_embedding.rs");
+
+#[test]
+fn scoped_callable_artifact_matches_declaration_only_preparation() {
+    assert_eq!(
+        callable_declarations::prepare_scoped().emit_rust(),
+        include_str!("fixtures/prepared/callable_embedding.rs").trim(),
+    );
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn scoped_function_inputs_returns_and_nested_codecs_match_in_dynamic_and_prepared_modules() {
+    use geam_core::embedding::{CallableType, HostedModuleBuilder, List};
+    type Adjust = CallableType<(BigInt,), BigInt>;
+    let program = geam_core::compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (mut dynamic, make) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), Adjust>::new("make_native"))
+        .unwrap();
+    let mut prepared = EMBEDDED_CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+    let prepared_make = prepared
+        .function(FunctionDeclaration::<(BigInt,), Adjust>::new("make_native"))
+        .unwrap();
+    macro_rules! select {
+        ($bindings:ident) => {
+            (
+                $bindings
+                    .function(FunctionDeclaration::<(Adjust,), Adjust>::new("keep"))
+                    .unwrap(),
+                $bindings
+                    .function(FunctionDeclaration::<(BigInt, Adjust), BigInt>::new(
+                        "calculate",
+                    ))
+                    .unwrap(),
+                $bindings
+                    .function(FunctionDeclaration::<(List<Adjust>,), List<Adjust>>::new(
+                        "function_list",
+                    ))
+                    .unwrap(),
+                $bindings
+                    .function(
+                        FunctionDeclaration::<(Adjust,), (Adjust, Result<Adjust, ()>)>::new(
+                            "container",
+                        ),
+                    )
+                    .unwrap(),
+                $bindings
+                    .function(
+                        FunctionDeclaration::<(), CallableType<(BigInt,), Adjust>>::new("maker"),
+                    )
+                    .unwrap(),
+                $bindings
+                    .function(FunctionDeclaration::<
+                        (),
+                        CallableType<(List<Result<BigInt, ()>>,), BigInt>,
+                    >::new("picker"))
+                    .unwrap(),
+                $bindings.callable::<callable_declarations::Add>().unwrap(),
+                $bindings
+                    .callable::<callable_declarations::Constant<bool>>()
+                    .unwrap(),
+                $bindings
+                    .callable::<callable_declarations::Wrap<BigInt, BigInt>>()
+                    .unwrap(),
+            )
+        };
+    }
+    let dynamic_functions = select!(dynamic);
+    let prepared_functions = select!(prepared);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for (
+        mut module,
+        make,
+        (keep, calculate, list, container, maker, picker, native, constant, wrap),
+    ) in [
+        (dynamic.seal().unwrap(), make, dynamic_functions),
+        (prepared.seal(), prepared_make, prepared_functions),
+    ] {
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                    let source = scope.call(&make, (BigInt::from(20),)).await.unwrap();
+                    assert_eq!(
+                        scope.invoke(&source, (BigInt::from(2),)).await.unwrap(),
+                        BigInt::from(22)
+                    );
+                    let constant = scope.construct(&constant, (true, ())).unwrap();
+                    assert!(scope.invoke(&constant, ()).await.unwrap());
+                    let native = scope.construct(&native, (BigInt::from(10), ())).unwrap();
+                    let add = scope.construct(&wrap, (&native, ())).unwrap();
+                    assert_eq!(
+                        scope
+                            .call(&calculate, (BigInt::from(5), &add))
+                            .await
+                            .unwrap(),
+                        BigInt::from(15)
+                    );
+                    let alias = scope.call(&keep, (&add,)).await.unwrap();
+                    assert_eq!(
+                        scope.invoke(&alias, (BigInt::from(7),)).await.unwrap(),
+                        BigInt::from(17)
+                    );
+                    let functions = scope.call(&list, (vec![&add, &alias],)).await.unwrap();
+                    let retained = functions.read_item(1, std::convert::identity).unwrap();
+                    assert_eq!(
+                        scope.invoke(&retained, (BigInt::from(32),)).await.unwrap(),
+                        BigInt::from(42)
+                    );
+                    let (first, second) = scope.call(&container, (&add,)).await.unwrap();
+                    assert_eq!(
+                        scope.invoke(&first, (BigInt::from(1),)).await.unwrap(),
+                        BigInt::from(11)
+                    );
+                    assert_eq!(
+                        scope
+                            .invoke(&second.unwrap(), (BigInt::from(2),))
+                            .await
+                            .unwrap(),
+                        BigInt::from(12)
+                    );
+                    let factory = scope.call(&maker, ()).await.unwrap();
+                    let add = scope.invoke(&factory, (BigInt::from(40),)).await.unwrap();
+                    assert_eq!(
+                        scope.invoke(&add, (BigInt::from(2),)).await.unwrap(),
+                        BigInt::from(42)
+                    );
+                    let pick = scope.call(&picker, ()).await.unwrap();
+                    assert_eq!(
+                        scope
+                            .invoke(&pick, (vec![Ok(BigInt::from(42))],))
+                            .await
+                            .unwrap(),
+                        BigInt::from(42)
+                    );
+                }),
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindings() {
+    assert_eq!(
+        callable_declarations::prepare().emit_rust(),
+        include_str!("fixtures/prepared/callables.rs").trim()
+    );
+    let program = geam_core::compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (mut actual_bodies, _) = geam_core::embedding::HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(), BigInt>::new("run"))
+        .unwrap();
+    actual_bodies
+        .function(FunctionDeclaration::<(), bool>::new("check"))
+        .unwrap();
+    assert_eq!(
+        actual_bodies.prepare().unwrap().emit_rust(),
+        callable_declarations::prepare().emit_rust()
+    );
+    CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+    let missing = geam_core::HostProviderSet::<geam_core::StatelessHostProfile>::new([]).unwrap();
+    assert!(CALLABLES.load(missing).is_err());
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_identity_parity() {
+    use geam_core::embedding::HostedModuleBuilder;
+    let program = geam_core::compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (mut dynamic, run) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(), BigInt>::new("run"))
+        .unwrap();
+    let check = dynamic
+        .function(FunctionDeclaration::<(), bool>::new("check"))
+        .unwrap();
+    let mut prepared = CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+    let prepared_run = prepared
+        .function(FunctionDeclaration::<(), BigInt>::new("run"))
+        .unwrap();
+    let prepared_check = prepared
+        .function(FunctionDeclaration::<(), bool>::new("check"))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for (mut module, run, check) in [
+        (dynamic.seal().unwrap(), run, check),
+        (prepared.seal(), prepared_run, prepared_check),
+    ] {
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                    assert_eq!(scope.call(&run, ()).await.unwrap(), BigInt::from(42));
+                    assert!(scope.call(&check, ()).await.unwrap());
+                }),
+            )
+            .unwrap();
+    }
+}
+
+static NATIVE_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+
+#[test]
+fn native_view_artifact_matches_declaration_only_preparation() {
+    assert_eq!(
+        callable_declarations::prepare_native_views().emit_rust(),
+        include_str!("fixtures/prepared/callable_views.rs").trim()
+    );
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn native_construction_selects_exact_rust_views_in_dynamic_and_prepared_execution() {
+    use geam_core::embedding::{CallableType, HostedModuleBuilder};
+    use geam_core::provider::ProviderResult;
+    type Outcome = Result<BigInt, ()>;
+    type Callback = CallableType<(BigInt,), Outcome>;
+    type Constant = callable_declarations::Constant<ProviderResult<BigInt, ()>>;
+    type Wrap = callable_declarations::Wrap<BigInt, ProviderResult<BigInt, ()>>;
+    let program = geam_core::compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (mut dynamic, source) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(), Callback>::new("result_function"))
+        .unwrap();
+    dynamic.callable::<Constant>().unwrap();
+    let dynamic_constant = dynamic
+        .callable_as::<Constant, (), Outcome, (Outcome, ())>()
+        .unwrap();
+    let dynamic_wrap = dynamic
+        .callable_as::<Wrap, (BigInt,), Outcome, (Callback, ())>()
+        .unwrap();
+    let mut prepared = NATIVE_VIEWS
+        .load(callable_provider::implementations())
+        .unwrap();
+    let prepared_source = prepared
+        .function(FunctionDeclaration::<(), Callback>::new("result_function"))
+        .unwrap();
+    let prepared_constant = prepared
+        .callable_as::<Constant, (), Outcome, (Outcome, ())>()
+        .unwrap();
+    let prepared_wrap = prepared
+        .callable_as::<Wrap, (BigInt,), Outcome, (Callback, ())>()
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    for (mut module, source, constant, wrap) in [
+        (
+            dynamic.seal().unwrap(),
+            source,
+            dynamic_constant,
+            dynamic_wrap,
+        ),
+        (
+            prepared.seal(),
+            prepared_source,
+            prepared_constant,
+            prepared_wrap,
+        ),
+    ] {
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut drop, async |scope| {
+                    let constant = scope
+                        .construct(&constant, (Ok(BigInt::from(42)), ()))
+                        .unwrap();
+                    assert_eq!(
+                        scope.invoke(&constant, ()).await.unwrap(),
+                        Ok(BigInt::from(42))
+                    );
+                    let callback = scope.call(&source, ()).await.unwrap();
+                    let wrapped = scope.construct(&wrap, (&callback, ())).unwrap();
+                    assert_eq!(
+                        scope.invoke(&wrapped, (BigInt::from(7),)).await.unwrap(),
+                        Ok(BigInt::from(7))
+                    );
+                }),
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn malformed_native_construction_metadata_is_rejected_before_execution() {
+    enum Change {
+        BodyIdentity,
+        Completion,
+        Parameters,
+        Captures,
+        Invocation,
+    }
+    for change in [
+        Change::BodyIdentity,
+        Change::Completion,
+        Change::Parameters,
+        Change::Captures,
+        Change::Invocation,
+    ] {
+        const ARTIFACT: data::HostedModuleArtifact =
+            include!("fixtures/prepared/callable_embedding.rs");
+        let mut artifact = ARTIFACT;
+        let mut entries = artifact.callables.to_vec();
+        let entry = &mut entries[0];
+        assert_eq!(entry.declaration.name.as_ref(), "add");
+        match change {
+            Change::BodyIdentity => entry.declaration.name = "another_body".into(),
+            Change::Completion => entry.declaration.returns_value = false,
+            Change::Parameters => entry.construction.parameters = data::Storage::Static(&[]),
+            Change::Captures => entry.construction.captures = data::Storage::Static(&[]),
+            Change::Invocation => {
+                entry.invocation.type_.return_ =
+                    data::Storage::Owned(Box::new(data::type_::ValueType::Bool))
+            }
+        }
+        artifact.callables = entries.into();
+        let artifact = Box::leak(Box::new(artifact));
+        let error = artifact
+            .load(callable_provider::implementations())
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "prepared provider registration mismatch: Call(Callable); regenerate with the matching providers"
+        );
+    }
+}
+
+#[test]
+fn native_selection_requires_a_prepared_exact_declaration_and_rust_view() {
+    use geam_core::provider::ProviderResult;
+    type Outcome = Result<BigInt, ()>;
+    type Constant = callable_declarations::Constant<ProviderResult<BigInt, ()>>;
+    let mut prepared = NATIVE_VIEWS
+        .load(callable_provider::implementations())
+        .unwrap();
+    let error = prepared
+        .callable::<callable_declarations::Add>()
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "native callable support:support/private.add is missing or has an incompatible declaration"
+    );
+    let error = prepared
+        .callable_as::<Constant, (), bool, (Outcome, ())>()
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "Rust views do not match the exact types of native callable support:support/private.constant"
+    );
+
+    const ARTIFACT: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+    let mut artifact = ARTIFACT;
+    let mut entries = artifact.callables.to_vec();
+    entries.remove(1); // Only the opaque Result capture codec remains for Constant.
+    artifact.callables = entries.into();
+    let artifact = Box::leak(Box::new(artifact));
+    let mut prepared = artifact.load(callable_provider::implementations()).unwrap();
+    let error = prepared
+        .callable_as::<Constant, (), Outcome, (Outcome, ())>()
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "function constant has incompatible prepared Rust inputs: VariantCount { expected: 1, actual: 0 }; regenerate with the matching declarations"
+    );
 }

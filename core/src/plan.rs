@@ -10,8 +10,9 @@ pub use host::{
     HostFunctionTemplate, HostedFunctionTemplate, HostedModulePlan, HostedPlannedModule,
 };
 pub(crate) use host::{
-    HostImplementationBinding, HostedLibraryModulePlan, HostedLibraryModulePlanParts,
-    HostedModulePlanParts, HostedPlannedModuleParts,
+    HostedLibraryModulePlan, HostedModulePlanParts, HostedPlannedModuleParts,
+    LibraryNativeCallable, ProfiledHostImplementationBinding, ProfiledHostedLibraryModulePlan,
+    ProfiledHostedLibraryModulePlanParts, instantiate_native_callable,
 };
 pub(crate) use module::ExternalValueShape;
 pub(crate) use module::{
@@ -50,18 +51,19 @@ pub(crate) use module::{
     GenericExpr, GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind,
     GenericFunctionLocal, GenericFunctionReference, GenericFunctionReturn, GenericReturn,
     IntCaseBranches, IntExprKind, IntFunctionExprKind, IntFunctionReference, IntFunctionReturn,
-    IntReturn, LibraryEntry, LibraryModulePlan, LibraryValueType, LibraryVariant,
-    ListAssertPattern, ListAssertTail, ListCaseBranches, ListElements, ListExpr,
-    ListFunctionExprKind, ListFunctionReference, ListFunctionReturn, ListItem, ListLocalExpr,
-    ListSpreadConstructionError, ListSpreadElements, NilExprKind, NilFunctionExprKind,
-    NilFunctionReference, NilFunctionReturn, NilReturn, PanicExpr, ParamLocal, ParamSlot,
-    ParameterListListExpr, ParameterListListItem, PatternBinding, ReturnBody, Signedness,
-    StringAssertBinding, StringCaseBranches, StringEncoding, StringExprKind,
-    StringFunctionExprKind, StringFunctionReference, StringFunctionReturn, StringReturn,
-    TotalBindingPattern, TupleExprKind, TupleFunctionExprKind, TupleFunctionReference,
-    TupleFunctionReturn, TupleReturn, TypeSubstitution, TypedFunctionExprKind, TypedListExpr,
-    TypedListReturnKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
-    UtfCodepointFunctionReference, UtfCodepointFunctionReturn, UtfCodepointReturn,
+    IntReturn, LibraryCallableSignature, LibraryEntry, LibraryModulePlan, LibraryNativeSignature,
+    LibraryProfile, LibraryValueType, LibraryVariant, ListAssertPattern, ListAssertTail,
+    ListCaseBranches, ListElements, ListExpr, ListFunctionExprKind, ListFunctionReference,
+    ListFunctionReturn, ListItem, ListLocalExpr, ListSpreadConstructionError, ListSpreadElements,
+    NilExprKind, NilFunctionExprKind, NilFunctionReference, NilFunctionReturn, NilReturn,
+    PanicExpr, ParamLocal, ParamSlot, ParameterListListExpr, ParameterListListItem, PatternBinding,
+    ReturnBody, Signedness, StringAssertBinding, StringCaseBranches, StringEncoding,
+    StringExprKind, StringFunctionExprKind, StringFunctionReference, StringFunctionReturn,
+    StringReturn, TotalBindingPattern, TupleExprKind, TupleFunctionExprKind,
+    TupleFunctionReference, TupleFunctionReturn, TupleReturn, TypeSubstitution,
+    TypedFunctionExprKind, TypedListExpr, TypedListReturnKind, UtfCodepointExprKind,
+    UtfCodepointFunctionExprKind, UtfCodepointFunctionReference, UtfCodepointFunctionReturn,
+    UtfCodepointReturn,
 };
 pub use module::{
     BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayListFunctionLocalId,

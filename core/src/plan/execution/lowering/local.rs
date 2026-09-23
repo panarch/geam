@@ -6,6 +6,22 @@ use super::specialization::{
 use crate::plan::{execution, module};
 use std::collections::HashMap;
 
+pub(super) fn parameter_slots(
+    shapes: &[StoredValueShape],
+    prefix: &mut ParameterPrefix,
+    context: &mut LoweringContext,
+) -> Vec<execution::graph::ParamSlot> {
+    shapes
+        .iter()
+        .map(|shape| {
+            let (index, stored) = prefix.allocate_stored(shape.clone(), &context.representations);
+            let local = stored_value_local_at(&stored, index, context);
+            let shape = context.types.value_shape(&stored.to_specialized());
+            execution::graph::ParamSlot::new(local, shape)
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub(super) enum SpecializedFunctionLocal {
     Generic(execution::graph::GenericFunctionLocal),
@@ -211,6 +227,11 @@ impl FunctionEntryTemplate {
             captures: Vec::new().into_boxed_slice(),
             return_,
         }
+    }
+
+    pub(super) fn with_captures(mut self, captures: Vec<crate::plan::ValueShape>) -> Self {
+        self.captures = captures.into_boxed_slice();
+        self
     }
 
     pub(super) fn contract(

@@ -1,0 +1,7 @@
+name = "process_service_embedding"
+version = "0.1.0"
+
+[dependencies]
+process_service_example = { path = "../../project" }
+gleam_erlang = ">= 1.3.0 and < 1.3.1"
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

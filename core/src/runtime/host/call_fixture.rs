@@ -119,6 +119,10 @@ impl<'state> TestHostCallRuntime<'state> {
 }
 
 impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
+    fn capture_tokens(&self) -> &[HostValueToken] {
+        &[]
+    }
+
     fn state(&mut self) -> &mut TestRunState {
         self.state
     }
@@ -261,6 +265,14 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         token(HostValueFamily::List)
     }
 
+    fn build_function(
+        &mut self,
+        _index: usize,
+        _captures: Box<[HostScopedValue]>,
+    ) -> HostFunctionToken {
+        panic!("native construction requires a sealed hosted program")
+    }
+
     fn build_tuple(&mut self, _values: Box<[HostScopedValue]>) -> HostValueToken {
         token(HostValueFamily::Tuple)
     }
@@ -358,6 +370,10 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
 
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable {
         self.scoped.function(function)
+    }
+
+    fn restore_callable(&mut self, value: crate::runtime::RetainedCallable) -> HostFunctionToken {
+        self.scoped.push_callable(value)
     }
 
     fn codec_scope(&self) -> crate::host::HostCodecScope {
@@ -520,7 +536,9 @@ mod tests {
             codec.function().site().clone(),
         );
         let first = runtime.callable(HostFunctionToken(0));
-        let second = runtime.callable(HostFunctionToken(0));
+        assert!(runtime.capture_tokens().is_empty());
+        let restored = runtime.restore_callable(first.clone());
+        let second = runtime.callable(restored);
         first.with_value(|first| second.with_value(|second| assert!(std::ptr::eq(first, second))));
         let unit = runtime.spawn(first, runtime.origin());
         assert!(unit.is_active());
@@ -698,6 +716,14 @@ mod tests {
             assert!(runtime.owns_stored(&stored));
             assert!(!runtime.owns_stored(&StoredRuntimeValue::test_int(42.into())));
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "native construction requires a sealed hosted program")]
+    fn fixture_rejects_native_construction_without_a_sealed_permission() {
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+        runtime.build_function(0, Box::new([]));
     }
 
     #[test]

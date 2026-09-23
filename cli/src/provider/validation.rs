@@ -1,5 +1,5 @@
 use super::manifest::{ManagedProject, ProviderSelection};
-use super::metadata::ProviderMetadata;
+use super::metadata::{ProviderBinding, ProviderMetadata};
 use crate::error::CliError;
 use crate::progress::Progress;
 use crate::project::ResolvedProject;
@@ -14,7 +14,7 @@ pub(crate) trait ProviderSelectionValidator {
         program: &geam_core::TypedProgram,
         managed: &ManagedProject,
         progress: &mut Progress<'_>,
-    ) -> Result<(), CliError>;
+    ) -> Result<Vec<ProviderBinding>, CliError>;
 }
 
 pub(super) trait ProviderResolver {
@@ -55,8 +55,11 @@ impl<'resolver> ProviderValidator<'resolver> {
         required_packages: BTreeSet<String>,
         managed: &ManagedProject,
         progress: &mut Progress<'_>,
-    ) -> Result<(), CliError> {
+    ) -> Result<Vec<ProviderBinding>, CliError> {
         let mut provided = BTreeSet::new();
+        let mut bindings = Vec::new();
+        let mut services = BTreeSet::from(["gleam_erlang".to_owned()]);
+        let mut required_services = Vec::new();
 
         for (package, version) in project.packages() {
             let Some(selection) = managed.provider(package) else {
@@ -82,6 +85,41 @@ impl<'resolver> ProviderValidator<'resolver> {
                 });
             }
             provided.insert(package.to_owned());
+            if metadata.composition().execution_service {
+                services.insert(package.to_owned());
+            }
+            required_services.extend(
+                metadata
+                    .composition()
+                    .required_services
+                    .iter()
+                    .map(|service| (metadata.crate_name().to_owned(), service.clone())),
+            );
+            bindings.push(metadata.binding(selection.alias()));
+        }
+
+        for (consumer, service) in required_services {
+            if services.contains(&service) {
+                continue;
+            }
+            if provided.contains(&service) || super::is_built_in_package(&service) {
+                return Err(CliError::InvalidProviderMetadata {
+                    package: consumer,
+                    reason: format!(
+                        "required provider {service} does not declare an execution service"
+                    ),
+                });
+            }
+            let version =
+                project
+                    .package_version(&service)
+                    .ok_or_else(|| CliError::MissingGleamPackage {
+                        package: service.clone(),
+                    })?;
+            return Err(CliError::MissingStandaloneProvider {
+                package: service,
+                version: version.to_string(),
+            });
         }
 
         for package in required_packages {
@@ -99,7 +137,7 @@ impl<'resolver> ProviderValidator<'resolver> {
                 version: version.to_string(),
             });
         }
-        Ok(())
+        Ok(bindings)
     }
 }
 
@@ -111,7 +149,7 @@ impl ProviderSelectionValidator for ProviderValidator<'_> {
         program: &geam_core::TypedProgram,
         managed: &ManagedProject,
         progress: &mut Progress<'_>,
-    ) -> Result<(), CliError> {
+    ) -> Result<Vec<ProviderBinding>, CliError> {
         let required_packages = geam_core::required_host_functions(program)
             .into_iter()
             .map(|requirement| requirement.package().to_string())
@@ -154,7 +192,7 @@ mod tests {
     use crate::progress::Progress;
     use crate::project::read_resolved_project;
     use crate::provider::manifest::{ManagedProject, ProviderSelection, ProviderSource};
-    use crate::provider::metadata::ProviderMetadata;
+    use crate::provider::metadata::{ProviderBinding, ProviderComposition, ProviderMetadata};
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::MetadataCommand;
     use std::cell::RefCell;
@@ -208,6 +246,131 @@ mod tests {
             resolver.calls.borrow().as_slice(),
             ["geam-fallback", "geam-images"],
         );
+    }
+
+    #[test]
+    fn validates_service_dependencies_even_without_direct_native_requirements() {
+        let project = resolved_project(&[("images", "1.5.0"), ("tickets", "2.0.0")]);
+        let root = utf8_path(&project);
+        let resolved = read_resolved_project(&root).unwrap();
+        let mut managed = ManagedProject::load(&root, "application").unwrap();
+        managed
+            .insert(selection("images", "geam-images", "1.0.0"))
+            .unwrap();
+        managed
+            .insert(selection("tickets", "geam-tickets", "1.0.0"))
+            .unwrap();
+        let consumer = metadata_with_provider(
+            "geam-images",
+            serde_json::json!({
+                "schema": 2, "gleam-package": "images", "gleam-version": ">= 1.0.0",
+                "component": "profile", "execution-service": false,
+                "requires-services": ["tickets", "gleam_erlang"],
+            }),
+        );
+        let producer = metadata_with_provider(
+            "geam-tickets",
+            serde_json::json!({
+                "schema": 2, "gleam-package": "tickets", "gleam-version": ">= 2.0.0",
+                "component": "plain", "execution-service": true,
+                "requires-services": ["tickets"],
+            }),
+        );
+        let resolver = FixedResolver::new([consumer, producer]);
+        let bindings = ProviderValidator::new(&resolver)
+            .validate_packages(
+                &root,
+                &resolved,
+                BTreeSet::new(),
+                &managed,
+                &mut Progress::Hidden,
+            )
+            .unwrap();
+        assert_eq!(
+            bindings,
+            [
+                ProviderBinding {
+                    alias: "geam_provider_images".to_owned(),
+                    composition: ProviderComposition {
+                        profile_parameter: true,
+                        execution_service: false,
+                        required_services: BTreeSet::from([
+                            "gleam_erlang".to_owned(),
+                            "tickets".to_owned()
+                        ]),
+                    }
+                },
+                ProviderBinding {
+                    alias: "geam_provider_tickets".to_owned(),
+                    composition: ProviderComposition {
+                        profile_parameter: false,
+                        execution_service: true,
+                        required_services: BTreeSet::from(["tickets".to_owned()]),
+                    }
+                },
+            ]
+        );
+        assert_eq!(
+            resolver.calls.borrow().as_slice(),
+            ["geam-images", "geam-tickets"]
+        );
+    }
+
+    #[test]
+    fn diagnoses_missing_and_non_service_producers_before_execution() {
+        enum ExpectedFailure {
+            Package,
+            Selection,
+            Service,
+        }
+        let project = resolved_project(&[("images", "1.0.0"), ("tickets", "2.0.0")]);
+        let root = utf8_path(&project);
+        let resolved = read_resolved_project(&root).unwrap();
+        let mut managed = ManagedProject::load(&root, "application").unwrap();
+        managed
+            .insert(selection("images", "geam-images", "1.0.0"))
+            .unwrap();
+        for (service, select_tickets, expected) in [
+            ("absent", false, ExpectedFailure::Package),
+            ("tickets", false, ExpectedFailure::Selection),
+            ("tickets", true, ExpectedFailure::Service),
+            ("gleam_stdlib", true, ExpectedFailure::Service),
+        ] {
+            if select_tickets && !managed.has_provider("tickets") {
+                managed
+                    .insert(selection("tickets", "geam-tickets", "1.0.0"))
+                    .unwrap();
+            }
+            let consumer = metadata_with_provider(
+                "geam-images",
+                serde_json::json!({
+                    "schema": 2, "gleam-package": "images", "gleam-version": ">= 1.0.0",
+                    "component": "plain", "execution-service": false, "requires-services": [service],
+                }),
+            );
+            let resolver =
+                FixedResolver::new([consumer, metadata("geam-tickets", "tickets", ">= 2.0.0")]);
+            let error = ProviderValidator::new(&resolver)
+                .validate_packages(
+                    &root,
+                    &resolved,
+                    BTreeSet::new(),
+                    &managed,
+                    &mut Progress::Hidden,
+                )
+                .unwrap_err();
+            match expected {
+                ExpectedFailure::Package => assert!(
+                    matches!(error, CliError::MissingGleamPackage { package } if package == "absent")
+                ),
+                ExpectedFailure::Selection => assert!(
+                    matches!(error, CliError::MissingStandaloneProvider { package, version } if package == "tickets" && version == "2.0.0")
+                ),
+                ExpectedFailure::Service => assert!(
+                    matches!(error, CliError::InvalidProviderMetadata { package, reason } if package == "geam-images" && reason == format!("required provider {service} does not declare an execution service"))
+                ),
+            }
+        }
     }
 
     #[test]
@@ -485,6 +648,15 @@ mod tests {
     }
 
     fn metadata(crate_name: &str, package: &str, range: &str) -> ProviderMetadata {
+        metadata_with_provider(
+            crate_name,
+            serde_json::json!({
+                "schema": 1, "gleam-package": package, "gleam-version": range,
+            }),
+        )
+    }
+
+    fn metadata_with_provider(crate_name: &str, provider: serde_json::Value) -> ProviderMetadata {
         let package_id = format!("path+file:///provider#{crate_name}@1.0.0");
         let source = serde_json::json!({
             "packages": [{
@@ -508,11 +680,7 @@ mod tests {
                 "edition": "2024",
                 "metadata": {
                     "geam": {
-                        "provider": {
-                            "schema": 1,
-                            "gleam-package": package,
-                            "gleam-version": range,
-                        }
+                        "provider": provider
                     }
                 },
                 "links": null,

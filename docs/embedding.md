@@ -151,8 +151,9 @@ configuration, state, Echo and execution host used for dynamic calls.
 Prepared sync and check can compile and run a Rust preparation helper using
 the application's dependencies. They do not build the application entry point
 or initialize its run state. Ordinary Cargo builds compile the existing
-generated files without running Geam or regenerating the plan. Run sync after
-source or dependency changes, including function-body changes.
+generated files without running Geam or regenerating the plan. Run sync on a
+fresh checkout and after source or dependency changes, including function-body
+changes.
 
 The [prepared example](../examples/embedding/prepared) keeps the complete
 project and test together.
@@ -253,12 +254,27 @@ retain them and pass them back without reconstructing their fields.
 
 Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
-Gleam's `gleam/build/` cache. Generated Rust is reviewed and committed; no build
-script regenerates it implicitly.
+Gleam's `gleam/build/` cache. The typed bindings are reviewed and committed;
+no build script regenerates them implicitly.
 
-With `generate = "prepared"` or `"both"`, also commit the generated
-`src/geam_bindings/program.rs` child. Cargo packages must include this file
-alongside `src/geam_bindings.rs`.
+With `generate = "prepared"` or `"both"`, keep the generated execution data out
+of Git by adding `/src/geam_bindings/program.rs` to the application's
+`.gitignore`. Run `geam embedding sync` before checking or building a fresh
+checkout. Subsequent `embedding check` calls verify both the bindings and the
+generated program without changing them.
+
+Cargo packages must still include `src/geam_bindings/program.rs` alongside the
+bindings. Generate it before packaging and explicitly include it in the package,
+since Cargo's default file selection respects Git ignores. For example, an
+application that ships only its prepared Rust source can use:
+
+```toml
+[package]
+include = ["src/**", "Cargo.toml", "Cargo.lock"]
+```
+
+Keep any other required package files in that list. Consumers of the resulting
+package build it with ordinary Cargo commands without Geam or Gleam installed.
 
 Embedding commands use one fixed project, module, and output layout. This makes
 checkouts, generated code, CI, and examples agree on the same connection.
@@ -357,6 +373,29 @@ Other executors can implement `geam::execution::ExecutionHost`, including its
 task cancellation and clock contracts. Pure bindings that use `ModuleBuilder`
 also retain the direct `module.call` API shown in the first example.
 
+## Pass and create function values
+
+A generated binding can accept or return a concrete Gleam function type. Keep
+the returned handle within its execution scope and invoke it explicitly:
+
+```rust
+let alias = scope.call(&functions.keep, (&callback,)).await?;
+let next = scope.invoke(&alias, (BigInt::from(7),)).await?;
+```
+
+A function value has its own captures and identity. Its aliases use the same
+execution and provider state. Each call has independent arguments and pending
+work; passing a function does not invoke it or observe a returned Future.
+
+The [callables example](../examples/embedding/callables) also creates a capturing
+Rust function inside the application. It shares `src/declarations.rs` with the
+preparation helper, registers real bodies from ordinary application modules,
+selects a factory before sealing, and constructs it inside the live scope.
+Dynamic and prepared loading expose the same typed calls. The example keeps a
+callback in private Gleam data and then invokes a source wrapper around it.
+See the [function-value reference](reference/embedding-boundary.md#function-values-and-native-construction)
+for declaration configuration and exact ownership rules.
+
 ## Drive explicit Future values
 
 A Rust provider can expose an `async fn` as a Gleam function returning
@@ -434,7 +473,9 @@ host resources need only live for the execution scope. Geam does not require
 
 ## Verify a checkout
 
-Use `check` after cloning, in review, or in CI:
+For a prepared or both-mode checkout, run `geam embedding sync` first to create
+the ignored program data. Then use `check` in review or CI; dynamic-only
+checkouts can start with `check` directly:
 
 ```sh
 geam embedding check
@@ -452,7 +493,7 @@ Use `init` for an uninitialized package and `sync` after intentional source or
 dependency changes. `embedding check` verifies the generated Gleam-Rust
 connection. In dynamic mode it does not compile Rust. In prepared or both mode
 it regenerates the expected plan in a disposable helper and compares it with
-the committed data, including source bodies and dependencies. Dependency build
+the generated data, including source bodies and dependencies. Dependency build
 scripts and native registration can run during this preparation; application
 entry points and run-state initialization do not. `cargo check` and `cargo test`
 remain responsible for compiling and testing the handwritten Rust application.
@@ -462,7 +503,7 @@ remain responsible for compiling and testing the handwritten Rust application.
 Generated bindings currently support this recursive data grammar:
 
 ```text
-Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | Named
+Scalar | Tuple(Data...) | Result(Data, Data) | Option(Data) | List(Data) | Future(Data) | fn(Data...) -> Data | Named
 ```
 
 This includes nested Lists and combinations of Tuple, Result, and Option.
@@ -480,8 +521,9 @@ let total = scope.call(&functions.total, (next,)).await?;
 
 The [Session example](../examples/embedding/session) includes the corresponding
 Gleam type, functions, and generated Rust bindings. Its private fields stay in
-Gleam. Expose a Gleam accessor when Rust needs to inspect them. Public callbacks
-and unbound generic parameters remain outside generated signatures.
+Gleam. Expose a Gleam accessor when Rust needs to inspect them. Function values
+use scoped typed callable handles, including inside containers; public roots
+with unbound generic parameters remain outside generated signatures.
 
 Lists returned from Gleam are retained, immutable handles. Rust can inspect
 them lazily or pass them back to the same loaded module without reconstructing

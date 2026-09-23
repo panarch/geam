@@ -46,7 +46,7 @@ where
             Ok(V::Call {
                 function: function.runtime_id(),
                 origin: crate::runtime::error::HostCallOrigin::source(site.to_owned()),
-                inputs: inputs_with_captures(environment, args, function.captures()),
+                inputs: inputs_with_captures(environment, args, function.capture_frame()),
             })
         }
         ExternalInstructionRef::TupleIndex { tuple, index } => {

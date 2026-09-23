@@ -205,7 +205,7 @@ where
         } => {
             let function = environment.list_function(function);
             let mut inputs = environment.retain(args);
-            inputs.append_captures(function.captures());
+            inputs.append_captures(function.capture_frame());
             match function.runtime_id() {
                 RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) => Ok(V::Call {
                     function,
@@ -265,7 +265,7 @@ trait RuntimeTypedList {
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle;
     fn function(environment: &BlockEnvironment, local: &Self::FunctionLocal)
     -> Self::FunctionValue;
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture];
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures;
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError>;
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
@@ -461,8 +461,8 @@ macro_rules! vector_family {
                 environment.list_function(local)
             }
 
-            fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-                function.captures()
+            fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+                function.capture_frame()
             }
 
             fn function_id(
@@ -637,8 +637,8 @@ impl RuntimeTypedList for TupleFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -716,8 +716,8 @@ impl RuntimeTypedList for CustomFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -797,8 +797,8 @@ impl RuntimeTypedList for ExternalFamily {
         environment.external_list_function(*local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -872,8 +872,8 @@ impl RuntimeTypedList for NilFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -948,8 +948,8 @@ impl RuntimeTypedList for ParameterListFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -1031,8 +1031,8 @@ impl RuntimeTypedList for ListFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -1110,8 +1110,8 @@ impl RuntimeTypedList for FunctionFamily {
         environment.list_function(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &[crate::runtime::EvaluatedCapture] {
-        function.captures()
+    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
+        function.capture_frame()
     }
 
     fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
@@ -1768,7 +1768,7 @@ pub fn boxed() -> CounterListBox {
             Vec::new(),
             Vec::new(),
         );
-        let (execution, entries) =
+        let (execution, entries, _) =
             crate::plan::execution::HostedProgram::from_library_plan(plan, entry, Vec::new())
                 .expect("transferable list entry qualification");
         let function = *entries.customs[0].function();

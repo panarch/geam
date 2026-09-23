@@ -109,11 +109,8 @@ impl ManagedProject {
         self.providers.get(gleam_package)
     }
 
-    pub(crate) fn provider_aliases(&self) -> Vec<String> {
-        self.providers
-            .values()
-            .map(ProviderSelection::alias)
-            .collect()
+    pub(super) fn selections(&self) -> impl Iterator<Item = &ProviderSelection> {
+        self.providers.values()
     }
 
     pub(crate) fn write(&self) -> Result<bool, CliError> {

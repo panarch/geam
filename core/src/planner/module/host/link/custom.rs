@@ -15,34 +15,63 @@ pub(in crate::planner::module::host) fn validate_host_custom_schemas(
     source_context: Option<&SourceContext>,
     functions: &[LinkedFunction],
 ) -> Result<(), PlanError> {
-    let access = match source_context {
-        Some(_) => HostCustomTypeAccess::SourceDeclaration,
-        None => HostCustomTypeAccess::SourceLessPublicSurface,
-    };
     for function in functions {
-        let LinkedFunction::Host {
+        if let LinkedFunction::Host {
             template,
             constructions,
             ..
         } = function
-        else {
-            continue;
-        };
-        for actual in template
-            .custom_schemas()
-            .iter()
-            .chain(constructions.custom_schemas())
         {
-            validate_host_custom_schema_with_constructions(
-                registry,
-                template.package(),
-                template.site(),
-                template.signature(),
-                actual,
-                access,
-                constructions,
-            )?;
+            validate_host_schemas(registry, source_context, template, constructions)?;
         }
+    }
+    Ok(())
+}
+
+pub(in crate::planner::module::host) fn validate_host_schemas(
+    registry: &ProgramRegistry,
+    source_context: Option<&SourceContext>,
+    template: &crate::plan::HostFunctionTemplate,
+    constructions: &crate::host::RegisteredHostConstructions,
+) -> Result<(), PlanError> {
+    let access = match source_context {
+        Some(_) => HostCustomTypeAccess::SourceDeclaration,
+        None => HostCustomTypeAccess::SourceLessPublicSurface,
+    };
+    let additional_types = template
+        .captures()
+        .iter()
+        .chain(constructions.validation_types())
+        .cloned()
+        .collect::<Vec<_>>();
+    for actual in template
+        .custom_schemas()
+        .iter()
+        .chain(constructions.custom_schemas())
+    {
+        validate_host_custom_schema_with_constructions(
+            registry,
+            template.package(),
+            template.site(),
+            template.signature(),
+            actual,
+            access,
+            &additional_types,
+        )?;
+    }
+    for actual in template
+        .external_schemas()
+        .iter()
+        .chain(constructions.external_schemas())
+    {
+        crate::planner::module::external_type::validate_host_external_schema(
+            registry,
+            template.package(),
+            template.site(),
+            template.signature(),
+            actual,
+            &additional_types,
+        )?;
     }
     Ok(())
 }
@@ -63,7 +92,7 @@ fn validate_host_custom_schema(
         signature,
         actual,
         access,
-        &crate::host::RegisteredHostConstructions::empty(),
+        &[],
     )
 }
 
@@ -74,7 +103,7 @@ fn validate_host_custom_schema_with_constructions(
     signature: &crate::plan::FunctionTemplateSignature,
     actual: &crate::host::HostCustomTypeSchema,
     access: HostCustomTypeAccess,
-    constructions: &crate::host::RegisteredHostConstructions,
+    constructions: &[crate::host::HostTypeDescriptor],
 ) -> Result<(), PlanError> {
     let name = crate::plan::CustomTypeName::new(
         actual.package().clone(),
@@ -85,13 +114,13 @@ fn validate_host_custom_schema_with_constructions(
         Some(definition) => {
             let visible = match access {
                 HostCustomTypeAccess::SourceLessPublicSurface => {
-                    !definition.is_opaque()
+                    (!definition.is_opaque() || actual.requires_shared_access())
                         && definition.publicity() == crate::plan::CustomTypePublicity::Public
                 }
                 HostCustomTypeAccess::SourceDeclaration => {
                     let same_package = definition.name().package() == package;
                     let same_module = same_package && definition.name().module() == site.module();
-                    if definition.is_opaque() {
+                    if definition.is_opaque() && !actual.requires_shared_access() {
                         same_module
                     } else {
                         match definition.publicity() {
@@ -156,6 +185,15 @@ fn validate_host_custom_schema_with_constructions(
             reason: Box::new(HostProviderLinkReason::CustomTypeVisibility { custom_type: name }),
         });
     }
+    if actual.requires_shared_access() && !registry.shares_custom_type(&name) {
+        return Err(PlanError::HostProviderLink {
+            package: package.clone(),
+            module: site.module().into(),
+            function: site.function().into(),
+            reason: Box::new(HostProviderLinkReason::MissingSharedCustomType { custom_type: name }),
+        });
+    }
+    let expected = expected.with_shared_access(actual.requires_shared_access());
     if actual != &expected {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
@@ -174,7 +212,7 @@ fn validate_host_custom_schema_with_constructions(
         .chain([signature.shape().return_shape()])
         .find_map(|shape| invalid_host_custom_type_argument_count(shape, &name, parameter_count))
         .or_else(|| {
-            constructions.types().iter().find_map(|construction| {
+            constructions.iter().find_map(|construction| {
                 invalid_host_custom_type_argument_count(
                     &construction.value_shape(),
                     &name,
@@ -218,6 +256,10 @@ fn invalid_host_custom_type_argument_count(
             crate::plan::ValueShape::External(external) => {
                 pending.extend(external.arguments().iter().rev());
             }
+            crate::plan::ValueShape::Function(function) => {
+                pending.push(function.return_shape());
+                pending.extend(function.argument_shapes().iter().rev());
+            }
             crate::plan::ValueShape::Parameter(_)
             | crate::plan::ValueShape::Int
             | crate::plan::ValueShape::Float
@@ -225,14 +267,13 @@ fn invalid_host_custom_type_argument_count(
             | crate::plan::ValueShape::BitArray
             | crate::plan::ValueShape::UtfCodepoint
             | crate::plan::ValueShape::Bool
-            | crate::plan::ValueShape::Nil
-            | crate::plan::ValueShape::Function(_) => {}
+            | crate::plan::ValueShape::Nil => {}
         }
     }
     None
 }
 
-fn host_custom_type_schema(
+pub(in crate::planner::module::host) fn host_custom_type_schema(
     definition: &crate::plan::CustomTypeDefinition,
 ) -> crate::host::HostCustomTypeSchema {
     crate::host::HostCustomTypeSchema::new(
@@ -755,6 +796,158 @@ mod tests {
     }
 
     #[test]
+    fn sharing_delegates_opaque_representation_within_original_publicity() {
+        let name = CustomTypeName::new("domain".into(), "handles".into(), "Handle".into());
+        let schema = HostCustomTypeSchema::new(
+            "domain",
+            "handles",
+            "Handle",
+            0,
+            [HostCustomConstructorSchema::new("Handle", [])],
+        );
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::in_module(ModuleId::new(0), 0),
+            TypeScheme::new(0),
+            FunctionShape::new(Vec::new(), ValueShape::Bool),
+        );
+        for (publicity, package, module, access, shared, grant, visible) in [
+            (
+                CustomTypePublicity::Public,
+                "app",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                true,
+                true,
+            ),
+            (
+                CustomTypePublicity::Public,
+                "app",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                false,
+                true,
+            ),
+            (
+                CustomTypePublicity::Public,
+                "app",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                false,
+                true,
+                false,
+            ),
+            (
+                CustomTypePublicity::Public,
+                "app",
+                "consumer",
+                HostCustomTypeAccess::SourceLessPublicSurface,
+                true,
+                true,
+                true,
+            ),
+            (
+                CustomTypePublicity::Internal,
+                "domain",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                true,
+                true,
+            ),
+            (
+                CustomTypePublicity::Internal,
+                "app",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                true,
+                false,
+            ),
+            (
+                CustomTypePublicity::Internal,
+                "domain",
+                "consumer",
+                HostCustomTypeAccess::SourceLessPublicSurface,
+                true,
+                true,
+                false,
+            ),
+            (
+                CustomTypePublicity::Private,
+                "domain",
+                "consumer",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                true,
+                false,
+            ),
+            (
+                CustomTypePublicity::Private,
+                "domain",
+                "handles",
+                HostCustomTypeAccess::SourceDeclaration,
+                true,
+                true,
+                true,
+            ),
+        ] {
+            let definition = CustomTypeDefinition::new(
+                name.clone(),
+                publicity,
+                true,
+                Vec::new(),
+                vec![CustomConstructorDefinition::new(
+                    "Handle".into(),
+                    0,
+                    Vec::new(),
+                )],
+            );
+            let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+                "handles".into(),
+                vec![definition],
+                Vec::new(),
+                std::collections::HashMap::new(),
+                ConstantSignatures::default(),
+            )])
+            .with_shared_custom_types(if grant {
+                [name.clone()].into_iter().collect()
+            } else {
+                std::collections::HashSet::new()
+            });
+            let expected = if !visible {
+                Some(HostProviderLinkReason::CustomTypeVisibility {
+                    custom_type: name.clone(),
+                })
+            } else if shared && !grant {
+                Some(HostProviderLinkReason::MissingSharedCustomType {
+                    custom_type: name.clone(),
+                })
+            } else {
+                None
+            };
+            let result = validate_host_custom_schema(
+                &registry,
+                &package.into(),
+                &HostCallSite::new(module.into(), "accept".into(), SourceSpan::new(0, 0)),
+                &signature,
+                &schema.clone().with_shared_access(shared),
+                access,
+            );
+            assert_eq!(
+                result.err(),
+                expected.map(|reason| PlanError::HostProviderLink {
+                    package: package.into(),
+                    module: module.into(),
+                    function: "accept".into(),
+                    reason: Box::new(reason),
+                })
+            );
+        }
+    }
+
+    #[test]
     fn host_custom_types_preserve_source_visibility() {
         let custom_type =
             CustomTypeName::new("domain".into(), "domain/marker".into(), "Marker".into());
@@ -1157,7 +1350,7 @@ mod tests {
                 &signature,
                 &actual,
                 HostCustomTypeAccess::SourceLessPublicSurface,
-                &constructions,
+                constructions.types(),
             ),
             Err(PlanError::HostProviderLink {
                 package: "application".into(),

@@ -7,6 +7,45 @@ use tempfile::{TempDir, tempdir};
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
 
+#[path = "provider_examples/otp_service.rs"]
+mod otp_service;
+
+#[test]
+fn runs_the_process_service_provider_on_the_builtin_mailbox() {
+    let fixture = provider_example("process_service");
+    let project = fixture.path().join("project");
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "{}",
+        String::from_utf8_lossy(&add.stderr)
+    );
+    let prepared = geam_at(&project, ["prepare"]);
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stderr)
+    );
+    let manifest = fs::read(project.join("Cargo.toml")).unwrap();
+    let lock = fs::read(project.join("Cargo.lock")).unwrap();
+    let runner = fs::read(project.join("build/geam/runner.rs")).unwrap();
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(run.stdout, b"named service replied: 42, 17\nrequest timeout and unavailable name handled\nworker stopped and name released\n");
+        assert_eq!(fs::read(project.join("Cargo.toml")).unwrap(), manifest);
+        assert_eq!(fs::read(project.join("Cargo.lock")).unwrap(), lock);
+        assert_eq!(
+            fs::read(project.join("build/geam/runner.rs")).unwrap(),
+            runner
+        );
+    }
+}
+
 #[test]
 fn runs_the_documented_async_files_provider_to_completion() {
     let fixture = provider_example("async_files");
@@ -295,6 +334,40 @@ fn runs_the_documented_call_tracing_provider_with_fresh_callback_state() {
         assert!(
             String::from_utf8_lossy(&run.stderr)
                 .contains("geam: Starting standalone runner for call_tracing_example\n")
+        );
+    }
+}
+
+#[test]
+fn runs_the_documented_callables_provider_with_generic_and_custom_callbacks() {
+    let fixture = provider_example("callables");
+    let project = fixture.path().join("project");
+
+    let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        add.status.success(),
+        "callables provider add failed: {}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let prepare = geam_at(&project, ["prepare"]);
+    assert!(
+        prepare.status.success(),
+        "callables prepare failed: {}",
+        String::from_utf8_lossy(&prepare.stderr),
+    );
+
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "callables execution failed: {}",
+            String::from_utf8_lossy(&run.stderr),
+        );
+        assert!(run.stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(&run.stderr)
+                .contains("geam: Starting standalone runner for callables_example\n")
         );
     }
 }
@@ -598,12 +671,14 @@ fn prepare_provider_dependency(name: &str) {
     static TAG_SET: OnceLock<Result<(), String>> = OnceLock::new();
     static REQUEST_IDS: OnceLock<Result<(), String>> = OnceLock::new();
     static CALL_TRACING: OnceLock<Result<(), String>> = OnceLock::new();
+    static CALLABLES: OnceLock<Result<(), String>> = OnceLock::new();
     static GENERIC_BOX: OnceLock<Result<(), String>> = OnceLock::new();
     static NATIVE_RECORDS: OnceLock<Result<(), String>> = OnceLock::new();
     static FEATURE_FLAGS: OnceLock<Result<(), String>> = OnceLock::new();
     static RUN_METRICS: OnceLock<Result<(), String>> = OnceLock::new();
     static TEXT_PATTERN: OnceLock<Result<(), String>> = OnceLock::new();
     static ASYNC_FILES: OnceLock<Result<(), String>> = OnceLock::new();
+    static PROCESS_SERVICE: OnceLock<Result<(), String>> = OnceLock::new();
 
     let prepared = match name {
         "text_tools" => &TEXT_TOOLS,
@@ -611,12 +686,14 @@ fn prepare_provider_dependency(name: &str) {
         "tag_set" => &TAG_SET,
         "request_ids" => &REQUEST_IDS,
         "call_tracing" => &CALL_TRACING,
+        "callables" => &CALLABLES,
         "generic_box" => &GENERIC_BOX,
         "native_records" => &NATIVE_RECORDS,
         "feature_flags" => &FEATURE_FLAGS,
         "run_metrics" => &RUN_METRICS,
         "text_pattern" => &TEXT_PATTERN,
         "async_files" => &ASYNC_FILES,
+        "process_service" => &PROCESS_SERVICE,
         _ => panic!("unknown provider example {name}"),
     };
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

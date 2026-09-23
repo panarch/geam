@@ -21,6 +21,7 @@ where
     plan: &'call crate::plan::execution::HostedProgram<Profile>,
     state: &'call mut RuntimeStateFor<'run, crate::plan::execution::HostedProgram<Profile>>,
     arguments: RetainedValues,
+    captures: Vec<HostValueToken>,
     value_arguments: Vec<HostValueToken>,
     list_arguments: Vec<HostListToken>,
     tuple_arguments: Vec<HostTupleToken>,
@@ -47,6 +48,7 @@ where
     ) -> Self {
         let PreparedHostCall {
             arguments,
+            captures,
             value_arguments,
             list_arguments,
             tuple_arguments,
@@ -54,12 +56,17 @@ where
             external_arguments,
             function_arguments,
             scoped,
-        } = PreparedHostCall::new(function.call_parameters(), inputs);
+        } = PreparedHostCall::new(
+            function.call_parameters(),
+            function.capture_parameters(),
+            inputs,
+        );
 
         Self {
             plan,
             state,
             arguments,
+            captures,
             value_arguments,
             list_arguments,
             tuple_arguments,
@@ -83,6 +90,7 @@ where
             plan,
             state,
             arguments: RetainedValues::empty(),
+            captures: Vec::new(),
             value_arguments: Vec::new(),
             list_arguments: Vec::new(),
             tuple_arguments: Vec::new(),
@@ -166,6 +174,10 @@ where
     Profile: HostProfile,
     crate::plan::execution::HostedProgram<Profile>: 'run,
 {
+    fn capture_tokens(&self) -> &[HostValueToken] {
+        &self.captures
+    }
+
     fn state(&mut self) -> &mut Profile::RunState {
         self.state.host_state()
     }
@@ -253,6 +265,10 @@ where
 
     fn callable(&self, function: HostFunctionToken) -> crate::runtime::RetainedCallable {
         self.scoped.function(function)
+    }
+
+    fn restore_callable(&mut self, value: crate::runtime::RetainedCallable) -> HostFunctionToken {
+        self.scoped.push_callable(value)
     }
 
     fn codec_scope(&self) -> HostCodecScope {
@@ -407,6 +423,39 @@ where
             .scoped
             .allocate_list(storage_type, self.state.lists_mut(), &values);
         self.scoped.push_list(list)
+    }
+
+    fn build_function(
+        &mut self,
+        index: usize,
+        captures: Box<[HostScopedValue]>,
+    ) -> HostFunctionToken {
+        let construction = &self.function.constructions().callables[index];
+        let captures = if captures.is_empty() {
+            self.state.captures().capture(Vec::new())
+        } else {
+            let mut values = RetainedValues::empty();
+            for capture in captures {
+                values.push_evaluated(self.scoped.value_from_scoped(capture));
+            }
+            self.state
+                .captures()
+                .capture(values.into_captures(&construction.captures))
+        };
+        let value = crate::runtime::evaluated::EvaluatedFunctionValue::closure(
+            construction.target.clone(),
+            construction
+                .parameters
+                .iter()
+                .map(|slot| slot.local().clone())
+                .collect(),
+            captures,
+            construction.type_.clone(),
+        );
+        let token = self
+            .scoped
+            .push(crate::runtime::evaluated::EvaluatedValue::Function(value));
+        self.scoped.function_token(token)
     }
 
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken {

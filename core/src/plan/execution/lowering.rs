@@ -595,27 +595,9 @@ impl LoweringContext {
             .into_iter()
             .map(|(family, index, shapes, return_, captures)| {
                 let mut prefix = local::ParameterPrefix::default();
-                let parameters = shapes
-                    .iter()
-                    .map(|shape| {
-                        let (index, stored) =
-                            prefix.allocate_stored(shape.clone(), &self.representations);
-                        let local = local::stored_value_local_at(&stored, index, self);
-                        let shape = self.types.value_shape(&stored.to_specialized());
-                        super::graph::ParamSlot::new(local, shape)
-                    })
-                    .collect::<Vec<_>>();
+                let parameters = local::parameter_slots(&shapes, &mut prefix, self);
                 let return_ = self.types.value_shape(&return_);
-                let captures = captures
-                    .iter()
-                    .map(|shape| {
-                        let (index, stored) =
-                            prefix.allocate_stored(shape.clone(), &self.representations);
-                        let local = local::stored_value_local_at(&stored, index, self);
-                        let shape = self.types.value_shape(&stored.to_specialized());
-                        super::graph::ParamSlot::new(local, shape)
-                    })
-                    .collect();
+                let captures = local::parameter_slots(&captures, &mut prefix, self);
                 super::function::parameters::FunctionCatalogEntry {
                     family,
                     index,

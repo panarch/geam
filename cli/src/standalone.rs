@@ -134,9 +134,14 @@ impl Preparation<'_> {
                 &mut self.progress,
             )?;
         }
-        self.providers
-            .validate(project_root, &project, &typed, &managed, &mut self.progress)?;
-        crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+        let bindings = self.providers.validate(
+            project_root,
+            &project,
+            &typed,
+            &managed,
+            &mut self.progress,
+        )?;
+        crate::runner::reconcile_source(project_root, &bindings)?;
         let manifest_changed = managed.write()?;
         crate::runner::reconcile_lock(
             project_root,
@@ -440,12 +445,19 @@ mod tests {
         fn validate(
             &self,
             _project_root: &Utf8Path,
-            _project: &ResolvedProject,
+            project: &ResolvedProject,
             _program: &geam_core::TypedProgram,
-            _managed: &ManagedProject,
+            managed: &ManagedProject,
             _progress: &mut Progress<'_>,
-        ) -> Result<(), CliError> {
-            Ok(())
+        ) -> Result<Vec<crate::provider::ProviderBinding>, CliError> {
+            Ok(project
+                .packages()
+                .filter(|(package, _)| managed.has_provider(package))
+                .map(|(package, _)| crate::provider::ProviderBinding {
+                    alias: format!("geam_provider_{package}"),
+                    composition: crate::provider::ProviderComposition::default(),
+                })
+                .collect())
         }
     }
 
@@ -461,7 +473,7 @@ mod tests {
             _program: &geam_core::TypedProgram,
             managed: &ManagedProject,
             _progress: &mut Progress<'_>,
-        ) -> Result<(), CliError> {
+        ) -> Result<Vec<crate::provider::ProviderBinding>, CliError> {
             assert_eq!(
                 fs::read_to_string(project_root.join("Cargo.lock"))
                     .expect("root lock should exist before provider resolution"),
@@ -475,7 +487,7 @@ mod tests {
                     .contains("geam_provider_removed"),
             );
             self.observed.set(true);
-            Ok(())
+            Ok(vec!["geam_provider_application".into()])
         }
     }
 
@@ -1066,7 +1078,7 @@ pub fn main() { 1 }
                 _program: &geam_core::TypedProgram,
                 _managed: &ManagedProject,
                 _progress: &mut Progress<'_>,
-            ) -> Result<(), CliError> {
+            ) -> Result<Vec<crate::provider::ProviderBinding>, CliError> {
                 Err(CliError::MissingStandaloneProvider {
                     package: "application".to_owned(),
                     version: "1.0.0".to_owned(),

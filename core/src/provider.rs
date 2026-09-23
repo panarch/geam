@@ -4,6 +4,7 @@ pub mod advanced;
 mod call;
 mod callback;
 mod codec;
+mod factory;
 mod future;
 mod list;
 mod prelude;
@@ -19,28 +20,42 @@ pub use call::{
 };
 pub use callback::Callback;
 #[doc(hidden)]
-pub use callback::{MissingCallbackContext, ProviderCallbackCodec, ProviderOwnedCallbackContext};
+pub use callback::{
+    MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext,
+    ProviderCallbackListDecoder, ProviderOwnedCallbackContext, ProviderOwnedCallbackListDecoder,
+};
 #[doc(hidden)]
 pub use codec::{
     ProviderConstruction, ProviderConstructionIndex0, ProviderConstructionIndexNext,
     ProviderConstructionList, ProviderConstructionRequirementAt, ProviderConstructionRequirements,
-    ProviderConstructions, ProviderExternalCodec, ProviderInputValue, ProviderListInputCodec,
-    ProviderListInputValue, ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
-    ProviderValue, ProviderValueForms,
+    ProviderConstructions, ProviderContextualValueForms, ProviderExternalCodec, ProviderInputValue,
+    ProviderListInputCodec, ProviderListInputValue, ProviderMarkerListForms,
+    ProviderNoConstructions, ProviderOutputValue, ProviderRootOutputValue,
+    ProviderRuntimeValueForms, ProviderStaticValueForms, ProviderTypedValue, ProviderValue,
+    ProviderValueForms,
 };
 pub use ecow::EcoString;
+pub use factory::Factory;
+#[doc(hidden)]
+pub use factory::{
+    ProviderFactoryBinding, ProviderFactoryBindings, ProviderFactoryCodec,
+    ProviderImmediateCaptures, ProviderNoFactories, ProviderOwnedCaptures,
+};
 pub use future::Future;
 #[doc(hidden)]
-pub use future::{MissingFutureContext, ProviderFutureValueContext};
+pub use future::{
+    MissingFutureContext, ProviderFutureCodec, ProviderFutureListDecoder,
+    ProviderFutureValueContext,
+};
 pub use num_bigint::BigInt;
 
 pub use list::List;
 #[doc(hidden)]
 pub use list::{
-    ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderExternalView,
-    ProviderInputListContext, ProviderListContext, ProviderListCustomFields,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderListTupleItems, ProviderOwnedExternal,
-    ProviderOwnedExternalListDecoder, ProviderScalarListDecoder,
+    MissingListContext, ProviderExternalListDecoder, ProviderExternalPayloadAccess,
+    ProviderExternalView, ProviderListContext, ProviderListCustomFields, ProviderListItemDecoder,
+    ProviderListItemValue, ProviderListTupleItems, ProviderOwnedExternal,
+    ProviderOwnedExternalListDecoder, ProviderScalarListDecoder, ProviderTypedListItemDecoder,
 };
 #[doc(hidden)]
 pub use prelude::{
@@ -58,7 +73,7 @@ pub use stored::{
 };
 pub use value::Value;
 #[doc(hidden)]
-pub use value::{MissingValueContext, ProviderValueContext};
+pub use value::{MissingValueContext, ProviderValueContext, ProviderValueListDecoder};
 
 pub type Configuration = crate::HostProviderConfiguration;
 

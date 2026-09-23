@@ -18,6 +18,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
         start: impl FnOnce(super::Dependencies<Completion>) -> Native,
         codec: HostCodecScope,
         origin: HostCallOrigin,
+        callable_base: usize,
     ) -> SourceWork
     where
         Provider: HostProvider<Profile>,
@@ -49,7 +50,7 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
                             let mut runtime =
                                 RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
                             completion
-                                .complete(&mut runtime)
+                                .complete(&mut runtime, callable_base)
                                 .map(|token| runtime.retain_stored(HostScopedValue::Value(token)))
                         });
                         output.map_err(|error| match error.into_kind() {
