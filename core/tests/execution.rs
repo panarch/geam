@@ -398,6 +398,8 @@ mod control_flow {
             bit_array_pattern_bits,
             bit_array_pattern_dynamic_bytes,
             bit_array_pattern_floats,
+            bit_array_pattern_zero_float,
+            bit_array_pattern_zero_sizes,
             bit_array_pattern_strings,
             bit_array_pattern_composition,
             bit_array_pattern_utf_codepoint,

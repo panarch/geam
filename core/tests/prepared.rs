@@ -1,5 +1,5 @@
 use geam_core::__prepared_support as data;
-use geam_core::embedding::{BigInt, CallError, FunctionDeclaration, ModuleBuilder};
+use geam_core::embedding::{BigInt, BitArrayValue, CallError, FunctionDeclaration, ModuleBuilder};
 
 static ARITHMETIC: data::ModuleArtifact<std::convert::Infallible> =
     include!("fixtures/prepared/arithmetic.rs");
@@ -12,6 +12,9 @@ static NESTED_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
 
 static SPARSE_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
     include!("fixtures/prepared/sparse_patterns.rs");
+
+static BIT_ARRAY_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/bit_array_patterns.rs");
 
 #[path = "support/work_fixture.rs"]
 mod work_fixture;
@@ -168,6 +171,93 @@ fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
                 "unnamed:empty:number:fallback"
             );
             assert!(echo.is_empty());
+        }
+    }
+}
+
+#[test]
+fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
+    type Fields = (BigInt, f64, BitArrayValue, BigInt);
+
+    let source = include_str!("fixtures/prepared/bit_array_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
+            "zero_fields",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/bit_array_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, zero_fields) = if prepared {
+            let mut bindings = BIT_ARRAY_PATTERNS.load().unwrap();
+            let function = bindings
+                .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
+                    "zero_fields",
+                ))
+                .unwrap();
+            (bindings.seal(), function)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, function) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
+                    "zero_fields",
+                ))
+                .unwrap();
+            (bindings.seal(), function)
+        };
+        for _ in 0..2 {
+            for (input, width, expected) in [
+                (
+                    vec![7],
+                    0,
+                    (
+                        0.into(),
+                        0.0,
+                        BitArrayValue::from_bytes(Vec::new()),
+                        7.into(),
+                    ),
+                ),
+                (
+                    vec![7, 8],
+                    0,
+                    (
+                        (-1).into(),
+                        -1.0,
+                        BitArrayValue::from_bytes(vec![255]),
+                        (-1).into(),
+                    ),
+                ),
+                (
+                    vec![7],
+                    -1,
+                    (
+                        (-1).into(),
+                        -1.0,
+                        BitArrayValue::from_bytes(vec![255]),
+                        (-1).into(),
+                    ),
+                ),
+            ] {
+                let mut echo = Vec::new();
+                assert_eq!(
+                    module
+                        .call(
+                            &zero_fields,
+                            (BitArrayValue::from_bytes(input), width.into()),
+                            &mut echo,
+                        )
+                        .unwrap(),
+                    expected,
+                );
+                assert!(echo.is_empty());
+            }
         }
     }
 }

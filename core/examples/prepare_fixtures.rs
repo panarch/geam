@@ -56,6 +56,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (sparse, _) = ModuleBuilder::new(sparse)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let bit_arrays = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/bit_array_patterns.gleam"),
+    )?;
+    let (bit_arrays, _) = ModuleBuilder::new(bit_arrays)?.function(FunctionDeclaration::<
+        (BitArrayValue, BigInt),
+        (BigInt, f64, BitArrayValue, BigInt),
+    >::new("zero_fields"))?;
+
     let native = geam_core::compile_typed_host_program(
         "application",
         "main",
@@ -98,6 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
         ("sparse_patterns.rs", sparse.prepare().emit_rust()),
+        ("bit_array_patterns.rs", bit_arrays.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
         (
