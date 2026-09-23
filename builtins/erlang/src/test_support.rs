@@ -7,6 +7,31 @@ use geam_core::host::{
 };
 use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
 
+/// Compiles and executes the complete source and registrations supplied by an owner test.
+pub(crate) fn run_main(
+    packages: impl IntoIterator<Item = PackageSource>,
+    providers: impl IntoIterator<Item = HostProviderModule<crate::GleamErlangProfile>>,
+) -> geam_core::Value {
+    let typed = compile_typed_host_program(
+        "application",
+        "main",
+        packages,
+        HostProviderSet::from_providers(providers).unwrap(),
+    )
+    .unwrap();
+    let mut execution = geam_core::HostedExecution::try_from_module_plan(
+        geam_core::plan_host_program(typed).unwrap(),
+    )
+    .unwrap();
+    let host = TestHost::default();
+    let mut state = crate::GleamErlangRunState {
+        stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+        erlang: crate::Configuration::default(),
+    };
+    host.block_on(execution.run_main(&host, &mut state, &mut Vec::new()))
+        .unwrap()
+}
+
 /// Stops inside one native poll while the owner drives real cancellation.
 pub(crate) struct PollGate {
     events: std::sync::mpsc::Sender<PollEvent>,

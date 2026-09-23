@@ -1,0 +1,26 @@
+[package]
+name = "geam-example-process-service"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "A Rust provider using Geam's shared process service"
+
+[package.metadata.geam.provider]
+schema = 2
+gleam-package = "example_process_service"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+component = "plain"
+execution-service = false
+requires-services = ["gleam_erlang"]
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider", "gleam-erlang"] }
+
+[dev-dependencies]
+camino = "1"
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"

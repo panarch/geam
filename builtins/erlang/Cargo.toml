@@ -22,6 +22,7 @@ im.workspace = true
 priority-queue.workspace = true
 
 [dev-dependencies]
+geam-macros.workspace = true
 camino.workspace = true
 gleam-compiler-core.workspace = true
 tempfile.workspace = true

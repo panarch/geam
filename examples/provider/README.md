@@ -20,6 +20,7 @@ a runnable Gleam application.
 | Rust-created functions | [`callables`](callables/README.md) | Create capturing functions, generic wrappers, and custom-held callbacks |
 | Retained Gleam value | [`generic_box`](generic_box/README.md) | Store a generic source value across provider calls |
 | Native representation | [`native_records`](native_records/README.md) | Read a Rust-owned record through Dynamic decoders and typed callbacks |
+| Shared execution service | [`process_service`](process_service/README.md) | Request replies from named Gleam processes through the producer's mailbox and clock |
 | Async Rust work | [`async_files`](async_files/README.md) | Read a file through a Rust async function and compose its Future in Gleam |
 | Published pair | [`text_pattern`](text_pattern/README.md) | Pair a Hex package with a crates.io provider while keeping its Erlang implementation |
 
@@ -61,6 +62,7 @@ host boundary:
 | [`callables`](callables/README.md) | `Default` | None | Capturing functions and typed callbacks |
 | [`generic_box`](generic_box/README.md) | None | None | Retained generic Gleam value |
 | [`native_records`](native_records/README.md) | None | None | Native symbol and record views |
+| [`process_service`](process_service/README.md) | None | None | Producer-owned process and Subject identities |
 | [`text_pattern`](text_pattern/README.md) | None | None | Regex payload with custom behavior |
 | [`async_files`](async_files/README.md) | None | None | Explicit shared Future results |
 

@@ -217,6 +217,14 @@ fields. Initialization returns `RunState` directly when every selected
 component is total and preserves `HostProviderInitializationError` when a
 provider can reject configuration.
 
+An external component can also declare
+[execution service dependencies](execution-services.md). Generated profiles
+compose each required service once, including producers whose native functions
+are not directly called by the selected source. Component configuration is
+initialized before execution; service state belongs to each new execution domain.
+Profile-dependent provider components may retain typed callbacks for that same
+concrete profile. Manual and prepared hosts use the same ownership contracts.
+
 The complete lifecycle is:
 
 1. Initialize from source with project/bind/seal or from prepared data with load.

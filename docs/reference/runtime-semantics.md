@@ -565,6 +565,13 @@ inside their original execution domain. Host state borrows end before native
 waits or callback re-entry. The domain can service entries while its Rust body
 waits for an unrelated event.
 
+An execution domain can compose several statically selected
+[execution services](execution-services.md). Providers that require the same
+producer share one service instance, while each new domain initializes fresh
+state. The profile projects service state directly; native calls do not resolve
+service names at runtime. Service polling must bound its own work, and the
+composition polls every service even when an earlier one reports progress.
+
 Dropping a pending entry call cancels that entry. Cancellation closes new
 effects but does not roll back effects already performed or interrupt arbitrary
 synchronous Rust code. Normal domain completion waits for worker cleanup;

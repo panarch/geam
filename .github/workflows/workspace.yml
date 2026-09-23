@@ -46,8 +46,14 @@ jobs:
 
       - name: Check example provider formatting
         run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing callables generic_box native_records text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing callables generic_box native_records process_service text_pattern; do
             (cd "examples/provider/$example/provider" && cargo fmt --all --check)
+          done
+
+      - name: Check service fixture and embedding formatting
+        run: |
+          for manifest in tests/fixtures/otp_service/provider/Cargo.toml tests/fixtures/otp_service/embedding/Cargo.toml examples/provider/process_service/embedding/Cargo.toml; do
+            cargo fmt --manifest-path "$manifest" --all --check
           done
 
   clippy:
@@ -82,6 +88,8 @@ jobs:
             examples/provider/callables/provider -> target
             examples/provider/generic_box/provider -> target
             examples/provider/native_records/provider -> target
+            examples/provider/process_service/provider -> target
+            tests/fixtures/otp_service/provider -> target
             examples/provider/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -104,9 +112,12 @@ jobs:
 
       - name: Run example provider clippy
         run: |
-          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing callables generic_box native_records text_pattern; do
+          for example in text_tools value_types tag_set request_ids feature_flags run_metrics call_tracing callables generic_box native_records process_service text_pattern; do
             (cd "examples/provider/$example/provider" && cargo clippy --all-targets --locked -- -D warnings)
           done
+
+      - name: Run OTP service provider clippy
+        run: cargo clippy --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --all-targets --locked -- -D warnings
 
   documentation:
     name: Documentation

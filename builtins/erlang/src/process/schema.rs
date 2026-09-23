@@ -7,33 +7,33 @@ use geam_core::host::{
 };
 use geam_stdlib::provider_support::Dynamic;
 
-pub(super) type Subject<A> = HostCustomType<SubjectSchema, HostTypeList<A, HostTypeListEnd>>;
-pub(super) type OrdinarySubject<A> =
+pub type Subject<A> = HostCustomType<SubjectSchema, HostTypeList<A, HostTypeListEnd>>;
+pub type OrdinarySubject<A> =
     HostCustomConstructorAt<Subject<A>, HostCustomIndex0, SubjectConstructor>;
-pub(super) type NamedSubject<A> = HostCustomConstructorAt<
+pub type NamedSubject<A> = HostCustomConstructorAt<
     Subject<A>,
     HostCustomIndexNext<HostCustomIndex0>,
     NamedSubjectConstructor,
 >;
-pub(super) type ExitReason = HostCustomType<ExitReasonSchema>;
-pub(super) type NormalReason = HostCustomConstructorAt<ExitReason, HostCustomIndex0, Normal>;
-pub(super) type KilledReason =
+pub type ExitReason = HostCustomType<ExitReasonSchema>;
+pub type NormalReason = HostCustomConstructorAt<ExitReason, HostCustomIndex0, Normal>;
+pub type KilledReason =
     HostCustomConstructorAt<ExitReason, HostCustomIndexNext<HostCustomIndex0>, Killed>;
-pub(super) type AbnormalReason = HostCustomConstructorAt<
+pub type AbnormalReason = HostCustomConstructorAt<
     ExitReason,
     HostCustomIndexNext<HostCustomIndexNext<HostCustomIndex0>>,
     Abnormal,
 >;
-pub(super) type Down = HostCustomType<DownSchema>;
-pub(super) type ProcessFlag = HostCustomType<ProcessFlagSchema>;
-pub(super) type KillFlag = HostCustomType<KillFlagSchema>;
+pub type Down = HostCustomType<DownSchema>;
+pub type ProcessFlag = HostCustomType<ProcessFlagSchema>;
+pub type KillFlag = HostCustomType<KillFlagSchema>;
 
-pub(super) struct SubjectSchema;
-pub(super) struct SubjectConstructor;
-pub(super) struct NamedSubjectConstructor;
-pub(super) struct OwnerField;
-pub(super) struct TagField;
-pub(super) struct NameField;
+pub struct SubjectSchema;
+pub struct SubjectConstructor;
+pub struct NamedSubjectConstructor;
+pub struct OwnerField;
+pub struct TagField;
+pub struct NameField;
 
 impl HostCustomField for OwnerField {
     const LABEL: Option<&'static str> = Some("owner");
@@ -61,17 +61,18 @@ impl HostCustomSchema for SubjectSchema {
     const MODULE: &'static str = "gleam/erlang/process";
     const NAME: &'static str = "Subject";
     const PARAMETER_COUNT: usize = 1;
+    const SHARED: bool = true;
     type Constructors = HostCustomConstructorList<
         SubjectConstructor,
         HostCustomConstructorList<NamedSubjectConstructor, HostCustomConstructorListEnd>,
     >;
 }
 
-pub(super) struct ExitReasonSchema;
-pub(super) struct Normal;
-pub(super) struct Killed;
-pub(super) struct Abnormal;
-pub(super) struct AbnormalReasonField;
+pub struct ExitReasonSchema;
+pub struct Normal;
+pub struct Killed;
+pub struct Abnormal;
+pub struct AbnormalReasonField;
 impl HostCustomField for AbnormalReasonField {
     const LABEL: Option<&'static str> = Some("reason");
     type Type = Dynamic;
@@ -102,13 +103,13 @@ impl HostCustomSchema for ExitReasonSchema {
     >;
 }
 
-pub(super) struct DownSchema;
-pub(super) struct ProcessDown;
-pub(super) struct PortDown;
-pub(super) struct MonitorField;
-pub(super) struct PidField;
-pub(super) struct PortField;
-pub(super) struct ExitReasonField;
+pub struct DownSchema;
+pub struct ProcessDown;
+pub struct PortDown;
+pub struct MonitorField;
+pub struct PidField;
+pub struct PortField;
+pub struct ExitReasonField;
 impl HostCustomField for MonitorField {
     const LABEL: Option<&'static str> = Some("monitor");
     type Type = Monitor;
@@ -153,8 +154,8 @@ impl HostCustomSchema for DownSchema {
     >;
 }
 
-pub(super) struct ProcessFlagSchema;
-pub(super) struct Process;
+pub struct ProcessFlagSchema;
+pub struct Process;
 impl HostCustomConstructorDefinition for Process {
     const NAME: &'static str = "Process";
     type Fields = HostCustomFieldListEnd;
@@ -167,8 +168,8 @@ impl HostCustomSchema for ProcessFlagSchema {
     type Constructors = HostCustomConstructorList<Process, HostCustomConstructorListEnd>;
 }
 
-pub(super) struct KillFlagSchema;
-pub(super) struct Kill;
+pub struct KillFlagSchema;
+pub struct Kill;
 impl HostCustomConstructorDefinition for Kill {
     const NAME: &'static str = "Kill";
     type Fields = HostCustomFieldListEnd;

@@ -4,9 +4,9 @@ use super::package::{DirectDependency, EmbeddingPackage};
 use crate::builtin::BuiltInProvider;
 use crate::error::CliError;
 use crate::project::ResolvedProject;
-use crate::provider::ProviderMetadata;
+use crate::provider::{ProviderComposition, ProviderMetadata};
 use hexpm::version::Version as GleamVersion;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Debug)]
 pub(super) struct HostedBindings {
@@ -43,6 +43,7 @@ pub(super) struct ExternalComponent {
     pub(super) input_field: RustIdentifier,
     pub(super) state_field: RustIdentifier,
     pub(super) crate_alias: RustIdentifier,
+    pub(super) composition: ProviderComposition,
 }
 
 impl HostedBindings {
@@ -65,6 +66,7 @@ impl HostedBindings {
                 components_for_package(package, &providers, required_package, resolved_project)?;
             components.extend(additional);
         }
+        components.resolve_services(package, &providers, resolved_project)?;
         components.require_geam_features(package)?;
         Ok(Self {
             boundary,
@@ -74,6 +76,48 @@ impl HostedBindings {
 }
 
 impl HostedComponents {
+    fn resolve_services(
+        &mut self,
+        package: &EmbeddingPackage,
+        providers: &DirectProviders,
+        project: &ResolvedProject,
+    ) -> Result<(), CliError> {
+        let mut expanded = BTreeSet::new();
+        let mut pending = VecDeque::new();
+        for component in self.iter() {
+            if let ComponentBinding::External(component) = component {
+                pending.extend(component.composition.required_services.iter().cloned());
+            }
+        }
+        while let Some(required) = pending.pop_front() {
+            if !expanded.insert(required.clone()) {
+                continue;
+            }
+            let dependency = components_for_package(package, providers, &required, project)?;
+            let owns_service = dependency.iter().any(|component| match component {
+                ComponentBinding::Erlang => required == "gleam_erlang",
+                ComponentBinding::External(component) => {
+                    component.package == required && component.composition.execution_service
+                }
+                _ => false,
+            });
+            if !owns_service {
+                return Err(provider_error(
+                    package,
+                    &required,
+                    "required provider does not declare an execution service",
+                ));
+            }
+            for component in dependency.iter() {
+                if let ComponentBinding::External(component) = component {
+                    pending.extend(component.composition.required_services.iter().cloned());
+                }
+            }
+            self.extend(dependency);
+        }
+        Ok(())
+    }
+
     pub(super) fn from_builtin(provider: BuiltInProvider) -> Self {
         let closure = provider.component_closure();
         let mut components = Self::new(ComponentBinding::from(closure.first()));
@@ -98,7 +142,16 @@ impl HostedComponents {
     }
 
     fn insert(&mut self, component: ComponentBinding) {
-        if self.components.contains(&component) {
+        if self
+            .components
+            .iter()
+            .any(|current| match (current, &component) {
+                (ComponentBinding::External(current), ComponentBinding::External(additional)) => {
+                    current.package == additional.package
+                }
+                (current, additional) => current == additional,
+            })
+        {
             return;
         }
         let index = self
@@ -379,6 +432,7 @@ impl<'metadata> DirectProviders<'metadata> {
             input_field,
             state_field,
             crate_alias,
+            composition: provider.metadata.composition().clone(),
         }))
     }
 }
@@ -532,6 +586,7 @@ mod tests {
     #[test]
     fn orders_and_deduplicates_mixed_components_without_weakening_dependencies() {
         let mut components = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "example_text_pattern".to_owned(),
             input_field: identifier("example_text_pattern"),
             state_field: identifier("provider_example_text_pattern"),
@@ -547,6 +602,7 @@ mod tests {
                 &ComponentBinding::Stdlib,
                 &ComponentBinding::Time,
                 &ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "example_text_pattern".to_owned(),
                     input_field: identifier("example_text_pattern"),
                     state_field: identifier("provider_example_text_pattern"),
@@ -560,6 +616,7 @@ mod tests {
     #[test]
     fn reserves_builtin_input_names_and_resolves_external_collisions() {
         let reserved = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "stdlib".to_owned(),
             input_field: identifier("stdlib"),
             state_field: identifier("provider_stdlib"),
@@ -570,6 +627,7 @@ mod tests {
             [
                 ComponentBinding::Future,
                 ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "stdlib".to_owned(),
                     input_field: identifier("provider_stdlib"),
                     state_field: identifier("provider_stdlib"),
@@ -579,12 +637,14 @@ mod tests {
         );
 
         let mut escaped = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "crate".to_owned(),
             input_field: identifier("_crate"),
             state_field: identifier("provider__crate"),
             crate_alias: identifier("escaped_provider"),
         });
         escaped.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "_crate".to_owned(),
             input_field: identifier("_crate"),
             state_field: identifier("provider__crate"),
@@ -595,12 +655,14 @@ mod tests {
             [
                 ComponentBinding::Future,
                 ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "_crate".to_owned(),
                     input_field: identifier("_crate"),
                     state_field: identifier("provider__crate"),
                     crate_alias: identifier("natural_provider"),
                 }),
                 ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "crate".to_owned(),
                     input_field: identifier("provider__crate"),
                     state_field: identifier("provider_provider__crate"),
@@ -610,12 +672,14 @@ mod tests {
         );
 
         let mut collisions = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "stdlib".to_owned(),
             input_field: identifier("stdlib"),
             state_field: identifier("provider_stdlib"),
             crate_alias: identifier("stdlib_provider"),
         });
         collisions.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "provider_stdlib".to_owned(),
             input_field: identifier("provider_stdlib"),
             state_field: identifier("provider_provider_stdlib"),
@@ -626,12 +690,14 @@ mod tests {
             [
                 ComponentBinding::Future,
                 ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "provider_stdlib".to_owned(),
                     input_field: identifier("provider_provider_stdlib"),
                     state_field: identifier("provider_provider_stdlib"),
                     crate_alias: identifier("prefixed_provider"),
                 }),
                 ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "stdlib".to_owned(),
                     input_field: identifier("provider_stdlib"),
                     state_field: identifier("provider_stdlib"),
@@ -664,6 +730,7 @@ mod tests {
             [
                 &ComponentBinding::Future,
                 &ComponentBinding::External(ExternalComponent {
+                    composition: crate::provider::ProviderComposition::default(),
                     package: "images".to_owned(),
                     input_field: identifier("images"),
                     state_field: identifier("provider_images"),
@@ -681,6 +748,135 @@ mod tests {
                 if package == "missing_package"
                     && reason.contains("resolved Gleam project does not contain")
         ));
+    }
+
+    #[test]
+    fn resolves_builtin_service_dependencies_and_reports_missing_external_ones() {
+        let fixture = ProviderGraphFixture::new(
+            vec![ProviderSpec::valid(
+                "images",
+                "image-provider",
+                "images",
+                ">= 1.0.0",
+            )],
+            Some("1.2.0"),
+        );
+        let manifest = fixture
+            .application
+            .parent()
+            .unwrap()
+            .join("image-provider/Cargo.toml");
+        let original = fs::read_to_string(&manifest).unwrap();
+        let application = fixture.application.join("Cargo.toml");
+        let source = fs::read_to_string(&application).unwrap();
+        fs::write(
+            &application,
+            source.replace(
+                "\"geam-builtin\"",
+                "\"geam-builtin\", \"gleam-erlang\", \"gleam-stdlib\"",
+            ),
+        )
+        .unwrap();
+        fs::write(&manifest, original.replace("schema = 1", "schema = 2\ncomponent = \"plain\"\nexecution-service = false\nrequires-services = [\"gleam_erlang\"]")).unwrap();
+        assert_success(
+            Command::new("cargo")
+                .args(["generate-lockfile", "--offline", "--manifest-path"])
+                .arg(&application)
+                .current_dir(&fixture.application),
+            "service feature lockfile generation",
+        );
+        let hosted = fixture.resolve("images").unwrap();
+        assert!(hosted.components.has_erlang());
+        assert_eq!(
+            hosted
+                .components
+                .iter()
+                .filter(|component| **component == ComponentBinding::Erlang)
+                .count(),
+            1
+        );
+
+        fs::write(&manifest, original.replace("schema = 1", "schema = 2\ncomponent = \"plain\"\nexecution-service = false\nrequires-services = [\"absent\"]")).unwrap();
+        assert!(
+            matches!(fixture.resolve("images"), Err(CliError::InvalidEmbeddingProvider { package, manifest, reason })
+            if package == "absent" && manifest == application && reason == "the resolved Gleam project does not contain the required package")
+        );
+    }
+
+    #[test]
+    fn service_closure_deduplicates_diamonds_and_cycles_after_field_assignment() {
+        let fixture = ProviderGraphFixture::new(
+            vec![
+                ProviderSpec::valid(
+                    "application_provider",
+                    "image-provider",
+                    "images",
+                    ">= 1.0.0",
+                ),
+                ProviderSpec::valid("first", "left-provider", "left", ">= 1.0.0"),
+                ProviderSpec::valid("second", "right-provider", "right", ">= 1.0.0"),
+                ProviderSpec::valid("shared", "shared-provider", "stdlib", ">= 1.0.0"),
+            ],
+            Some("1.2.0"),
+        );
+        let root = fixture.application.parent().unwrap();
+        for (provider, dependencies) in [
+            ("image-provider", "[\"left\", \"right\"]"),
+            ("left-provider", "[\"stdlib\"]"),
+            ("right-provider", "[\"stdlib\"]"),
+            ("shared-provider", "[\"images\"]"),
+        ] {
+            let manifest = root.join(provider).join("Cargo.toml");
+            let source = fs::read_to_string(&manifest).unwrap().replace(
+                "schema = 1",
+                &format!("schema = 2\ncomponent = \"profile\"\nexecution-service = true\nrequires-services = {dependencies}"),
+            );
+            fs::write(manifest, source).unwrap();
+        }
+        let manifest = fixture.application.join("gleam/manifest.toml");
+        let packages = ["images", "left", "right", "stdlib"].map(|name| format!("{{ name = {name:?}, version = \"1.2.0\", build_tools = [], requirements = [], source = \"local\", path = {name:?} }}"));
+        fs::write(
+            &manifest,
+            format!(
+                "packages = [{}]\n\n[requirements]\nimages = {{ path = \"images\" }}\n",
+                packages.join(", ")
+            ),
+        )
+        .unwrap();
+
+        let hosted = fixture.resolve("images").unwrap();
+        let external = hosted
+            .components
+            .iter()
+            .filter_map(|component| match component {
+                ComponentBinding::External(component) => Some((
+                    component.package.as_str(),
+                    component.input_field.as_str(),
+                    component.composition.execution_service,
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            external,
+            [
+                ("images", "images", true),
+                ("left", "left", true),
+                ("right", "right", true),
+                ("stdlib", "provider_stdlib", true)
+            ]
+        );
+
+        let producer = root.join("shared-provider/Cargo.toml");
+        let source = fs::read_to_string(&producer).unwrap();
+        fs::write(
+            &producer,
+            source.replace("execution-service = true", "execution-service = false"),
+        )
+        .unwrap();
+        assert!(
+            matches!(fixture.resolve("images"), Err(CliError::InvalidEmbeddingProvider { package, reason, .. }) if package == "stdlib" && reason == "required provider does not declare an execution service")
+        );
     }
 
     #[test]

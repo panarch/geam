@@ -312,6 +312,8 @@ dependencies and the callable consumer's independently locked dependencies first
 ```bash
 cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
+cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
+cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
 cargo test --package geam --test prepared_embedding --test standalone_build --locked
 ```
 
@@ -519,14 +521,14 @@ This test requires Erlang/OTP as well as Gleam; CI supplies OTP `29`. The native
 Erlang source is included in the exported Hex package.
 
 CI formats, tests, lints, and packages every independent example provider. The
-twelve macro examples select the current unreleased authoring surface through
+thirteen provider examples select the current unreleased authoring surface through
 repository-local patches and complete standalone execution. The independent
 Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
-The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the eleven
-provider examples other than `async_files` in four matrix groups of two or
-three examples. Groups balance observed execution times rather than following
+The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the twelve
+provider examples other than `async_files` in four matrix groups. Groups
+balance observed execution times rather than following
 the guide's reading order. For each example, the job selects its exact
 `provider_examples` test, runs the independent provider's tests, verifies its
 Cargo package, and exports its Gleam package. Log sections and failure
@@ -551,7 +553,7 @@ those isolated runner artifacts are not shared or cached between jobs.
 
 The normal suite executes the full generated runner with the fixture's locked
 Gleam and Rust dependencies. CI exports the standalone fixture's three local
-Gleam dependencies and the same eleven example Gleam packages. It also packages the
+Gleam dependencies and the same twelve example Gleam packages. It also packages the
 two standalone fixture providers and every example provider. No test-only
 fixture package is published. The text-pattern provider and matching Hex package
 are release-coupled public documentation artifacts and share every Geam release
@@ -564,7 +566,7 @@ The root package keeps seven explicit acceptance targets:
 - `cross_crate_http` proves that the Pure Gleam `gleam_http` package works
   through the root facade and stdlib composition. HTTP is not a Geam built-in
   and has no provider crate.
-- `provider_examples` executes the twelve documented provider projects through
+- `provider_examples` executes the thirteen documented provider projects and the independent OTP fixture through
   the real binary and generated runners.
 - `future_builtins` composes a macro-authored asynchronous provider with stdlib,
   JSON, and Time in a caller-driven Rust embedding scope.
@@ -587,6 +589,60 @@ Source-level rejection fixtures live under categorized
 `tests/fixtures/rejection/**/*.gleam` paths. They are reserved for public
 boundary cases that are clearer as complete Gleam modules than as planner unit
 tests.
+
+
+## Execution Service Consumers
+
+The [process service example](../../examples/provider/process_service) owns an
+ordinary typed request/reply API over the shared Erlang process service. Its
+independent provider tests use the original application, a manual host clock,
+and exact results for missing names, timeout, termination and malformed native
+replies. The [OTP fixture](../../tests/fixtures/otp_service) uses pinned original
+OTP source and an independent profile-dependent provider. Its maintained source
+hashes, native inventory and contract map separate the exercised integration
+from a complete provider implementation of `gleam_otp`.
+
+OTP owner unit tests live beside their implementations in `provider/src/`.
+The separate `provider/tests/original_otp.rs` integration target composes the
+provider's public component with the original OTP sources. Private unit support
+and original-source lifecycle observers belong to their respective test targets;
+the provider exposes no test-only API. The ordinary provider test command runs
+both targets, including the cancellation and retained-callback scenarios.
+
+Core owns static service composition and callable lifetime. `geam-erlang` owns
+process identity, shared values, mailbox selection, clocks, monitor/link effects
+and lifecycle cleanup. CLI owns service dependency admission and generated
+profile assembly. Consumer tests exercise these public boundaries together;
+their results do not replace any package's owner tests.
+
+```sh
+cargo test --manifest-path examples/provider/process_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --check
+cargo clippy --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+cargo test --package geam --test provider_examples --locked -- --exact runs_the_process_service_provider_on_the_builtin_mailbox
+cargo test --package geam --test provider_examples --locked -- --exact otp_service::runs_profile_dependent_otp_callbacks_in_the_generated_standalone_host
+cargo test --package geam --test prepared_embedding --locked -- process_consumers
+```
+
+The `process_consumers` tests check both independently locked embeddings,
+repeated generation, formatting and warnings-denied Clippy, dynamic/prepared
+output, and standalone assembly. They relocate each compiled executable,
+remove the original sources/build tree, and run with an empty PATH. Prepared
+distribution runs these checks on Linux, macOS and Windows. Workspace formats
+and lints the providers, while Acceptance runs their original-source workflows.
+These new consumers use their own Cargo locks and ordinary public Geam APIs.
+
+Each provider also has an independent coverage closure. Run them sequentially,
+with a fresh profile for each workspace. The denominator is the provider package
+itself; its Geam dependencies retain their separate owner gates.
+
+```sh
+cargo llvm-cov clean --manifest-path examples/provider/process_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path examples/provider/process_service/provider/Cargo.toml --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+cargo llvm-cov clean --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
 
 ## Benchmark Tooling
 
@@ -652,6 +708,8 @@ full test suite:
 ```sh
 cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
+cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
+cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
 cargo test --workspace --locked
 ```
 
@@ -705,7 +763,7 @@ cargo test --package geam --test provider_examples --locked -- \
   --exact runs_the_documented_text_tools_provider_across_three_modules
 ```
 
-The unfiltered `provider_examples` command runs all twelve examples locally.
+The unfiltered `provider_examples` command runs all thirteen documented examples and the OTP fixture locally.
 
 Planner unit tests use the crate-internal `planner::dsl` expected-plan helpers
 instead of snapshots, so supported lowering changes update the expected plan

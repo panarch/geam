@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Instant;
 
+#[path = "prepared_embedding/services.rs"]
+mod services;
+
+#[path = "prepared_embedding/process_consumers.rs"]
+mod process_consumers;
+
 #[test]
 fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let directory = tempfile::tempdir().unwrap();

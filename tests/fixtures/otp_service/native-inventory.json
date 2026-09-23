@@ -1,0 +1,134 @@
+[
+  {
+    "path": "src/gleam/otp/actor.gleam",
+    "line": 450,
+    "external": "@external(erlang, \"gleam_otp_external\", \"convert_system_message\")",
+    "declaration": "fn convert_system_message(b: Dynamic) -> Message(msg)"
+  },
+  {
+    "path": "src/gleam/otp/actor.gleam",
+    "line": 515,
+    "external": "@external(erlang, \"logger\", \"warning\")",
+    "declaration": "fn log_warning(a: Charlist, b: List(Charlist)) -> Nil"
+  },
+  {
+    "path": "src/gleam/otp/actor.gleam",
+    "line": 518,
+    "external": "@external(erlang, \"gleam_otp_external\", \"identity\")",
+    "declaration": "fn erase(a: anything) -> Dynamic"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 126,
+    "external": "@external(erlang, \"gleam_otp_external\", \"identity\")",
+    "declaration": "fn pid_to_supervisor_handle(pid: Pid) -> SupervisorHandle"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 129,
+    "external": "@external(erlang, \"gleam_otp_external\", \"identity\")",
+    "declaration": "fn name_to_supervisor_handle( name: process.Name(Message(child_argument, child_data)), ) -> SupervisorHandle"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 332,
+    "external": "@external(erlang, \"maps\", \"from_list\")",
+    "declaration": "fn make_erlang_start_flags( flags: List(ErlangStartFlag(data)), ) -> ErlangStartFlags"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 339,
+    "external": "@external(erlang, \"gleam_otp_external\", \"convert_erlang_start_error\")",
+    "declaration": "fn convert_erlang_start_error(dynamic: Dynamic) -> actor.StartError"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 342,
+    "external": "@external(erlang, \"supervisor\", \"start_link\")",
+    "declaration": "fn unnamed_start( module: Atom, args: #(ErlangStartFlags, List(ErlangChildSpec)), ) -> Result(Pid, Dynamic)"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 348,
+    "external": "@external(erlang, \"supervisor\", \"start_link\")",
+    "declaration": "fn named_start( name: ErlangSupervisorName(child_argument, child_data), module: Atom, args: #(ErlangStartFlags, List(ErlangChildSpec)), ) -> Result(Pid, Dynamic)"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 371,
+    "external": "@external(erlang, \"maps\", \"from_list\")",
+    "declaration": "fn make_erlang_child_spec( properties: List(ErlangChildSpecProperty(argument, data)), ) -> ErlangChildSpec"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 393,
+    "external": "@external(erlang, \"gleam_otp_external\", \"make_timeout\")",
+    "declaration": "fn make_timeout(amount: Int) -> Timeout"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 438,
+    "external": "@external(erlang, \"supervisor\", \"count_children\")",
+    "declaration": "fn erlang_count_children(supervisor: SupervisorHandle) -> List(#(Atom, Int))"
+  },
+  {
+    "path": "src/gleam/otp/factory_supervisor.gleam",
+    "line": 441,
+    "external": "@external(erlang, \"supervisor\", \"start_child\")",
+    "declaration": "fn erlang_start_child( supervisor: SupervisorHandle, argument: List(child_argument), ) -> Result2(Pid, data, actor.StartError)"
+  },
+  {
+    "path": "src/gleam/otp/static_supervisor.gleam",
+    "line": 192,
+    "external": "@external(erlang, \"gleam_otp_external\", \"convert_erlang_start_error\")",
+    "declaration": "fn convert_erlang_start_error(dynamic: Dynamic) -> actor.StartError"
+  },
+  {
+    "path": "src/gleam/otp/static_supervisor.gleam",
+    "line": 195,
+    "external": "@external(erlang, \"supervisor\", \"start_link\")",
+    "declaration": "fn erlang_start_link( module: Atom, args: #(ErlangStartFlags, List(ErlangChildSpec)), ) -> Result(Pid, Dynamic)"
+  },
+  {
+    "path": "src/gleam/otp/static_supervisor.gleam",
+    "line": 233,
+    "external": "@external(erlang, \"maps\", \"from_list\")",
+    "declaration": "fn make_erlang_start_flags( flags: List(ErlangStartFlag(data)), ) -> ErlangStartFlags"
+  },
+  {
+    "path": "src/gleam/otp/static_supervisor.gleam",
+    "line": 247,
+    "external": "@external(erlang, \"maps\", \"from_list\")",
+    "declaration": "fn make_erlang_child_spec( properties: List(ErlangChildSpecProperty(data)), ) -> ErlangChildSpec"
+  },
+  {
+    "path": "src/gleam/otp/static_supervisor.gleam",
+    "line": 266,
+    "external": "@external(erlang, \"gleam_otp_external\", \"make_timeout\")",
+    "declaration": "fn make_timeout(amount: Int) -> Timeout"
+  },
+  {
+    "path": "src/gleam/otp/system.gleam",
+    "line": 18,
+    "external": "@external(erlang, \"sys\", \"debug_options\")",
+    "declaration": "pub fn debug_state(a: List(DebugOption)) -> DebugState"
+  },
+  {
+    "path": "src/gleam/otp/system.gleam",
+    "line": 64,
+    "external": "@external(erlang, \"sys\", \"get_state\")",
+    "declaration": "pub fn get_state(from from: Pid) -> Dynamic"
+  },
+  {
+    "path": "src/gleam/otp/system.gleam",
+    "line": 67,
+    "external": "@external(erlang, \"sys\", \"suspend\")",
+    "declaration": "fn erl_suspend(a: Pid) -> DoNotLeak"
+  },
+  {
+    "path": "src/gleam/otp/system.gleam",
+    "line": 82,
+    "external": "@external(erlang, \"sys\", \"resume\")",
+    "declaration": "fn erl_resume(from from: Pid) -> DoNotLeak"
+  }
+]

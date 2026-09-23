@@ -21,6 +21,7 @@ pub struct Component;
 #[geam_macros::module(path = "generic_values", crate_path = geam_core)]
 mod generic_values {
     use super::{BigInt, Call, StringValue, Value};
+    use geam_core::provider::HostResult;
 
     #[geam_macros::external(name = "Token")]
     #[derive(PartialEq, Eq, Hash)]
@@ -106,6 +107,14 @@ mod generic_values {
     fn hash<Item>(#[geam_macros::call] call: &mut Call<()>, value: Value<Item>) -> BigInt {
         call.source_hash(&value).into()
     }
+
+    #[geam_macros::function(await)]
+    async fn resumed<Item>(
+        #[geam_macros::call] call: &mut Call<()>,
+        value: Value<Item>,
+    ) -> HostResult<Value<Item>> {
+        call.with_call(move |_| value).await
+    }
 }
 
 struct Profile;
@@ -186,6 +195,9 @@ fn semantics(left: item, right: item) -> #(Bool, Bool, String)
 @external(erlang, "generic_values", "hash")
 fn hash(value: item) -> Int
 
+@external(erlang, "generic_values", "resumed")
+fn resumed(value: item) -> item
+
 fn increment(value: Int) -> Int {
   value + 1
 }
@@ -193,7 +205,7 @@ fn increment(value: Int) -> Int {
 pub fn main() {
   let same = semantics(#("alpha", [1, 2]), #("alpha", [1, 2]))
   let different = semantics(#("alpha", [1]), #("beta", [2]))
-  let callback = pass_function(increment)
+  let callback = resumed(pass_function(increment))
   let problem_ok = case problem(#(Label("bad"), 9)) {
     #(Label(label), value) ->
       label == "bad" && value == 9 && problem_text(Label(label)) == "bad"
@@ -206,9 +218,9 @@ pub fn main() {
   let source_token = token("blue")
   let #(passed_token, token_value) = tokenized(#(source_token, True))
   #(
-    identity(7),
+    resumed(identity(7)),
     second("discarded", True),
-    compound(#("kept", [1, 2, 3])),
+    resumed(compound(#("kept", [1, 2, 3]))),
     optional(Some("present")),
     callback(4),
     same,
@@ -288,6 +300,7 @@ fn generic_schema_uses_return_first_parameter_order_and_recursive_shapes() {
             "pass_function",
             "semantics",
             "hash",
+            "resumed",
         ],
     );
 

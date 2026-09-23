@@ -36,6 +36,27 @@ where
     fn component_state(state: &mut Self::RunState) -> &mut Component::RunState;
 }
 
+/// A provider component that owns a service for each execution domain.
+///
+/// Configuration is interpreted by component initialization. Service creation
+/// receives that initialized state before the domain admits its first unit.
+pub trait HostExecutionService: HostProviderComponent {
+    type State: crate::execution::HostExecutionState;
+
+    fn initialize_service(state: &mut Self::RunState) -> Self::State;
+}
+
+/// Projects a producer's unique service from the current execution domain.
+///
+/// Consumers use the producer's identity; their own component state does not
+/// contain another instance of the shared service.
+pub trait HostServiceProfile<Service>: HostComponentProfile<Service>
+where
+    Service: HostExecutionService,
+{
+    fn service(state: &mut Self::ExecutionState) -> &mut Service::State;
+}
+
 /// Registers the source-backed provider modules exported by one component.
 pub trait HostProviderComponentRegistration<Profile>: HostProviderComponent
 where
@@ -88,8 +109,9 @@ impl std::error::Error for HostProviderInitializationError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
-        HostProviderConfiguration, HostProviderInitializationError,
+        HostComponentProfile, HostExecutionService, HostProviderComponent,
+        HostProviderComponentInitialization, HostProviderConfiguration,
+        HostProviderInitializationError, HostServiceProfile,
     };
     use crate::host::HostProfile;
 
@@ -106,6 +128,42 @@ mod tests {
     struct AggregateState {
         first: String,
         second: usize,
+    }
+
+    #[derive(Default)]
+    struct Sequence {
+        next: usize,
+    }
+
+    impl crate::execution::HostExecutionState for Sequence {
+        fn started(&mut self, _: crate::execution::ExecutionUnit) {}
+        fn finished(
+            &mut self,
+            _: crate::execution::ExecutionUnitId,
+            _: &crate::execution::UnitExit,
+        ) {
+        }
+        fn close(&mut self) {}
+    }
+
+    impl HostExecutionService for SecondComponent {
+        type State = Sequence;
+        fn initialize_service(seed: &mut usize) -> Sequence {
+            Sequence { next: *seed }
+        }
+    }
+
+    impl HostServiceProfile<SecondComponent> for AggregateProfile {
+        fn service(state: &mut Sequence) -> &mut Sequence {
+            state
+        }
+    }
+
+    impl crate::HostProvider<AggregateProfile> for SecondComponent {
+        type State = usize;
+        fn project(state: &mut AggregateState) -> &mut usize {
+            <AggregateProfile as HostComponentProfile<Self>>::component_state(state)
+        }
     }
 
     impl HostProviderComponent for FirstComponent {
@@ -141,7 +199,11 @@ mod tests {
     impl HostProfile for AggregateProfile {
         type RunState = AggregateState;
         type ExternalStores = AggregateStores;
-        type ExecutionState = ();
+        type ExecutionState = Sequence;
+
+        fn initialize_execution(state: &mut AggregateState) -> Sequence {
+            SecondComponent::initialize_service(&mut state.second)
+        }
     }
 
     impl HostComponentProfile<FirstComponent> for AggregateProfile {
@@ -246,5 +308,68 @@ mod tests {
             "could not initialize host provider component second: missing endpoint"
         );
         assert_eq!(error.clone(), error);
+    }
+
+    #[test]
+    fn typed_and_authoring_calls_share_one_explicitly_initialized_domain_service() {
+        fn next<'call>(
+            mut call: crate::HostCall<'call, AggregateProfile, SecondComponent, num_bigint::BigInt>,
+            authoring: bool,
+        ) -> Result<crate::HostCallCompletion<'call, num_bigint::BigInt>, crate::HostCallError>
+        {
+            assert_eq!(*call.state(), 42);
+            if authoring {
+                let mut call = crate::provider::Call::from_host_call(call);
+                let service = call.service::<SecondComponent>();
+                let next = service.next;
+                service.next += 1;
+                Ok(call.into_host_call().return_value(next.into()))
+            } else {
+                let service = call.service::<SecondComponent>();
+                let next = service.next;
+                service.next += 1;
+                Ok(call.return_value(next.into()))
+            }
+        }
+        let provider = crate::HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_scoped_function::<SecondComponent, (bool,), num_bigint::BigInt, _>("next", next)
+            .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "next") fn next(authoring: Bool) -> Int
+pub fn main() { #(next(False), next(True), next(False)) }
+"#,
+                )],
+            )],
+            crate::HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut state = AggregateState {
+            first: "unrelated".into(),
+            second: 42,
+        };
+        let mut echo = Vec::new();
+        for _ in 0..2 {
+            let result = host
+                .block_on(execution.run_main(&host, &mut state, &mut echo))
+                .unwrap();
+            assert_eq!(result.inspect().to_string(), "#(42, 43, 44)");
+            assert_eq!(state.first, "unrelated");
+            assert_eq!(state.second, 42);
+            assert!(echo.is_empty());
+        }
     }
 }

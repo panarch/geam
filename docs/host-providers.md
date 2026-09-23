@@ -227,6 +227,11 @@ decoded from Gleam and passed to a typed callback.
 
 ## Declare which Gleam versions it supports
 
+Providers that share an execution-domain service, or whose component depends
+on the generated profile, use the schema 2 composition contract described in
+[execution services](reference/execution-services.md). Ordinary providers can
+continue using schema 1 below.
+
 Cargo metadata connects the crate to its Gleam package and states the package
 versions implemented by this Rust code:
 

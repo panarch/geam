@@ -1121,6 +1121,7 @@ dependencies = [
  "futures-util",
  "geam-core",
  "geam-gleam-core",
+ "geam-macros",
  "geam-stdlib",
  "im",
  "num-bigint",

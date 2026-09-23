@@ -1210,8 +1210,10 @@ pub(super) fn apply_function_signature(
     if !call.is_none() || function_contains_callback(model, customs) {
         prepend_function_lifetime(&mut function.sig.generics, syn::parse_quote!('__geam_call));
     }
-    if matches!(flavor, InputOwnership::Owned) && function_contains_callback(model, customs) {
-        for generic in &model.generics {
+    if matches!(flavor, InputOwnership::Owned)
+        && (call.is_mutable() || function_contains_callback(model, customs))
+    {
+        for generic in model.generics.iter().filter(|generic| !generic.nominal) {
             let ident = &generic.ident;
             function
                 .sig

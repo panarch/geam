@@ -459,21 +459,42 @@ fn push_run_state(output: &mut String, alias: &str, components: &HostedComponent
 
 fn push_host_profile(output: &mut String, alias: &str, components: &HostedComponents) {
     let profile = profile_type(components);
+    let services = service_composition(alias, components);
+    if services.is_some() {
+        output.push_str("#[rustfmt::skip]\n");
+    }
     output.push_str(&format!(
         "impl{} HostProfile for {profile}",
         generics(components),
     ));
     push_bounds_open(output, alias, components);
-    let execution_state = if components.has_erlang() {
+    let execution_state = if let Some(services) = &services {
+        services.type_expression()
+    } else if components.has_erlang() {
         format!("{alias}::gleam_erlang::ErlangExecution")
     } else {
         "()".to_owned()
     };
     output.push_str(&format!(
-        "    type ExternalStores = Stores{};\n    type RunState = RunState{};\n    type ExecutionState = {execution_state};\n}}\n\n",
+        "    type ExternalStores = Stores{};\n    type RunState = RunState{};\n    type ExecutionState = {execution_state};\n",
         generics(components),
         generics(components),
     ));
+    if let Some(services) = &services {
+        output.push_str(&services.initialization());
+    }
+    output.push_str("}\n\n");
+    if let Some(services) = &services {
+        for (index, service) in services.iter().enumerate() {
+            output.push_str(&format!(
+                "#[rustfmt::skip]\nimpl{} {alias}::HostServiceProfile<{}> for {profile}",
+                generics(components),
+                service.component
+            ));
+            push_bounds_open(output, alias, components);
+            output.push_str(&format!("    fn service(state: &mut Self::ExecutionState) -> &mut {} {{\n        {}\n    }}\n}}\n\n", services.state_type(service), services.projection(index)));
+        }
+    }
     if !components.has_work() {
         return;
     }
@@ -485,6 +506,32 @@ fn push_host_profile(output: &mut String, alias: &str, components: &HostedCompon
     output.push_str(&format!(
         "    type Work = {alias}::FutureComponent;\n}}\n\n"
     ));
+}
+
+fn service_composition(
+    alias: &str,
+    components: &HostedComponents,
+) -> Option<crate::provider::ServiceComposition> {
+    let mut services = components
+        .iter()
+        .filter(|component| match component {
+            ComponentBinding::Erlang => true,
+            ComponentBinding::External(external) => external.composition.execution_service,
+            _ => false,
+        })
+        .map(|component| crate::provider::ServiceBinding {
+            component: component_type(alias, components, component),
+            state_field: component_field(component).to_owned(),
+        });
+    let first = services.next()?;
+    // Builtin-only hosts keep their existing direct execution-state layout.
+    let enabled = components.iter().any(|component| matches!(component, ComponentBinding::External(external) if external.composition.execution_service || !external.composition.required_services.is_empty()));
+    if !enabled {
+        return None;
+    }
+    Some(crate::provider::ServiceComposition::new(
+        alias, first, services,
+    ))
 }
 
 fn push_component_profile(
@@ -587,8 +634,13 @@ fn push_erlang_profile(output: &mut String, alias: &str, components: &HostedComp
         profile_type(components),
     ));
     push_bounds_open(output, alias, components);
+    let projection = if service_composition(alias, components).is_some() {
+        "&mut state.first"
+    } else {
+        "state"
+    };
     output.push_str(&format!(
-        "    fn erlang_execution(\n        state: &mut Self::ExecutionState,\n    ) -> &mut {alias}::gleam_erlang::ErlangExecution {{\n        state\n    }}\n}}\n\n"
+        "    fn erlang_execution(\n        state: &mut Self::ExecutionState,\n    ) -> &mut {alias}::gleam_erlang::ErlangExecution {{\n        {projection}\n    }}\n}}\n\n"
     ));
 }
 
@@ -626,7 +678,8 @@ fn push_host_providers(output: &mut String, alias: &str, components: &HostedComp
             output.push_str(&format!("{statement}\n"));
         } else if 8 + registration.len() <= 100 {
             output.push_str(&format!("    {declaration} =\n        {registration}\n"));
-        } else if format!("    {declaration} = <{component} as ComponentRegistration<").len() < 100
+        } else if format!("    {declaration} = <{component} as ComponentRegistration<").len() + 4
+            <= 100
         {
             output.push_str(&format!(
                 "    {declaration} = <{component} as ComponentRegistration<\n        {profile},\n    >>::providers()?;\n"
@@ -796,7 +849,15 @@ fn component_type(
             profile_type(components)
         ),
         ComponentBinding::External(component) => {
-            format!("{}::Component", component.crate_alias.as_str())
+            if component.composition.profile_parameter {
+                format!(
+                    "{}::Component<{}>",
+                    component.crate_alias.as_str(),
+                    profile_type(components)
+                )
+            } else {
+                format!("{}::Component", component.crate_alias.as_str())
+            }
         }
     }
 }
@@ -906,8 +967,60 @@ mod tests {
     use crate::embedding::identifier::RustIdentifier;
     use crate::embedding::package::Generation;
     use crate::embedding::profile::{ExternalComponent, HostedBindings, HostedComponents};
+    use crate::provider::ProviderComposition;
     use camino::Utf8Path;
+    use std::collections::BTreeSet;
     use std::fs;
+
+    #[test]
+    fn renders_service_owners_and_consumers_with_the_final_profile_and_crate_alias() {
+        let producer = HostedComponents::from_external(ExternalComponent {
+            package: "tickets".to_owned(),
+            input_field: identifier("tickets"),
+            state_field: identifier("provider_tickets"),
+            crate_alias: identifier("ticket_service"),
+            composition: ProviderComposition {
+                profile_parameter: true,
+                execution_service: true,
+                required_services: BTreeSet::new(),
+            },
+        });
+        let standalone = hosted_source(producer);
+        assert!(standalone.contains("type ExecutionState = runtime::execution::ExecutionServices<<ticket_service::Component<Profile> as runtime::HostExecutionService>::State, ()>;"));
+        assert!(standalone.contains("impl runtime::HostServiceProfile<ticket_service::Component<Profile>> for Profile {\n    fn service(state: &mut Self::ExecutionState) -> &mut <ticket_service::Component<Profile> as runtime::HostExecutionService>::State {\n        &mut state.first\n    }\n}"));
+        assert_eq!(
+            standalone
+                .matches("initialize_service(&mut state.provider_tickets)")
+                .count(),
+            1
+        );
+        assert_rustfmt_stable("independent execution service", &standalone);
+
+        let mut consumer = HostedComponents::from_external(ExternalComponent {
+            package: "requests".to_owned(),
+            input_field: identifier("requests"),
+            state_field: identifier("provider_requests"),
+            crate_alias: identifier("request_provider"),
+            composition: ProviderComposition {
+                profile_parameter: true,
+                execution_service: false,
+                required_services: BTreeSet::from(["gleam_erlang".to_owned()]),
+            },
+        });
+        consumer.extend(HostedComponents::from_builtin(BuiltInProvider::Erlang));
+        let source = hosted_source(consumer);
+        assert!(source.contains("type ExecutionState = runtime::execution::ExecutionServices<<runtime::gleam_erlang::Component<Profile<Io>> as runtime::HostExecutionService>::State, ()>;"));
+        assert!(source.contains("HostComponentProfile<request_provider::Component<Profile<Io>>>"));
+        assert!(!source.contains("HostServiceProfile<request_provider"));
+        assert_eq!(
+            source
+                .matches("initialize_service(&mut state.erlang)")
+                .count(),
+            1
+        );
+        assert!(source.contains("fn erlang_execution(\n        state: &mut Self::ExecutionState,\n    ) -> &mut runtime::gleam_erlang::ErlangExecution {\n        &mut state.first\n"));
+        assert_rustfmt_stable("builtin service consumer", &source);
+    }
 
     #[test]
     fn reserves_layout_space_for_fallible_binding_statements() {
@@ -1107,6 +1220,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
             }
         }
         let mut long = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "a".to_owned(),
             input_field: identifier("a"),
             state_field: identifier("provider_a"),
@@ -1120,6 +1234,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert_rustfmt_stable("long external component", &long);
 
         let very_long = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "native".to_owned(),
             input_field: identifier("native"),
             state_field: identifier("provider_native"),
@@ -1135,6 +1250,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
         let mut wrapped_call = external_components();
         wrapped_call.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "long_name".to_owned(),
             input_field: identifier("long_name"),
             state_field: identifier("provider_long_name"),
@@ -1145,6 +1261,17 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
             "let additional_providers =\n        <provider_with_a_long_public_name::Component as ComponentRegistration<Profile>>::providers(\n        )?;"
         ));
         assert_rustfmt_stable("transfer wrapped registration call", &wrapped_call);
+        let mut with_io = HostedComponents::from_builtin(BuiltInProvider::Stdlib);
+        with_io.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
+            package: "example_process_service".to_owned(),
+            input_field: identifier("example_process_service"),
+            state_field: identifier("provider_example_process_service"),
+            crate_alias: identifier("geam_example_process_service"),
+        }));
+        let with_io = hosted_source(with_io);
+        assert!(with_io.contains("<geam_example_process_service::Component as ComponentRegistration<Profile<Io>>>::providers(\n        )?;"));
+        assert_rustfmt_stable("generic IO registration call", &with_io);
     }
 
     #[test]
@@ -1277,6 +1404,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
         let mut two_external = external_components();
         two_external.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "other_provider".to_owned(),
             input_field: identifier("other_provider"),
             state_field: identifier("provider_other_provider"),
@@ -1294,12 +1422,14 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(pattern_input < other_input);
 
         let mut two_short = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "a".to_owned(),
             input_field: identifier("a"),
             state_field: identifier("provider_a"),
             crate_alias: identifier("p"),
         });
         two_short.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "bb".to_owned(),
             input_field: identifier("bb"),
             state_field: identifier("provider_bb"),
@@ -1311,6 +1441,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         ));
 
         let long_external = hosted_source(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "package_with_a_deliberately_long_name".to_owned(),
             input_field: identifier("package_with_a_deliberately_long_name"),
             state_field: identifier("provider_package_with_a_deliberately_long_name"),
@@ -1318,6 +1449,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         }));
 
         let reserved_external = hosted_source(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "stdlib".to_owned(),
             input_field: identifier("stdlib"),
             state_field: identifier("provider_stdlib"),
@@ -1327,12 +1459,14 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         assert!(!reserved_external.contains("pub stdlib: HostProviderConfiguration"));
 
         let mut escaped_collisions = HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "crate".to_owned(),
             input_field: identifier("_crate"),
             state_field: identifier("provider__crate"),
             crate_alias: identifier("escaped"),
         });
         escaped_collisions.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "_crate".to_owned(),
             input_field: identifier("_crate"),
             state_field: identifier("provider__crate"),
@@ -1347,6 +1481,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
         let mut mixed = HostedComponents::from_builtin(BuiltInProvider::Time);
         mixed.extend(external);
         mixed.extend(HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "other_provider".to_owned(),
             input_field: identifier("other_provider"),
             state_field: identifier("provider_other_provider"),
@@ -1408,6 +1543,7 @@ pub fn bind(builder: ModuleBuilder) -> Result<(ModuleBindings, Functions), Bindi
 
     fn external_components() -> HostedComponents {
         HostedComponents::from_external(ExternalComponent {
+            composition: crate::provider::ProviderComposition::default(),
             package: "example_text_pattern".to_owned(),
             input_field: identifier("example_text_pattern"),
             state_field: identifier("provider_example_text_pattern"),

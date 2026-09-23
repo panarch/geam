@@ -1,0 +1,19 @@
+[package]
+name = "process-service-embedding"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.embedding]
+generate = "both"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "gleam-erlang", "geam-builtin", "tokio", "gleam-stdlib"] }
+geam-example-process-service = { path = "../provider" }
+tokio = { version = "1", features = ["rt", "time"] }
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"
