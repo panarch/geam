@@ -480,7 +480,8 @@ mod tests {
     use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
-    use crate::runtime::{InvariantError, Value};
+    use crate::runtime::{InvariantError, RuntimeListStorage, Value};
+    use ecow::EcoString;
 
     #[test]
     fn successful_match_moves_selected_binding_buffers_and_duplicates_only_extra_uses() {
@@ -767,7 +768,7 @@ pub fn main() {
         );
         let int_type = plan.int_list_function_id(0).type_id();
         let list_type = plan.list_list_function_id(0).type_id();
-        let owner = crate::runtime::RuntimeListStorage::default();
+        let owner = RuntimeListStorage::default();
         let first = owner.int(int_type, vec![1.into(), 2.into(), 3.into()]);
         let second = owner.int(int_type, vec![4.into(), 5.into()]);
         let values = RetainedList::new(
@@ -777,7 +778,7 @@ pub fn main() {
         );
         drop(owner);
 
-        let mut caller = crate::runtime::RuntimeListStorage::default();
+        let mut caller = RuntimeListStorage::default();
         let unrelated = caller.int(int_type, vec![999.into()]);
         let unrelated_lists = caller.list(list_type, vec![unrelated.into()]);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
@@ -825,21 +826,23 @@ pub fn main() {
     fn failed_list_inspection_releases_partial_alias_bindings() {
         let plan = execution_plan(
             r#"
-fn ints() -> List(Int) { [] }
-fn lists() -> List(List(Int)) { [] }
+fn strings() -> List(String) { [] }
+fn lists() -> List(List(String)) { [] }
 pub fn main() {
-  let _ = ints()
+  let _ = strings()
   let assert [[head, ..tail] as first, []] = lists()
-  head
+  let _ = head
+  1
 }
 "#,
         );
-        let mut lists = crate::runtime::RuntimeListStorage::default();
-        let inner = lists.int(
-            plan.int_list_function_id(0).type_id(),
-            vec![1.into(), 2.into()],
+        let mut lists = RuntimeListStorage::default();
+        let mut text = EcoString::from("shared string payload retained by partial bindings");
+        let allocation = text.as_str().as_ptr();
+        let inner = lists.string(
+            plan.string_list_function_id(0).type_id(),
+            vec![text.clone().into(), text.clone().into()],
         );
-        let items = std::sync::Arc::downgrade(&lists.int_values(&inner));
         let outer = lists.list(
             plan.list_list_function_id(0).type_id(),
             vec![inner.clone().into(), inner.into()],
@@ -858,9 +861,9 @@ pub fn main() {
             .unwrap()
             .is_none()
         );
-        assert!(items.upgrade().is_some());
         drop(subject);
-        assert!(items.upgrade().is_none());
+        // With no head, tail or alias binding left, mutation needs no COW copy.
+        assert_eq!(text.make_mut().as_ptr(), allocation);
     }
 
     #[test]

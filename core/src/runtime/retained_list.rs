@@ -3,12 +3,11 @@ use super::evaluated::{
     EvaluatedValue,
 };
 use super::state::list::{
-    ListValueId, ParameterListValueId, RuntimeListStorage, StoredListValueId,
+    ListSequence, ListSequenceIter, ListValueId, ParameterListValueId, RuntimeListStorage,
+    StoredListValueId,
 };
 use crate::StringValue;
-use imbl::Vector;
 use num_bigint::BigInt;
-use std::sync::Arc;
 
 pub(in crate::runtime) struct RetainedList<Handle> {
     value: Handle,
@@ -77,40 +76,38 @@ impl Iterator for RetainedListIter<'_> {
     }
 }
 
-type SequenceIter<'a, Item> = imbl::vector::Iter<'a, Item, imbl::shared_ptr::DefaultSharedPtr>;
-
 enum ListRead {
     Empty,
     Nil(usize),
     ParameterList(ParameterListValueId, usize),
-    Int(Arc<Vector<BigInt>>),
-    String(Arc<Vector<StringValue>>),
-    BitArray(Arc<Vector<EvaluatedBitArray>>),
-    UtfCodepoint(Arc<Vector<char>>),
-    Custom(Arc<Vector<EvaluatedCustomValue>>),
-    External(Arc<Vector<EvaluatedExternalValue>>),
-    Float(Arc<Vector<f64>>),
-    Bool(Arc<Vector<bool>>),
-    Tuple(Arc<Vector<Vec<EvaluatedValue>>>),
-    List(Arc<Vector<StoredListValueId>>),
-    Function(Arc<Vector<EvaluatedFunctionValue>>),
+    Int(ListSequence<BigInt>),
+    String(ListSequence<StringValue>),
+    BitArray(ListSequence<EvaluatedBitArray>),
+    UtfCodepoint(ListSequence<char>),
+    Custom(ListSequence<EvaluatedCustomValue>),
+    External(ListSequence<EvaluatedExternalValue>),
+    Float(ListSequence<f64>),
+    Bool(ListSequence<bool>),
+    Tuple(ListSequence<Vec<EvaluatedValue>>),
+    List(ListSequence<StoredListValueId>),
+    Function(ListSequence<EvaluatedFunctionValue>),
 }
 
 enum ListReadIter<'a> {
     Empty,
     Nil(std::ops::Range<usize>),
     ParameterList(ParameterListValueId, std::ops::Range<usize>),
-    Int(SequenceIter<'a, BigInt>),
-    String(SequenceIter<'a, StringValue>),
-    BitArray(SequenceIter<'a, EvaluatedBitArray>),
-    UtfCodepoint(SequenceIter<'a, char>),
-    Custom(SequenceIter<'a, EvaluatedCustomValue>),
-    External(SequenceIter<'a, EvaluatedExternalValue>),
-    Float(SequenceIter<'a, f64>),
-    Bool(SequenceIter<'a, bool>),
-    Tuple(SequenceIter<'a, Vec<EvaluatedValue>>),
-    List(SequenceIter<'a, StoredListValueId>),
-    Function(SequenceIter<'a, EvaluatedFunctionValue>),
+    Int(ListSequenceIter<'a, BigInt>),
+    String(ListSequenceIter<'a, StringValue>),
+    BitArray(ListSequenceIter<'a, EvaluatedBitArray>),
+    UtfCodepoint(ListSequenceIter<'a, char>),
+    Custom(ListSequenceIter<'a, EvaluatedCustomValue>),
+    External(ListSequenceIter<'a, EvaluatedExternalValue>),
+    Float(ListSequenceIter<'a, f64>),
+    Bool(ListSequenceIter<'a, bool>),
+    Tuple(ListSequenceIter<'a, Vec<EvaluatedValue>>),
+    List(ListSequenceIter<'a, StoredListValueId>),
+    Function(ListSequenceIter<'a, EvaluatedFunctionValue>),
 }
 
 impl ListRead {

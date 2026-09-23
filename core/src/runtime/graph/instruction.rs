@@ -284,6 +284,7 @@ mod tests {
         Activation, Frame, GraphExecution, GraphProgress, GraphValue, Returns, RuntimeGraphState,
     };
     use crate::runtime::state::RuntimeState;
+    use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
         CaptureStorage, EvaluatedValue, ExecutableRuntimePlan, ExecutionError, HostCallOrigin,
         InvariantError, RetainedValues,
@@ -292,6 +293,7 @@ mod tests {
     use crate::{HostProviderSet, HostedExecution, ModuleSource, PackageSource};
     use std::convert::Infallible;
     use std::num::NonZeroUsize;
+    use std::ptr;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -316,7 +318,7 @@ mod tests {
     #[test]
     fn resumed_instructions_preserve_each_tuple_projection_and_reject_corrupted_values() {
         let mut state = ();
-        assert!(std::ptr::eq(Profile::component_state(&mut state), &state));
+        assert!(ptr::eq(Profile::component_state(&mut state), &state));
         let work_type = ValueType::External(ExternalType::new(
             ExternalTypeName::new("work_fixture".into(), "fixture/work".into(), "Work".into()),
             vec![ValueType::Int],
@@ -643,7 +645,7 @@ pub fn main() {
         let plan = CountingPlan::new("pub fn main() { 0 }");
         let type_ = ExecutionValueType::Tuple(vec![ExecutionValueType::Int].into());
         let value = vec![EvaluatedValue::Int(7.into())];
-        let values = imbl::Vector::unit(value.clone());
+        let values = ListSequence::from(vec![value.clone()]);
         assert_eq!(
             list_element::<_, ExecutionError>(&plan, &type_, 0, &values),
             Ok(value)
