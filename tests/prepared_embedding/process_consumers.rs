@@ -63,16 +63,21 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
         .unwrap(),
     )
     .unwrap();
-    let generated = fs::read(application.join("src/geam_bindings.rs")).unwrap();
+    // Exercise Windows-style checkout line endings on every CI platform.
+    for file in ["src/geam_bindings.rs", "Cargo.lock"] {
+        let path = application.join(file);
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(path, content.replace("\r\n", "\n").replace('\n', "\r\n")).unwrap();
+    }
+    let bindings = application.join("src/geam_bindings.rs");
+    let generated = fs::read_to_string(&bindings).unwrap().replace("\r\n", "\n");
     let lock = fs::read(application.join("Cargo.lock")).unwrap();
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
+    assert_eq!(fs::read_to_string(&bindings).unwrap(), generated);
     let prepared = fs::read(application.join("src/geam_bindings/program.rs")).unwrap();
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
-    assert_eq!(
-        fs::read(application.join("src/geam_bindings.rs")).unwrap(),
-        generated
-    );
+    assert_eq!(fs::read_to_string(&bindings).unwrap(), generated);
     assert_eq!(
         fs::read(application.join("src/geam_bindings/program.rs")).unwrap(),
         prepared

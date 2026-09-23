@@ -638,11 +638,12 @@ cargo test --package geam --test prepared_embedding --locked -- process_consumer
 The `process_consumers` tests generate both independently locked embeddings
 before checking repeated generation, formatting and warnings-denied Clippy,
 dynamic/prepared output, and standalone assembly. Generation must preserve the
-tracked bindings and Cargo lock. They relocate each compiled executable, remove
-the original sources/build tree, and run with an empty PATH. Prepared
-distribution runs these checks, including embedding formatting, on Linux, macOS
-and Windows. Workspace formats and lints the providers, while Acceptance runs
-their original-source workflows.
+tracked binding content with canonical LF line endings and preserve the Cargo
+lock bytes. Both tests start with CRLF bindings and locks on every platform.
+They relocate each compiled executable, remove the original sources/build tree,
+and run with an empty PATH. Prepared distribution runs these checks, including
+embedding formatting, on Linux, macOS and Windows. Workspace formats and lints
+the providers, while Acceptance runs their original-source workflows.
 These new consumers use their own Cargo locks and ordinary public Geam APIs.
 
 Each provider also has an independent coverage closure. Run them sequentially,
