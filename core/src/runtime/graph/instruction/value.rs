@@ -11,6 +11,7 @@ use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
 };
+use crate::runtime::state::list::ListSequence;
 use num_bigint::BigInt;
 
 pub(in crate::runtime) enum InstructionValue<Value, Function, Constant> {
@@ -903,7 +904,7 @@ pub(in crate::runtime) fn list_element<Value: Clone, Error>(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
-    values: &imbl::Vector<Value>,
+    values: &ListSequence<Value>,
 ) -> Result<Value, Error>
 where
     Error: From<InvariantError>,
@@ -965,6 +966,7 @@ mod tests {
         FunctionType, IntExpr, ListExpr, ModulePlan, ReturnBody, ReturnExpr, StringExpr, TupleExpr,
         ValueType, monomorphic_function_instantiation,
     };
+    use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
         ExecutionError, InvariantError, Value,
@@ -1103,7 +1105,7 @@ mod tests {
         planned: ExecutionValueType,
         type_: ValueType,
     ) {
-        let values = &imbl::Vector::<Value>::new();
+        let values = &ListSequence::<Value>::default();
         assert_eq!(
             list_element(plan, &planned, 2, values).map(|_| ()),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(

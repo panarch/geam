@@ -176,6 +176,7 @@ mod tests {
     use crate::runtime::state::list::StoredListValueId;
     use crate::runtime::{RuntimeListStorage, StoredRuntimeValue};
     use num_bigint::BigInt;
+    use std::ptr;
 
     struct Profile;
 
@@ -344,12 +345,12 @@ pub fn run() {
         );
         let first = BorrowedValue::from_stored(&stored);
         let second = BorrowedValue::from_stored(&stored);
-        assert!(std::ptr::eq(
+        assert!(ptr::eq(
             first.tuple_item(0).int(),
             second.tuple_item(0).int()
         ));
         assert_eq!(first.tuple_item(0).int(), &(BigInt::from(1u64) << 256));
-        assert!(std::ptr::eq(
+        assert!(ptr::eq(
             first.tuple_item(1).string(),
             second.tuple_item(1).string()
         ));
@@ -372,7 +373,7 @@ pub fn run() {
         for _ in 0..2 {
             assert_eq!(
                 BorrowedValue::read_list_item(&retained, 0, |value| {
-                    assert!(std::ptr::eq(value.int(), &values[0]));
+                    assert!(ptr::eq(value.int(), values.get(0).expect("source item")));
                     value.int().bits()
                 }),
                 Some(257)

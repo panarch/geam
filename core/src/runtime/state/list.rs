@@ -1,9 +1,12 @@
+mod sequence;
+
+pub(in crate::runtime) use sequence::{ListSequence, ListSequenceIter};
+
+use num_bigint::BigInt;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use imbl::Vector;
-use num_bigint::BigInt;
-
+use crate::StringValue;
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
     FunctionListTypeId, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
@@ -337,13 +340,13 @@ impl ListHandleCore {
     }
 }
 
-struct ListPool<Value: Clone> {
-    // Retaining even an inline vector shares its items instead of cloning them.
-    slots: Vec<Arc<Vector<Value>>>,
+struct ListPool<Value> {
+    // Read owners share the immutable sequence independently of slot reuse.
+    slots: Vec<ListSequence<Value>>,
     free: Vec<usize>,
 }
 
-impl<Value: Clone> Default for ListPool<Value> {
+impl<Value> Default for ListPool<Value> {
     fn default() -> Self {
         Self {
             slots: Vec::new(),
@@ -352,8 +355,8 @@ impl<Value: Clone> Default for ListPool<Value> {
     }
 }
 
-impl<Value: Clone> ListPool<Value> {
-    fn allocate(&mut self, value: Arc<Vector<Value>>) -> usize {
+impl<Value> ListPool<Value> {
+    fn allocate(&mut self, value: ListSequence<Value>) -> usize {
         if let Some(slot) = self.free.pop() {
             self.slots[slot] = value;
             slot
@@ -364,11 +367,11 @@ impl<Value: Clone> ListPool<Value> {
         }
     }
 
-    fn get(&self, slot: usize) -> Arc<Vector<Value>> {
-        Arc::clone(&self.slots[slot])
+    fn get(&self, slot: usize) -> ListSequence<Value> {
+        self.slots[slot].clone()
     }
 
-    fn release(&mut self, slot: usize) -> Arc<Vector<Value>> {
+    fn release(&mut self, slot: usize) -> ListSequence<Value> {
         let value = std::mem::take(&mut self.slots[slot]);
         self.free.push(slot);
         value
@@ -407,7 +410,7 @@ impl LengthPool {
 #[derive(Default)]
 struct ListPools {
     ints: ListPool<BigInt>,
-    strings: ListPool<crate::StringValue>,
+    strings: ListPool<StringValue>,
     bit_arrays: ListPool<EvaluatedBitArray>,
     utf_codepoints: ListPool<char>,
     customs: ListPool<EvaluatedCustomValue>,
@@ -422,19 +425,19 @@ struct ListPools {
 }
 
 enum ReleasedList {
-    Int(Arc<Vector<BigInt>>),
-    String(Arc<Vector<crate::StringValue>>),
-    BitArray(Arc<Vector<EvaluatedBitArray>>),
-    UtfCodepoint(Arc<Vector<char>>),
-    Custom(Arc<Vector<EvaluatedCustomValue>>),
-    External(Arc<Vector<EvaluatedExternalValue>>),
-    Float(Arc<Vector<f64>>),
-    Bool(Arc<Vector<bool>>),
+    Int(ListSequence<BigInt>),
+    String(ListSequence<StringValue>),
+    BitArray(ListSequence<EvaluatedBitArray>),
+    UtfCodepoint(ListSequence<char>),
+    Custom(ListSequence<EvaluatedCustomValue>),
+    External(ListSequence<EvaluatedExternalValue>),
+    Float(ListSequence<f64>),
+    Bool(ListSequence<bool>),
     Nil(usize),
-    Tuple(Arc<Vector<Vec<EvaluatedValue>>>),
+    Tuple(ListSequence<Vec<EvaluatedValue>>),
     ParameterList(usize),
-    List(Arc<Vector<StoredListValueId>>),
-    Function(Arc<Vector<EvaluatedFunctionValue>>),
+    List(ListSequence<StoredListValueId>),
+    Function(ListSequence<EvaluatedFunctionValue>),
 }
 
 impl ReleasedList {
@@ -545,11 +548,11 @@ impl SharedListStorage {
         }
     }
 
-    fn values<Value: Clone>(
+    fn values<Value>(
         &self,
         core: &ListHandleCore,
         pool: impl FnOnce(&ListPools) -> &ListPool<Value>,
-    ) -> Arc<Vector<Value>> {
+    ) -> ListSequence<Value> {
         let state = lock(&self.state);
         pool(&state.pools).get(core.slot())
     }
@@ -596,13 +599,12 @@ macro_rules! value_storage {
 macro_rules! sequence_storage {
     ($store:ident, $read:ident, $prepend:ident, $tail:ident,
      $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
-        fn $store(&self, type_id: $type_id, values: Vector<$item>) -> $handle {
-            let values = Arc::new(values);
+        fn $store(&self, type_id: $type_id, values: ListSequence<$item>) -> $handle {
             let slot = lock(&self.storage.state).pools.$pool.allocate(values);
             $handle::new(type_id, self.storage.core(ListStorageKey::$key(slot)))
         }
 
-        pub(in crate::runtime) fn $read(&self, value: &$handle) -> Arc<Vector<$item>> {
+        pub(in crate::runtime) fn $read(&self, value: &$handle) -> ListSequence<$item> {
             value
                 .core()
                 .storage()
@@ -615,7 +617,7 @@ macro_rules! sequence_storage {
             prefix: Vec<$item>,
             tail: &$handle,
         ) -> $handle {
-            self.$store(type_id, prepend(&self.$read(tail), prefix))
+            self.$store(type_id, self.$read(tail).prepend(prefix))
         }
 
         pub(in crate::runtime) fn $tail(
@@ -624,7 +626,7 @@ macro_rules! sequence_storage {
             value: &$handle,
             count: usize,
         ) -> $handle {
-            self.$store(type_id, suffix(&self.$read(value), count))
+            self.$store(type_id, self.$read(value).suffix(count))
         }
     };
 }
@@ -655,7 +657,7 @@ impl RuntimeListStorage {
         prepend_string,
         tail_string,
         StringListTypeId,
-        crate::StringValue,
+        StringValue,
         StringListValueId,
         strings,
         String
@@ -1067,18 +1069,6 @@ impl RuntimeListStorage {
     }
 }
 
-fn suffix<Value: Clone>(values: &Vector<Value>, count: usize) -> Vector<Value> {
-    values.skip(count.min(values.len()))
-}
-
-fn prepend<Value: Clone>(values: &Vector<Value>, prefix: Vec<Value>) -> Vector<Value> {
-    let mut result = values.clone();
-    for item in prefix.into_iter().rev() {
-        result.push_front(item);
-    }
-    result
-}
-
 fn lock<Value>(mutex: &Mutex<Value>) -> MutexGuard<'_, Value> {
     mutex
         .lock()
@@ -1087,7 +1077,7 @@ fn lock<Value>(mutex: &Mutex<Value>) -> MutexGuard<'_, Value> {
 
 #[cfg(test)]
 mod storage_tests {
-    use super::{RuntimeListStorage, lock};
+    use super::{ListPool, ListSequence, RuntimeListStorage, lock};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
         EvaluatedIntFunction,
@@ -1108,6 +1098,7 @@ mod storage_tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+    use std::ptr;
     use std::sync::Arc;
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
@@ -1239,8 +1230,12 @@ pub fn main() -> List(Counter) {
         drop(storage);
         let reader = RuntimeListStorage::default();
         assert_eq!(
-            reader.int_values(&retained).as_ref(),
-            &imbl::Vector::from(vec![1.into(), 2.into()])
+            reader
+                .int_values(&retained)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![1.into(), 2.into()]
         );
 
         let owner = Arc::clone(&retained.core().lease.storage);
@@ -1261,8 +1256,12 @@ pub fn main() -> List(Counter) {
 
         assert_eq!(second.core().slot(), slot);
         assert_eq!(
-            storage.int_values(&second).as_ref(),
-            &imbl::Vector::from(vec![2.into()])
+            storage
+                .int_values(&second)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![2.into()]
         );
     }
 
@@ -1295,71 +1294,42 @@ pub fn main() -> List(List(Int)) { [inner()] }
     }
 
     #[test]
-    fn persistent_operations_bound_item_cloning_and_keep_versions_independent() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
+    fn persistent_operations_share_non_clone_items_and_keep_versions_independent() {
         struct Item {
             value: usize,
-            clones: Arc<AtomicUsize>,
-        }
-
-        impl Clone for Item {
-            fn clone(&self) -> Self {
-                self.clones.fetch_add(1, Ordering::Relaxed);
-                Self {
-                    value: self.value,
-                    clones: Arc::clone(&self.clones),
-                }
-            }
         }
 
         for len in [1_000, 10_000] {
-            let clones = Arc::new(AtomicUsize::new(0));
-            let input: Vec<_> = (0..len)
-                .map(|value| Item {
-                    value,
-                    clones: Arc::clone(&clones),
-                })
-                .collect();
-            let mut pool = super::ListPool::default();
-            let slot = pool.allocate(Arc::new(input.into()));
-            assert_eq!(clones.load(Ordering::Relaxed), 0);
+            let input: Vec<_> = (0..len).map(|value| Item { value }).collect();
+            let mut pool = ListPool::default();
+            let slot = pool.allocate(input.into());
 
             let original = pool.get(slot);
             let alias = pool.get(slot);
-            assert!(Arc::ptr_eq(&original, &alias));
-            assert_eq!(clones.load(Ordering::Relaxed), 0);
+            assert!(ptr::eq(
+                original.get(0).expect("original item"),
+                alias.get(0).expect("shared item")
+            ));
             assert_eq!(
                 original.iter().map(|item| item.value).collect::<Vec<_>>(),
                 (0..len).collect::<Vec<_>>()
             );
-            assert_eq!(clones.load(Ordering::Relaxed), 0);
-
-            let mut remaining = original.as_ref().clone();
+            let mut remaining = original.clone();
             for first in 0..len {
-                assert_eq!(remaining.front().map(|item| item.value), Some(first));
-                remaining = super::suffix(&remaining, 1);
+                assert_eq!(remaining.get(0).map(|item| item.value), Some(first));
+                remaining = remaining.suffix(1);
                 assert_eq!(remaining.len(), len - first - 1);
             }
-            assert!(remaining.is_empty());
-            assert!(clones.load(Ordering::Relaxed) < 128 * len);
+            assert_eq!(remaining.len(), 0);
             assert_eq!(
                 alias.iter().map(|item| item.value).collect::<Vec<_>>(),
                 (0..len).collect::<Vec<_>>()
             );
 
-            clones.store(0, Ordering::Relaxed);
-            let mut growing = imbl::Vector::new();
+            let mut growing = ListSequence::default();
             for value in (0..len).rev() {
-                growing = super::prepend(
-                    &growing,
-                    vec![Item {
-                        value,
-                        clones: Arc::clone(&clones),
-                    }],
-                );
+                growing = growing.prepend(vec![Item { value }]);
             }
-            assert!(clones.load(Ordering::Relaxed) < 128 * len);
             assert_eq!(
                 growing.iter().map(|item| item.value).collect::<Vec<_>>(),
                 (0..len).collect::<Vec<_>>()
@@ -1838,8 +1808,13 @@ pub fn main() {
         let reused = state.lists_mut().int(type_id, vec![2.into()]);
         assert_eq!(reused.core.slot(), slot);
         assert_eq!(
-            state.lists().int_values(&reused).as_ref(),
-            &imbl::Vector::from(vec![2.into()])
+            state
+                .lists()
+                .int_values(&reused)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![2.into()]
         );
     }
 
@@ -1857,10 +1832,15 @@ pub fn main() {
         assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot]);
         let replacement = state.lists_mut().int(type_id, vec![2.into()]);
         assert_eq!(replacement.core.slot(), slot);
-        assert_eq!(items.as_ref(), &imbl::Vector::from(vec![1.into()]));
+        assert_eq!(items.iter().cloned().collect::<Vec<_>>(), vec![1.into()]);
         assert_eq!(
-            state.lists().int_values(&replacement).as_ref(),
-            &imbl::Vector::from(vec![2.into()])
+            state
+                .lists()
+                .int_values(&replacement)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![2.into()]
         );
     }
 
@@ -1879,15 +1859,19 @@ pub fn main() {
         let slot = first.core.slot();
 
         assert_eq!(first.type_id(), type_id);
-        assert_eq!(state.lists().bit_array_values(&first)[0].bits().len(), 8);
+        assert_eq!(
+            state
+                .lists()
+                .bit_array_values(&first)
+                .get(0)
+                .map(|value| value.bits().len()),
+            Some(8)
+        );
         drop(first);
 
         let second = state.lists_mut().bit_array(type_id, Vec::new());
         assert_eq!(second.core.slot(), slot);
-        assert_eq!(
-            state.lists().bit_array_values(&second).as_ref(),
-            &imbl::Vector::new()
-        );
+        assert_eq!(state.lists().bit_array_values(&second).len(), 0);
 
         let value = ListValueId::BitArray(second.clone());
         assert_eq!(state.lists().list_len(&value), 0);
@@ -2157,8 +2141,13 @@ pub fn main() {
         .expect("tail-recursive list graph should return");
 
         assert_eq!(
-            state.lists().int_values(&value).as_ref(),
-            &imbl::Vector::from(vec![1.into()])
+            state
+                .lists()
+                .int_values(&value)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![1.into()]
         );
         {
             let storage_state = lock(&state.lists.storage.state);
@@ -2278,18 +2267,17 @@ pub fn main() -> Int {
         assert_eq!(value, clone);
         assert_ne!(value, other);
         drop(discarded);
-        assert_eq!(
-            lock(&storage.state).pools.ints.get(discarded_slot).as_ref(),
-            &imbl::Vector::new(),
-        );
+        assert_eq!(lock(&storage.state).pools.ints.get(discarded_slot).len(), 0);
         drop(state);
         assert_eq!(
             lock(&storage.state)
                 .pools
                 .ints
                 .get(value.core.slot())
-                .as_ref(),
-            &imbl::Vector::from(vec![1.into()]),
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![1.into()],
         );
         drop(value);
         assert_eq!(
@@ -2297,8 +2285,10 @@ pub fn main() -> Int {
                 .pools
                 .ints
                 .get(clone.core.slot())
-                .as_ref(),
-            &imbl::Vector::from(vec![1.into()]),
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![1.into()],
         );
         drop(clone);
         {
@@ -2310,7 +2300,7 @@ pub fn main() -> Int {
                     .ints
                     .slots
                     .iter()
-                    .all(|values| values.is_empty())
+                    .all(|values| values.len() == 0)
             );
             assert_eq!(state.pools.ints.free, vec![discarded_slot, 0]);
         }
@@ -2611,8 +2601,13 @@ pub fn main() -> Int {
             assert_eq!(storage_state.pools.ints.free, Vec::<usize>::new());
         }
         assert_eq!(
-            state.lists().int_values(&child).as_ref(),
-            &imbl::Vector::from(vec![1.into()])
+            state
+                .lists()
+                .int_values(&child)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![1.into()]
         );
 
         drop(child);

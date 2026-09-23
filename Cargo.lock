@@ -1100,7 +1100,6 @@ dependencies = [
  "geam-gleam-core",
  "half",
  "im",
- "imbl",
  "miette",
  "num-bigint",
  "parking_lot",
