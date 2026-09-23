@@ -6,7 +6,50 @@ data::HostedModuleArtifact {
             modules: data::Storage::Static(&[
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("main"),
-                    source_context: Some(data::source::SourceContext::from_static("src/main.gleam", "pub type Tree(a) { Leaf(a) Branch(List(Tree(a))) }\n\n@external(erlang, \"native\", \"equal_native\")\nfn equal_native(value: a, target: b) -> Bool\n\n@external(erlang, \"native\", \"fold\")\nfn fold(callback: fn(Int) -> Int, initial: Int) -> Int\n\n@external(erlang, \"native\", \"keep_bits\")\nfn keep_bits(value: BitArray) -> BitArray\n\npub fn run() {\n  let source = Branch([Leaf(<<\"one\":utf8>>), Branch([Leaf(<<\"two\":utf8>>)])])\n  let expected = Branch([Leaf(\"one\"), Branch([Leaf(\"two\")])])\n  #(\n    equal_native(source, expected),\n    equal_native(#(<<\"one\":utf8>>, [<<\"two\":utf8>>]), #(\"one\", [\"two\"])),\n    fold(fn(value) { value + 1 }, 40),\n  )\n}\n\npub fn substring(value: String) {\n  let assert \"prefix:\" <> rest = value\n  let read = fn() { rest }\n  #(equal_native(#(rest, [rest]), #(read(), [read()])), read())\n}\n\npub fn bit_range(value: BitArray, start: Int, size: Int) {\n  case value {\n    <<selected:bits-size(size), _:bits>> if start == 0 -> keep_bits(selected)\n    <<_:bits-size(start), selected:bits-size(size), _:bits>> -> {\n      let read = fn() { selected }\n      keep_bits(read())\n    }\n    _ -> <<>>\n  }\n}\n\npub fn bit_tail(value: BitArray) {\n  let assert <<_:8, rest:bits>> = value\n  keep_bits(rest)\n}\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("src/main.gleam", r#"
+pub type Tree(a) { Leaf(a) Branch(List(Tree(a))) }
+
+@external(erlang, "native", "equal_native")
+fn equal_native(value: a, target: b) -> Bool
+
+@external(erlang, "native", "fold")
+fn fold(callback: fn(Int) -> Int, initial: Int) -> Int
+
+@external(erlang, "native", "keep_bits")
+fn keep_bits(value: BitArray) -> BitArray
+
+pub fn run() {
+  let source = Branch([Leaf(<<"one":utf8>>), Branch([Leaf(<<"two":utf8>>)])])
+  let expected = Branch([Leaf("one"), Branch([Leaf("two")])])
+  #(
+    equal_native(source, expected),
+    equal_native(#(<<"one":utf8>>, [<<"two":utf8>>]), #("one", ["two"])),
+    fold(fn(value) { value + 1 }, 40),
+  )
+}
+
+pub fn substring(value: String) {
+  let assert "prefix:" <> rest = value
+  let read = fn() { rest }
+  #(equal_native(#(rest, [rest]), #(read(), [read()])), read())
+}
+
+pub fn bit_range(value: BitArray, start: Int, size: Int) {
+  case value {
+    <<selected:bits-size(size), _:bits>> if start == 0 -> keep_bits(selected)
+    <<_:bits-size(start), selected:bits-size(size), _:bits>> -> {
+      let read = fn() { selected }
+      keep_bits(read())
+    }
+    _ -> <<>>
+  }
+}
+
+pub fn bit_tail(value: BitArray) {
+  let assert <<_:8, rest:bits>> = value
+  keep_bits(rest)
+}
+"#)),
                 },
             ]),
             main: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Tuple {

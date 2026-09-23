@@ -184,6 +184,52 @@ impl Emit for str {
     }
 }
 
+/// Multi-line text emitted as a raw string literal whose first line break only
+/// separates the opening delimiter from the text.
+pub(crate) struct TextBlock<'text> {
+    text: &'text str,
+    hashes: usize,
+}
+
+impl<'text> TextBlock<'text> {
+    /// Accepts multi-line text only when every character appears as itself and
+    /// the literal needs at most the 255 `#` delimiters Rust permits. Other text
+    /// keeps the escaped string form: rustc would normalize a CRLF line ending,
+    /// reject a lone carriage return or a direction control, and leave invisible
+    /// characters unreadable.
+    pub(crate) fn new(text: &'text str) -> Option<Self> {
+        let hashes = raw_string_hashes(text);
+        (text.contains('\n')
+            && hashes <= 255
+            && text.chars().all(|character| {
+                matches!(character, '\n' | '\t' | '"' | '\'' | '\\')
+                    || character.escape_debug().eq([character])
+            }))
+        .then_some(Self { text, hashes })
+    }
+}
+
+impl Emit for TextBlock<'_> {
+    fn emit(&self, output: &mut Rust) {
+        let hashes = "#".repeat(self.hashes);
+        output.output.push('r');
+        output.output.push_str(&hashes);
+        output.output.push_str("\"\n");
+        output.output.push_str(self.text);
+        output.output.push('"');
+        output.output.push_str(&hashes);
+    }
+}
+
+/// Counts one more `#` than the longest run following a quote in the text.
+fn raw_string_hashes(text: &str) -> usize {
+    text.split('"')
+        .skip(1)
+        .map(|after| after.len() - after.trim_start_matches('#').len())
+        .max()
+        .map_or(1, |run| run + 1)
+}
+
 impl<Value: Emit + ?Sized> Emit for &Value {
     fn emit(&self, output: &mut Rust) {
         (**self).emit(output);
@@ -226,7 +272,7 @@ impl Emit for crate::plan::ModuleId {
 
 #[cfg(test)]
 mod tests {
-    use super::{PhantomData, Rust};
+    use super::{PhantomData, Rust, TextBlock};
     use crate::plan::execution::storage::{Node, Table};
 
     #[test]
@@ -253,6 +299,52 @@ data::Storage::Static(&[
         assert_eq!(Rust::expression(&"a\n\"b\""), "\"a\\n\\\"b\\\"\"");
         assert_eq!(Rust::expression(&'\n'), "'\\n'");
         assert_eq!(Rust::expression(&false), "false");
+    }
+
+    #[test]
+    fn emits_verbatim_multi_line_text_as_a_raw_block_after_one_line_break() {
+        let source = TextBlock::new("fn main() {\n  'quoted\\n' <> \"text\"\n}\n").unwrap();
+        assert_eq!(
+            Rust::expression(&source),
+            r##"
+r#"
+fn main() {
+  'quoted\n' <> "text"
+}
+"#"##
+                .trim_start_matches('\n')
+        );
+        let marker = TextBlock::new("let marker = \"#\"\n").unwrap();
+        assert_eq!(
+            Rust::expression(&marker),
+            r###"
+r##"
+let marker = "#"
+"##"###
+                .trim_start_matches('\n')
+        );
+        let tabbed = TextBlock::new("a\tb\n").unwrap();
+        assert_eq!(Rust::expression(&tabbed), "r#\"\na\tb\n\"#");
+        let delimited = format!("\"{}\n", "#".repeat(254));
+        let hashes = "#".repeat(255);
+        assert_eq!(
+            Rust::expression(&TextBlock::new(&delimited).unwrap()),
+            format!("r{hashes}\"\n{delimited}\"{hashes}")
+        );
+    }
+
+    #[test]
+    fn keeps_single_line_non_verbatim_and_over_delimited_text_out_of_raw_blocks() {
+        let over_delimited = format!("\"{}\n", "#".repeat(255));
+        for text in [
+            "single line",
+            "carriage\r\nreturn\n",
+            "direction \u{202e}control\n",
+            "nul \0\n",
+            &over_delimited,
+        ] {
+            assert!(TextBlock::new(text).is_none(), "{text:?}");
+        }
     }
 
     #[test]

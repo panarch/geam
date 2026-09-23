@@ -6,11 +6,28 @@ data::HostedModuleArtifact {
             modules: data::Storage::Static(&[
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("handles"),
-                    source_context: Some(data::source::SourceContext::from_static("handles.gleam", "\npub opaque type Handle(a) { Handle(a) }\npub fn make(value: a) { Handle(value) }\npub fn get(value: Handle(a)) { case value { Handle(item) -> item } }\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("handles.gleam", r#"
+
+pub opaque type Handle(a) { Handle(a) }
+pub fn make(value: a) { Handle(value) }
+pub fn get(value: Handle(a)) { case value { Handle(item) -> item } }
+"#)),
                 },
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("consumer"),
-                    source_context: Some(data::source::SourceContext::from_static("consumer.gleam", "\nimport handles\n@external(erlang, \"native\", \"retain\")\nfn retain(value: handles.Handle(a)) -> handles.Handle(a)\n@external(erlang, \"native\", \"increment\")\nfn increment(value: handles.Handle(Int)) -> handles.Handle(Int)\npub fn main() {\n  let integer = handles.make(41) |> retain |> increment |> handles.get\n  let callback = handles.make(fn(value) { value + 2 }) |> retain |> handles.get\n  #(integer, callback(40))\n}\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("consumer.gleam", r#"
+
+import handles
+@external(erlang, "native", "retain")
+fn retain(value: handles.Handle(a)) -> handles.Handle(a)
+@external(erlang, "native", "increment")
+fn increment(value: handles.Handle(Int)) -> handles.Handle(Int)
+pub fn main() {
+  let integer = handles.make(41) |> retain |> increment |> handles.get
+  let callback = handles.make(fn(value) { value + 2 }) |> retain |> handles.get
+  #(integer, callback(40))
+}
+"#)),
                 },
             ]),
             main: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Tuple {

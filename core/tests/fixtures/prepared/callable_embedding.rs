@@ -6,11 +6,48 @@ data::HostedModuleArtifact {
             modules: data::Storage::Static(&[
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("support"),
-                    source_context: Some(data::source::SourceContext::from_static("support.gleam", "\n@external(erlang, \"ffi\", \"make_constant\")\npub fn make_constant(value: a) -> fn() -> a\n@external(erlang, \"ffi\", \"make_adder\")\npub fn make_adder(value: Int) -> fn(Int) -> Int\n@external(erlang, \"ffi\", \"wrap\")\npub fn wrap(callback: fn(a) -> b) -> fn(a) -> b\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("support.gleam", r#"
+
+@external(erlang, "ffi", "make_constant")
+pub fn make_constant(value: a) -> fn() -> a
+@external(erlang, "ffi", "make_adder")
+pub fn make_adder(value: Int) -> fn(Int) -> Int
+@external(erlang, "ffi", "wrap")
+pub fn wrap(callback: fn(a) -> b) -> fn(a) -> b
+"#)),
                 },
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("library"),
-                    source_context: Some(data::source::SourceContext::from_static("library.gleam", "\nimport support\nfn apply(callback, value) { callback(value) }\npub fn make_native(offset: Int) -> fn(Int) -> Int { support.make_adder(offset) }\npub fn keep(adjust: fn(Int) -> Int) -> fn(Int) -> Int { adjust }\npub fn calculate(value: Int, adjust: fn(Int) -> Int) -> Int { adjust(value) }\npub fn function_list(items: List(fn(Int) -> Int)) -> List(fn(Int) -> Int) { items }\npub fn container(adjust: fn(Int) -> Int) -> #(fn(Int) -> Int, Result(fn(Int) -> Int, Nil)) { #(adjust, Ok(adjust)) }\npub fn maker() -> fn(Int) -> fn(Int) -> Int { fn(offset) { support.make_adder(offset) } }\npub fn result_function() -> fn(Int) -> Result(Int, Nil) { fn(value) { Ok(value) } }\npub fn picker() -> fn(List(Result(Int, Nil))) -> Int {\n    fn(items) { case items { [Ok(value)] -> value _ -> 0 } }\n}\npub fn run() {\n    let add = support.make_adder(40)\n    let constant = support.make_constant(2)\n    apply(add, constant())\n}\npub fn check() {\n    let a = support.make_constant(True)\n    let alias = a\n    let b = support.make_constant(True)\n    let list = support.make_constant([42])\n    let is_answer = support.wrap(fn(value) { value == 42 })\n    let increment = support.wrap(support.wrap(fn(value) { value + 1 }))\n    let nested = support.wrap(fn(value) { support.make_constant(value) })\n    a() && a == alias && a != b && list() == [42] && is_answer(increment(41)) && nested(42)() == 42\n}\n")),
+                    source_context: Some(data::source::SourceContext::from_static_block("library.gleam", r#"
+
+import support
+fn apply(callback, value) { callback(value) }
+pub fn make_native(offset: Int) -> fn(Int) -> Int { support.make_adder(offset) }
+pub fn keep(adjust: fn(Int) -> Int) -> fn(Int) -> Int { adjust }
+pub fn calculate(value: Int, adjust: fn(Int) -> Int) -> Int { adjust(value) }
+pub fn function_list(items: List(fn(Int) -> Int)) -> List(fn(Int) -> Int) { items }
+pub fn container(adjust: fn(Int) -> Int) -> #(fn(Int) -> Int, Result(fn(Int) -> Int, Nil)) { #(adjust, Ok(adjust)) }
+pub fn maker() -> fn(Int) -> fn(Int) -> Int { fn(offset) { support.make_adder(offset) } }
+pub fn result_function() -> fn(Int) -> Result(Int, Nil) { fn(value) { Ok(value) } }
+pub fn picker() -> fn(List(Result(Int, Nil))) -> Int {
+    fn(items) { case items { [Ok(value)] -> value _ -> 0 } }
+}
+pub fn run() {
+    let add = support.make_adder(40)
+    let constant = support.make_constant(2)
+    apply(add, constant())
+}
+pub fn check() {
+    let a = support.make_constant(True)
+    let alias = a
+    let b = support.make_constant(True)
+    let list = support.make_constant([42])
+    let is_answer = support.wrap(fn(value) { value == 42 })
+    let increment = support.wrap(support.wrap(fn(value) { value + 1 }))
+    let nested = support.wrap(fn(value) { support.make_constant(value) })
+    a() && a == alias && a != b && list() == [42] && is_answer(increment(41)) && nested(42)() == 42
+}
+"#)),
                 },
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("support/private"),
