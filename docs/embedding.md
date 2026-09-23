@@ -151,8 +151,9 @@ configuration, state, Echo and execution host used for dynamic calls.
 Prepared sync and check can compile and run a Rust preparation helper using
 the application's dependencies. They do not build the application entry point
 or initialize its run state. Ordinary Cargo builds compile the existing
-generated files without running Geam or regenerating the plan. Run sync after
-source or dependency changes, including function-body changes.
+generated files without running Geam or regenerating the plan. Run sync on a
+fresh checkout and after source or dependency changes, including function-body
+changes.
 
 The [prepared example](../examples/embedding/prepared) keeps the complete
 project and test together.
@@ -253,12 +254,27 @@ retain them and pass them back without reconstructing their fields.
 
 Commit the Cargo and Gleam manifests and lockfiles, handwritten Gleam and Rust
 source, and generated `src/geam_bindings.rs`. Ignore Cargo's `target/` and
-Gleam's `gleam/build/` cache. Generated Rust is reviewed and committed; no build
-script regenerates it implicitly.
+Gleam's `gleam/build/` cache. The typed bindings are reviewed and committed;
+no build script regenerates them implicitly.
 
-With `generate = "prepared"` or `"both"`, also commit the generated
-`src/geam_bindings/program.rs` child. Cargo packages must include this file
-alongside `src/geam_bindings.rs`.
+With `generate = "prepared"` or `"both"`, keep the generated execution data out
+of Git by adding `/src/geam_bindings/program.rs` to the application's
+`.gitignore`. Run `geam embedding sync` before checking or building a fresh
+checkout. Subsequent `embedding check` calls verify both the bindings and the
+generated program without changing them.
+
+Cargo packages must still include `src/geam_bindings/program.rs` alongside the
+bindings. Generate it before packaging and explicitly include it in the package,
+since Cargo's default file selection respects Git ignores. For example, an
+application that ships only its prepared Rust source can use:
+
+```toml
+[package]
+include = ["src/**", "Cargo.toml", "Cargo.lock"]
+```
+
+Keep any other required package files in that list. Consumers of the resulting
+package build it with ordinary Cargo commands without Geam or Gleam installed.
 
 Embedding commands use one fixed project, module, and output layout. This makes
 checkouts, generated code, CI, and examples agree on the same connection.
@@ -457,7 +473,9 @@ host resources need only live for the execution scope. Geam does not require
 
 ## Verify a checkout
 
-Use `check` after cloning, in review, or in CI:
+For a prepared or both-mode checkout, run `geam embedding sync` first to create
+the ignored program data. Then use `check` in review or CI; dynamic-only
+checkouts can start with `check` directly:
 
 ```sh
 geam embedding check
@@ -475,7 +493,7 @@ Use `init` for an uninitialized package and `sync` after intentional source or
 dependency changes. `embedding check` verifies the generated Gleam-Rust
 connection. In dynamic mode it does not compile Rust. In prepared or both mode
 it regenerates the expected plan in a disposable helper and compares it with
-the committed data, including source bodies and dependencies. Dependency build
+the generated data, including source bodies and dependencies. Dependency build
 scripts and native registration can run during this preparation; application
 entry points and run-state initialization do not. `cargo check` and `cargo test`
 remain responsible for compiling and testing the handwritten Rust application.

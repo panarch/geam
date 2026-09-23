@@ -2,4 +2,6 @@
 /.notes/
 /site/
 /target/
+# Prepared embedding data is regenerated with `geam embedding sync`.
+**/src/geam_bindings/program.rs
 *.snap.new

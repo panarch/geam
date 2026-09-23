@@ -45,6 +45,8 @@ then execute relocated prepared binaries after removing their original source
 and build directories. Both run the same provider and application entrypoint.
 
 The [embedding application](embedding) runs dynamic and prepared modes by
-default; `--prepared` runs only compiled execution data. Regenerate its managed
-files with the checkout CLI's `geam embedding sync` from that directory. Generation
-does not run application main or initialize an execution service.
+default; `--prepared` runs only compiled execution data. Its generated
+`src/geam_bindings/program.rs` is ignored by Git. Run the checkout CLI's
+`geam embedding sync` from that directory before building a fresh checkout or
+after changing its inputs. The root acceptance tests generate it automatically.
+Generation does not run application main or initialize an execution service.

@@ -65,6 +65,9 @@ cargo run --locked
 cargo run --locked -- --prepared
 ```
 
+The prepared `src/geam_bindings/program.rs` is generated locally and ignored by
+Git. Run sync before building a fresh checkout or after changing its inputs.
+
 The default embedding command executes both modes, printing the output twice.
 `--prepared` executes only the compiled artifact. See the
 [execution service reference](../../../docs/reference/execution-services.md)

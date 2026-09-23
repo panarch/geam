@@ -48,6 +48,7 @@ With Geam, Rust, and Gleam installed, run from the repository root:
 
 ```sh
 cd examples/embedding/prepared
+geam embedding sync
 geam embedding check
 cargo test --locked
 cargo run --quiet --locked
@@ -59,10 +60,11 @@ The application prints:
 42
 ```
 
-After editing Gleam source or changing dependencies, run `geam embedding sync`
-before building again. `check` verifies the prepared program as well as its
-bindings; it can compile and run a preparation helper. Ordinary Cargo builds
-use the existing generated files and do not regenerate them.
+The generated `src/geam_bindings/program.rs` is ignored by Git, so sync is
+required on a fresh checkout. After editing Gleam source or changing
+dependencies, run sync before building again. `check` verifies the prepared
+program as well as its bindings; it can compile and run a preparation helper.
+Ordinary Cargo builds use the existing generated files and do not regenerate them.
 
 The Cargo patch selects this repository checkout. An ordinary application
 receives its Geam dependency from `embedding init` and does not need that patch.

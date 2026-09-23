@@ -37,6 +37,10 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
     )
     .unwrap();
     let application = fixture_root.join("embedding");
+    let program = application.join("src/geam_bindings/program.rs");
+    if program.exists() {
+        fs::remove_file(&program).unwrap();
+    }
     let target = repository.join("target/prepared-acceptance");
     let mut manifest: toml::Value =
         toml::from_str(&fs::read_to_string(application.join("Cargo.toml")).unwrap()).unwrap();
@@ -59,10 +63,10 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
         .unwrap(),
     )
     .unwrap();
-    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
     let generated = fs::read(application.join("src/geam_bindings.rs")).unwrap();
-    let prepared = fs::read(application.join("src/geam_bindings/program.rs")).unwrap();
     let lock = fs::read(application.join("Cargo.lock")).unwrap();
+    checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
+    let prepared = fs::read(application.join("src/geam_bindings/program.rs")).unwrap();
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
     assert_eq!(

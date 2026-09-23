@@ -163,6 +163,9 @@ jobs:
             echo "::group::Embedding example: $example"
             if ! bash -e -o pipefail -c '
               cd "examples/embedding/$1"
+              case "$1" in
+                prepared|callables) "$RUNNER_TEMP/checkout-geam/bin/geam" embedding sync ;;
+              esac
               "$RUNNER_TEMP/checkout-geam/bin/geam" embedding check
               (cd gleam && gleam format --check)
               cargo fmt --all --check
@@ -381,7 +384,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt
+          components: rustfmt, clippy
           cache: false
           rustflags: ""
 

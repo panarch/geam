@@ -18,6 +18,12 @@ fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let target = repository.join("target/prepared-acceptance");
     fs::create_dir_all(application.join("src")).unwrap();
     fs::create_dir_all(application.join(".cargo")).unwrap();
+    checked(command("git", &application).args(["init", "--quiet"]));
+    fs::write(
+        application.join(".gitignore"),
+        "/src/geam_bindings/program.rs\n",
+    )
+    .unwrap();
     fs::write(application.join("Cargo.toml"), format!(
         "[package]\nname = 'prepared-consumer'\nversion = '0.1.0'\nedition = '2024'\nlicense = 'Apache-2.0'\ndescription = 'Prepared embedding acceptance'\ninclude = ['src/**', 'Cargo.toml', 'Cargo.lock']\n[dependencies]\ngeam = {{ version = '={}', default-features = false, features = ['embedding'] }}\nmiette = '7'\n[workspace]\n",
         env!("CARGO_PKG_VERSION"),
@@ -179,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
     )
     .unwrap();
     let unexpected = root.join("unexpected-tool-call");
+    checked(command("git", &application).args(["check-ignore", "src/geam_bindings/program.rs"]));
     let started = Instant::now();
     checked(
         command("cargo", &application)
@@ -238,6 +245,10 @@ fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
     fs::create_dir_all(application.join(".cargo")).unwrap();
     copy_directory(&source.join("src"), &application.join("src"));
     copy_directory(&source.join("gleam/src"), &application.join("gleam/src"));
+    let program = application.join("src/geam_bindings/program.rs");
+    if program.exists() {
+        fs::remove_file(&program).unwrap();
+    }
     // Exercise Windows-style checkout line endings on every CI platform.
     for file in [
         "src/callbacks.rs",
@@ -245,7 +256,6 @@ fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
         "src/main.rs",
         "src/declarations.rs",
         "src/geam_bindings.rs",
-        "src/geam_bindings/program.rs",
     ] {
         let path = application.join(file);
         let content = fs::read_to_string(&path).unwrap();
@@ -279,6 +289,8 @@ fn prepares_app_local_callables_and_runs_without_source_or_compilers() {
     checked(command("cargo", &application).args(["fmt", "--all"]));
     assert_eq!(managed_files(&application), files);
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "check"]));
+    let content = fs::read_to_string(&program).unwrap();
+    fs::write(&program, content.replace('\n', "\r\n")).unwrap();
     checked(command(env!("CARGO_BIN_EXE_geam"), &application).args(["embedding", "sync"]));
     assert_eq!(managed_files(&application), files);
 

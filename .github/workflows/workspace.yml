@@ -50,11 +50,8 @@ jobs:
             (cd "examples/provider/$example/provider" && cargo fmt --all --check)
           done
 
-      - name: Check service fixture and embedding formatting
-        run: |
-          for manifest in tests/fixtures/otp_service/provider/Cargo.toml tests/fixtures/otp_service/embedding/Cargo.toml examples/provider/process_service/embedding/Cargo.toml; do
-            cargo fmt --manifest-path "$manifest" --all --check
-          done
+      - name: Check OTP service provider formatting
+        run: cargo fmt --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --all --check
 
   clippy:
     name: Clippy
