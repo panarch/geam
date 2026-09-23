@@ -1,4 +1,4 @@
-use super::{HostCustomIdentity, HostCustomSchema, HostCustomType, HostCustomTypeSchema};
+use super::{HostCustomSchema, HostCustomSchemaId, HostCustomType, HostCustomTypeSchema};
 use super::{HostSchemaType, collect_custom_type_schema};
 use crate::BitArrayValue;
 use crate::StringValue;
@@ -25,7 +25,7 @@ pub trait CustomFieldType: Send + Sync + 'static {
 
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
+        _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
     }
 }
@@ -44,7 +44,7 @@ pub trait CustomFieldTypeSequence: Send + Sync + 'static {
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     );
 }
 
@@ -105,7 +105,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Type as HostAbiType>::collect_custom_schemas(output, visited);
     }
@@ -157,7 +157,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         Item::collect_custom_schemas(output, visited);
     }
@@ -181,7 +181,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         Elements::collect_custom_schemas(output, visited);
     }
@@ -206,7 +206,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         FunctionArguments::collect_custom_schemas(output, visited);
         Return::collect_custom_schemas(output, visited);
@@ -235,7 +235,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         FunctionArguments::collect_custom_schemas(output, visited);
         Return::collect_custom_schemas(output, visited);
@@ -269,7 +269,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         collect_custom_type_schema::<Schema>(output, visited);
         TypeArguments::collect_custom_schemas(output, visited);
@@ -300,7 +300,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         TypeArguments::collect_custom_schemas(output, visited);
     }
@@ -323,7 +323,7 @@ impl CustomFieldTypeSequence for HostTypeListEnd {
 
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
+        _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
     }
 }
@@ -348,7 +348,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         Head::collect_custom_schemas(output, visited);
         Tail::collect_custom_schemas(output, visited);

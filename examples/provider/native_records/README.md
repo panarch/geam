@@ -39,4 +39,4 @@ geam run
 The application checks decoding, equality, dictionary lookup, inspection,
 callback results, and rejection of malformed records. A successful run is silent.
 
-Next: [Async Rust work](../async_files/README.md).
+Next: [Shared process service](../process_service/README.md).

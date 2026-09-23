@@ -7,6 +7,12 @@ static ARITHMETIC: data::ModuleArtifact<std::convert::Infallible> =
 static VALUES: data::ModuleArtifact<std::convert::Infallible> =
     include!("fixtures/prepared/values.rs");
 
+static NESTED_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/nested_patterns.rs");
+
+static SPARSE_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+    include!("fixtures/prepared/sparse_patterns.rs");
+
 #[path = "support/work_fixture.rs"]
 mod work_fixture;
 #[path = "fixtures/prepared/work_provider.rs"]
@@ -17,6 +23,154 @@ static WORK: data::HostedModuleArtifact = include!("fixtures/prepared/work.rs");
 static ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/entry.rs");
 static ENTRY_WORK: data::HostedEntryArtifact = include!("fixtures/prepared/entry_work.rs");
 static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/entry_failure.rs");
+
+#[path = "fixtures/prepared/shared_provider.rs"]
+mod shared_provider;
+
+static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
+
+#[test]
+fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
+    assert_eq!(
+        shared_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/shared_custom.rs").trim()
+    );
+    assert_eq!(
+        SHARED_CUSTOM
+            .load(shared_provider::hosts(false))
+            .err()
+            .unwrap()
+            .to_string(),
+        "prepared provider registration mismatch: Registration { package: \"consumer\", module: \"consumer\", function: \"retain\", reason: SharedCustomType { custom_type: CustomTypeName { package: \"producer\", module: \"handles\", name: \"Handle\" } } }; regenerate with the matching providers"
+    );
+    SHARED_CUSTOM.load(shared_provider::hosts(true)).unwrap();
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main) = if prepared {
+                let mut bindings = SHARED_CUSTOM.load(shared_provider::hosts(true)).unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), (BigInt, BigInt)>::new("main"))
+                    .unwrap();
+                (bindings.seal(), main)
+            } else {
+                let typed = geam_core::compile_typed_host_program(
+                    "consumer",
+                    "consumer",
+                    shared_provider::packages(),
+                    shared_provider::hosts(true),
+                )
+                .unwrap();
+                let (bindings, main) = geam_core::embedding::HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), (BigInt, BigInt)>::new("main"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            scope.call(&main, ()).await.unwrap()
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(result, (42.into(), 42.into()));
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
+    use geam_core::StringValue;
+
+    let source = include_str!("fixtures/prepared/nested_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/nested_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = NESTED_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                module.call(&main, (), &mut echo).unwrap().as_str(),
+                "present:missing:failed:nested:empty:none:done"
+            );
+            assert!(echo.is_empty());
+        }
+    }
+}
+
+#[test]
+fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
+    use geam_core::StringValue;
+
+    let source = include_str!("fixtures/prepared/sparse_patterns.gleam");
+    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/sparse_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = SPARSE_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed =
+                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), StringValue>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                module.call(&main, (), &mut echo).unwrap().as_str(),
+                "unnamed:empty:number:fallback"
+            );
+            assert!(echo.is_empty());
+        }
+    }
+}
 
 #[test]
 fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {
@@ -112,7 +266,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 1 is incompatible with format 3; regenerate the prepared program"
+        "prepared format 1 is incompatible with format 4; regenerate the prepared program"
     );
 }
 

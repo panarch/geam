@@ -118,6 +118,15 @@ where
         self.context.call.state()
     }
 
+    /// Borrows a producer's domain-local service through static profile projection.
+    pub fn service<Service>(&mut self) -> &mut Service::State
+    where
+        Service: crate::host::HostExecutionService,
+        Profile: crate::host::HostServiceProfile<Service>,
+    {
+        self.context.call.service::<Service>()
+    }
+
     pub fn equal<Type, Host>(
         &self,
         left: &Value<Type, crate::provider::ProviderValueContext<Host>>,
@@ -335,6 +344,12 @@ where
     pub fn into_host_call(self) -> HostCall<'call, Profile, Provider, Return> {
         self.context.call
     }
+
+    /// The typed call borrowed by producer-owned service adapters.
+    #[doc(hidden)]
+    pub fn host_call(&mut self) -> &mut HostCall<'call, Profile, Provider, Return> {
+        &mut self.context.call
+    }
 }
 
 impl<'call, Profile, Provider, Return>
@@ -405,6 +420,14 @@ where
                     ProviderConstructions::new(&constructions),
                 ))
             })
+    }
+
+    /// The producer adapter's original execution endpoint, with the same static permissions.
+    #[doc(hidden)]
+    pub fn execution_context(
+        &self,
+    ) -> &HostExecutionContext<'run, Profile, Provider, FactoryConstructions<Bindings>> {
+        &self.context.execution
     }
 
     /// Retains one owned generic value for an external payload returned after
@@ -637,6 +660,8 @@ mod tests {
             let mut call = Call::from_host_call(host_call);
 
             assert_eq!(call.state().counter, 0);
+            call.host_call().state().counter = 2;
+            assert_eq!(call.state().counter, 2);
             call.state_mut().counter = 3;
             assert_eq!(call.state().counter, 3);
 
@@ -746,7 +771,8 @@ mod tests {
                     let first = call.invoke(&callback, (BigInt::from(7),)).await?;
                     let second = call.invoke(&alias, (first,)).await?;
                     let counter = call
-                        .with_call(|call| call.state().counter)
+                        .execution_context()
+                        .with_call(|mut call| call.state().counter)
                         .await
                         .expect("the live entry services its value request");
                     assert_eq!(counter, 1);

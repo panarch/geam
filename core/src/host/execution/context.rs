@@ -149,7 +149,7 @@ where
 
 // The original endpoint and static codec proof used when a demanded container
 // field becomes an owned callback. No source item is decoded by this owner.
-pub(crate) struct CallableRetention<Profile: HostProfile, Provider: HostProvider<Profile>> {
+pub(crate) struct CallableRetention<Profile: HostProfile, Provider> {
     execution: ExecutionContext<Profile>,
     codec: HostCodecScope,
     origin: HostCallOrigin,
@@ -157,9 +157,7 @@ pub(crate) struct CallableRetention<Profile: HostProfile, Provider: HostProvider
     provider: PhantomData<fn(Provider)>,
 }
 
-impl<Profile: HostProfile, Provider: HostProvider<Profile>> Clone
-    for CallableRetention<Profile, Provider>
-{
+impl<Profile: HostProfile, Provider> Clone for CallableRetention<Profile, Provider> {
     fn clone(&self) -> Self {
         Self {
             execution: self.execution.clone(),
@@ -191,10 +189,11 @@ impl<Profile: HostProfile, Provider: HostProvider<Profile>> CallableRetention<Pr
 /// A retained executable Gleam callback with its original execution endpoint.
 ///
 /// Each invocation is distinct; the exact callable and captures are shared.
+/// Storage can name its provider before the aggregate profile is composed.
+/// Binding and invocation still require that provider's concrete projection.
 pub struct HostOwnedCallable<Profile, Provider, Arguments, Return, Constructions>
 where
     Profile: HostProfile,
-    Provider: HostProvider<Profile>,
     Arguments: HostTypeSequence,
     Return: HostType,
     Constructions: HostTypeSequence,
@@ -208,7 +207,6 @@ impl<Profile, Provider, Arguments, Return, Constructions> Clone
     for HostOwnedCallable<Profile, Provider, Arguments, Return, Constructions>
 where
     Profile: HostProfile,
-    Provider: HostProvider<Profile>,
     Arguments: HostTypeSequence,
     Return: HostType,
     Constructions: HostTypeSequence,

@@ -1,14 +1,13 @@
 mod identity;
-mod mailbox;
-mod schema;
+pub(crate) mod mailbox;
+pub(crate) mod schema;
 
-use crate::execution::{Destination, Message, Reason, ReferenceId};
+use crate::execution::{Destination, Message, Reason};
 use crate::schema::{
-    AtomSchema, DoNotLeak, DoNotLeakSchema, Monitor, MonitorSchema, Name, NameSchema, Pid,
-    PidSchema, PortSchema, Reference, ReferenceSchema, Selector, SelectorSchema, Timer,
-    TimerSchema,
+    DoNotLeak, DoNotLeakSchema, Monitor, MonitorSchema, Name, NameSchema, Pid, PidSchema,
+    PortSchema, Reference, Selector, SelectorSchema, Timer, TimerSchema,
 };
-use crate::{Component, GleamErlangHostProfile, reference};
+use crate::{Component, GleamErlangHostProfile};
 use futures_util::future::BoxFuture;
 use geam_core::StringValue;
 use geam_core::host::native::{NativeCall, NativeRules};
@@ -20,7 +19,7 @@ use geam_core::host::{
     HostValue,
 };
 use geam_core::provider::advanced::NativeValue;
-use geam_stdlib::provider_support::{Dynamic, DynamicSchema, GleamError, GleamOk, GleamResult};
+use geam_stdlib::provider_support::{Dynamic, GleamError, GleamOk, GleamResult};
 use num_bigint::{BigInt, Sign};
 use schema::{Down, ExitReason, KillFlag, ProcessFlag, Subject};
 use std::time::{Duration, Instant};
@@ -38,6 +37,7 @@ type Native<'call, Profile, Return, Target> =
 pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
 -> Result<HostProviderModule<Profile>, HostRegistrationError> {
     HostProviderModule::new("gleam_erlang", "gleam/erlang/process")
+        .and_then(|module| module.with_shared_custom_type::<schema::SubjectSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, PidSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, NameSchema>())
         .and_then(|module| module.with_external_type::<Component<Profile>, SelectorSchema>())
@@ -51,13 +51,13 @@ pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (Pid, A), DoNotLeak, _>("raw_send", raw_send::<Profile>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Subject<A>, BigInt), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>("perform_receive", native_rules(), mailbox::receive::<Profile>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Subject<A>,), A, One<A>, _>("receive_forever", native_rules(), mailbox::receive_forever::<Profile>))
-        .and_then(|module| module.with_scoped_function::<Component<Profile>, (), Selector<A>, _>("new_selector", mailbox::new_selector::<Profile>))
+        .and_then(|module| module.with_scoped_function::<Component<Profile>, (), Selector<A>, _>("new_selector", crate::service::selectors::new_selector::<Profile, Component<Profile>, A>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Selector<A>, BigInt), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>("selector_receive", native_rules(), mailbox::select::<Profile>))
         .and_then(|module| module.with_resumable_native_function::<Component<Profile>, (Selector<A>,), A, One<A>, _>("selector_receive_forever", native_rules(), mailbox::select_forever::<Profile>))
-        .and_then(|module| module.with_native_function::<Component<Profile>, (Selector<B>, Unary<B, A>), Selector<A>, One<B>, _>("map_selector", native_rules(), mailbox::map_selector::<Profile>))
-        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Selector<A>, Selector<A>), Selector<A>, _>("merge_selector", mailbox::merge_selector::<Profile>))
-        .and_then(|module| module.with_native_function::<Component<Profile>, (Selector<A>, B, Unary<C, A>), Selector<A>, HostTypeList<C, One<Down>>, _>("insert_selector_handler", native_rules(), mailbox::insert::<Profile>))
-        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Selector<A>, B), Selector<A>, _>("remove_selector_handler", mailbox::remove::<Profile>))
+        .and_then(|module| module.with_native_function::<Component<Profile>, (Selector<B>, Unary<B, A>), Selector<A>, One<B>, _>("map_selector", native_rules(), crate::service::selectors::map_selector::<Profile, Component<Profile>, A, B>))
+        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Selector<A>, Selector<A>), Selector<A>, _>("merge_selector", crate::service::selectors::merge_selector::<Profile, Component<Profile>, A>))
+        .and_then(|module| module.with_native_function::<Component<Profile>, (Selector<A>, B, Unary<C, A>), Selector<A>, HostTypeList<C, One<Down>>, _>("insert_selector_handler", native_rules(), crate::service::selectors::insert::<Profile, Component<Profile>, A, B, C>))
+        .and_then(|module| module.with_scoped_function::<Component<Profile>, (Selector<A>, B), Selector<A>, _>("remove_selector_handler", crate::service::selectors::remove::<Profile, Component<Profile>, A, B>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (), (), _>("flush_messages", flush::<Profile>))
         .and_then(|module| module.with_resumable_function::<Component<Profile>, (BigInt,), (), HostTypeListEnd, _>("sleep", sleep::<Profile>))
         .and_then(|module| module.with_resumable_function::<Component<Profile>, (), (), HostTypeListEnd, _>("sleep_forever", sleep_forever::<Profile>))
@@ -88,19 +88,7 @@ pub(crate) fn port_provider<Profile: GleamErlangHostProfile>()
 
 fn native_rules<Profile: GleamErlangHostProfile, Return: HostType>()
 -> NativeRules<Profile, Component<Profile>, Return> {
-    NativeRules::default()
-        .external::<AtomSchema, HostTypeListEnd>(|call, construction, value| {
-            Some(call.construct_external(construction, value))
-        })
-        .external::<ReferenceSchema, HostTypeListEnd>(|call, construction, value| {
-            Some(call.construct_external(construction, reference::Payload::View(value)))
-        })
-        .external::<DynamicSchema, HostTypeListEnd>(|call, construction, value| {
-            Some(call.construct_external(construction, geam_stdlib::Dynamic::from_native(value)))
-        })
-        .external::<MonitorSchema, HostTypeListEnd>(|call, construction, value| {
-            Some(call.construct_external(construction, value))
-        })
+    crate::service::native_rules(NativeRules::default())
 }
 
 fn current<'call, Profile: GleamErlangHostProfile>(
@@ -145,8 +133,7 @@ fn new_name<'call, Profile: GleamErlangHostProfile>(
     mut call: Call<'call, Profile, Name<A>>,
     prefix: StringValue,
 ) -> Result<HostCallCompletion<'call, Name<A>>, HostCallError> {
-    let name = format!("{prefix}${}", ReferenceId::new().number()).into();
-    let name = Profile::erlang_execution(call.execution_state()).intern(name)?;
+    let name = crate::service::fresh_name(&mut call, &prefix)?;
     let name = call.create_external(name);
     Ok(call.return_value(name))
 }
@@ -255,20 +242,11 @@ fn monitor<'call, Profile: GleamErlangHostProfile>(
     target: HostExternal<'call, Pid>,
 ) -> Result<HostCallCompletion<'call, Monitor>, HostCallError> {
     call.with_execution_unit(|mut call, owner| {
-        let target_id = call.external_payload(target).id();
-        let target = call.native_value::<Pid>(target);
-        let id = ReferenceId::new();
-        let reference = call.construct_external(
-            constructions.at::<HostTypeIndex0>(),
-            reference::Payload::Identity(id),
-        );
-        let reference = call.native_value::<Reference>(reference);
-        Profile::erlang_execution(call.execution_state()).monitor(
+        let reference = crate::service::monitor_reference(
+            &mut call,
             owner.id(),
-            target_id,
-            id,
-            reference.clone(),
             target,
+            constructions.at::<HostTypeIndex0>(),
         );
         let monitor = call.create_external(reference);
         Ok(call.return_value(monitor))
@@ -303,27 +281,10 @@ fn demonitor<'call, Profile: GleamErlangHostProfile>(
     call: Native<'call, Profile, DoNotLeak, Reference>,
     monitor: HostExternal<'call, Monitor>,
 ) -> Result<HostCallCompletion<'call, DoNotLeak>, HostCallError> {
-    call.with_execution_unit(|mut call, owner| {
-        let reference = call.call().external_payload(monitor).clone();
-        let id = reference_id(&mut call, &reference)?;
-        Profile::erlang_execution(call.call().execution_state()).demonitor(owner.id(), id);
-        let value = call.call().create_external(NativeValue::symbol("true"));
-        Ok(call.finish(value))
-    })
-}
-
-fn reference_id<Profile: GleamErlangHostProfile, Return: HostType>(
-    call: &mut Native<'_, Profile, Return, Reference>,
-    value: &NativeValue,
-) -> Result<ReferenceId, HostCallError> {
-    call.convert::<HostTypeIndex0>(value)
-        .and_then(
-            |reference| match &*call.call().external_payload(reference) {
-                reference::Payload::Identity(id) => Some(*id),
-                reference::Payload::View(_) => None,
-            },
-        )
-        .ok_or_else(|| geam_core::HostFailure::new("operation requires a reference").into())
+    let mut call = call;
+    crate::service::demonitor(&mut call, monitor)?;
+    let value = call.call().create_external(NativeValue::symbol("true"));
+    Ok(call.finish(value))
 }
 
 fn link<'call, Profile: GleamErlangHostProfile>(
@@ -331,15 +292,10 @@ fn link<'call, Profile: GleamErlangHostProfile>(
     constructions: HostConstructions<'call, One<Pid>>,
     target: HostExternal<'call, Pid>,
 ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
-    call.with_execution_unit(|mut call, from| {
-        let to = call.external_payload(target).id();
-        let target = call.native_value::<Pid>(target);
-        let source = call.construct_external(constructions.at::<HostTypeIndex0>(), from.clone());
-        let source = call.native_value::<Pid>(source);
-        let value =
-            Profile::erlang_execution(call.execution_state()).link(from.id(), to, source, target);
-        Ok(call.return_value(value))
-    })
+    let mut call = call;
+    let linked = crate::service::Processes::new(&mut call)
+        .link(target, constructions.at::<HostTypeIndex0>());
+    linked.map(|linked| call.return_value(linked))
 }
 
 fn unlink<'call, Profile: GleamErlangHostProfile>(
@@ -395,14 +351,13 @@ fn send_after<'call, Profile: GleamErlangHostProfile>(
     let millis = u64::try_from(&delay).map_err(|_| {
         geam_core::HostFailure::new("timer timeout must fit an unsigned 64-bit millisecond count")
     })?;
-    let deadline = deadline(call.clock().now(), millis)?;
-    let id = ReferenceId::new();
-    let reference = call.construct_external(
+    let reference = crate::service::schedule(
+        call,
         constructions.at::<HostTypeIndex0>(),
-        reference::Payload::Identity(id),
-    );
-    let reference = call.native_value::<Reference>(reference);
-    Profile::erlang_execution(call.execution_state()).schedule(id, deadline, destination, message);
+        Duration::from_millis(millis),
+        destination,
+        message,
+    )?;
     Ok(call.create_external(reference))
 }
 
@@ -419,10 +374,7 @@ fn cancel_timer<'call, Profile: GleamErlangHostProfile>(
     mut call: Native<'call, Profile, Dynamic, Reference>,
     timer: HostExternal<'call, Timer>,
 ) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError> {
-    let value = call.call().external_payload(timer).clone();
-    let id = reference_id(&mut call, &value)?;
-    let now = call.call().clock().now();
-    let remaining = Profile::erlang_execution(call.call().execution_state()).cancel_timer(id, now);
+    let remaining = crate::service::cancel_timer(&mut call, timer)?;
     let value = match remaining {
         Some(millis) => call.call().native_value::<BigInt>(millis.into()),
         None => NativeValue::symbol("false"),
@@ -449,27 +401,12 @@ fn send_exit<'call, Profile: GleamErlangHostProfile>(
     target: HostExternal<'call, Pid>,
     reason: HostValue<'call, A>,
 ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
-    call.with_execution_unit(|mut call, from| {
-        let target = call.external_payload(target).id();
-        let reason = call.native_value::<A>(reason);
-        let from_value =
-            call.construct_external(constructions.at::<HostTypeIndex0>(), from.clone());
-        let from_value = call.native_value::<Pid>(from_value);
-        let runtime = Profile::erlang_execution(call.execution_state());
-        match reason.as_symbol().as_deref() {
-            Some("kill") => runtime.terminate(target, Reason::Killed),
-            Some("normal") => {
-                runtime.signal(target, from_value, Reason::Normal, from.id() == target)
-            }
-            _ => runtime.signal(
-                target,
-                from_value,
-                Reason::Native(reason),
-                from.id() == target,
-            ),
-        }
-        Ok(call.return_value(true))
-    })
+    let mut call = call;
+    let reason = call.native_value::<A>(reason);
+    let mut processes = crate::service::Processes::new(&mut call);
+    let target = processes.pid(target);
+    let signal = processes.send_exit(&target, reason, constructions.at::<HostTypeIndex0>());
+    signal.map(|()| call.return_value(true))
 }
 
 fn trap_exits<'call, Profile: GleamErlangHostProfile>(

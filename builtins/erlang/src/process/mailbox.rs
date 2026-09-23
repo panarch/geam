@@ -1,17 +1,20 @@
-use super::schema::{Down, NamedSubject, OrdinarySubject, Subject};
-use super::{A, B, C, Call, Native, One, receive_deadline};
+mod record;
+pub use record::RecordReceive;
+
+use super::schema::Subject;
+use super::{A, Call, Native, receive_deadline};
+use crate::GleamErlangHostProfile;
 use crate::execution::{Message, Reason, Scan};
 use crate::schema::Selector;
-use crate::selector::{Entry, Handler, Selector as SelectorValue};
-use crate::{Component, GleamErlangHostProfile};
+use crate::selector::{Handler, Selector as SelectorValue};
 use futures_channel::oneshot;
 use futures_util::future::{Either, select as select_future};
 use geam_core::execution::ExecutionUnitId;
-use geam_core::host::native::{NativeCall, NativeValues};
+use geam_core::host::native::NativeValues;
 use geam_core::host::{
-    HostCallCompletion, HostCallContinuation, HostCallError, HostCallable, HostCustom,
-    HostExecutionContext, HostExecutionError, HostExternal, HostProfile, HostType, HostTypeIndex0,
-    HostTypeList, HostTypeSequence, HostValue,
+    HostCall, HostCallContinuation, HostCallError, HostCustom, HostExecutionContext,
+    HostExecutionError, HostExternal, HostProfile, HostProvider, HostType, HostTypeIndex0,
+    HostTypeSequence,
 };
 use geam_core::provider::advanced::{NativeKind, NativeValue};
 use geam_stdlib::provider_support::GleamResult;
@@ -20,15 +23,30 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+/// A pending receive on the original process mailbox.
+///
+/// The queued snapshot is scanned before a timeout is observed. Each scan is
+/// bounded and subsequent work resumes through the caller's execution context.
+pub struct Receive<Profile: GleamErlangHostProfile> {
+    pid: ExecutionUnitId,
+    filter: Filter<Profile>,
+    scan: Scan,
+    timeout: Option<Sleep>,
+}
+
 enum Filter<Profile: HostProfile> {
+    Any,
     Subject(NativeValue),
+    Record(NativeValue, usize),
     Selector(SelectorValue<Profile>),
 }
 
 impl<Profile: HostProfile> Clone for Filter<Profile> {
     fn clone(&self) -> Self {
         match self {
+            Self::Any => Self::Any,
             Self::Subject(tag) => Self::Subject(tag.clone()),
+            Self::Record(tag, arity) => Self::Record(tag.clone(), *arity),
             Self::Selector(selector) => Self::Selector(selector.clone()),
         }
     }
@@ -39,8 +57,10 @@ struct Selected<Profile: HostProfile> {
     handler: Option<Arc<Handler<Profile>>>,
 }
 
-enum Next<Profile: HostProfile> {
-    Selected(Selected<Profile>),
+type Next<Profile> = Step<Selected<Profile>>;
+
+enum Step<Output> {
+    Selected(Output),
     Scanning(Scan),
     Waiting(oneshot::Receiver<()>, u64),
 }
@@ -51,6 +71,177 @@ enum Cursor {
 }
 
 type Sleep = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+impl<Profile: GleamErlangHostProfile> Receive<Profile> {
+    /// Waits through an ordinary async provider call's original execution endpoint.
+    pub fn wait_in<'request, 'run, Provider, Observation, Bindings>(
+        self,
+        call: &'request geam_core::provider::Call<
+            Provider::State,
+            geam_core::provider::ProviderExecutionCall<
+                'run,
+                Profile,
+                Provider,
+                Observation,
+                Bindings,
+            >,
+        >,
+    ) -> impl Future<Output = Result<Option<NativeValue>, HostExecutionError>> + Send + 'request
+    where
+        Provider: HostProvider<Profile>,
+        Bindings: geam_core::provider::ProviderFactoryBindings,
+        'run: 'request,
+    {
+        self.wait(call.execution_context())
+    }
+
+    /// Waits without a deadline through an ordinary async provider call.
+    /// Any deadline supplied when preparing this receive is discarded.
+    pub fn wait_forever_in<'request, 'run, Provider, Observation, Bindings>(
+        self,
+        call: &'request geam_core::provider::Call<
+            Provider::State,
+            geam_core::provider::ProviderExecutionCall<
+                'run,
+                Profile,
+                Provider,
+                Observation,
+                Bindings,
+            >,
+        >,
+    ) -> impl Future<Output = Result<NativeValue, HostExecutionError>> + Send + 'request
+    where
+        Provider: HostProvider<Profile>,
+        Bindings: geam_core::provider::ProviderFactoryBindings,
+        'run: 'request,
+    {
+        self.wait_forever(call.execution_context())
+    }
+
+    pub(crate) fn any<Provider: HostProvider<Profile>, Return: HostType>(
+        call: &mut HostCall<'_, Profile, Provider, Return>,
+        pid: ExecutionUnitId,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, HostCallError> {
+        Self::new(call, pid, Filter::Any, deadline)
+    }
+
+    pub(crate) fn tagged<Provider: HostProvider<Profile>, Return: HostType>(
+        call: &mut HostCall<'_, Profile, Provider, Return>,
+        pid: ExecutionUnitId,
+        tag: NativeValue,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, HostCallError> {
+        Self::new(call, pid, Filter::Subject(tag), deadline)
+    }
+
+    pub(crate) fn record<Provider: HostProvider<Profile>, Return: HostType>(
+        call: &mut HostCall<'_, Profile, Provider, Return>,
+        pid: ExecutionUnitId,
+        tag: NativeValue,
+        arity: usize,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, HostCallError> {
+        Self::new(call, pid, Filter::Record(tag, arity), deadline)
+    }
+
+    pub(crate) fn selector<Provider: HostProvider<Profile>, Return: HostType>(
+        call: &mut HostCall<'_, Profile, Provider, Return>,
+        pid: ExecutionUnitId,
+        selector: SelectorValue<Profile>,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, HostCallError> {
+        Self::new(call, pid, Filter::Selector(selector), deadline)
+    }
+
+    fn new<Provider: HostProvider<Profile>, Return: HostType>(
+        call: &mut HostCall<'_, Profile, Provider, Return>,
+        pid: ExecutionUnitId,
+        filter: Filter<Profile>,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Self, HostCallError> {
+        let scan = Profile::erlang_execution(call.execution_state())
+            .mailbox(pid)
+            .ok_or_else(|| geam_core::HostFailure::new("process mailbox is closed"))?
+            .scan(0);
+        let timeout = deadline.map(|deadline| call.clock().sleep_until(deadline));
+        Ok(Self {
+            pid,
+            filter,
+            scan,
+            timeout,
+        })
+    }
+
+    /// Waits for the selected payload. `None` means the supplied deadline elapsed.
+    /// Dropping this future cancels the receive without consuming another message.
+    pub async fn wait<Provider, Targets>(
+        self,
+        context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    ) -> Result<Option<NativeValue>, HostExecutionError>
+    where
+        Provider: HostProvider<Profile>,
+        Targets: HostTypeSequence,
+    {
+        let Self {
+            pid,
+            filter,
+            scan,
+            timeout,
+        } = self;
+        let first = start(context, pid, filter.clone(), scan).await?;
+        match timeout {
+            Some(timeout) => timed(context, pid, filter, first, timeout).await,
+            None => next(context, pid, filter, first).await.map(Some),
+        }
+    }
+
+    /// Waits for a message or execution failure, without a timeout result.
+    /// Any deadline supplied when preparing this receive is discarded.
+    pub async fn wait_forever<Provider, Targets>(
+        self,
+        context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    ) -> Result<NativeValue, HostExecutionError>
+    where
+        Provider: HostProvider<Profile>,
+        Targets: HostTypeSequence,
+    {
+        let Self {
+            pid,
+            filter,
+            scan,
+            timeout,
+        } = self;
+        drop(timeout);
+        let first = start(context, pid, filter.clone(), scan).await?;
+        next(context, pid, filter, first).await
+    }
+}
+
+async fn start<Profile, Provider, Targets, Matcher>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    pid: ExecutionUnitId,
+    filter: Matcher,
+    scan: Scan,
+) -> Result<Step<Matcher::Output>, HostExecutionError>
+where
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+    Matcher: MailboxMatch<Profile>,
+{
+    context
+        .with_call(move |mut call| {
+            if call.execution_unit().map(|unit| unit.id()) != Some(pid) {
+                return Err(
+                    geam_core::HostFailure::new("receive belongs to another process").into(),
+                );
+            }
+            check(&mut call, pid, &filter, Cursor::Resume(scan))
+        })
+        .await?
+        .map_err(Into::into)
+}
 
 pub(super) fn receive<'call, Profile: GleamErlangHostProfile>(
     mut call: Native<'call, Profile, GleamResult<A, ()>, GleamResult<A, ()>>,
@@ -73,12 +264,7 @@ fn subject_tag<'call, Profile: GleamErlangHostProfile, Return: HostType>(
     call: &mut Call<'call, Profile, Return>,
     subject: HostCustom<'call, Subject<A>>,
 ) -> NativeValue {
-    if let Some((_, (tag, ()))) = call.custom_fields::<OrdinarySubject<A>>(subject) {
-        call.external_payload::<geam_stdlib::provider_support::DynamicSchema, geam_core::host::HostTypeListEnd>(tag).native_value().clone()
-    } else {
-        let (name, ()) = call.provider_remaining_custom_fields::<NamedSubject<A>>(subject);
-        NativeValue::symbol(call.external_payload(name).clone())
-    }
+    crate::service::subject_parts(call, subject).1
 }
 
 pub(super) fn select<'call, Profile: GleamErlangHostProfile>(
@@ -109,7 +295,15 @@ fn receive_filtered<'call, Profile: GleamErlangHostProfile>(
         let timeout = call.call().clock().sleep_until(deadline);
         let first = check(call.call(), pid, &filter, Cursor::After(0))?;
         Ok(call.resume::<HostTypeIndex0>(move |context| {
-            Box::pin(async move { timed(&context, pid, filter, first, timeout).await })
+            Box::pin(async move {
+                Ok(match timed(&context, pid, filter, first, timeout).await? {
+                    Some(value) => NativeValue::tuple([NativeValue::symbol("ok"), value]),
+                    None => NativeValue::tuple([
+                        NativeValue::symbol("error"),
+                        NativeValue::symbol("nil"),
+                    ]),
+                })
+            })
         }))
     })
 }
@@ -127,34 +321,68 @@ fn receive_filtered_forever<'call, Profile: GleamErlangHostProfile>(
     })
 }
 
-async fn timed<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, Targets>,
+async fn timed<Profile, Provider, Targets>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     pid: ExecutionUnitId,
     filter: Filter<Profile>,
-    mut state: Next<Profile>,
+    state: Next<Profile>,
+    timeout: Sleep,
+) -> Result<Option<NativeValue>, HostExecutionError>
+where
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+{
+    match timed_selected(context, pid, filter, state, timeout).await? {
+        Some(selected) => invoke(context, selected).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+async fn next<Profile, Provider, Targets>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    pid: ExecutionUnitId,
+    filter: Filter<Profile>,
+    state: Next<Profile>,
+) -> Result<NativeValue, HostExecutionError>
+where
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+{
+    let selected = next_selected(context, pid, filter, state).await?;
+    invoke(context, selected).await
+}
+
+async fn timed_selected<
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+    Matcher: MailboxMatch<Profile>,
+>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    pid: ExecutionUnitId,
+    filter: Matcher,
+    mut state: Step<Matcher::Output>,
     mut timeout: Sleep,
-) -> Result<NativeValue, HostExecutionError> {
+) -> Result<Option<Matcher::Output>, HostExecutionError> {
     loop {
         match state {
-            Next::Selected(selected) => {
-                let value = invoke(context, selected).await?;
-                return Ok(NativeValue::tuple([NativeValue::symbol("ok"), value]));
+            Step::Selected(selected) => {
+                return Ok(Some(selected));
             }
-            Next::Scanning(scan) => {
+            Step::Scanning(scan) => {
                 let filter = filter.clone();
                 state = context
                     .with_call(move |mut call| check(&mut call, pid, &filter, Cursor::Resume(scan)))
                     .await??;
             }
-            Next::Waiting(waiter, after) => {
+            Step::Waiting(waiter, after) => {
                 // Finish the queued snapshot before considering its timeout,
                 // including receive-after-zero. Selected callback time is separate.
                 match select_future(timeout.as_mut(), waiter).await {
                     Either::Left(_) => {
-                        return Ok(NativeValue::tuple([
-                            NativeValue::symbol("error"),
-                            NativeValue::symbol("nil"),
-                        ]));
+                        return Ok(None);
                     }
                     Either::Right((ready, _)) => {
                         ready.map_err(|_| HostExecutionError::Cancelled)?;
@@ -171,22 +399,27 @@ async fn timed<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
     }
 }
 
-async fn next<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, Targets>,
+async fn next_selected<
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+    Matcher: MailboxMatch<Profile>,
+>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     pid: ExecutionUnitId,
-    filter: Filter<Profile>,
-    mut state: Next<Profile>,
-) -> Result<NativeValue, HostExecutionError> {
+    filter: Matcher,
+    mut state: Step<Matcher::Output>,
+) -> Result<Matcher::Output, HostExecutionError> {
     loop {
         match state {
-            Next::Selected(selected) => return invoke(context, selected).await,
-            Next::Scanning(scan) => {
+            Step::Selected(selected) => return Ok(selected),
+            Step::Scanning(scan) => {
                 let filter = filter.clone();
                 state = context
                     .with_call(move |mut call| check(&mut call, pid, &filter, Cursor::Resume(scan)))
                     .await??;
             }
-            Next::Waiting(waiter, after) => {
+            Step::Waiting(waiter, after) => {
                 waiter.await.map_err(|_| HostExecutionError::Cancelled)?;
                 let filter = filter.clone();
                 state = context
@@ -197,8 +430,12 @@ async fn next<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
     }
 }
 
-async fn invoke<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
-    context: &HostExecutionContext<'_, Profile, Component<Profile>, Targets>,
+async fn invoke<
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     selected: Selected<Profile>,
 ) -> Result<NativeValue, HostExecutionError> {
     let Some(handler) = selected.handler else {
@@ -211,12 +448,75 @@ async fn invoke<Profile: GleamErlangHostProfile, Targets: HostTypeSequence>(
     Ok(value)
 }
 
-fn check<Profile: GleamErlangHostProfile, Return: HostType>(
-    call: &mut Call<'_, Profile, Return>,
+trait MailboxMatch<Profile: HostProfile>: Clone + Send + 'static {
+    type Output: Send + 'static;
+
+    fn select(
+        &self,
+        values: NativeValues<'_>,
+        value: NativeValue,
+    ) -> Result<Option<Self::Output>, HostCallError>;
+}
+
+impl<Profile: HostProfile> MailboxMatch<Profile> for Filter<Profile> {
+    type Output = Selected<Profile>;
+
+    fn select(
+        &self,
+        values: NativeValues<'_>,
+        value: NativeValue,
+    ) -> Result<Option<Self::Output>, HostCallError> {
+        Ok(match self {
+            Filter::Any => Some(Selected {
+                input: value,
+                handler: None,
+            }),
+            Filter::Subject(tag) => {
+                match (value.kind(), value.index(0), value.index(1), value.len()) {
+                    (NativeKind::Tuple, Some(received_tag), Some(input), Some(2))
+                        if values.equal(tag, &received_tag) =>
+                    {
+                        Some(Selected {
+                            input,
+                            handler: None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+            Filter::Record(tag, arity) => {
+                match (
+                    value.kind(),
+                    value.index(0),
+                    value.len().and_then(|len| len.checked_sub(1)),
+                ) {
+                    (NativeKind::Tuple, Some(received_tag), Some(received_arity))
+                        if received_arity == *arity && values.equal(tag, &received_tag) =>
+                    {
+                        Some(Selected {
+                            input: value,
+                            handler: None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+            Filter::Selector(selector) => choose(values, selector, value)?,
+        })
+    }
+}
+
+fn check<
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Matcher: MailboxMatch<Profile>,
+>(
+    call: &mut HostCall<'_, Profile, Provider, Return>,
     pid: ExecutionUnitId,
-    filter: &Filter<Profile>,
+    filter: &Matcher,
     cursor: Cursor,
-) -> Result<Next<Profile>, HostCallError> {
+) -> Result<Step<Matcher::Output>, HostCallError> {
     call.with_native_values(|state, values| {
         let mailbox = Profile::erlang_execution(state)
             .mailbox(pid)
@@ -229,31 +529,16 @@ fn check<Profile: GleamErlangHostProfile, Return: HostType>(
             let next = mailbox.next(&mut scan);
             let Some((position, message)) = next else {
                 let (waiter, after) = mailbox.wait(scan);
-                return Ok(Next::Waiting(waiter, after));
+                return Ok(Step::Waiting(waiter, after));
             };
             let value = message_value(values, &message);
-            let selected = match filter {
-                Filter::Subject(tag) => {
-                    match (value.kind(), value.index(0), value.index(1), value.len()) {
-                        (NativeKind::Tuple, Some(received_tag), Some(input), Some(2))
-                            if values.equal(tag, &received_tag) =>
-                        {
-                            Some(Selected {
-                                input,
-                                handler: None,
-                            })
-                        }
-                        _ => None,
-                    }
-                }
-                Filter::Selector(selector) => choose(values, selector, value)?,
-            };
+            let selected = filter.select(values, value)?;
             if let Some(selected) = selected {
                 mailbox.remove(position);
-                return Ok(Next::Selected(selected));
+                return Ok(Step::Selected(selected));
             }
         }
-        Ok(Next::Scanning(scan))
+        Ok(Step::Scanning(scan))
     })
 }
 
@@ -380,145 +665,20 @@ pub(super) fn down_message(value: &NativeValue) -> Result<NativeValue, HostCallE
     ]))
 }
 
-pub(super) fn new_selector<'call, Profile: GleamErlangHostProfile>(
-    mut call: Call<'call, Profile, Selector<A>>,
-) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
-    let value = call.create_external(SelectorValue::default());
-    Ok(call.return_value(value))
-}
-
-pub(super) fn insert<'call, Profile: GleamErlangHostProfile>(
-    mut call: NativeCall<
-        'call,
-        Profile,
-        Component<Profile>,
-        Selector<A>,
-        HostTypeList<C, One<Down>>,
-    >,
-    selector: HostExternal<'call, Selector<A>>,
-    key: HostValue<'call, B>,
-    callback: HostCallable<'call, One<C>, A>,
-) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
-    let mut selector = call.call().external_payload(selector).clone();
-    let key = call.source::<B>(key);
-    let hash = call.call().native_hash(&key);
-    let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
-    let entry = Arc::new(Entry {
-        key,
-        handler: Arc::new(Handler {
-            native: callback.native_value().clone(),
-            callback,
-            mappings: im::OrdMap::new(),
-        }),
-    });
-    let bucket = selector.entries.entry(hash).or_default();
-    if let Some(index) = bucket
-        .iter()
-        .position(|previous| call.call().native_equal(&previous.key, &entry.key))
-    {
-        bucket.set(index, entry);
-    } else {
-        bucket.push_back(entry);
-        selector.len += 1;
+#[cfg(test)]
+fn record_fields(message: &NativeValue) -> Option<(NativeValue, NativeValue)> {
+    match (message.index(1), message.index(2), message.len()) {
+        (Some(first), Some(second), Some(3)) => Some((first, second)),
+        _ => None,
     }
-    let value = call.call().create_external(selector);
-    Ok(call.finish(value))
-}
-
-pub(super) fn remove<'call, Profile: GleamErlangHostProfile>(
-    mut call: Call<'call, Profile, Selector<A>>,
-    selector: HostExternal<'call, Selector<A>>,
-    key: HostValue<'call, B>,
-) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
-    let mut selector = call.external_payload(selector).clone();
-    let key = call.native_value::<B>(key);
-    let hash = call.native_hash(&key);
-    if let Some(bucket) = selector.entries.get_mut(&hash) {
-        if let Some(index) = bucket
-            .iter()
-            .position(|previous| call.native_equal(&previous.key, &key))
-        {
-            bucket.remove(index);
-            selector.len -= 1;
-        }
-        if bucket.is_empty() {
-            selector.entries.remove(&hash);
-        }
-    }
-    let value = call.create_external(selector);
-    Ok(call.return_value(value))
-}
-
-pub(super) fn merge_selector<'call, Profile: GleamErlangHostProfile>(
-    mut call: Call<'call, Profile, Selector<A>>,
-    left: HostExternal<'call, Selector<A>>,
-    right: HostExternal<'call, Selector<A>>,
-) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
-    let mut left = call.external_payload(left).clone();
-    let right = call.external_payload(right).clone();
-    for (hash, entries) in &right.entries {
-        let bucket = left.entries.entry(*hash).or_default();
-        for entry in entries {
-            if let Some(index) = bucket
-                .iter()
-                .position(|previous| call.native_equal(&previous.key, &entry.key))
-            {
-                bucket.set(index, Arc::clone(entry));
-            } else {
-                bucket.push_back(Arc::clone(entry));
-                left.len += 1;
-            }
-        }
-    }
-    let value = call.create_external(left);
-    Ok(call.return_value(value))
-}
-
-pub(super) fn map_selector<'call, Profile: GleamErlangHostProfile>(
-    mut call: Native<'call, Profile, Selector<A>, B>,
-    selector: HostExternal<'call, Selector<B>>,
-    callback: HostCallable<'call, One<B>, A>,
-) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
-    let source = call.call().external_payload(selector).clone();
-    let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
-    let entries = source
-        .entries
-        .iter()
-        .map(|(hash, entries)| {
-            let mapped = entries
-                .iter()
-                .map(|entry| {
-                    let mut mappings = entry.handler.mappings.clone();
-                    mappings.insert(mappings.len(), callback.clone());
-                    Arc::new(Entry {
-                        key: entry.key.clone(),
-                        handler: Arc::new(Handler {
-                            native: NativeValue::unary_closure(
-                                "gleam_erlang/gleam/erlang/process:map_selector/handler",
-                                [
-                                    callback.native_value().clone(),
-                                    entry.handler.native.clone(),
-                                ],
-                            ),
-                            callback: entry.handler.callback.clone(),
-                            mappings,
-                        }),
-                    })
-                })
-                .collect();
-            (*hash, mapped)
-        })
-        .collect();
-    let value = call.call().create_external(SelectorValue {
-        entries,
-        len: source.len,
-    });
-    Ok(call.finish(value))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{A, B, C, Call, Down, Native, One, Selector, Subject, find};
+    use super::{A, Call, Native, Selector, Subject, find, record_fields};
+    use crate::process::schema::Down;
+    use crate::process::{B, C, One};
+    use crate::service::types::NamedSubject;
     use crate::{Component, GleamErlangProfile, GleamErlangRunState, GleamErlangStores};
     use ecow::EcoString;
     use geam_core::host::{
@@ -533,6 +693,303 @@ mod tests {
     };
     use geam_stdlib::provider_support::GleamResult;
     use num_bigint::BigInt;
+
+    #[test]
+    fn dropping_unstarted_receives_preserves_selected_and_unmatched_messages() {
+        fn prime<'call>(
+            mut call: Call<'call, GleamErlangProfile, ()>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            let unmatched = call.native_value::<BigInt>(7.into());
+            let reply = call.native_value::<BigInt>(42.into());
+            let deadline = call.clock().now();
+            let mut processes = crate::service::Processes::new(&mut call);
+            let unit = processes.current().unwrap();
+            processes.send(&unit, unmatched);
+            processes.send(
+                &unit,
+                NativeValue::tuple([NativeValue::symbol("reply"), reply]),
+            );
+            drop(processes.receive_any(None).unwrap());
+            drop(
+                processes
+                    .receive(NativeValue::symbol("reply"), Some(deadline))
+                    .unwrap(),
+            );
+            Ok(call.return_value(()))
+        }
+
+        fn take<'call>(
+            mut call: Native<'call, GleamErlangProfile, BigInt, BigInt>,
+            tagged: bool,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let deadline = call.call().clock().now();
+            let mut processes = crate::service::Processes::new(call.call());
+            let receive = if tagged {
+                processes
+                    .receive(NativeValue::symbol("reply"), Some(deadline))
+                    .unwrap()
+            } else {
+                processes.receive_any(Some(deadline)).unwrap()
+            };
+            Ok(call.resume::<geam_core::HostTypeIndex0>(move |context| {
+                Box::pin(async move {
+                    let value = receive.wait(&context).await.unwrap();
+                    Ok(value.expect("the queued message must survive an unstarted receive"))
+                })
+            }))
+        }
+
+        let provider = HostProviderModule::<GleamErlangProfile>::new("application", "main")
+            .unwrap()
+            .with_scoped_function::<Component<GleamErlangProfile>, (), (), _>("prime", prime)
+            .unwrap()
+            .with_resumable_native_function::<
+                Component<GleamErlangProfile>,
+                (bool,),
+                BigInt,
+                One<BigInt>,
+                _,
+            >("take", geam_core::host::native::NativeRules::default(), take)
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "fixture", "prime") fn prime() -> Nil
+@external(erlang, "fixture", "take") fn take(tagged: Bool) -> Int
+pub fn main() { prime() #(take(True), take(False)) }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut state = GleamErlangRunState {
+            stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+            erlang: crate::Configuration::default(),
+        };
+        let mut echo = Vec::new();
+        let value = host
+            .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap();
+        assert_eq!(value.inspect().to_string(), "#(42, 7)");
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn record_receives_match_tag_and_arity_and_preserve_every_unmatched_message() {
+        fn prime<'call>(
+            mut call: Call<'call, GleamErlangProfile, ()>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            let prefix = (0..70)
+                .map(|value| call.native_value::<BigInt>(value.into()))
+                .collect::<Vec<_>>();
+            let seven = call.native_value::<BigInt>(7.into());
+            let eight = call.native_value::<BigInt>(8.into());
+            let nine = call.native_value::<BigInt>(9.into());
+            let answer = call.native_value::<BigInt>(42.into());
+            let mut processes = crate::service::Processes::new(&mut call);
+            let current = processes.current().unwrap();
+            for value in prefix {
+                processes.send(&current, value);
+            }
+            for value in [
+                seven,
+                NativeValue::tuple([]),
+                NativeValue::tuple([NativeValue::symbol("other"), eight]),
+                NativeValue::tuple([NativeValue::symbol("reply"), nine, answer.clone()]),
+                NativeValue::tuple([NativeValue::symbol("reply"), answer]),
+            ] {
+                processes.send(&current, value);
+            }
+            Ok(call.return_value(()))
+        }
+
+        fn take<'call>(
+            mut call: Native<'call, GleamErlangProfile, BigInt, BigInt>,
+            record: bool,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let zero = call.source::<BigInt>(0.into());
+            let mut processes = crate::service::Processes::new(call.call());
+            let receive = if record {
+                processes
+                    .receive_record(NativeValue::symbol("reply"), 1, None)
+                    .unwrap()
+            } else {
+                processes.receive_any(None).unwrap()
+            };
+            Ok(call.resume::<geam_core::HostTypeIndex0>(move |context| {
+                Box::pin(async move {
+                    let value = receive.wait(&context).await.unwrap().unwrap();
+                    Ok(match value.kind() {
+                        geam_core::provider::advanced::NativeKind::Tuple => {
+                            if record {
+                                assert_eq!(value.len(), Some(2));
+                                assert_eq!(
+                                    value.index(0).unwrap().as_symbol().as_deref(),
+                                    Some("reply")
+                                );
+                            }
+                            value.index(1).unwrap_or(zero)
+                        }
+                        _ => value,
+                    })
+                })
+            }))
+        }
+
+        let provider = HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_scoped_function::<Component<GleamErlangProfile>, (), (), _>("prime", prime)
+            .unwrap()
+            .with_resumable_native_function::<Component<GleamErlangProfile>, (bool,), BigInt, One<BigInt>, _>(
+                "take", geam_core::host::native::NativeRules::default(), take,
+            )
+            .unwrap();
+        let result = crate::test_support::run_main(
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "prime") fn prime() -> Nil
+@external(erlang, "host", "take") fn take(record: Bool) -> Int
+fn check_prefix(expected: Int) {
+  case expected {
+    70 -> Nil
+    _ -> {
+      let assert True = take(False) == expected
+      check_prefix(expected + 1)
+    }
+  }
+}
+pub fn main() {
+  prime()
+  let answer = take(True)
+  check_prefix(0)
+  #(answer, take(False), take(False), take(False), take(False))
+}
+"#,
+                )],
+            )],
+            [provider],
+        );
+        assert_eq!(result.inspect().to_string(), "#(42, 7, 0, 8, 9)");
+    }
+
+    #[test]
+    fn a_retained_receive_cannot_move_to_another_source_invocation() {
+        fn wrong_receiver<'call>(
+            mut call: Call<'call, GleamErlangProfile, bool>,
+            constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
+            callback: geam_core::HostCallable<'call, geam_core::HostTypeListEnd, ()>,
+        ) -> Result<HostCallContinuation<'call, bool>, HostCallError> {
+            let child = call.spawn(callback);
+            let receive = super::Receive::any(&mut call, child.id(), None).unwrap();
+            let forever = super::Receive::any(&mut call, child.id(), None).unwrap();
+            let projected = super::RecordReceive::new(
+                &mut call,
+                child.id(),
+                NativeValue::symbol("reply"),
+                record_fields,
+                None,
+            )
+            .unwrap();
+            let projected_forever = super::RecordReceive::new(
+                &mut call,
+                child.id(),
+                NativeValue::symbol("reply"),
+                record_fields,
+                None,
+            )
+            .unwrap();
+            crate::service::Processes::new(&mut call).kill(&child);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    assert_eq!(
+                        receive.wait(&context).await.err().unwrap().to_string(),
+                        "receive belongs to another process"
+                    );
+                    assert_eq!(
+                        forever
+                            .wait_forever(&context)
+                            .await
+                            .err()
+                            .unwrap()
+                            .to_string(),
+                        "receive belongs to another process"
+                    );
+                    assert_eq!(
+                        projected.wait(&context).await.err().unwrap().to_string(),
+                        "receive belongs to another process"
+                    );
+                    assert_eq!(
+                        projected_forever
+                            .wait_forever(&context)
+                            .await
+                            .err()
+                            .unwrap()
+                            .to_string(),
+                        "receive belongs to another process"
+                    );
+                    Ok(geam_core::HostOwnedCompletion::new(|call, _| {
+                        Ok(call.return_value(true))
+                    }))
+                })
+            }))
+        }
+        let provider = HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_resumable_function::<Component<GleamErlangProfile>, (HostFunctionType<geam_core::HostTypeListEnd, ()>,), bool, geam_core::HostTypeListEnd, _>("wrong_receiver", wrong_receiver)
+            .unwrap();
+        let result = crate::test_support::run_main(
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "wrong_receiver") fn wrong_receiver(child: fn() -> Nil) -> Bool
+pub fn main() { wrong_receiver(fn() { panic as "cancelled child must never run" }) }
+"#,
+                )],
+            )],
+            [provider],
+        );
+        assert_eq!(result, geam_core::Value::Bool(true));
+    }
+
+    fn select_queued<'call>(
+        mut call: Native<'call, GleamErlangProfile, BigInt, BigInt>,
+        selector: HostExternal<'call, Selector<BigInt>>,
+        key: HostExternal<'call, Key>,
+        input: BigInt,
+    ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+        let key = call.source::<Key>(key);
+        let input = call.source::<BigInt>(input);
+        let deadline = call.call().clock().now();
+        let mut processes = crate::service::Processes::new(call.call());
+        let current = processes.current().unwrap();
+        processes.send(&current, NativeValue::tuple([key, input]));
+        let receive = processes
+            .receive_selector(selector, Some(deadline))
+            .unwrap();
+        Ok(call.resume::<geam_core::HostTypeIndex0>(move |context| {
+            Box::pin(async move { Ok(receive.wait(&context).await.unwrap().unwrap()) })
+        }))
+    }
 
     struct KeySchema;
     struct KeyStorage;
@@ -769,17 +1226,17 @@ mod tests {
             .with_external_type::<Component<GleamErlangProfile>, crate::schema::PidSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, crate::schema::MonitorSchema>().unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (), Selector<A>, _>(
-                "new_selector", super::new_selector,
+                "new_selector", crate::service::selectors::new_selector,
             ).unwrap()
             .with_native_function::<Component<GleamErlangProfile>,
                 (Selector<A>, B, HostFunctionType<One<C>, A>), Selector<A>, HostTypeList<C, One<Down>>, _>(
-                "insert_selector_handler", super::super::native_rules(), super::insert,
+                "insert_selector_handler", super::super::native_rules(), crate::service::selectors::insert::<GleamErlangProfile, Component<GleamErlangProfile>, A, B, C>,
             ).unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (Selector<A>, B), Selector<A>, _>(
-                "remove_selector_handler", super::remove,
+                "remove_selector_handler", crate::service::selectors::remove::<GleamErlangProfile, Component<GleamErlangProfile>, A, B>,
             ).unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (Selector<A>, Selector<A>), Selector<A>, _>(
-                "merge_selector", super::merge_selector,
+                "merge_selector", crate::service::selectors::merge_selector,
             ).unwrap();
         let provider = HostProviderModule::<GleamErlangProfile>::new("application", "main")
             .unwrap()
@@ -795,6 +1252,10 @@ mod tests {
                 A,
                 _,
             >("check_lookup", check_lookup)
+            .unwrap()
+            .with_resumable_native_function::<Component<GleamErlangProfile>, (Selector<BigInt>, Key, BigInt), BigInt, One<BigInt>, _>(
+                "select_queued", geam_core::host::native::NativeRules::default(), select_queued,
+            )
             .unwrap();
         let typed = compile_typed_host_program(
             "application",
@@ -854,6 +1315,8 @@ pub type Key
 @external(erlang, "host", "key") fn key(text: String) -> Key
 @external(erlang, "host", "check_lookup")
 fn check_lookup(s: p.Selector(a), one: Key, two: Key, missing: Key, returned: a) -> a
+@external(erlang, "host", "select_queued")
+fn select_queued(s: p.Selector(Int), key: Key, input: Int) -> Int
 fn first(value: Int) { value + 1 }
 fn second(value: Int) { value * 2 }
 pub fn main() {
@@ -866,6 +1329,10 @@ pub fn main() {
   let both = p.insert_selector_handler(left, two, second)
   let reversed = p.insert_selector_handler(right, one, first)
   let different = p.insert_selector_handler(left, three, second)
+  let selection = p.insert_selector_handler(empty, #(one, 2), fn(record: #(Key, Int)) { first(record.1) })
+  let selection = p.insert_selector_handler(selection, #(two, 2), fn(record: #(Key, Int)) { second(record.1) })
+  let assert 42 = select_queued(selection, one, 41)
+  let assert 42 = select_queued(selection, two, 21)
   check_lookup(both, one, two, three, 42)
   #(both == reversed,
     both != different,
@@ -930,6 +1397,7 @@ pub fn main() {
         let process = HostProviderModule::<GleamErlangProfile>::new(
             "gleam_erlang", "gleam/erlang/process",
         ).unwrap()
+            .with_shared_custom_type::<super::super::schema::SubjectSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, PidSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, NameSchema>().unwrap()
             .with_external_type::<Component<GleamErlangProfile>, MonitorSchema>().unwrap()
@@ -938,7 +1406,7 @@ pub fn main() {
                 "new_name", super::super::new_name,
             ).unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (), Selector<A>, _>(
-                "new_selector", super::new_selector,
+                "new_selector", crate::service::selectors::new_selector,
             ).unwrap()
             .with_resumable_native_function::<Component<GleamErlangProfile>, (Subject<A>, BigInt, bool), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>(
                 "late_receive", super::super::native_rules(), late_receive,
@@ -1055,7 +1523,7 @@ pub fn check(kind: Int, cancel: Bool) {
         if !cancel {
             let (name, ()) = call
                 .call()
-                .custom_fields::<super::NamedSubject<A>>(subject)
+                .custom_fields::<NamedSubject<A>>(subject)
                 .unwrap();
             let tag = NativeValue::symbol(call.call().external_payload(name).clone());
             let message = NativeValue::tuple([tag, call.call().native_value::<BigInt>(42.into())]);
@@ -1083,6 +1551,26 @@ pub fn check(kind: Int, cancel: Bool) {
             let unit = call.execution_unit().unwrap();
             call.execution_state()
                 .terminate(unit.id(), crate::execution::Reason::Killed);
+            assert_eq!(
+                crate::service::Processes::new(&mut call)
+                    .receive_any(None)
+                    .err()
+                    .unwrap()
+                    .to_string(),
+                "process mailbox is closed",
+            );
+            assert_eq!(
+                super::check(
+                    &mut call,
+                    unit.id(),
+                    &super::Filter::Any,
+                    super::Cursor::After(0),
+                )
+                .err()
+                .unwrap()
+                .to_string(),
+                "process mailbox is closed",
+            );
         }
         super::super::flush(call)
     }
@@ -1096,7 +1584,7 @@ pub fn check(kind: Int, cancel: Bool) {
         if !cancel {
             let (name, ()) = call
                 .call()
-                .custom_fields::<super::NamedSubject<A>>(subject)
+                .custom_fields::<NamedSubject<A>>(subject)
                 .unwrap();
             let tag = NativeValue::symbol(call.call().external_payload(name).clone());
             let message = NativeValue::tuple([tag, call.call().native_value::<BigInt>(42.into())]);
@@ -1168,9 +1656,10 @@ pub fn check(kind: Int, cancel: Bool) {
     }
 
     mod cancellation {
-        use super::super::{A, Call, Filter, Native, Next, One};
+        use super::super::{A, Call, Filter, Native, Next};
         use crate::execution::Message;
         use crate::execution_fixture::TestHost;
+        use crate::process::One;
         use crate::test_support::PollGate;
         use crate::{Component, Configuration, GleamErlangProfile, GleamErlangRunState};
         use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
@@ -1197,6 +1686,78 @@ pub fn check(kind: Int, cancel: Bool) {
         const MALFORMED_SCAN: u8 = 7;
         const MALFORMED_WAKE: u8 = 8;
         const CALLBACK_FAILURE: u8 = 9;
+
+        #[test]
+        fn cancellation_rejects_the_first_request_of_a_retained_receive() {
+            let (gate, driver) = PollGate::new();
+            let provider = HostProviderModule::<GleamErlangProfile>::new("application", "main")
+                .unwrap()
+                .with_resumable_native_function::<Component<GleamErlangProfile>, (), BigInt, One<BigInt>, _>(
+                    "receive", NativeRules::default(),
+                    move |call| initial_receive(call, Arc::clone(&gate)),
+                ).unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+@external(erlang, "host", "receive") fn receive() -> Int
+pub fn wait() { echo receive() Nil }
+"#,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (builder, wait) = HostedModuleBuilder::<GleamErlangProfile>::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("wait"))
+                .unwrap();
+            let mut module = builder.seal().unwrap();
+            let host = TestHost::default();
+            let mut state = GleamErlangRunState {
+                stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+                erlang: Configuration::default(),
+            };
+            let mut echo = Vec::new();
+            let mut execution = Box::pin(module.with_execution(
+                &host,
+                &mut state,
+                &mut echo,
+                async |scope| scope.call(&wait, ()).await,
+            ));
+            driver.cancel(&host, execution.as_mut());
+            assert_eq!(
+                host.block_on(execution.as_mut()).unwrap(),
+                Err(CallError::Cancelled)
+            );
+            drop(execution);
+            assert!(echo.is_empty());
+        }
+
+        fn initial_receive<'call>(
+            mut call: Native<'call, GleamErlangProfile, BigInt, BigInt>,
+            gate: Arc<PollGate>,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let unit = call.call().execution_unit().unwrap();
+            let receive = crate::service::Processes::new(call.call())
+                .receive_any(None)
+                .unwrap();
+            Ok(call.resume::<HostTypeIndex0>(move |context| {
+                Box::pin(async move {
+                    Err(gate
+                        .observe(receive.wait(&context), unit)
+                        .await
+                        .err()
+                        .unwrap())
+                })
+            }))
+        }
 
         #[test]
         fn cancellation_during_native_poll_closes_wait_scan_and_woken_requests() {
@@ -1355,11 +1916,18 @@ pub fn wait_timed(phase: Int) {
                 Box::pin(async move {
                     let operation =
                         super::super::timed(&context, unit.id(), filter, first, timeout);
-                    if cancel {
+                    let received = if cancel {
                         gate.observe(operation, unit).await
                     } else {
                         operation.await
-                    }
+                    }?;
+                    Ok(match received {
+                        Some(value) => NativeValue::tuple([NativeValue::symbol("ok"), value]),
+                        None => NativeValue::tuple([
+                            NativeValue::symbol("error"),
+                            NativeValue::symbol("nil"),
+                        ]),
+                    })
                 })
             }))
         }

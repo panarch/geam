@@ -22,7 +22,7 @@ pub use callback::NativeCallable;
 pub struct NativeRules<Profile: HostProfile, Provider: HostProvider<Profile>, Return: HostType> {
     rules: Vec<NativeRule<Profile, Provider, Return>>,
     custom_schemas: Vec<crate::host::HostCustomTypeSchema>,
-    visited: HashSet<(ecow::EcoString, ecow::EcoString, ecow::EcoString)>,
+    visited: HashSet<super::type_::HostCustomSchemaId>,
 }
 
 /// Active access to the native conversions sealed for one host function.

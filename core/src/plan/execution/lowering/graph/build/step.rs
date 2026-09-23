@@ -432,8 +432,15 @@ fn lower_step(
                 super::local::LocalKind::Custom,
                 local.id().0,
             ));
-            bind_custom_fields(pattern, source, cursor, graph, context)
-                .map(|cursor| DraftFlow::value(cursor, ()))
+            bind_custom_fields(
+                pattern.constructor(),
+                pattern.fields(),
+                source,
+                cursor,
+                graph,
+                context,
+            )
+            .map(|cursor| DraftFlow::value(cursor, ()))
         }
         S::AssertBool {
             condition,
@@ -1197,10 +1204,15 @@ pub(super) fn custom_match_paths(
         flow.fold(
             Representability::Inhabited(super::expression::bool::BoolPaths::Diverged),
             |cursor, value| match (constructor_match, total) {
-                (Some(CustomConstructorMatch::Certain), Some(total)) => {
-                    bind_certain_custom_match(total, value, cursor, graph, context)
-                        .map(super::expression::bool::BoolPaths::True)
-                }
+                (Some(CustomConstructorMatch::Certain), Some(total)) => bind_custom_fields(
+                    total.constructor,
+                    total.fields,
+                    value,
+                    cursor,
+                    graph,
+                    context,
+                )
+                .map(super::expression::bool::BoolPaths::True),
                 _ => Representability::Inhabited(match_paths(
                     value.erase(),
                     cursor,
@@ -1223,23 +1235,6 @@ fn total_custom_match(pattern: &module::CustomPattern) -> Option<TotalCustomMatc
         constructor: pattern.constructor(),
         fields,
     })
-}
-
-fn bind_certain_custom_match(
-    total: TotalCustomMatch<'_>,
-    source: DraftCustom,
-    cursor: DraftCursor,
-    graph: &mut DraftGraph,
-    context: &mut super::LoweringContext,
-) -> Representability<DraftCursor> {
-    total.fields.iter().enumerate().fold(
-        Representability::Inhabited(cursor),
-        |cursor, (index, field)| {
-            cursor.and_then(|cursor| {
-                bind_total_custom_field(field, source.clone(), index, cursor, graph, context)
-            })
-        },
-    )
 }
 
 fn match_paths(
@@ -1689,20 +1684,30 @@ impl IntoLocalIndex for crate::plan::UtfCodepointLocalId {
 }
 
 fn bind_custom_fields(
-    pattern: &module::CustomBindingPattern,
+    constructor: &crate::plan::CustomConstructor,
+    fields: &[module::TotalBindingPattern],
     source: DraftCustom,
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::LoweringContext,
 ) -> Representability<DraftCursor> {
-    pattern.fields().iter().enumerate().fold(
+    let bound = fields.iter().enumerate().fold(
         Representability::Inhabited(cursor),
         |cursor, (index, pattern)| {
             cursor.and_then(|cursor| {
                 bind_total_custom_field(pattern, source.clone(), index, cursor, graph, context)
             })
         },
-    )
+    );
+    bound.map(|cursor| {
+        // Eliminating a known constructor test must not discard the metadata
+        // needed to admit its remaining field reads. Uninhabited bindings and
+        // discarded fields do not require a constructor descriptor.
+        if fields.iter().any(total_pattern_requires_value) {
+            context.custom_constructor(constructor.clone());
+        }
+        cursor
+    })
 }
 
 fn bind_total_custom_field(
@@ -1773,7 +1778,8 @@ fn bind_total_pattern(
             Representability::Inhabited(cursor)
         }
         P::Custom(pattern) => bind_custom_fields(
-            pattern,
+            pattern.constructor(),
+            pattern.fields(),
             DraftCustom::from_ref(&source),
             cursor,
             graph,
@@ -1860,12 +1866,12 @@ mod tests {
         Representability, SpecializedValueShape, StoredValueShape,
     };
     use crate::plan::{
-        AssertBinding, BoolExpr, CustomBindingPattern, CustomConstructor,
-        CustomConstructorDefinition, CustomConstructorField, CustomFieldDefinition, CustomPattern,
-        CustomType, CustomTypeDefinition, CustomTypeName, CustomTypeParameterId,
-        CustomTypePublicity, CustomTypeTemplate, CustomValueShape, GenericLocal, GenericLocalId,
-        IntListLocalId, ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal,
-        TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
+        AssertBinding, BoolExpr, CustomConstructor, CustomConstructorDefinition,
+        CustomConstructorField, CustomFieldDefinition, CustomPattern, CustomType,
+        CustomTypeDefinition, CustomTypeName, CustomTypeParameterId, CustomTypePublicity,
+        CustomTypeTemplate, CustomValueShape, GenericLocal, GenericLocalId, IntListLocalId,
+        ListAssertTail, ListLocal, PanicExpr, PanicSite, ParamLocal, TotalBindingPattern,
+        TypeParameterId, ValueShape, ValueType,
     };
 
     #[test]
@@ -1908,6 +1914,120 @@ mod tests {
             .map(|_| ()),
             None,
         );
+    }
+
+    #[test]
+    fn exhaustive_field_bindings_retain_only_required_constructor_metadata() {
+        use crate::plan::execution::type_::ValueType as ExecutionValueType;
+
+        for (branch, expected) in [
+            (
+                "Some(name) -> name",
+                vec![
+                    (0, "Some", vec![ExecutionValueType::String]),
+                    (1, "None", vec![]),
+                ],
+            ),
+            ("Some(_) -> \"named\"", vec![(1, "None", vec![])]),
+        ] {
+            let source = format!(
+                r#"
+pub type Option(a) {{ Some(a) None }}
+pub type Builder {{ Builder(name: Option(String)) }}
+fn start(builder: Builder) -> String {{
+  case builder.name {{
+    None -> "unnamed"
+    {branch}
+  }}
+}}
+pub fn main() {{ start(Builder(None)) }}
+"#
+            );
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let option = plan
+                .program
+                .common
+                .custom_types
+                .types
+                .iter()
+                .find(|type_| type_.type_.name.as_str() == "Option")
+                .unwrap();
+            assert_eq!(option.constructor_count, 2);
+            assert_eq!(
+                option
+                    .constructors
+                    .iter()
+                    .map(|constructor| (
+                        constructor.id.index,
+                        constructor.name.as_str(),
+                        constructor
+                            .fields
+                            .iter()
+                            .map(|field| field.type_.clone())
+                            .collect::<Vec<_>>()
+                    ))
+                    .collect::<Vec<_>>(),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn exhaustive_bindings_keep_recursive_metadata_finite_without_constructing_the_variant() {
+        use crate::plan::execution::type_::{CustomTypeId, ValueType as ExecutionValueType};
+
+        let source = r#"
+pub type Grow(a) { Stop Grow(value: a, tail: Grow(List(a))) }
+fn first(value: Grow(a), fallback: a) -> a {
+  case value {
+    Stop -> fallback
+    Grow(head, _) -> head
+  }
+}
+pub fn main() { first(Stop, 42) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let types = &plan.program.common.custom_types;
+        assert_eq!(types.len(), 2);
+        assert_eq!(
+            plan.custom_value_type(CustomTypeId::new(0)).arguments(),
+            &[ValueType::Int],
+        );
+        assert_eq!(
+            plan.custom_value_type(CustomTypeId::new(1)).arguments(),
+            &[ValueType::List(Box::new(ValueType::Int))],
+        );
+        assert_eq!(
+            types.types[0]
+                .constructors
+                .iter()
+                .map(|constructor| (
+                    constructor.id.index,
+                    constructor.name.as_str(),
+                    constructor
+                        .fields
+                        .iter()
+                        .map(|field| field.type_.clone())
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, "Stop", vec![]),
+                (
+                    1,
+                    "Grow",
+                    vec![
+                        ExecutionValueType::Int,
+                        ExecutionValueType::Custom(CustomTypeId::new(1))
+                    ]
+                ),
+            ],
+        );
+        assert_eq!(types.types[1].constructor_count, 2);
+        assert!(types.types[1].constructors.is_empty());
     }
 
     #[test]
@@ -1955,30 +2075,17 @@ mod tests {
 
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
-        let source = DraftCustom::from_owned(graph.value_ref(stored_custom.clone()));
+        let source = DraftCustom::from_owned(graph.value_ref(stored_custom));
         assert_eq!(
-            super::bind_certain_custom_match(
-                super::TotalCustomMatch {
-                    constructor: &filled,
-                    fields: std::slice::from_ref(&field_pattern),
-                },
+            super::bind_custom_fields(
+                &filled,
+                std::slice::from_ref(&field_pattern),
                 source,
                 cursor,
                 &mut graph,
                 &mut context,
             )
             .map(|_| ()),
-            Representability::Uninhabited,
-        );
-
-        let custom_pattern =
-            CustomBindingPattern::exact(source_shape, filled, vec![field_pattern.clone()]);
-        let (mut graph, cursor) =
-            DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
-        let source = DraftCustom::from_owned(graph.value_ref(stored_custom));
-        assert_eq!(
-            super::bind_custom_fields(&custom_pattern, source, cursor, &mut graph, &mut context,)
-                .map(|_| ()),
             Representability::Uninhabited,
         );
 
@@ -2006,6 +2113,8 @@ mod tests {
                 .map(|_| ()),
             Representability::Uninhabited,
         );
+        let (_, custom_types, _, _) = context.types.into_tables(&context.representations);
+        assert!(custom_types.types.is_empty());
     }
 
     #[test]

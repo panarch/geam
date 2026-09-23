@@ -11,26 +11,26 @@ use std::marker::PhantomData;
 pub struct AtomSchema;
 pub struct ReferenceSchema;
 pub struct PidSchema;
-pub(crate) struct NameSchema;
-pub(crate) struct MonitorSchema;
-pub(crate) struct TimerSchema;
+pub struct NameSchema;
+pub struct MonitorSchema;
+pub struct TimerSchema;
 pub(crate) struct DoNotLeakSchema;
-pub(crate) struct SelectorSchema;
+pub struct SelectorSchema;
 pub(crate) struct NodeSchema;
-pub(crate) struct CharlistSchema;
-pub(crate) struct PortSchema;
+pub struct CharlistSchema;
+pub struct PortSchema;
 
 pub type Atom = HostExternalType<AtomSchema>;
 pub type Reference = HostExternalType<ReferenceSchema>;
 pub type Pid = HostExternalType<PidSchema>;
-pub(crate) type Name<A> = HostExternalType<NameSchema, HostTypeList<A, HostTypeListEnd>>;
-pub(crate) type Monitor = HostExternalType<MonitorSchema>;
-pub(crate) type Timer = HostExternalType<TimerSchema>;
+pub type Name<A> = HostExternalType<NameSchema, HostTypeList<A, HostTypeListEnd>>;
+pub type Monitor = HostExternalType<MonitorSchema>;
+pub type Timer = HostExternalType<TimerSchema>;
 pub(crate) type DoNotLeak = HostExternalType<DoNotLeakSchema>;
-pub(crate) type Selector<A> = HostExternalType<SelectorSchema, HostTypeList<A, HostTypeListEnd>>;
+pub type Selector<A> = HostExternalType<SelectorSchema, HostTypeList<A, HostTypeListEnd>>;
 pub(crate) type Node = HostExternalType<NodeSchema>;
-pub(crate) type Charlist = HostExternalType<CharlistSchema>;
-pub(crate) type Port = HostExternalType<PortSchema>;
+pub type Charlist = HostExternalType<CharlistSchema>;
+pub type Port = HostExternalType<PortSchema>;
 
 impl HostExternalSchema for AtomSchema {
     const PACKAGE: &'static str = "gleam_erlang";

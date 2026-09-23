@@ -227,6 +227,11 @@ decoded from Gleam and passed to a typed callback.
 
 ## Declare which Gleam versions it supports
 
+Providers that share an execution-domain service, or whose component depends
+on the generated profile, use the schema 2 composition contract described in
+[execution services](reference/execution-services.md). Ordinary providers can
+continue using schema 1 below.
+
 Cargo metadata connects the crate to its Gleam package and states the package
 versions implemented by this Rust code:
 
@@ -290,6 +295,30 @@ passes.
 Keep unit tests for Rust-only logic and use this end-to-end run to verify the
 Gleam declaration, provider metadata, generated component, and application call
 together.
+
+## Share producer-owned custom values
+
+A source module can delegate its custom representation to other selected Rust
+providers. The producer sets `HostCustomSchema::SHARED = true` in the schema used
+by its SDK and registers that exact schema with
+`HostProviderModule::with_shared_custom_type::<Schema>()` on the defining
+package and module. Preparation without bodies uses the corresponding
+`HostProviderModuleDeclaration` method; `into_declarations()` preserves grants.
+
+Each native use of a shared schema requires the selected producer's matching
+grant. Planning checks the source definition, complete constructor/field schema,
+nominal type arguments and original public/internal/private scope. Prepared
+loading checks the same requirement against the actual provider registrations,
+including producers with no native functions. A missing or replaced grant fails
+before execution. Changing this contract requires regenerating prepared data.
+
+Sharing delegates constructor and field access to native code. It does not
+change Gleam's opaque rules and is not a value-only permission. Producer SDKs
+should keep ordinary value wrappers' storage private and expose the operations
+they own. A consumer then retains or passes the wrapper and calls those
+operations without reproducing schemas, storage or decoding. Existing schemas
+with the default `SHARED = false` retain their previous visibility rules.
+No runtime permission lookup, value copy, or new storage is introduced.
 
 ## Grow the provider with the package
 

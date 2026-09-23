@@ -1,0 +1,9 @@
+name = "process_service_example"
+version = "1.0.0"
+description = "Shared process services from an external Rust provider"
+licences = ["Apache-2.0"]
+
+[dependencies]
+example_process_service = { path = "packages/example_process_service" }
+gleam_erlang = ">= 1.3.0 and < 1.3.1"
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"

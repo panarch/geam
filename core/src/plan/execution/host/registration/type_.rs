@@ -261,6 +261,7 @@ data::host::RegistrationType::Custom {
         name: data::Text::Static("Empty"),
         parameter_count: 1,
         constructors: data::Storage::Static(&[]),
+        shared: false,
     },
     arguments: data::Storage::Static(&[
         data::host::RegistrationType::Int,

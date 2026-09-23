@@ -9,6 +9,7 @@ mod process;
 mod reference;
 mod schema;
 mod selector;
+pub mod service;
 
 #[cfg(test)]
 #[path = "../../../tests/support/execution_host.rs"]
@@ -18,12 +19,16 @@ mod execution_fixture;
 mod test_support;
 
 pub use execution::ErlangExecution;
-pub use schema::{Atom, AtomSchema, Pid, PidSchema, Reference, ReferenceSchema};
+pub use schema::{
+    Atom, AtomSchema, Charlist, CharlistSchema, Name, NameSchema, Pid, PidSchema, Reference,
+    ReferenceSchema,
+};
 
 use ecow::EcoString;
 use geam_core::host::{
-    HostComponentProfile, HostExternalStore, HostProfile, HostProvider, HostProviderComponent,
-    HostProviderComponentRegistration, HostProviderModule, HostRegistrationError,
+    HostComponentProfile, HostExecutionService, HostExternalStore, HostProfile, HostProvider,
+    HostProviderComponent, HostProviderComponentRegistration, HostProviderModule,
+    HostRegistrationError,
 };
 use geam_core::provider::advanced::NativeValue;
 use geam_stdlib::{GleamStdlibProviderProfile, GleamStdlibRunState, GleamStdlibStores, IoOutput};
@@ -70,6 +75,14 @@ impl<Profile: HostProfile> HostProviderComponent for Component<Profile> {
     const ID: &'static str = "gleam_erlang";
     type Stores = Stores<Profile>;
     type RunState = Configuration;
+}
+
+impl<Profile: HostProfile> HostExecutionService for Component<Profile> {
+    type State = ErlangExecution;
+
+    fn initialize_service(_: &mut Configuration) -> ErlangExecution {
+        ErlangExecution::default()
+    }
 }
 
 /// Composes the process component with its domain-owned execution services.
@@ -161,6 +174,12 @@ impl GleamErlangHostProfile for GleamErlangProfile {
     }
 }
 
+impl geam_core::HostServiceProfile<Component<Self>> for GleamErlangProfile {
+    fn service(state: &mut Self::ExecutionState) -> &mut ErlangExecution {
+        state
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -204,6 +223,12 @@ mod tests {
         let original = std::ptr::from_mut(&mut execution);
         assert_eq!(
             std::ptr::from_mut(GleamErlangProfile::erlang_execution(&mut execution)),
+            original,
+        );
+        assert_eq!(
+            std::ptr::from_mut(<GleamErlangProfile as geam_core::HostServiceProfile<
+                Component<GleamErlangProfile>,
+            >>::service(&mut execution)),
             original,
         );
     }

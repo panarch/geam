@@ -17,6 +17,7 @@ pub(super) enum HostedModuleDeclaration {
         functions: Vec<TypedFunction>,
         constants: Vec<gleam_compiler_core::ast::TypedModuleConstant>,
         providers: Vec<RegisteredHostFunction>,
+        shared_custom_types: Vec<crate::plan::CustomTypeName>,
     },
     Host {
         id: ModuleId,
@@ -29,6 +30,7 @@ pub(super) enum HostedModuleDeclaration {
 struct RegisteredProviderItems {
     functions: Vec<RegisteredHostFunction>,
     external_types: Vec<HostExternalTypeSchema>,
+    shared_custom_types: Vec<crate::host::HostCustomTypeSchema>,
 }
 
 pub(super) fn collect_hosted_module_declarations(
@@ -38,12 +40,14 @@ pub(super) fn collect_hosted_module_declarations(
     let mut provider_modules = providers
         .into_iter()
         .map(|provider| {
-            let (package, module, functions, external_types) = provider.into_parts();
+            let (package, module, functions, external_types, shared_custom_types) =
+                provider.into_parts();
             (
                 (package, module),
                 RegisteredProviderItems {
                     functions,
                     external_types,
+                    shared_custom_types,
                 },
             )
         })
@@ -90,6 +94,16 @@ pub(super) fn collect_hosted_module_declarations(
                                 reason: Box::new(HostProviderLinkReason::MissingModule),
                             });
                         }
+                        if let Some(schema) = items.shared_custom_types.first() {
+                            return Some(PlanError::SharedCustomTypeProviderLink {
+                            package,
+                            module,
+                            type_: schema.name().clone(),
+                            reason: Box::new(
+                                crate::planner::SharedCustomTypeProviderLinkReason::MissingModule,
+                            ),
+                        });
+                        }
                         items
                             .external_types
                             .iter()
@@ -130,6 +144,7 @@ fn hosted_module_declaration(
                 .unwrap_or(RegisteredProviderItems {
                     functions: Vec::new(),
                     external_types: Vec::new(),
+                    shared_custom_types: Vec::new(),
                 });
             super::super::external_type::plan_hosted_types(
                 &package,
@@ -138,16 +153,25 @@ fn hosted_module_declaration(
                 providers.external_types,
                 external_types,
             )
-            .map(|types| HostedModuleDeclaration::Source {
-                id,
-                providers: providers.functions,
-                package,
-                module_name,
-                source_context: Some(SourceContext::new(path, source)),
-                custom_types: types.custom_types,
-                external_types: types.external_types,
-                functions: definitions.functions,
-                constants: definitions.constants,
+            .and_then(|types| {
+                let shared_custom_types = super::shared_custom::validate(
+                    &package,
+                    &module_name,
+                    &types.custom_types,
+                    providers.shared_custom_types,
+                )?;
+                Ok(HostedModuleDeclaration::Source {
+                    id,
+                    providers: providers.functions,
+                    shared_custom_types,
+                    package,
+                    module_name,
+                    source_context: Some(SourceContext::new(path, source)),
+                    custom_types: types.custom_types,
+                    external_types: types.external_types,
+                    functions: definitions.functions,
+                    constants: definitions.constants,
+                })
             })
         }
         HostedTypedProgramModule::Host(module) => {
@@ -170,6 +194,43 @@ mod tests {
     use crate::planner::{ExternalTypeProviderLinkReason, HostProviderLinkReason, PlanError};
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn sharing_only_provider_requires_its_source_module() {
+        struct Handle;
+        impl crate::HostCustomSchema for Handle {
+            const PACKAGE: &'static str = "producer";
+            const MODULE: &'static str = "handles";
+            const NAME: &'static str = "Handle";
+            const PARAMETER_COUNT: usize = 0;
+            type Constructors = crate::HostCustomConstructorListEnd;
+        }
+        let (_, providers, _, _) =
+            HostProviderSet::<StatelessHostProfile>::from_providers([HostProviderModule::new(
+                "producer", "handles",
+            )
+            .unwrap()
+            .with_shared_custom_type::<Handle>()
+            .unwrap()])
+            .unwrap()
+            .into_registered();
+        let error = super::collect_hosted_module_declarations(Vec::new(), providers)
+            .err()
+            .unwrap();
+        assert_eq!(
+            error,
+            PlanError::SharedCustomTypeProviderLink {
+                package: "producer".into(),
+                module: "handles".into(),
+                type_: "Handle".into(),
+                reason: Box::new(crate::SharedCustomTypeProviderLinkReason::MissingModule),
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "shared custom type provider producer::handles.Handle: source module is not linked"
+        );
+    }
 
     #[test]
     fn reject_profile_host_program_custom_declaration_precedence() {

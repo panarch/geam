@@ -22,6 +22,7 @@ pub struct HostProviderModule<Profile: HostProfile = StatelessHostProfile> {
     identity: HostModuleIdentity,
     functions: RegisteredFunctions<Profile>,
     external_types: RegisteredExternalTypes,
+    shared_custom_types: super::shared_custom::RegisteredSharedCustomTypes,
     callables: super::callable::RegisteredCallableSet<HostFunctionImplementation<Profile>>,
 }
 
@@ -47,6 +48,7 @@ pub(crate) struct RegisteredHostProviderModule {
     pub(crate) module: EcoString,
     pub(crate) functions: Vec<RegisteredHostFunction>,
     pub(crate) external_types: Vec<HostExternalTypeSchema>,
+    pub(crate) shared_custom_types: Vec<super::HostCustomTypeSchema>,
 }
 
 pub(crate) struct RegisteredHostFunction {
@@ -279,6 +281,7 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             identity,
             functions: RegisteredFunctions::new(),
             external_types: RegisteredExternalTypes::new(),
+            shared_custom_types: super::shared_custom::RegisteredSharedCustomTypes::new(),
             callables: super::callable::RegisteredCallableSet::new(),
         })
     }
@@ -551,6 +554,16 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
             .map(|()| self)
     }
 
+    /// Delegates this source owner's exact custom representation to native users
+    /// whose [`super::HostCustomSchema::SHARED`] contract explicitly requests it.
+    pub fn with_shared_custom_type<Schema: super::HostCustomSchema>(
+        mut self,
+    ) -> Result<Self, HostRegistrationError> {
+        self.shared_custom_types
+            .register(&self.identity, super::HostCustomTypeSchema::of::<Schema>())?;
+        Ok(self)
+    }
+
     pub fn with_external_type<Provider, Schema>(mut self) -> Result<Self, HostRegistrationError>
     where
         Schema: HostExternalSchema,
@@ -641,6 +654,7 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
                     identity: module.identity,
                     functions: module.functions.into_declarations(),
                     external_types: module.external_types,
+                    shared_custom_types: module.shared_custom_types,
                     callables: module.callables.into_declarations(),
                 })
                 .collect(),
@@ -729,6 +743,7 @@ impl<Profile: HostProfile> HostProviderSet<Profile> {
                 module: provider.identity.module,
                 functions: provider.functions.into_registered(&mut implementations),
                 external_types: provider.external_types.into_vec(),
+                shared_custom_types: provider.shared_custom_types.into_vec(),
             });
             callables.extend(provider.callables.into_registered(&mut implementations));
         }
@@ -923,12 +938,14 @@ impl RegisteredHostProviderModule {
         EcoString,
         Vec<RegisteredHostFunction>,
         Vec<HostExternalTypeSchema>,
+        Vec<super::HostCustomTypeSchema>,
     ) {
         (
             self.package,
             self.module,
             self.functions,
             self.external_types,
+            self.shared_custom_types,
         )
     }
 }
@@ -1640,7 +1657,7 @@ pub fn main() { math.add(31, 11) }
         )
         .expect("provider module should be unique");
         let (_, mut providers, _, _) = hosts.into_registered();
-        let (_, _, _, external_types) = providers
+        let (_, _, _, external_types, _) = providers
             .pop()
             .expect("provider module should be registered")
             .into_parts();
@@ -1762,7 +1779,7 @@ pub fn main() { math.add(31, 11) }
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
         let (_, mut providers, _, implementations) = hosts.into_registered();
-        let (_, _, mut definitions, _) = providers
+        let (_, _, mut definitions, _, _) = providers
             .pop()
             .expect("provider module should be registered")
             .into_parts();
@@ -1806,7 +1823,7 @@ pub fn main() { math.add(31, 11) }
             HostProviderSet::with_providers(Vec::<HostModule<TestHostProfile>>::new(), [provider])
                 .expect("provider module should be unique");
         let (_, mut providers, _, implementations) = hosts.into_registered();
-        let (_, _, mut definitions, _) = providers
+        let (_, _, mut definitions, _, _) = providers
             .pop()
             .expect("provider module should be registered")
             .into_parts();

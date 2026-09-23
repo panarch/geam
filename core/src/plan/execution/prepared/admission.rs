@@ -565,6 +565,190 @@ mod tests {
         );
     }
 
+    #[test]
+    fn admits_exhaustive_nested_constructor_failures() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+fn inspect(value: Result(Option(Int), String)) -> String {
+  case value {
+    Ok(Some(_)) -> "present"
+    Ok(None) -> "missing"
+    Error(reason) -> reason
+  }
+}
+pub fn main() { inspect(Ok(Some(42))) <> inspect(Ok(None)) <> inspect(Error("failed")) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        assert_eq!(
+            bindings
+                .seal()
+                .call(&function, (), &mut Vec::new())
+                .unwrap()
+                .as_str(),
+            "presentmissingfailed"
+        );
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        // Repeating Some instead of excluding None leaves a possible Ok value.
+        // Its Option payload must never be admitted as Error's String field.
+        use crate::plan::execution::graph::Terminator;
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.string_functions)[1];
+        let mut matches = owned_mut(&mut function.body.block_graph.blocks)
+            .iter_mut()
+            .filter_map(|header| match &mut header.terminator {
+                Terminator::Match(matcher) => Some(matcher),
+                _ => None,
+            });
+        let repeated = matches.next().unwrap().pattern.clone();
+        matches.next().unwrap().pattern = repeated;
+        assert!(matches.next().is_none());
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 4,
+                        index: 0,
+                        error: super::instruction::InstructionError::OutputType,
+                    }
+                ),
+            }))
+        );
+    }
+
+    #[test]
+    fn nested_exclusions_preserve_hypotheses_through_match_bindings() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+pub type Envelope { Value(Result(Option(Int), String)) Empty }
+fn inspect(envelope: Envelope) -> String {
+  case envelope {
+    Value(value) -> case value {
+      Ok(Some(_)) -> "present"
+      Ok(None) -> "missing"
+      Error(reason) -> reason
+    }
+    Empty -> "empty"
+  }
+}
+pub fn main() { inspect(Value(Error("failed"))) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        assert_eq!(
+            bindings
+                .seal()
+                .call(&function, (), &mut Vec::new())
+                .unwrap()
+                .as_str(),
+            "failed"
+        );
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        use crate::plan::execution::graph::Terminator;
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.string_functions)[1];
+        let mut matches = owned_mut(&mut function.body.block_graph.blocks)
+            .iter_mut()
+            .filter_map(|header| match &mut header.terminator {
+                Terminator::Match(matcher) => Some(matcher),
+                _ => None,
+            });
+        // Keep the outer Value binding and replace only the nested None case.
+        matches.next().unwrap();
+        let repeated = matches.next().unwrap().pattern.clone();
+        matches.next().unwrap().pattern = repeated;
+        assert!(matches.next().is_none());
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 5,
+                        index: 0,
+                        error: super::instruction::InstructionError::OutputType,
+                    }
+                ),
+            }))
+        );
+    }
+
+    #[test]
+    fn exhaustive_field_reads_require_the_unconstructed_variant_metadata() {
+        let source = r#"
+pub type Option(a) { Some(a) None }
+pub type Builder { Builder(name: Option(String)) }
+fn start(builder: Builder) -> String {
+  case builder.name {
+    None -> "unnamed"
+    Some(name) -> name
+  }
+}
+pub fn main() { start(Builder(None)) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), crate::StringValue>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        let option = owned_mut(&mut artifact.program.custom_types.types)
+            .iter_mut()
+            .find(|type_| type_.type_.name.as_str() == "Option")
+            .unwrap();
+        assert_eq!(
+            option
+                .constructors
+                .iter()
+                .map(|constructor| constructor.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Some", "None"],
+        );
+        // A sparse table is valid only if it still describes every retained use.
+        // Removing the never-constructed Some must not authorize its field read.
+        option.constructors = option.constructors[1..].to_vec().into();
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(super::functions::FunctionError {
+                family: crate::plan::execution::function::FunctionTableFamily::String,
+                index: 1,
+                kind: super::functions::FunctionErrorKind::Body(
+                    super::body::BodyError::Instruction {
+                        block: 2,
+                        index: 0,
+                        error: super::instruction::InstructionError::CustomField { index: 0 },
+                    }
+                ),
+            }))
+        );
+    }
+
     fn artifact(prepared: PreparedModule) -> ModuleArtifact<Infallible> {
         let common = Arc::try_unwrap(prepared.program.common).ok().unwrap();
         let functions = owned(prepared.program.functions);
@@ -906,7 +1090,7 @@ mod tests {
         artifact.format = 1;
         assert_eq!(
             plain(&artifact).err().unwrap().to_string(),
-            "prepared format 1 is incompatible with format 3; regenerate the prepared program"
+            "prepared format 1 is incompatible with format 4; regenerate the prepared program"
         );
         artifact.format = FORMAT_VERSION;
 
@@ -1016,7 +1200,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 3; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
                 ),
             ),
             (
@@ -1223,7 +1407,7 @@ mod tests {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 3; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
                 ),
             ),
             (

@@ -11,15 +11,17 @@ mod future;
 mod module;
 pub mod native;
 mod profile;
+mod shared_custom;
 mod type_;
 mod value;
 
 pub use callable::{HostCallableSchema, HostCaptures, ResumableHostCallable, ScopedHostCallable};
 pub(crate) use callable::{RegisteredCallableConstruction, RegisteredHostCallable};
 pub use component::{
-    HostComponentProfile, HostProviderComponent, HostProviderComponentInitialization,
-    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderConfigurationValue,
-    HostProviderInitializationError,
+    HostComponentProfile, HostExecutionService, HostProviderComponent,
+    HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderConfigurationValue, HostProviderInitializationError,
+    HostServiceProfile,
 };
 pub use construction::{HostConstruction, HostConstructions};
 pub use declaration::{

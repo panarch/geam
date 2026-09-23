@@ -39,7 +39,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<super::HostCustomTypeSchema>,
-        visited: &mut std::collections::HashSet<super::HostCustomIdentity>,
+        visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,
     ) {
         <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
     }

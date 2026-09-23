@@ -33,6 +33,10 @@ before this document describes the generated and low-level contracts.
 
 ## Value Type Provider Authoring
 
+The [execution service contract](execution-services.md) describes static service
+dependencies, domain initialization, producer projections, and reuse of the
+Erlang process provider's original values.
+
 The
 [value-types example](../../examples/provider/value_types)
 is the canonical map

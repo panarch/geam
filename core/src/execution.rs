@@ -1,9 +1,11 @@
 //! Host-selected scheduling and clocks for owned Gleam execution.
 
+mod services;
 #[cfg(feature = "tokio")]
 mod tokio;
 mod unit;
 
+pub use services::ExecutionServices;
 #[cfg(feature = "tokio")]
 pub use tokio::TokioHost;
 pub use unit::{ExecutionUnit, ExecutionUnitId, HostExecutionState, UnitExit};
@@ -80,6 +82,7 @@ pub trait ExecutionHost: Send + Sync + 'static {
 }
 
 /// Immutable value metadata available when a domain initializes its services.
+#[derive(Clone, Copy)]
 pub struct ExecutionMetadata<'plan>(
     pub(crate) crate::plan::execution::runtime::RuntimeValueMetadata<'plan>,
 );

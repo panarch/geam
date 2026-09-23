@@ -154,7 +154,7 @@ jobs:
           git diff --check
           git diff --stat
 
-      - name: Refresh the prepared embedding program
+      - name: Refresh and check the prepared embedding bindings
         working-directory: examples/embedding/prepared
         run: |
           cargo run --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" --package geam --bin geam --locked -- embedding sync
@@ -168,7 +168,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add --update -- '*Cargo.toml' '*Cargo.lock' '*gleam.toml' '*manifest.toml'
-          git add --update -- examples/embedding/prepared/src/geam_bindings.rs examples/embedding/prepared/src/geam_bindings/program.rs
+          git add --update -- examples/embedding/prepared/src/geam_bindings.rs
           git commit -F - <<EOF
           Prepare Geam $RELEASE_VERSION
 

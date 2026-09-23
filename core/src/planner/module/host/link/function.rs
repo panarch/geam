@@ -139,6 +139,7 @@ pub(super) fn link_source_less_module(
         });
     }
     LinkedModule {
+        shared_custom_types: Vec::new(),
         id,
         package,
         module_name,

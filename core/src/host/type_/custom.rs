@@ -1,9 +1,11 @@
+#[cfg(test)]
+mod collection;
 mod field;
 
 pub use field::{HostCustomTypeArgument, HostNominalCustomField};
 
 use super::{
-    HostAbiTypeSequence, HostCustomIdentity, HostType, HostTypeDescriptor, HostTypeList,
+    HostAbiTypeSequence, HostCustomSchemaId, HostType, HostTypeDescriptor, HostTypeList,
     HostTypeListEnd, HostTypeSequence, private,
 };
 use crate::host::{HostCustom, HostScopedValue};
@@ -44,6 +46,13 @@ pub trait HostCustomSchema: Send + Sync + 'static {
     const MODULE: &'static str;
     const NAME: &'static str;
     const PARAMETER_COUNT: usize;
+
+    /// Requires an explicit sharing registration from this type's source owner.
+    ///
+    /// This delegates native representation access, including constructors and
+    /// fields. It does not change visibility for Gleam source. Producer SDKs can
+    /// keep their ordinary value wrappers opaque and expose only owned operations.
+    const SHARED: bool = false;
 
     type Constructors: HostCustomConstructorSequence;
 }
@@ -135,6 +144,7 @@ pub struct HostCustomTypeSchema {
     name: EcoString,
     parameter_count: usize,
     constructors: Box<[HostCustomConstructorSchema]>,
+    shared: bool,
 }
 
 /// The source-facing schema of one custom constructor.
@@ -189,6 +199,7 @@ impl HostCustomTypeSchema {
             Schema::PARAMETER_COUNT,
             <Schema::Constructors as private::CustomConstructors>::schemas(),
         )
+        .with_shared_access(Schema::SHARED)
     }
 
     pub fn new(
@@ -203,11 +214,22 @@ impl HostCustomTypeSchema {
             module: module.into(),
             name: name.into(),
             parameter_count,
+            shared: false,
             constructors: constructors
                 .into_iter()
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
         }
+    }
+
+    /// Whether each native use requires the source owner's explicit sharing grant.
+    pub fn requires_shared_access(&self) -> bool {
+        self.shared
+    }
+
+    pub(crate) fn with_shared_access(mut self, shared: bool) -> Self {
+        self.shared = shared;
+        self
     }
 
     pub fn package(&self) -> &EcoString {
@@ -366,7 +388,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Head::Fields as private::CustomFields>::collect_custom_schemas(output, visited);
         <Tail as private::CustomConstructors>::collect_custom_schemas(output, visited);
@@ -380,7 +402,7 @@ impl private::CustomConstructors for HostCustomConstructorListEnd {
 
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
+        _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
     }
 }
@@ -444,7 +466,7 @@ impl private::CustomFields for HostCustomFieldListEnd {
 
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
-        _visited: &mut HashSet<HostCustomIdentity>,
+        _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
     }
 }
@@ -493,7 +515,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         <Head::Type as CustomFieldType>::collect_custom_schemas(output, visited);
         <Tail as private::CustomFields>::collect_custom_schemas(output, visited);
@@ -502,22 +524,16 @@ where
 
 pub(super) fn collect_custom_type_schema<Schema: HostCustomSchema>(
     output: &mut Vec<HostCustomTypeSchema>,
-    visited: &mut HashSet<HostCustomIdentity>,
+    visited: &mut HashSet<HostCustomSchemaId>,
 ) {
+    if !visited.insert(HostCustomSchemaId::of::<Schema>()) {
+        return;
+    }
     let schema = HostCustomTypeSchema::of::<Schema>();
     if !output.contains(&schema) {
         output.push(schema);
     }
-    let identity = (
-        EcoString::from(Schema::PACKAGE),
-        EcoString::from(Schema::MODULE),
-        EcoString::from(Schema::NAME),
-    );
-    if visited.insert(identity) {
-        <Schema::Constructors as private::CustomConstructors>::collect_custom_schemas(
-            output, visited,
-        );
-    }
+    <Schema::Constructors as private::CustomConstructors>::collect_custom_schemas(output, visited);
 }
 
 impl<Schema, Arguments> private::Sealed for HostCustomType<Schema, Arguments>
@@ -558,7 +574,7 @@ where
 
     fn collect_custom_schemas(
         output: &mut Vec<HostCustomTypeSchema>,
-        visited: &mut HashSet<HostCustomIdentity>,
+        visited: &mut HashSet<HostCustomSchemaId>,
     ) {
         collect_custom_type_schema::<Schema>(output, visited);
         <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);

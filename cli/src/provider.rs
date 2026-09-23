@@ -2,6 +2,7 @@ mod list;
 mod manifest;
 mod metadata;
 mod resolution;
+mod services;
 mod validation;
 
 use crate::command::{AddProvider, RemoveProvider};
@@ -11,7 +12,8 @@ use crate::project::{ResolvedProject, read_resolved_project};
 use camino::Utf8Path;
 pub(super) use manifest::ManagedProject;
 use manifest::ProviderSelection;
-pub(super) use metadata::ProviderMetadata;
+pub(super) use metadata::{ProviderBinding, ProviderComposition, ProviderMetadata};
+pub(super) use services::{ServiceBinding, ServiceComposition};
 use std::path::Path;
 pub(super) use validation::ProviderSelectionValidator;
 
@@ -31,7 +33,7 @@ impl ProviderSelectionValidator for SystemProviderValidator {
         program: &geam_core::TypedProgram,
         managed: &ManagedProject,
         progress: &mut Progress<'_>,
-    ) -> Result<(), CliError> {
+    ) -> Result<Vec<ProviderBinding>, CliError> {
         validation::ProviderValidator::new(&validation::SystemProviderResolver).validate(
             project_root,
             project,
@@ -89,12 +91,21 @@ fn add_with(
             range: resolved.metadata.gleam_range().to_string(),
         });
     }
-    managed.insert(ProviderSelection::new(
+    let selected = ProviderSelection::new(
         package.to_owned(),
         resolved.metadata.crate_name().to_owned(),
         resolved.source,
-    ))?;
-    crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+    );
+    let binding = resolved.metadata.binding(selected.alias());
+    managed.insert(selected)?;
+    let mut bindings = resolution::selected_bindings(
+        project_root,
+        managed
+            .selections()
+            .filter(|selection| selection.alias() != binding.alias),
+    )?;
+    bindings.push(binding);
+    crate::runner::reconcile_source(project_root, &bindings)?;
     let manifest_changed = managed.write()?;
     crate::runner::reconcile_lock(project_root, manifest_changed, cargo, &mut Progress::Hidden)?;
     Ok(())
@@ -113,7 +124,8 @@ fn remove_with(
     let mut managed = ManagedProject::load(project_root, project.root_package())?;
     managed.remove(&command.gleam_package)?;
     managed.retain_packages(&project.package_names());
-    crate::runner::reconcile_source(project_root, &managed.provider_aliases())?;
+    let bindings = resolution::selected_bindings(project_root, managed.selections())?;
+    crate::runner::reconcile_source(project_root, &bindings)?;
     let manifest_changed = managed.write()?;
     crate::runner::reconcile_lock(project_root, manifest_changed, cargo, &mut Progress::Hidden)?;
     Ok(())
@@ -125,6 +137,7 @@ pub(super) fn is_built_in_package(package: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::manifest::{ManagedProject, ProviderSelection, ProviderSource};
     use super::{add_with, remove_with};
     use crate::command::{AddProvider, RemoveProvider};
     use crate::error::CliError;
@@ -161,6 +174,70 @@ mod tests {
                 status: Some(1),
                 stderr: "fixture lock failed".to_owned(),
             })
+        }
+    }
+
+    #[test]
+    fn preserves_managed_inputs_when_existing_provider_resolution_fails() {
+        let project = gleam_project("images", "1.0.0");
+        let root = utf8_path(&project);
+        let images = provider_package("geam-images", "images", "1.0.0");
+        let tickets = provider_package("geam-tickets", "tickets", "1.0.0");
+        let requests = provider_package("geam-requests", "requests", "1.0.0");
+        fs::write(root.join("manifest.toml"), "packages = [\n{ name = \"images\", version = \"1.0.0\", build_tools = [], requirements = [], source = \"local\", path = \"images\" },\n{ name = \"tickets\", version = \"1.0.0\", build_tools = [], requirements = [], source = \"local\", path = \"tickets\" },\n{ name = \"requests\", version = \"1.0.0\", build_tools = [], requirements = [], source = \"local\", path = \"requests\" },\n]\n[requirements]\n").unwrap();
+        let mut managed = ManagedProject::load(&root, "application").unwrap();
+        for (name, provider) in [("images", &images), ("tickets", &tickets)] {
+            managed
+                .insert(ProviderSelection::new(
+                    name.to_owned(),
+                    format!("geam-{name}"),
+                    ProviderSource::Path {
+                        path: utf8_path(provider),
+                    },
+                ))
+                .unwrap();
+        }
+        managed.write().unwrap();
+        crate::runner::reconcile_source(
+            &root,
+            &[
+                "geam_provider_images".into(),
+                "geam_provider_tickets".into(),
+            ],
+        )
+        .unwrap();
+        // A damaged user lock must fail before either add or remove rewrites the host.
+        fs::write(root.join("Cargo.lock"), "[[package]\n").unwrap();
+        let manifest = fs::read(root.join("Cargo.toml")).unwrap();
+        let runner = fs::read(root.join("build/geam/runner.rs")).unwrap();
+        let application = fs::read(root.join("build/geam/application.rs")).unwrap();
+        for result in [
+            add_with(
+                &root,
+                project.path(),
+                path_command(requests.path(), None),
+                &TestCargo,
+            ),
+            remove_with(
+                &root,
+                RemoveProvider {
+                    gleam_package: "tickets".to_owned(),
+                },
+                &TestCargo,
+            ),
+        ] {
+            assert!(
+                matches!(result, Err(CliError::ProcessFailure { command, status: Some(101), stderr })
+                if command == format!("cargo metadata --format-version 1 --manifest-path {} --locked", root.join("Cargo.toml"))
+                    && stderr.contains("failed to parse lock file"))
+            );
+            assert_eq!(fs::read(root.join("Cargo.toml")).unwrap(), manifest);
+            assert_eq!(fs::read(root.join("build/geam/runner.rs")).unwrap(), runner);
+            assert_eq!(
+                fs::read(root.join("build/geam/application.rs")).unwrap(),
+                application
+            );
+            assert_eq!(fs::read(root.join("Cargo.lock")).unwrap(), b"[[package]\n");
         }
     }
 

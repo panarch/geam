@@ -64,6 +64,15 @@ pub struct ProviderOwnedExternal<Payload> {
     lease: ExternalPayloadLease,
 }
 
+impl<Payload: Send + 'static> Clone for ProviderOwnedExternal<Payload> {
+    fn clone(&self) -> Self {
+        Self {
+            access: self.access.clone(),
+            lease: self.lease.clone(),
+        }
+    }
+}
+
 /// A direct-only view of one transferable external payload.
 #[doc(hidden)]
 pub struct ProviderExternalView<Payload> {
@@ -413,7 +422,8 @@ provider_list_scalar!((), into_nil);
 mod tests {
     use super::{
         ProviderExternalListDecoder, ProviderExternalPayloadAccess, ProviderListContext,
-        ProviderListItemDecoder, ProviderListItemValue, ProviderOwnedExternalListDecoder,
+        ProviderListItemDecoder, ProviderListItemValue, ProviderOwnedExternal,
+        ProviderOwnedExternalListDecoder,
     };
     use crate::host::HostExternalStore;
     use crate::runtime::StoredRuntimeList;
@@ -453,5 +463,43 @@ mod tests {
 
         let _owned_clone = owned.clone();
         let _direct_clone = direct.clone();
+    }
+
+    #[test]
+    fn owned_external_aliases_share_a_non_clone_payload_until_the_last_drop() {
+        let (sender, receiver) = std::sync::mpsc::channel::<usize>();
+        let store = HostExternalStore::default();
+        let label = crate::host::HostStoredValue::<BigInt>::new(
+            crate::runtime::StoredRuntimeValue::test_int(7.into()),
+        );
+        let lease = store.insert(
+            (receiver, label),
+            |context, left, right| context.stored_values_equal(&left.1, &right.1),
+            |context, value| context.stored_value_hash(&value.1),
+            |context, value| format!("Receiver({})", context.inspect_stored_value(&value.1)).into(),
+            |_| None,
+        );
+        let original =
+            ProviderOwnedExternal::new(ProviderExternalPayloadAccess::new(&store), lease);
+        let alias = original.clone();
+        assert_eq!(original.lease.identity(), alias.lease.identity());
+        let equal = crate::host::RetainedValueEquality::new(&|_, _| true);
+        let hash = crate::host::RetainedValueHashing::new(&|_| 7);
+        let inspect = crate::host::RetainedValueInspection::new(&|_| "7".into());
+        assert!(original.lease.source_equal(&equal, &alias.lease));
+        assert_eq!(
+            original.lease.source_hash(&hash),
+            alias.lease.source_hash(&hash)
+        );
+        assert_eq!(original.lease.inspection(&inspect), "Receiver(7)");
+        sender.send(7).unwrap();
+        assert_eq!(original.with(|payload| payload.0.try_recv().unwrap()), 7);
+        drop(original);
+        drop(store);
+        sender.send(9).unwrap();
+        assert_eq!(alias.lease.inspection(&inspect), "Receiver(7)");
+        assert_eq!(alias.with(|payload| payload.0.try_recv().unwrap()), 9);
+        drop(alias);
+        assert_eq!(sender.send(11), Err(std::sync::mpsc::SendError(11)));
     }
 }
