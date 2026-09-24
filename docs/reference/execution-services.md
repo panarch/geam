@@ -199,3 +199,59 @@ contains a complete manual component, exact registration sequences, and the host
 profile. It executes direct, header-pair, and nested status/header returns against
 original `gleam_erlang` source. This boundary supports external provider authors;
 the fixture does not implement HTTP requests or extend macro return mappings.
+
+## Constructing standard-library Dicts
+
+Manual providers can construct the original `gleam/dict.Dict(key, item)` through
+`geam::gleam_stdlib::service::dict_from_entries`. Enable `provider` and
+`gleam-stdlib`, and compose the standard-library component in the host profile.
+The profile implements `GleamStdlibHostProfile` and
+`HostComponentProfile<geam::gleam_stdlib::Component<Profile::Io>>`.
+
+`DictOf<Key, Item>` accepts existing `HostType` arguments such as `StringValue`,
+`BigInt` and `HostListType<StringValue>`. Register an exact Dict construction
+on the native function, then pass its token and an iterator of typed pairs:
+
+```rust
+use geam::gleam_stdlib::{DictOf, service};
+use geam::host::{HostTypeIndex0, HostTypeList, HostTypeListEnd};
+use geam::provider::StringValue;
+
+type TextDict = DictOf<StringValue, StringValue>;
+type Constructions = HostTypeList<TextDict, HostTypeListEnd>;
+
+// Inside a callback registered with with_scoped_function_and_constructions:
+let entries = [("LANG", "한국어"), ("EMPTY", "")]
+    .map(|(key, item)| (StringValue::from(key), StringValue::from(item)));
+let dict = service::dict_from_entries(
+    &mut call,
+    constructions.at::<HostTypeIndex0>(),
+    entries,
+);
+Ok(call.return_value(dict))
+```
+
+The exact Dict token authorizes retention of its key and item types. Generic
+parameters must already be bound by the registered function's signature.
+Additional intermediate containers need their own construction tokens; existing
+typed values do not. The return type can contain Dicts inside tuples or Lists.
+The producer owns binding and storage, so consumers need no storage adapter,
+replacement schema or hidden API.
+
+The iterator is consumed once. Equal keys use Gleam source semantics, and the
+last pair wins, matching `dict.from_list`. Hash collisions preserve distinct
+keys. Dict iteration order is unspecified. This new service does not change the
+existing first-wins behavior of JSON object decoding.
+
+The immutable payload retains its entries independently of the input container,
+and `dict.insert`/`delete` preserve earlier aliases. The returned host handle is
+call-scoped; ordinary source data can outlive execution through its retained
+value. Values with an execution lifetime keep that restriction when nested in a
+Dict. Construction requires no new execution service or asynchronous operation.
+
+The independent [Dict fixture](../../tests/fixtures/dict_service) provides the
+complete manual registration and host profile. It exercises String pairs,
+integer keys with List items, and Dicts nested in a tuple and List through
+unchanged stdlib source. It establishes the construction boundary needed by
+external providers, without implementing environment-variable policy or
+extending provider macro return mappings.

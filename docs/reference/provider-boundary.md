@@ -832,6 +832,10 @@ the required exact tokens. The Erlang service's
 [`charlist_from_string`](execution-services.md#constructing-erlang-charlists)
 constructs original Charlists from Rust text, including inside tuple/list returns,
 without requiring the consumer to own the Charlist binding or storage adapter.
+The [standard-library Dict service](execution-services.md#constructing-standard-library-dicts)
+similarly consumes typed key/item pairs under an exact `DictOf<Key, Item>` token.
+It retains the producer's storage and value semantics, with the last equal pair
+winning as in `dict.from_list`, including when the Dict is nested in a return.
 
 ## Standalone CLI Boundary
 

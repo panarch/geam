@@ -697,6 +697,47 @@ provider package, not its Geam dependencies. Geam packages retain their own gate
 This fixture establishes Charlist construction, not HTTP behavior or general
 foreign-value macro authoring.
 
+## Dict Service Consumer
+
+The independent [Dict fixture](../../tests/fixtures/dict_service) uses the public
+`geam::gleam_stdlib::{DictOf, service}` boundary to construct original Dicts from
+another provider. Its Cargo workspace enables only `provider,gleam-stdlib` and
+has its own lock. The Gleam project pins original `gleam_stdlib` 1.0.3 and checks
+that locked acquisition preserves its manifest. Downloaded source and build
+products remain outside Git.
+
+The provider constructs String/String entries, `Dict(Int, List(String))`, and
+Dicts nested in a tuple and List. The separate `provider/tests/public_usage.rs`
+target composes the public components and runs original source assertions for
+empty/duplicate entries, exact keys/items, missing keys, equality, Dict keys
+and persistent insert/delete aliases. Repeated execution and exact inspection
+after execution/state drop verify ordinary retained results. Provider projection
+unit tests stay beside the implementation.
+
+`geam-stdlib` owner tests in `dict/function.rs` separately cover typed generic
+construction, source/native equality and hashing, actual hash collisions, the
+last pair's retention, persistent sharing and final release. Its existing
+Dynamic/native-map and JSON consumers retain their first-wins behavior.
+Consumer profiles do not substitute for built-in owner coverage.
+
+```sh
+cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/dict_service/project/src
+cargo llvm-cov clean --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --package geam-dict-service-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace owns Rust formatting and Clippy; Acceptance's mandatory Linux
+`Dict service consumer` job owns original-source tests and Gleam formatting.
+Coverage includes `dict_service` in the service-consumer matrix. Its fresh
+100% line/full-region denominator is the fixture provider package, independently
+of Geam's production dependencies. This fixture proves construction, not an
+`envoy` implementation or process-environment semantics.
+
 ## Benchmark Tooling
 
 The independently locked [`benchmarks/`](https://github.com/panarch/geam/tree/main/benchmarks) workspace

@@ -227,6 +227,8 @@ jobs:
             directory: tests/fixtures/otp_service/provider
           - consumer: charlist_service
             directory: tests/fixtures/charlist_service/provider
+          - consumer: dict_service
+            directory: tests/fixtures/dict_service/provider
 
     steps:
       - name: Checkout
