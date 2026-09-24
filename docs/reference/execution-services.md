@@ -149,3 +149,53 @@ The [process provider example](../../examples/provider/process_service) and the
 consumers. The latter checks pinned upstream source and retained callbacks; it
 is not a distributable OTP provider or a claim that every OTP policy is
 implemented.
+
+## Constructing Erlang Charlists
+
+Manual providers can construct the original `gleam/erlang/charlist.Charlist`
+with `geam::gleam_erlang::service::charlist_from_string`. Enable the
+`gleam-erlang` feature and compose the original Erlang component in the host
+profile. The function accepts a mutable `HostCall`, exact construction tokens
+for `Charlist` and `HostListType<char>`, and borrowed Rust text (`&str`).
+
+Declare both constructions on the calling function, including when Charlist is
+its exact return type:
+
+```rust
+use geam::gleam_erlang::{Charlist, service};
+use geam::host::{HostListType, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd};
+
+type Constructions = HostTypeList<
+    Charlist,
+    HostTypeList<HostListType<char>, HostTypeListEnd>,
+>;
+
+// Inside a callback registered with with_scoped_function_and_constructions:
+let value = service::charlist_from_string(
+    &mut call,
+    constructions.at::<HostTypeIndex0>(),
+    constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(),
+    &text,
+);
+Ok(call.return_value(value))
+```
+
+The producer retains the character list through its original binding and store.
+Consumers do not declare a replacement Charlist schema, implement its storage
+adapter, or call hidden binding-aware construction methods. Text is traversed
+as Unicode scalar values without normalization; the value does not borrow the
+input text. The host handle remains call-scoped, while a returned source value
+retains its payload through the ordinary external-value lifetime.
+
+The same function can construct a Charlist inside a tuple or list return. Declare
+any additional intermediate containers in that registration's construction
+sequence and build them with the existing typed host methods. Construction
+does not require a new execution service, mailbox, or asynchronous wait.
+Original `charlist.to_string`, source equality and hashing, and native
+integer-list views continue to use the producer's representation.
+
+The independent [Charlist service fixture](../../tests/fixtures/charlist_service)
+contains a complete manual component, exact registration sequences, and the host
+profile. It executes direct, header-pair, and nested status/header returns against
+original `gleam_erlang` source. This boundary supports external provider authors;
+the fixture does not implement HTTP requests or extend macro return mappings.

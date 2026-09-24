@@ -19,7 +19,7 @@ pub use processes::Processes;
 pub(crate) use processes::{monitor_reference, schedule};
 pub use reference::Reference;
 pub use subject::Subject;
-pub use values::{charlist_string, native_rules, new_reference, pid_value};
+pub use values::{charlist_from_string, charlist_string, native_rules, new_reference, pid_value};
 pub(crate) use values::{fresh_name, subject_parts};
 
 use crate::GleamErlangHostProfile;

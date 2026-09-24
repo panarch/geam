@@ -827,6 +827,12 @@ the callback capability come from the same type list, so runtime does not need
 signature or permission checks. Generic construction types may refer only to
 type parameters already bound by the function signature.
 
+For a foreign producer-owned external, use the producer's public service with
+the required exact tokens. The Erlang service's
+[`charlist_from_string`](execution-services.md#constructing-erlang-charlists)
+constructs original Charlists from Rust text, including inside tuple/list returns,
+without requiring the consumer to own the Charlist binding or storage adapter.
+
 ## Standalone CLI Boundary
 
 The standalone CLI emits one aggregate `Stores`, `RunState`, `Profile`,
