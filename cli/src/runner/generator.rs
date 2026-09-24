@@ -381,10 +381,10 @@ fn check(project_root: String, module: String) -> Result<(), Box<dyn std::error:
 fn run_project(
     project_root: String,
     module: String,
-    configuration_arguments: impl Iterator<Item = std::ffi::OsString>,
+    configuration_paths: std::collections::BTreeMap<String, std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let typed = geam::compile_typed_host_project(project_root, module, host_providers()?)?;
-    let configurations = load_configurations(configuration_arguments)?;
+    let configurations = load_configurations(configuration_paths)?;
     let resources = geam::gleam_erlang::Configuration { resources: typed.package_resources().clone() };
     let execution = geam::HostedEntry::try_from_module_plan(geam::plan_host_program(typed)?)?;
     run(execution, configurations, resources)
@@ -407,41 +407,28 @@ fn prepare_project(
 }
 
 fn load_configurations(
-    arguments: impl Iterator<Item = std::ffi::OsString>,
+    paths: std::collections::BTreeMap<String, std::path::PathBuf>,
 ) -> Result<std::collections::BTreeMap<String, geam::HostProviderConfiguration>, Box<dyn std::error::Error>> {
     let mut configurations = std::collections::BTreeMap::new();
-    for argument in arguments {
-        let argument = argument.into_string().map_err(|_| invalid_arguments())?;
-        let Some((package, path)) = argument.split_once('=') else {
-            return Err(invalid_data("expected provider configuration argument PACKAGE=PATH").into());
-        };
-        let configuration = geam::__standalone_support::read_provider_configuration(std::path::Path::new(path))?;
-        if configurations.insert(package.to_owned(), configuration).is_some() {
-            return Err(invalid_data(format!("provider configuration for {package} was supplied more than once")).into());
-        }
+    for (package, path) in paths {
+        let configuration = geam::__standalone_support::read_provider_configuration(&path)?;
+        configurations.insert(package, configuration);
     }
     Ok(configurations)
 }
 
 fn entry() -> Result<(), Box<dyn std::error::Error>> {
-    let mut arguments = std::env::args_os().skip(1);
-    let mode = arguments.next().ok_or_else(invalid_arguments)?;
-    let project_root = arguments.next().ok_or_else(invalid_arguments)?
-        .into_string().map_err(|_| invalid_arguments())?;
-    let module = arguments.next().ok_or_else(invalid_arguments)?
-        .into_string().map_err(|_| invalid_arguments())?;
-    if mode == "check" && arguments.next().is_none() {
-        check(project_root, module)
-    } else if mode == "run" {
-        run_project(project_root, module, arguments)
-    } else if mode == "prepare" {
-        let destination = arguments.next().ok_or_else(invalid_arguments)?.into();
-        if arguments.next().is_some() {
-            return Err(invalid_arguments().into());
+    use geam::__standalone_support::{RunnerControl, RunnerOperation};
+
+    let control = RunnerControl::parse(std::env::var_os("GEAM_RUNNER_CONTROL").as_deref())?;
+    match control.operation {
+        RunnerOperation::Check => check(control.project_root, control.module),
+        RunnerOperation::Run { configurations } => {
+            run_project(control.project_root, control.module, configurations)
         }
-        prepare_project(project_root, module, destination)
-    } else {
-        Err(invalid_arguments().into())
+        RunnerOperation::Prepare { output } => {
+            prepare_project(control.project_root, control.module, output)
+        }
     }
 }
 
@@ -453,10 +440,6 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
-}
-
-fn invalid_arguments() -> std::io::Error {
-    invalid_data("expected internal runner arguments: check|run PROJECT_ROOT MODULE [PACKAGE=PATH ...], or prepare PROJECT_ROOT MODULE OUTPUT")
 }
 "#;
 
@@ -494,6 +477,86 @@ mod tests {
     };
     use crate::provider::{ProviderBinding, ProviderComposition};
     use std::collections::BTreeSet;
+
+    #[test]
+    fn runner_control_dispatch_does_not_consume_application_arguments() {
+        let expected = r#"
+fn check(project_root: String, module: String) -> Result<(), Box<dyn std::error::Error>> {
+    let typed = geam::compile_typed_host_project(project_root, module, host_providers()?)?;
+    let plan = geam::plan_host_program(typed)?;
+    let _execution = geam::HostedEntry::try_from_module_plan(plan)?;
+    Ok(())
+}
+
+fn run_project(
+    project_root: String,
+    module: String,
+    configuration_paths: std::collections::BTreeMap<String, std::path::PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let typed = geam::compile_typed_host_project(project_root, module, host_providers()?)?;
+    let configurations = load_configurations(configuration_paths)?;
+    let resources = geam::gleam_erlang::Configuration { resources: typed.package_resources().clone() };
+    let execution = geam::HostedEntry::try_from_module_plan(geam::plan_host_program(typed)?)?;
+    run(execution, configurations, resources)
+}
+
+fn prepare_project(
+    project_root: String,
+    module: String,
+    destination: std::path::PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let typed = geam::compile_typed_host_project(project_root, module, host_providers()?)?
+        .map_source_paths(|package, module, _| format!("{package}/src/{module}.gleam").into());
+    let packages = typed.package_resources().keys().map(|name| name.to_string()).collect::<Vec<_>>();
+    let prepared = geam::PreparedHostedEntry::try_from_module_plan(geam::plan_host_program(typed)?)?;
+    let expression = prepared.emit_rust();
+    std::fs::write(destination, format!(
+        "// Generated by Geam. Do not edit.\n\nuse geam::__prepared_support as data;\n\npub(super) const PACKAGES: &[&str] = &{packages:?};\n\n#[rustfmt::skip]\npub(super) static PROGRAM: data::HostedEntryArtifact = {expression};\n"
+    ))?;
+    Ok(())
+}
+
+fn load_configurations(
+    paths: std::collections::BTreeMap<String, std::path::PathBuf>,
+) -> Result<std::collections::BTreeMap<String, geam::HostProviderConfiguration>, Box<dyn std::error::Error>> {
+    let mut configurations = std::collections::BTreeMap::new();
+    for (package, path) in paths {
+        let configuration = geam::__standalone_support::read_provider_configuration(&path)?;
+        configurations.insert(package, configuration);
+    }
+    Ok(configurations)
+}
+
+fn entry() -> Result<(), Box<dyn std::error::Error>> {
+    use geam::__standalone_support::{RunnerControl, RunnerOperation};
+
+    let control = RunnerControl::parse(std::env::var_os("GEAM_RUNNER_CONTROL").as_deref())?;
+    match control.operation {
+        RunnerOperation::Check => check(control.project_root, control.module),
+        RunnerOperation::Run { configurations } => {
+            run_project(control.project_root, control.module, configurations)
+        }
+        RunnerOperation::Prepare { output } => {
+            prepare_project(control.project_root, control.module, output)
+        }
+    }
+}
+
+fn main() -> std::process::ExitCode {
+    match entry() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("geam runner: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+"#;
+        assert_eq!(
+            render_source(&[]),
+            format!("{}{expected}", render_host(&[]))
+        );
+    }
 
     #[test]
     fn composes_each_service_once_and_projects_profile_dependent_consumers() {

@@ -1,5 +1,6 @@
 use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand};
+use std::ffi::OsString;
 
 #[derive(Debug, PartialEq, Eq, Parser)]
 #[command(name = "geam", version, about = "Run Gleam projects through Geam")]
@@ -47,6 +48,10 @@ pub(super) struct RunCommand {
 
     #[arg(long = "provider-config", value_name = "GLEAM_PACKAGE=PATH")]
     pub(super) provider_configs: Vec<String>,
+
+    /// Arguments passed unchanged to the application after `--`.
+    #[arg(last = true, value_name = "ARGUMENT")]
+    pub(super) arguments: Vec<OsString>,
 }
 
 #[derive(Debug, PartialEq, Eq, Args)]
@@ -111,6 +116,107 @@ mod tests {
     };
     use camino::Utf8PathBuf;
     use clap::{CommandFactory, Parser};
+    use std::ffi::OsString;
+
+    #[test]
+    fn application_arguments_require_and_preserve_the_explicit_separator() {
+        for input in [vec!["geam", "run"], vec!["geam", "run", "--"]] {
+            assert_eq!(
+                Cli::try_parse_from(input).unwrap(),
+                Cli {
+                    command: Command::Run(RunCommand {
+                        module: None,
+                        provider_configs: Vec::new(),
+                        arguments: Vec::new(),
+                    }),
+                }
+            );
+        }
+        let values = [
+            "",
+            "alpha",
+            "space value",
+            "--help",
+            "--module",
+            "--provider-config",
+            "key=value",
+            "--",
+            "한글",
+            "quote\"'\\",
+            "line\nbreak",
+        ];
+        let mut input = vec![
+            "geam",
+            "run",
+            "-m",
+            "worker",
+            "--provider-config",
+            "images=config.toml",
+            "--",
+        ];
+        input.extend(values);
+        assert_eq!(
+            Cli::try_parse_from(input).unwrap(),
+            Cli {
+                command: Command::Run(RunCommand {
+                    module: Some("worker".into()),
+                    provider_configs: vec!["images=config.toml".into()],
+                    arguments: values.map(OsString::from).into(),
+                }),
+            }
+        );
+        for input in [
+            vec!["geam", "run", "alpha"],
+            vec!["geam", "run", "--unknown"],
+            vec!["geam", "prepare", "--", "alpha"],
+            vec!["geam", "build", "--", "alpha"],
+        ] {
+            assert_eq!(
+                Cli::try_parse_from(input).unwrap_err().kind(),
+                clap::error::ErrorKind::UnknownArgument
+            );
+        }
+        assert_eq!(
+            Cli::try_parse_from(["geam", "run", "--help"])
+                .unwrap_err()
+                .kind(),
+            clap::error::ErrorKind::DisplayHelp
+        );
+        let mut command = Cli::command();
+        assert_eq!(
+            command
+                .find_subcommand_mut("run")
+                .unwrap()
+                .render_usage()
+                .to_string(),
+            "Usage: run [OPTIONS] [-- <ARGUMENT>...]"
+        );
+    }
+
+    #[test]
+    fn application_arguments_keep_native_os_values() {
+        #[cfg(unix)]
+        let argument = {
+            use std::os::unix::ffi::OsStringExt;
+            OsString::from_vec(b"native-\xff".to_vec())
+        };
+        #[cfg(windows)]
+        let argument = {
+            use std::os::windows::ffi::OsStringExt;
+            OsString::from_wide(&[0x61, 0xd800])
+        };
+        let input = ["geam".into(), "run".into(), "--".into(), argument.clone()];
+        assert_eq!(
+            Cli::try_parse_from(input).unwrap(),
+            Cli {
+                command: Command::Run(RunCommand {
+                    module: None,
+                    provider_configs: Vec::new(),
+                    arguments: vec![argument],
+                }),
+            }
+        );
+    }
 
     #[test]
     fn exposes_complete_command_help() {
@@ -146,6 +252,7 @@ mod tests {
             Cli {
                 command: Command::Run(RunCommand {
                     module: Some("worker".to_owned()),
+                    arguments: Vec::new(),
                     provider_configs: vec![
                         "images=config.toml".to_owned(),
                         "search=search.toml".to_owned(),

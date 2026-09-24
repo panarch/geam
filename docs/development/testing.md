@@ -320,7 +320,8 @@ cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
 cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
 cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
-cargo test --package geam --test prepared_embedding --test standalone_build --locked
+cargo test --package geam --test prepared_embedding --locked
+cargo test --package geam --test standalone_build --locked
 ```
 
 The root `prepared_embedding` target runs init, both and prepared sync/check,
@@ -346,13 +347,15 @@ silently invoke a generation tool. The Prepared distribution CI matrix runs this
 boundary on Linux, macOS and Windows; native feature/registration mismatch and
 rich hosted generation remain CLI owner tests.
 
-The same matrix runs `standalone_build`: real debug/release builds, selected
-modules, source-backed command transitions, and relocated execution with an
-empty PATH. It composes the maintained provider and Future fixtures with
-process execution, configures providers and package resources at startup, and
-verifies untouched application arguments, cancellation, shutdown and source
-diagnostics after removing the source/build tree. CLI owner tests separately
-fix Cargo message admission, output ownership, locking and preparation failure.
+The separate Standalone build matrix runs `standalone_build`: real debug/release
+builds, selected modules, source-backed command transitions, and relocated
+execution with an empty PATH. It composes the maintained provider and Future
+fixtures with process execution, configures providers and package resources at
+startup, and verifies untouched application arguments, cancellation, shutdown,
+and source diagnostics after removing the source/build tree. Its CI cases run
+sequentially so fresh runners do not unpack Gleam dependencies concurrently.
+CLI owner tests separately fix Cargo message admission, output ownership,
+locking and preparation failure.
 The root standalone support module owns configuration/path, IO and driver-join
 tests; its tests run in the CLI/binary coverage closure. Join tests cover owned
 state, panic payloads and cancellation without detaching the driver. The
@@ -601,6 +604,53 @@ boundary cases that are clearer as complete Gleam modules than as planner unit
 tests.
 
 
+## Application Argument Forwarding
+
+The `cli/tests/fixtures/standalone_cli/providers` workspace contains the private
+[`geam-arguments-fixture`](../../cli/tests/fixtures/standalone_cli/providers/geam-arguments-fixture)
+provider and its local `application_arguments` Gleam package. Only the argument
+acceptance case adds this package and selects its provider. The default
+catalog/counter project remains unchanged.
+
+The provider snapshots `args_os().skip(1)` during initialization. Ordinary Gleam
+source compares its typed String and native-unit Lists against the supplied
+arguments. String conversion is a lossy observation; Unix bytes and Windows
+UTF-16 code units separately prove native forwarding. This fixture does not
+implement the `argv` package.
+
+`standalone_build` checks real `geam run --` execution, empty and repeated
+arguments, option boundaries, Unicode and non-Unicode values, provider config,
+and source-free relocated execution. Invalid internal control must fail before
+provider initialization. Prepare and build must not initialize state or execute
+main. The existing Prepared distribution matrix runs this target on Linux,
+macOS and Windows. Owner tests separately fix CLI parsing, dispatch, complete
+command construction, TOML encoding/admission, and generated runner source.
+
+The provider's `tests/public_usage.rs` uses the public typed host API with
+caller-owned state and retained results. Its independent coverage denominator
+is this provider package, not its Geam dependencies. From the repository root:
+
+```sh
+(
+  set -e
+  cd cli/tests/fixtures/standalone_cli/providers
+  cargo fetch --locked --config net.offline=false
+  cargo test --package geam-arguments-fixture --locked
+  cargo fmt --all --check
+  cargo clippy --workspace --all-targets --locked -- -D warnings
+  cargo llvm-cov clean --workspace
+  cargo llvm-cov --package geam-arguments-fixture --no-report --locked
+  cargo llvm-cov report --package geam-arguments-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+)
+gleam format --check cli/tests/fixtures/standalone_cli/project/packages/application_arguments/src
+```
+
+Run Cargo from the providers directory so its local patch and offline
+configuration are applied. Workspace owns formatting and Clippy; Acceptance's
+Root package job runs the provider tests and Gleam formatting, and Coverage's
+Application arguments job requires fresh 100% line and full-region coverage.
+CLI and root production coverage remain in their existing separate closure.
+
 ## Execution Service Consumers
 
 The [process service example](../../examples/provider/process_service) owns an
@@ -732,8 +782,8 @@ cargo llvm-cov report --manifest-path tests/fixtures/dict_service/provider/Cargo
 ```
 
 Workspace owns Rust formatting and Clippy; Acceptance's mandatory Linux
-`Dict service consumer` job owns original-source tests and Gleam formatting.
-Coverage includes `dict_service` in the service-consumer matrix. Its fresh
+`Charlist and Dict service consumers` job owns original-source tests and Gleam
+formatting. Coverage includes `dict_service` in the service-consumer matrix. Its fresh
 100% line/full-region denominator is the fixture provider package, independently
 of Geam's production dependencies. This fixture proves construction, not an
 `envoy` implementation or process-environment semantics.

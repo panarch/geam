@@ -57,6 +57,15 @@ jobs:
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
 
+      - name: Test application argument provider
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: |
+          cargo fetch --locked --config net.offline=false
+          cargo test --package geam-arguments-fixture --locked
+
+      - name: Check application argument Gleam formatting
+        run: gleam format --check cli/tests/fixtures/standalone_cli/project/packages/application_arguments/src
+
       - name: Verify standalone Gleam packages
         run: |
           for package in catalog counter pure_labels; do
@@ -413,7 +422,44 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
-        run: cargo test --package geam --test prepared_embedding --test standalone_build --locked
+        run: cargo test --package geam --test prepared_embedding --locked
+
+  standalone-build:
+    name: Standalone build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+          cache: false
+          rustflags: ""
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: standalone-build
+
+      - name: Fetch workspace dependencies for offline fixtures
+        run: cargo fetch --locked
+
+      - name: Verify standalone build and source-free distribution
+        run: cargo test --package geam --test standalone_build --locked -- --test-threads=1
 
   published-provider:
     name: Published provider
@@ -672,7 +718,7 @@ jobs:
 
 
   charlist-service-consumer:
-    name: Charlist service consumer
+    name: Charlist and Dict service consumers
     runs-on: ubuntu-latest
 
     steps:
@@ -695,50 +741,25 @@ jobs:
       - name: Cache independent consumer build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "tests/fixtures/charlist_service/provider -> target"
+          workspaces: |
+            tests/fixtures/charlist_service/provider -> target
+            tests/fixtures/dict_service/provider -> target
 
       - name: Fetch locked consumer dependencies
-        run: cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+        run: |
+          cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
         run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
 
-      - name: Verify fixture source formatting
+      - name: Verify Charlist fixture source formatting
         run: gleam format --check tests/fixtures/charlist_service/project/src
-
-  dict-service-consumer:
-    name: Dict service consumer
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Gleam toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "29"
-          gleam-version: "1.18.1"
-          rebar3-version: "3"
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Cache independent consumer build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "tests/fixtures/dict_service/provider -> target"
-
-      - name: Fetch locked consumer dependencies
-        run: cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Dict values through original source
         run: cargo test --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
 
-      - name: Verify fixture source formatting
+      - name: Verify Dict fixture source formatting
         run: gleam format --check tests/fixtures/dict_service/project/src
 
   external-provider-sdk:

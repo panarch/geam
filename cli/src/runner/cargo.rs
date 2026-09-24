@@ -1,7 +1,9 @@
+use super::control::{CONTROL_ENV, RunnerControl};
 use crate::error::CliError;
 use crate::process::{run_checked_with_progress, run_inherited};
 use crate::progress::Progress;
 use camino::{Utf8Path, Utf8PathBuf};
+use std::ffi::OsString;
 use std::fs;
 use std::process::{Command, Stdio};
 
@@ -30,6 +32,7 @@ pub(crate) trait RunnerExecutor {
         project_root: &Utf8Path,
         module: &str,
         configurations: &[(String, Utf8PathBuf)],
+        arguments: &[OsString],
     ) -> Result<(), CliError>;
 }
 
@@ -62,7 +65,7 @@ impl RunnerChecker for SystemCargo {
         progress: &mut Progress<'_>,
     ) -> Result<(), CliError> {
         finish_process(run_checked_with_progress(
-            &mut runner_command(project_root, "check", module),
+            &mut runner_command(project_root, module, RunnerControl::Check),
             progress,
             Stdio::inherit(),
         ))
@@ -75,8 +78,14 @@ impl RunnerExecutor for SystemCargo {
         project_root: &Utf8Path,
         module: &str,
         configurations: &[(String, Utf8PathBuf)],
+        arguments: &[OsString],
     ) -> Result<(), CliError> {
-        run_inherited(&mut execution_command(project_root, module, configurations))
+        run_inherited(&mut execution_command(
+            project_root,
+            module,
+            configurations,
+            arguments,
+        ))
     }
 }
 
@@ -84,7 +93,7 @@ fn finish_process(result: Result<std::process::Output, CliError>) -> Result<(), 
     result.map(drop)
 }
 
-fn runner_command(project_root: &Utf8Path, mode: &str, module: &str) -> Command {
+fn runner_command(project_root: &Utf8Path, module: &str, control: RunnerControl<'_>) -> Command {
     let mut command = Command::new("cargo");
     command
         .arg("run")
@@ -92,9 +101,7 @@ fn runner_command(project_root: &Utf8Path, mode: &str, module: &str) -> Command 
         .arg("--bin")
         .arg("geam-runner")
         .arg("--")
-        .arg(mode)
-        .arg(project_root)
-        .arg(module)
+        .env(CONTROL_ENV, control.encode(project_root, module))
         .current_dir(project_root)
         .env("CARGO_TARGET_DIR", project_root.join(TARGET_DIRECTORY));
     command
@@ -104,11 +111,10 @@ fn execution_command(
     project_root: &Utf8Path,
     module: &str,
     configurations: &[(String, Utf8PathBuf)],
+    arguments: &[OsString],
 ) -> Command {
-    let mut command = runner_command(project_root, "run", module);
-    for (package, path) in configurations {
-        command.arg(format!("{package}={path}"));
-    }
+    let mut command = runner_command(project_root, module, RunnerControl::Run(configurations));
+    command.args(arguments);
     command
 }
 
@@ -149,8 +155,10 @@ mod tests {
     };
     use crate::error::CliError;
     use crate::progress::Progress;
+    use crate::runner::control::{CONTROL_ENV, RunnerControl};
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::RefCell;
+    use std::ffi::{OsStr, OsString};
     use std::fs;
     use tempfile::tempdir;
 
@@ -190,52 +198,93 @@ mod tests {
 
     #[test]
     fn constructs_check_and_run_commands_with_project_owned_targets() {
-        let project = tempdir().expect("temporary project should be created");
-        let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf())
-            .expect("temporary path should be valid UTF-8");
-
-        let check = runner_command(&root, "check", "application");
+        let root = Utf8Path::new("project with spaces");
+        let check = runner_command(root, "application", RunnerControl::Check);
+        assert_eq!(check.get_program(), "cargo");
+        assert_eq!(check.get_current_dir(), Some(root.as_std_path()));
         assert_eq!(
-            check
-                .get_args()
-                .map(|argument| argument.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
+            check.get_args().collect::<Vec<_>>(),
+            ["run", "--locked", "--bin", "geam-runner", "--"],
+        );
+        assert_eq!(
+            check.get_envs().collect::<Vec<_>>(),
+            [
+                (
+                    OsStr::new("CARGO_TARGET_DIR"),
+                    Some(root.join("build/geam/target").as_os_str())
+                ),
+                (
+                    OsStr::new(CONTROL_ENV),
+                    Some(OsStr::new(
+                        "schema = 1\nmode = \"check\"\nproject_root = \"project with spaces\"\nmodule = \"application\"\n"
+                    ))
+                ),
+            ],
+        );
+        let arguments: Vec<OsString> = ["", "--help", "key=value", "한글", "--", "space value"]
+            .map(Into::into)
+            .into();
+        let run = execution_command(
+            root,
+            "worker",
+            &[("images".into(), "config.toml".into())],
+            &arguments,
+        );
+        assert_eq!(run.get_program(), "cargo");
+        assert_eq!(run.get_current_dir(), Some(root.as_std_path()));
+        assert_eq!(
+            run.get_args().collect::<Vec<_>>(),
             [
                 "run",
                 "--locked",
                 "--bin",
                 "geam-runner",
                 "--",
-                "check",
-                root.as_str(),
-                "application",
+                "",
+                "--help",
+                "key=value",
+                "한글",
+                "--",
+                "space value"
             ],
-        );
-
-        let run = execution_command(
-            &root,
-            "worker",
-            &[("images".to_owned(), root.join("config.toml"))],
         );
         assert_eq!(
-            run.get_args()
-                .map(|argument| argument.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
+            run.get_envs().collect::<Vec<_>>(),
             [
-                "run".to_owned(),
-                "--locked".to_owned(),
-                "--bin".to_owned(),
-                "geam-runner".to_owned(),
-                "--".to_owned(),
-                "run".to_owned(),
-                root.to_string(),
-                "worker".to_owned(),
-                format!("images={}", root.join("config.toml")),
+                (
+                    OsStr::new("CARGO_TARGET_DIR"),
+                    Some(root.join("build/geam/target").as_os_str())
+                ),
+                (
+                    OsStr::new(CONTROL_ENV),
+                    Some(OsStr::new(concat!(
+                        "schema = 1\nmode = \"run\"\nproject_root = \"project with spaces\"\nmodule = \"worker\"\n",
+                        "\n[[configurations]]\npackage = \"images\"\npath = \"config.toml\"\n",
+                    )))
+                ),
             ],
         );
-        assert!(run.get_envs().any(|(key, value)| {
-            key == "CARGO_TARGET_DIR" && value == Some(root.join("build/geam/target").as_os_str())
-        }),);
+    }
+
+    #[test]
+    fn preserves_native_arguments_in_the_cargo_command() {
+        #[cfg(unix)]
+        let argument = {
+            use std::os::unix::ffi::OsStringExt;
+            OsString::from_vec(b"native-\xff".to_vec())
+        };
+        #[cfg(windows)]
+        let argument = {
+            use std::os::windows::ffi::OsStringExt;
+            OsString::from_wide(&[0x61, 0xd800])
+        };
+        let command = execution_command(
+            Utf8Path::new("project"),
+            "worker",
+            &[],
+            std::slice::from_ref(&argument),
+        );
+        assert_eq!(command.get_args().skip(5).collect::<Vec<_>>(), [argument]);
     }
 
     #[test]
@@ -351,9 +400,7 @@ mod tests {
             check,
             CliError::ProcessFailure { command, status: Some(101), stderr }
                 if command
-                    == format!(
-                        "cargo run --locked --bin geam-runner -- check {root} application"
-                    )
+                    == "cargo run --locked --bin geam-runner --"
                     && stderr.contains("could not find `Cargo.toml`")
         ));
     }
