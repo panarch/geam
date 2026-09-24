@@ -320,7 +320,8 @@ cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
 cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
 cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
-cargo test --package geam --test prepared_embedding --test standalone_build --locked
+cargo test --package geam --test prepared_embedding --locked
+cargo test --package geam --test standalone_build --locked
 ```
 
 The root `prepared_embedding` target runs init, both and prepared sync/check,
@@ -346,13 +347,15 @@ silently invoke a generation tool. The Prepared distribution CI matrix runs this
 boundary on Linux, macOS and Windows; native feature/registration mismatch and
 rich hosted generation remain CLI owner tests.
 
-The same matrix runs `standalone_build`: real debug/release builds, selected
-modules, source-backed command transitions, and relocated execution with an
-empty PATH. It composes the maintained provider and Future fixtures with
-process execution, configures providers and package resources at startup, and
-verifies untouched application arguments, cancellation, shutdown and source
-diagnostics after removing the source/build tree. CLI owner tests separately
-fix Cargo message admission, output ownership, locking and preparation failure.
+The separate Standalone build matrix runs `standalone_build`: real debug/release
+builds, selected modules, source-backed command transitions, and relocated
+execution with an empty PATH. It composes the maintained provider and Future
+fixtures with process execution, configures providers and package resources at
+startup, and verifies untouched application arguments, cancellation, shutdown,
+and source diagnostics after removing the source/build tree. Its CI cases run
+sequentially so fresh runners do not unpack Gleam dependencies concurrently.
+CLI owner tests separately fix Cargo message admission, output ownership,
+locking and preparation failure.
 The root standalone support module owns configuration/path, IO and driver-join
 tests; its tests run in the CLI/binary coverage closure. Join tests cover owned
 state, panic payloads and cancellation without detaching the driver. The
@@ -779,8 +782,8 @@ cargo llvm-cov report --manifest-path tests/fixtures/dict_service/provider/Cargo
 ```
 
 Workspace owns Rust formatting and Clippy; Acceptance's mandatory Linux
-`Dict service consumer` job owns original-source tests and Gleam formatting.
-Coverage includes `dict_service` in the service-consumer matrix. Its fresh
+`Charlist and Dict service consumers` job owns original-source tests and Gleam
+formatting. Coverage includes `dict_service` in the service-consumer matrix. Its fresh
 100% line/full-region denominator is the fixture provider package, independently
 of Geam's production dependencies. This fixture proves construction, not an
 `envoy` implementation or process-environment semantics.

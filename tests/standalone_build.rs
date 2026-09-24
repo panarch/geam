@@ -502,7 +502,7 @@ fn forwards_application_arguments_through_run_and_relocated_native_execution() {
                 }
             })
             .collect();
-        let source = format!(
+        let mut source = format!(
             r#"import application_arguments
 import counter
 import gleam/io
@@ -510,12 +510,20 @@ import gleam/io
 pub fn main() {{
   let snapshot = application_arguments.snapshot()
   let assert {strings:?} = snapshot.0
-  let assert {units:?} = snapshot.1
-  let assert "args:3" = counter.next("args")
-  io.println("arguments-observed")
-}}
 "#
         );
+        // A single nested pattern exhausted the Windows CLI stack during source checking.
+        let mut remaining = "snapshot.1".to_owned();
+        for (index, expected) in units.iter().enumerate() {
+            let next = format!("remaining_{index}");
+            source.push_str(&format!(
+                "  let assert [native_{index}, ..{next}] = {remaining}\n  let assert {expected:?} = native_{index}\n"
+            ));
+            remaining = next;
+        }
+        source.push_str(&format!(
+            "  let assert [] = {remaining}\n  let assert \"args:3\" = counter.next(\"args\")\n  io.println(\"arguments-observed\")\n}}\n"
+        ));
         fs::write(project.join("src/arguments.gleam"), source).unwrap();
         let mut command = geam(
             &project,
