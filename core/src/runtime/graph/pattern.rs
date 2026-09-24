@@ -5,8 +5,9 @@ use super::bit_array;
 use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, IntegerLiteral,
-    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, FloatBitSize,
+    IntegerLiteral, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
+    MatchPatternListTail,
 };
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
@@ -260,16 +261,21 @@ fn match_bit_array(
                 let Some(bit_size) = evaluate_size(environment, bindings, size) else {
                     return false;
                 };
-                let width = match bit_size {
-                    16 => crate::plan::execution::graph::FloatBitSize::Sixteen,
-                    32 => crate::plan::execution::graph::FloatBitSize::ThirtyTwo,
-                    64 => crate::plan::execution::graph::FloatBitSize::SixtyFour,
-                    _ => return false,
+                let value = if bit_size == 0 {
+                    0.0
+                } else {
+                    let width = match bit_size {
+                        16 => FloatBitSize::Sixteen,
+                        32 => FloatBitSize::ThirtyTwo,
+                        64 => FloatBitSize::SixtyFour,
+                        _ => return false,
+                    };
+                    let Some(bits) = bit_array::take_bits(subject.bits(), &mut cursor, bit_size)
+                    else {
+                        return false;
+                    };
+                    bit_array::decode_float(bits, width, *endianness)
                 };
-                let Some(bits) = bit_array::take_bits(subject.bits(), &mut cursor, bit_size) else {
-                    return false;
-                };
-                let value = bit_array::decode_float(bits, width, *endianness);
                 match_float(pattern, value, bindings)
             }
             BitArrayPatternSegment::Bits {
@@ -347,9 +353,6 @@ fn evaluate_size(
     let Ok(value) = usize::try_from(value) else {
         return None;
     };
-    if value == 0 {
-        return None;
-    }
     value.checked_mul(usize::from(size.unit()))
 }
 
@@ -471,6 +474,7 @@ fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &
 mod tests {
     use super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{MatchBindings, MatchPattern, match_pattern, matches_list};
+    use crate::BitArrayValue;
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
@@ -1065,8 +1069,8 @@ pub fn main() {
                     Value::BitArray(crate::BitArrayValue::from_bytes(vec![0xab])),
                     Value::BitArray(crate::BitArrayValue::try_from_parts(vec![0xc0], 2).unwrap()),
                 ]),
-                Value::Bool(false),
-                Value::Bool(false),
+                Value::Bool(true),
+                Value::Bool(true),
                 Value::BitArray(crate::BitArrayValue::from_bytes(vec![2, 3])),
                 Value::Bool(false),
                 Value::BitArray(crate::BitArrayValue::from_bytes(Vec::new())),
@@ -1139,6 +1143,180 @@ pub fn main() {
     }
 
     #[test]
+    fn source_matcher_binds_zero_width_integers_in_both_byte_orders() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub fn main() {
+  let zero = 0
+  case <<>> {
+    <<
+      big:unsigned-big-size(zero),
+      signed_big:signed-big-size(zero),
+      little:unsigned-little-size(zero),
+      signed_little:signed-little-size(zero),
+      0 as alias:size(zero),
+    >> -> #(big, signed_big, little, signed_little, alias)
+    _ -> #(-1, -1, -1, -1, -1)
+  }
+}
+"#,
+            ),
+            Value::Tuple(vec![
+                Value::Int(0.into()),
+                Value::Int(0.into()),
+                Value::Int(0.into()),
+                Value::Int(0.into()),
+                Value::Int(0.into()),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_matcher_rejects_unrepresentable_integer_sizes() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub fn main() {
+  let negative = -1
+  let huge = 184467440737095516160
+  let overflow = 9223372036854775808
+  #(
+    case <<>> { <<_:size(negative)>> -> True _ -> False },
+    case <<>> { <<_:size(huge)>> -> True _ -> False },
+    case <<>> { <<_:size(overflow)-unit(2)>> -> True _ -> False },
+  )
+}
+"#,
+            ),
+            Value::Tuple(vec![
+                Value::Bool(false),
+                Value::Bool(false),
+                Value::Bool(false),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_matcher_preserves_zero_width_float_values_and_cursor() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub fn main() {
+  let zero = 0
+  let negative = -1
+  let huge = 184467440737095516160
+  #(
+    case <<>> { <<value:float-size(zero)>> -> value _ -> -1.0 },
+    case <<>> { <<value:float-little-size(zero)>> -> value _ -> -1.0 },
+    case <<>> { <<0.0 as alias:float-size(zero)>> -> alias _ -> -1.0 },
+    case <<>> { <<1.0:float-size(zero)>> -> True _ -> False },
+    case <<7>> { <<_:float-size(zero), value>> -> value _ -> -1 },
+    case <<>> { <<_:float-size(zero)>> -> True _ -> False },
+    case <<7>> { <<_:float-size(zero)>> -> True _ -> False },
+    case <<>> { <<_:float-size(negative)>> -> True _ -> False },
+    case <<>> { <<_:float-size(huge)>> -> True _ -> False },
+    case <<7>> {
+      <<value:float-size(zero), byte>> if value == 1.0 -> byte
+      <<byte>> -> byte + 1
+      _ -> -1
+    },
+  )
+}
+"#,
+            ),
+            Value::Tuple(vec![
+                Value::Float(0.0),
+                Value::Float(0.0),
+                Value::Float(0.0),
+                Value::Bool(false),
+                Value::Int(7.into()),
+                Value::Bool(true),
+                Value::Bool(false),
+                Value::Bool(false),
+                Value::Bool(false),
+                Value::Int(8.into()),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_matcher_preserves_float_widths_and_short_field_misses() {
+        assert_eq!(
+            crate::runtime::run_src(
+                r#"
+pub fn main() {
+  let invalid = 24
+  #(
+    case <<1.5:float-size(32)-big>> {
+      <<value:float-size(32)-big>> -> value
+      _ -> 0.0
+    },
+    case <<1.5:float-size(64)-little>> {
+      <<value:float-size(64)-little>> -> value
+      _ -> 0.0
+    },
+    case <<1.5:float-size(32)>> {
+      <<_:float-size(invalid)>> -> True
+      _ -> False
+    },
+    case <<1.5:float-size(16)>> {
+      <<_:float-size(64)>> -> True
+      _ -> False
+    },
+    case <<>> {
+      <<"A":utf8>> -> True
+      _ -> False
+    },
+  )
+}
+"#,
+            ),
+            Value::Tuple(vec![
+                Value::Float(1.5),
+                Value::Float(1.5),
+                Value::Bool(false),
+                Value::Bool(false),
+                Value::Bool(false),
+            ]),
+        );
+    }
+
+    #[test]
+    fn source_matcher_detaches_zero_width_sized_bit_arrays() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let assert <<empty:bits-size(1 - 1), _:bits>> = <<1, 2>>
+  case empty == <<>> {
+    True -> 1
+    False -> 0
+  }
+}
+"#,
+        );
+        let original = BitArrayValue::from_bytes(vec![1, 2]);
+        let original_bytes = original.bytes().as_ptr();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let bindings = match_pattern(
+            &plan,
+            state.lists_mut(),
+            &environment,
+            main_pattern(&plan),
+            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(original)),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(bindings.values.len(), 1);
+        let value = matched_bit_array(&bindings.values[0]);
+        assert!(value.bytes().is_empty());
+        assert_eq!(value.bit_len(), 0);
+        assert_ne!(value.bytes().as_ptr(), original_bytes);
+    }
+
+    #[test]
     fn source_matcher_evaluates_every_size_operator_and_boundary() {
         assert_eq!(
             crate::runtime::run_src(
@@ -1205,7 +1383,7 @@ pub fn main() {
   )
 }
 
-// @geam:expect Tuple([Int(-2), Int(4094), Int(564), Int(564), Int(564), Int(0), Int(0), Int(0), Int(0), Int(0), Int(15)])
+// @geam:expect Tuple([Int(-2), Int(4094), Int(564), Int(564), Int(564), Int(0), Int(0), Int(0), Int(0), Int(1), Int(15)])
 "#
             ),
             Value::Tuple(vec![
@@ -1218,7 +1396,7 @@ pub fn main() {
                 Value::Int(0.into()),
                 Value::Int(0.into()),
                 Value::Int(0.into()),
-                Value::Int(0.into()),
+                Value::Int(1.into()),
                 Value::Int(15.into()),
             ]),
         );
@@ -1236,8 +1414,8 @@ pub fn main() {
 "#,
             ),
             Value::Tuple(vec![
-                Value::Int(0.into()),
-                Value::Int(0.into()),
+                Value::Int(1.into()),
+                Value::Int(1.into()),
                 Value::Int(0.into()),
             ]),
         );
