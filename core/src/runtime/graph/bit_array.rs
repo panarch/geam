@@ -1,8 +1,9 @@
+use bitvec::field::BitField;
 use bitvec::order::Msb0;
 use bitvec::slice::BitSlice;
 use bitvec::vec::BitVec;
 use bitvec::view::BitView;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 
 use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{
@@ -277,30 +278,53 @@ pub(super) fn decode_integer(
     endianness: Endianness,
     signedness: Signedness,
 ) -> BigInt {
-    let mut value = BigInt::from(0u8);
-    match endianness {
-        Endianness::Big => {
-            for bit in bits {
-                value = (value << 1) + BigInt::from(u8::from(*bit));
-            }
-        }
-        Endianness::Little => {
-            for (index, chunk) in bits.chunks(8).enumerate() {
-                let mut byte = 0u8;
-                for bit in chunk {
-                    byte = (byte << 1) | u8::from(*bit);
-                }
-                value += BigInt::from(byte) << (index * 8);
-            }
-        }
+    if bits.is_empty() {
+        return BigInt::from(0u8);
     }
-    if signedness == Signedness::Signed && !bits.is_empty() {
-        let sign_bit = BigInt::from(1u8) << (bits.len() - 1);
-        if (&value & sign_bit) != BigInt::from(0u8) {
-            value -= BigInt::from(1u8) << bits.len();
-        }
+    if bits.len() <= 64 {
+        let value = match endianness {
+            Endianness::Big => bits.load_be::<u64>(),
+            // Gleam's little endian uses logical bytes from the field's start,
+            // including when that start is not aligned to a storage byte.
+            Endianness::Little => bits
+                .chunks(8)
+                .enumerate()
+                .fold(0u64, |value, (index, byte)| {
+                    value | (u64::from(byte.load_be::<u8>()) << (index * 8))
+                }),
+        };
+        return match signedness {
+            Signedness::Unsigned => BigInt::from(value),
+            Signedness::Signed => {
+                let shift = 64 - bits.len();
+                BigInt::from(((value << shift) as i64) >> shift)
+            }
+        };
     }
-    value
+
+    let bytes: Vec<_> = match endianness {
+        Endianness::Big => bits
+            .rchunks(8)
+            .map(|byte| decode_integer_byte(byte, signedness))
+            .collect(),
+        Endianness::Little => bits
+            .chunks(8)
+            .map(|byte| decode_integer_byte(byte, signedness))
+            .collect(),
+    };
+    match signedness {
+        Signedness::Unsigned => BigInt::from_bytes_le(Sign::Plus, &bytes),
+        Signedness::Signed => BigInt::from_signed_bytes_le(&bytes),
+    }
+}
+
+fn decode_integer_byte(bits: &BitSlice<u8, Msb0>, signedness: Signedness) -> u8 {
+    match signedness {
+        Signedness::Unsigned => bits.load_be::<u8>(),
+        // Only the most significant byte may be partial. Signed loading extends
+        // its sign; a full byte retains the same bit pattern in either case.
+        Signedness::Signed => bits.load_be::<i8>() as u8,
+    }
 }
 
 pub(super) fn decode_float(
@@ -674,7 +698,7 @@ pub fn main() {
     }
 
     #[test]
-    fn integer_decoder_preserves_signedness_endianness_and_unaligned_bits() {
+    fn integer_decoder_preserves_signedness_and_partial_little_endian_bytes() {
         assert_eq!(
             decode_integer(
                 [0xfe].view_bits::<Msb0>(),
@@ -707,6 +731,169 @@ pub fn main() {
             ),
             127.into(),
         );
+    }
+
+    #[test]
+    fn integer_decoder_reads_empty_zero_and_all_one_fields_at_width_boundaries() {
+        for width in [
+            0, 1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 1024, 4096,
+        ] {
+            let zeros = BitVec::<u8, Msb0>::repeat(false, width);
+            let ones = BitVec::<u8, Msb0>::repeat(true, width);
+            for endian in [Endianness::Big, Endianness::Little] {
+                for signed in [Signedness::Unsigned, Signedness::Signed] {
+                    assert_eq!(decode_integer(&zeros, endian, signed), 0.into());
+                }
+                assert_eq!(
+                    decode_integer(&ones, endian, Signedness::Unsigned),
+                    (BigInt::from(1u8) << width) - 1,
+                );
+                assert_eq!(
+                    decode_integer(&ones, endian, Signedness::Signed),
+                    BigInt::from(if width == 0 { 0 } else { -1 }),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn integer_decoder_preserves_signed_minimum_and_maximum() {
+        for width in [
+            1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 1024, 4096,
+        ] {
+            let magnitude = BigInt::from(1u8) << (width - 1);
+            for endian in [Endianness::Big, Endianness::Little] {
+                let sign = match endian {
+                    Endianness::Big => 0,
+                    Endianness::Little => (width - 1) / 8 * 8,
+                };
+                let mut minimum = BitVec::<u8, Msb0>::repeat(false, width);
+                minimum.set(sign, true);
+                assert_eq!(
+                    decode_integer(&minimum, endian, Signedness::Signed),
+                    -&magnitude,
+                );
+                let mut maximum = BitVec::<u8, Msb0>::repeat(true, width);
+                maximum.set(sign, false);
+                assert_eq!(
+                    decode_integer(&maximum, endian, Signedness::Signed),
+                    &magnitude - 1,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn integer_decoder_reads_mixed_fields_at_every_storage_offset() {
+        let bytes: [u8; 17] = [
+            0x92, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x13, 0x57, 0x9b, 0xdf, 0x24, 0x68,
+            0xac, 0xe0, 0x80,
+        ];
+        // Each row is width, BE unsigned, LE unsigned, BE signed, LE signed.
+        for (width, big_unsigned, little_unsigned, big_signed, little_signed) in [
+            (8, "92", "92", "-6e", "-6e"),
+            (12, "923", "392", "-6dd", "392"),
+            (
+                63,
+                "491a2b3c4d5e6f78",
+                "78debc9a78563492",
+                "-36e5d4c3b2a19088",
+                "-721436587a9cb6e",
+            ),
+            (
+                64,
+                "923456789abcdef0",
+                "f0debc9a78563492",
+                "-6dcba98765432110",
+                "-f21436587a9cb6e",
+            ),
+            (
+                65,
+                "12468acf13579bde0",
+                "f0debc9a78563492",
+                "-db97530eca864220",
+                "f0debc9a78563492",
+            ),
+            (
+                127,
+                "491a2b3c4d5e6f7809abcdef92345670",
+                "70ac6824df9b5713f0debc9a78563492",
+                "-36e5d4c3b2a19087f65432106dcba990",
+                "-f5397db2064a8ec0f21436587a9cb6e",
+            ),
+            (
+                128,
+                "923456789abcdef013579bdf2468ace0",
+                "e0ac6824df9b5713f0debc9a78563492",
+                "-6dcba9876543210feca86420db975320",
+                "-1f5397db2064a8ec0f21436587a9cb6e",
+            ),
+            (
+                129,
+                "12468acf13579bde026af37be48d159c1",
+                "1e0ac6824df9b5713f0debc9a78563492",
+                "-db97530eca86421fd950c841b72ea63f",
+                "-1f5397db2064a8ec0f21436587a9cb6e",
+            ),
+        ] {
+            for offset in 0..8 {
+                let mut storage = BitVec::<u8, Msb0>::repeat(true, offset);
+                storage.extend_from_bitslice(&bytes.view_bits::<Msb0>()[..width]);
+                storage.extend_from_bitslice([0xffu8].view_bits::<Msb0>());
+                let field = &storage[offset..offset + width];
+                for (endian, signed, expected) in [
+                    (Endianness::Big, Signedness::Unsigned, big_unsigned),
+                    (Endianness::Little, Signedness::Unsigned, little_unsigned),
+                    (Endianness::Big, Signedness::Signed, big_signed),
+                    (Endianness::Little, Signedness::Signed, little_signed),
+                ] {
+                    assert_eq!(
+                        decode_integer(field, endian, signed),
+                        BigInt::parse_bytes(expected.as_bytes(), 16).unwrap(),
+                        "width {width}, offset {offset}, {endian:?}, {signed:?}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn integer_decoder_uses_logical_little_endian_byte_boundaries() {
+        assert_eq!(
+            decode_integer(
+                &[0x12, 0x34].view_bits::<Msb0>()[1..9],
+                Endianness::Little,
+                Signedness::Unsigned,
+            ),
+            36.into(),
+        );
+    }
+
+    #[test]
+    fn integer_decoder_preserves_sparse_wide_values_and_leading_zeros() {
+        for width in [65, 127, 128, 129, 1024, 4096] {
+            for endian in [Endianness::Big, Endianness::Little] {
+                let (low, high) = match endian {
+                    Endianness::Big => (width - 1, 0),
+                    Endianness::Little => (7, (width - 1) / 8 * 8),
+                };
+                let mut bits = BitVec::<u8, Msb0>::repeat(false, width);
+                bits.set(low, true);
+                for signed in [Signedness::Unsigned, Signedness::Signed] {
+                    assert_eq!(decode_integer(&bits, endian, signed), 1.into());
+                }
+                bits.set(high, true);
+                let magnitude = BigInt::from(1u8) << (width - 1);
+                assert_eq!(
+                    decode_integer(&bits, endian, Signedness::Unsigned),
+                    &magnitude + 1,
+                );
+                assert_eq!(
+                    decode_integer(&bits, endian, Signedness::Signed),
+                    BigInt::from(1u8) - magnitude,
+                );
+            }
+        }
     }
 
     #[test]

@@ -181,11 +181,16 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
 
     let source = include_str!("fixtures/prepared/bit_array_patterns.gleam");
     let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
-    let (bindings, _) = ModuleBuilder::new(typed)
+    let (mut bindings, _) = ModuleBuilder::new(typed)
         .unwrap()
         .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
             "zero_fields",
         ))
+        .unwrap();
+    bindings
+        .function(
+            FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new("signed_little"),
+        )
         .unwrap();
     assert_eq!(
         bindings.prepare().emit_rust(),
@@ -255,6 +260,71 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
                         )
                         .unwrap(),
                     expected,
+                );
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn signed_little_endian_fields_preserve_dynamic_and_prepared_results() {
+    for prepared in [false, true] {
+        let (module, read) = if prepared {
+            let mut bindings = BIT_ARRAY_PATTERNS.load().unwrap();
+            let function = bindings
+                .function(
+                    FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new(
+                        "signed_little",
+                    ),
+                )
+                .unwrap();
+            (bindings.seal(), function)
+        } else {
+            let typed = geam_core::compile_typed_module(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/bit_array_patterns.gleam"),
+            )
+            .unwrap();
+            let (bindings, function) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(
+                    FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new(
+                        "signed_little",
+                    ),
+                )
+                .unwrap();
+            (bindings.seal(), function)
+        };
+        let input = BitArrayValue::from_bytes(vec![
+            0x92, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x13, 0x57, 0x9b, 0xdf, 0x24, 0x68,
+            0xac, 0xe0, 0x80,
+        ]);
+        for _ in 0..2 {
+            for (width, offset, expected) in [
+                (0, 0, "0"),
+                (8, 3, "-111"),
+                (12, 3, "-1391"),
+                (64, 3, "-9153593911804714351"),
+                (65, 3, "-9153593911804714351"),
+                (128, 3, "5853120896148130334324824293139260049"),
+                (129, 0, "-41640108513433735387645454385746135918"),
+                (137, 0, "-1"),
+                (-1, 0, "-1"),
+                (8, -1, "-1"),
+            ] {
+                let mut echo = Vec::new();
+                assert_eq!(
+                    module
+                        .call(
+                            &read,
+                            (input.clone(), width.into(), offset.into()),
+                            &mut echo,
+                        )
+                        .unwrap(),
+                    BigInt::parse_bytes(expected.as_bytes(), 10).unwrap(),
+                    "prepared {prepared}, width {width}, offset {offset}",
                 );
                 assert!(echo.is_empty());
             }

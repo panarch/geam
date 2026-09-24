@@ -61,10 +61,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         "src/example.gleam",
         include_str!("../tests/fixtures/prepared/bit_array_patterns.gleam"),
     )?;
-    let (bit_arrays, _) = ModuleBuilder::new(bit_arrays)?.function(FunctionDeclaration::<
+    let (mut bit_arrays, _) = ModuleBuilder::new(bit_arrays)?.function(FunctionDeclaration::<
         (BitArrayValue, BigInt),
         (BigInt, f64, BitArrayValue, BigInt),
     >::new("zero_fields"))?;
+    bit_arrays.function(
+        FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new("signed_little"),
+    )?;
 
     let native = geam_core::compile_typed_host_program(
         "application",

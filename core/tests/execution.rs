@@ -395,6 +395,7 @@ mod control_flow {
             bit_array_pattern,
             bit_array_pattern_options,
             bit_array_pattern_integers,
+            bit_array_pattern_wide_integers,
             bit_array_pattern_bits,
             bit_array_pattern_dynamic_bytes,
             bit_array_pattern_floats,
