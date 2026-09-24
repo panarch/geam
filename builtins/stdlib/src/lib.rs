@@ -27,10 +27,12 @@ mod int;
 mod io;
 mod result;
 mod run_state;
+pub mod service;
 mod string;
 mod string_tree;
 mod uri;
 
+pub use dict::DictOf;
 pub use dynamic::DynamicPayload as Dynamic;
 pub use io::{IoOutput, IoSink, IoStream};
 pub use run_state::{GleamStdlibRunState, GleamStdlibRunStateError};

@@ -56,6 +56,9 @@ jobs:
       - name: Check Charlist service provider formatting
         run: cargo fmt --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --all --check
 
+      - name: Check Dict service provider formatting
+        run: cargo fmt --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --all --check
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -91,6 +94,7 @@ jobs:
             examples/provider/process_service/provider -> target
             tests/fixtures/otp_service/provider -> target
             tests/fixtures/charlist_service/provider -> target
+            tests/fixtures/dict_service/provider -> target
             examples/provider/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -122,6 +126,9 @@ jobs:
 
       - name: Run Charlist service provider clippy
         run: cargo clippy --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Run Dict service provider clippy
+        run: cargo clippy --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --all-targets --locked -- -D warnings
 
   documentation:
     name: Documentation

@@ -2,9 +2,12 @@ use super::storage::{DictEntry, DictPayload, DictStorage};
 use super::{DictOf, DictSchema};
 use crate::dynamic::Dynamic;
 use crate::{
-    Component, GleamStdlibRunState, HostConstruction, HostExternal, HostProvider, HostType,
-    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
+    Component, GleamStdlibHostProfile, GleamStdlibRunState, HostComponentProfile, HostConstruction,
+    HostExternal, HostProvider, HostType, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd,
 };
+use geam_core::__macro_support::retain_constructed_argument;
+use geam_core::host::HostCall;
 use geam_core::provider::{Call, Callback, Value};
 use num_bigint::BigInt;
 use std::collections::HashMap;
@@ -313,8 +316,53 @@ where
     provider::__geam_module::<Profile>()
 }
 
+/// Constructs the original Gleam Dict from typed key/item pairs.
+///
+/// Register an exact [`DictOf<Key, Item>`] construction for the calling native
+/// function and pass its token here. Any generic key/item parameters must be
+/// bound by that function's signature. Intermediate values, such as Lists, use
+/// their own construction tokens; existing typed values need no extra tokens.
+/// The function's return type need not itself be a Dict.
+///
+/// Keys use Gleam source equality and hashing. The last pair for an equal key
+/// wins, matching `gleam/dict.from_list`; different keys with the same hash stay
+/// distinct. A Dict has no iteration-order guarantee.
+///
+/// The iterator is consumed once. Unique entries are retained by the immutable
+/// payload, so input containers may be dropped and later persistent updates do
+/// not mutate this value. The returned handle is call-scoped; returning or
+/// retaining it follows the ordinary typed host lifetime rules, including any
+/// execution-scoped values nested inside it.
+pub fn dict_from_entries<'call, Profile, Provider, Return, Key, Item>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Key, Item>>,
+    entries: impl IntoIterator<Item = (Key::Value<'call>, Item::Value<'call>)>,
+) -> HostExternal<'call, DictOf<Key, Item>>
+where
+    Profile: GleamStdlibHostProfile + HostComponentProfile<Component<Profile::Io>>,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Key: HostType,
+    Item: HostType,
+{
+    let mut buckets = EntryBuckets::<Key::Value<'call>, Item::Value<'call>>::new();
+    for (key, item) in entries {
+        let key_hash = call.native_source_hash::<Key>(key.clone());
+        let bucket = buckets.entry(key_hash).or_default();
+        if let Some(stored) = bucket
+            .iter_mut()
+            .find(|(stored, _)| call.equal::<Key>(stored.clone(), key.clone()))
+        {
+            *stored = (key, item);
+        } else {
+            bucket.push((key, item));
+        }
+    }
+    finish_dict(call, construction, buckets)
+}
+
 pub fn create_dynamic_dict<'call, Profile, Provider, Return>(
-    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+    call: &mut HostCall<'call, Profile, Provider, Return>,
     construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>)>,
 ) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
@@ -328,11 +376,11 @@ where
 }
 
 pub(super) fn create_dynamic_dict_with<'call, Profile, Provider, Return, Entry>(
-    call: &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+    call: &mut HostCall<'call, Profile, Provider, Return>,
     construction: HostConstruction<'call, DictOf<Dynamic, Dynamic>>,
     entries: impl IntoIterator<Item = Entry>,
     mut convert: impl FnMut(
-        &mut geam_core::host::HostCall<'call, Profile, Provider, Return>,
+        &mut HostCall<'call, Profile, Provider, Return>,
         Entry,
     ) -> (HostExternal<'call, Dynamic>, HostExternal<'call, Dynamic>),
 ) -> HostExternal<'call, DictOf<Dynamic, Dynamic>>
@@ -342,7 +390,7 @@ where
     Provider: HostProvider<Profile>,
     Return: HostType,
 {
-    let mut buckets = HashMap::new();
+    let mut buckets = EntryBuckets::new();
     for entry in entries {
         let (key, value) = convert(call, entry);
         let key_hash = call.native_source_hash::<Dynamic>(key);
@@ -350,6 +398,23 @@ where
             call.equal::<Dynamic>(*stored, *candidate)
         });
     }
+    finish_dict(call, construction, buckets)
+}
+
+type EntryBuckets<Key, Item> = HashMap<u64, Vec<(Key, Item)>>;
+
+fn finish_dict<'call, Profile, Provider, Return, Key, Item>(
+    call: &mut HostCall<'call, Profile, Provider, Return>,
+    construction: HostConstruction<'call, DictOf<Key, Item>>,
+    buckets: EntryBuckets<Key::Value<'call>, Item::Value<'call>>,
+) -> HostExternal<'call, DictOf<Key, Item>>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+    Key: HostType,
+    Item: HostType,
+{
     let len = buckets.values().map(Vec::len).sum();
     let buckets = buckets
         .into_iter()
@@ -359,37 +424,29 @@ where
                 .map(|(key, value)| {
                     DictEntry::new(
                         key_hash,
-                        geam_core::__macro_support::retain_constructed_argument::<
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            DictPayload,
-                            KeyIndex,
-                        >(call, &construction, key),
-                        geam_core::__macro_support::retain_constructed_argument::<
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            DictPayload,
-                            ItemIndex,
-                        >(call, &construction, value),
+                        retain_constructed_argument::<_, _, _, _, _, DictPayload, KeyIndex>(
+                            call,
+                            &construction,
+                            key,
+                        ),
+                        retain_constructed_argument::<_, _, _, _, _, DictPayload, ItemIndex>(
+                            call,
+                            &construction,
+                            value,
+                        ),
                     )
                 })
                 .collect();
             (key_hash, entries)
         })
         .collect();
-    call.construct_external_with_binding::<provider::__GeamProvider, DictSchema, HostTypeList<Dynamic, HostTypeList<Dynamic, HostTypeListEnd>>>(
+    call.construct_external_with_binding::<provider::__GeamProvider, DictSchema, HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>(
         construction, DictPayload { storage: DictStorage { buckets, len } },
     )
 }
 
 pub(super) fn insert_first<Key, Value>(
-    buckets: &mut HashMap<u64, Vec<(Key, Value)>>,
+    buckets: &mut EntryBuckets<Key, Value>,
     key_hash: u64,
     key: Key,
     value: Value,
@@ -415,8 +472,9 @@ mod tests {
         use geam_core::frontend::compile_typed_host_program;
         use geam_core::host::{HostCall, HostComponentProfile, HostExternalBinding};
         use geam_core::{
-            HostCallCompletion, HostExternal, HostProfile, HostProvider, HostProviderSet,
-            ModuleSource, PackageSource,
+            HostCallCompletion, HostConstructions, HostExternal, HostList, HostListType,
+            HostProfile, HostProvider, HostProviderSet, HostTypeIndex0, HostTypeList,
+            HostTypeListEnd, ModuleSource, PackageSource, StringValue,
         };
         use num_bigint::BigInt;
         use std::pin::pin;
@@ -440,7 +498,8 @@ mod tests {
                 self.0.push(output.value().inspect().to_string());
             }
         }
-        type Dict = DictOf<geam_core::StringValue, geam_core::HostListType<BigInt>>;
+        type Dict = DictOf<StringValue, HostListType<BigInt>>;
+        type Constructions = HostTypeList<Dict, HostTypeListEnd>;
 
         impl HostProfile for Profile {
             type RunState = State;
@@ -466,6 +525,24 @@ mod tests {
         }
         impl HostExternalBinding<Profile, DictSchema> for Observer {
             type Storage = <DictProvider as HostExternalBinding<Profile, DictSchema>>::Storage;
+        }
+
+        fn make<'call>(
+            mut call: HostCall<'call, Profile, Observer, Dict>,
+            constructions: HostConstructions<'call, Constructions>,
+            first: HostList<'call, BigInt>,
+            second: HostList<'call, BigInt>,
+        ) -> Result<HostCallCompletion<'call, Dict>, geam_core::HostCallError> {
+            let entries = vec![
+                (StringValue::from("first"), first),
+                (StringValue::from("second"), second),
+            ];
+            let dict = crate::service::dict_from_entries(
+                &mut call,
+                constructions.at::<HostTypeIndex0>(),
+                entries,
+            );
+            Ok(call.return_value(dict))
         }
 
         fn observe<'call>(
@@ -511,8 +588,11 @@ mod tests {
 @external(erlang, "observer", "compare")
 fn observe(before: Dict(String, List(Int)), after: Dict(String, List(Int)), mapped: Bool) -> Nil
 
+@external(erlang, "observer", "make")
+fn make(first: List(Int), second: List(Int)) -> Dict(String, List(Int))
+
 pub fn run() -> Nil {
-  let original = new() |> do_insert("first", [1, 2], _) |> do_insert("second", [3], _)
+  let original = make([1, 2], [3])
   let updated = do_insert("first", [4, 5], original)
   echo size(updated)
   observe(original, updated, False)
@@ -522,6 +602,8 @@ pub fn run() -> Nil {
             );
             let dict = super::super::host_provider::<Profile>()
                 .expect("dict registration")
+                .with_scoped_function_and_constructions::<Observer, (HostListType<BigInt>, HostListType<BigInt>), Dict, Constructions, _>("make", make)
+                .expect("construction registration")
                 .with_scoped_function::<Observer, (Dict, Dict, bool), (), _>("observe", observe)
                 .expect("observation registration");
             let program = compile_typed_host_program(
@@ -580,7 +662,8 @@ pub fn run() -> Nil {
     }
 
     use super::super::host_provider;
-    use super::{insert_first, provider::__GeamProvider as DictProvider};
+    use super::{dict_from_entries, insert_first, provider::__GeamProvider as DictProvider};
+    use crate::dict::DictOf;
     use crate::{
         Component as GleamStdlibComponent, GleamStdlibHostProfile, GleamStdlibProfile,
         GleamStdlibRunState, GleamStdlibStores, IoOutput,
@@ -593,6 +676,11 @@ pub fn run() -> Nil {
         ModuleSource, PackageSource, compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
+    use geam_core::StringValue;
+    use geam_core::host::{
+        HostConstructions, HostList, HostListType, HostTupleType, HostType, HostTypeIndex0,
+        HostTypeList, HostTypeListEnd, HostTypeParameter,
+    };
     use num_bigint::BigInt;
 
     #[test]
@@ -609,6 +697,21 @@ pub fn run() -> Nil {
 
         assert_eq!(buckets[&7], [("first", 1), ("second", 2)]);
     }
+
+    const CONSTRUCTION_DECLARATIONS: &str = r#"
+@external(erlang, "dict_construction", "from_entries")
+fn from_entries(entries: List(#(key, item))) -> Dict(key, item)
+
+@external(erlang, "dict_construction", "text_entries")
+fn text_entries(entries: List(#(String, String))) -> Dict(String, String)
+
+@external(erlang, "dict_construction", "integer_entries")
+fn integer_entries(entries: List(#(Int, List(String)))) -> Dict(Int, List(String))
+
+@external(erlang, "dict_construction", "compare")
+fn compare(left: Dict(key, item), right: Dict(key, item)) -> Nil
+
+"#;
 
     const DICT_DECLARATIONS: &str = r#"
 pub type Dict(key, value)
@@ -777,7 +880,10 @@ fn transient_update_with(
             .expect("collision-key provider should register")
     }
 
-    fn collision_execution(source: &str) -> HostedExecution<CollisionProfile> {
+    fn collision_execution(
+        source: &str,
+        dict: HostProviderModule<CollisionProfile>,
+    ) -> HostedExecution<CollisionProfile> {
         const COLLISION_SOURCE: &str = r#"
 pub type CollisionKey
 
@@ -786,10 +892,7 @@ pub fn new(value: Int) -> CollisionKey
 "#;
 
         let source = format!("{DICT_DECLARATIONS}\n{source}");
-        let providers = [
-            host_provider::<CollisionProfile>().expect("official dict provider should register"),
-            collision_provider(),
-        ];
+        let providers = [dict, collision_provider()];
         let hosts =
             HostProviderSet::with_providers(Vec::<HostModule<CollisionProfile>>::new(), providers)
                 .expect("collision test providers should be unique");
@@ -819,11 +922,10 @@ pub fn new(value: Int) -> CollisionKey
     fn execution(
         source: &str,
         modules: impl IntoIterator<Item = HostModule<GleamStdlibProfile>>,
+        dict: HostProviderModule<GleamStdlibProfile>,
     ) -> HostedExecution<GleamStdlibProfile> {
         let source = format!("{DICT_DECLARATIONS}\n{source}");
-        let providers = vec![
-            host_provider::<GleamStdlibProfile>().expect("official dict provider should register"),
-        ];
+        let providers = vec![dict];
         let hosts = HostProviderSet::with_providers(modules, providers)
             .expect("test host modules should be unique");
         let typed = compile_typed_host_program(
@@ -843,6 +945,207 @@ pub fn new(value: Int) -> CollisionKey
         .expect("synthetic dict source should compile");
         let plan = plan_host_program(typed).expect("synthetic dict source should plan");
         HostedExecution::try_from_module_plan(plan).expect("synthetic dict execution should seal")
+    }
+
+    type Pair<Key, Item> = HostTupleType<HostTypeList<Key, HostTypeList<Item, HostTypeListEnd>>>;
+    type DictConstructions<Key, Item> = HostTypeList<DictOf<Key, Item>, HostTypeListEnd>;
+    type GenericDict = DictOf<HostTypeParameter<0>, HostTypeParameter<1>>;
+
+    fn construction_provider<Profile: crate::GleamStdlibProviderProfile>()
+    -> HostProviderModule<Profile> {
+        host_provider::<Profile>()
+            .unwrap()
+            .with_scoped_function_and_constructions::<
+                DictProvider,
+                (HostListType<Pair<HostTypeParameter<0>, HostTypeParameter<1>>>,),
+                GenericDict,
+                DictConstructions<HostTypeParameter<0>, HostTypeParameter<1>>,
+                _,
+            >("from_entries", construct_entries::<Profile, HostTypeParameter<0>, HostTypeParameter<1>>)
+            .unwrap()
+            .with_scoped_function_and_constructions::<
+                DictProvider,
+                (HostListType<Pair<StringValue, StringValue>>,),
+                DictOf<StringValue, StringValue>,
+                DictConstructions<StringValue, StringValue>,
+                _,
+            >("text_entries", construct_entries::<Profile, StringValue, StringValue>)
+            .unwrap()
+            .with_scoped_function_and_constructions::<
+                DictProvider,
+                (HostListType<Pair<BigInt, HostListType<StringValue>>>,),
+                DictOf<BigInt, HostListType<StringValue>>,
+                DictConstructions<BigInt, HostListType<StringValue>>,
+                _,
+            >("integer_entries", construct_entries::<Profile, BigInt, HostListType<StringValue>>)
+            .unwrap()
+            .with_scoped_function::<DictProvider, (GenericDict, GenericDict), (), _>("compare", compare_dicts::<Profile>)
+            .unwrap()
+    }
+
+    fn construct_entries<'call, Profile, Key, Item>(
+        mut call: HostCall<'call, Profile, DictProvider, DictOf<Key, Item>>,
+        constructions: HostConstructions<'call, DictConstructions<Key, Item>>,
+        entries: HostList<'call, Pair<Key, Item>>,
+    ) -> Result<HostCallCompletion<'call, DictOf<Key, Item>>, HostCallError>
+    where
+        Profile: crate::GleamStdlibProviderProfile,
+        Key: HostType,
+        Item: HostType,
+    {
+        let entries = (0..call.list_len(entries))
+            .map(|index| {
+                let pair = call.list_item(entries, index).unwrap();
+                let (key, (item, ())) = call.tuple_values(pair);
+                (key, item)
+            })
+            .collect::<Vec<_>>();
+        let value = dict_from_entries(&mut call, constructions.at::<HostTypeIndex0>(), entries);
+        Ok(call.return_value(value))
+    }
+
+    fn compare_dicts<'call, Profile: crate::GleamStdlibProviderProfile>(
+        call: HostCall<'call, Profile, DictProvider, ()>,
+        left: crate::HostExternal<'call, GenericDict>,
+        right: crate::HostExternal<'call, GenericDict>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        assert!(call.equal::<GenericDict>(left, right));
+        assert!(call.equal::<GenericDict>(right, left));
+        assert_eq!(
+            call.source_hash::<GenericDict>(left),
+            call.source_hash::<GenericDict>(right)
+        );
+        let left = call.native_value::<GenericDict>(left);
+        let right = call.native_value::<GenericDict>(right);
+        assert_eq!(left.kind(), right.kind());
+        assert!(call.native_equal(&left, &right));
+        assert!(call.native_equal(&right, &left));
+        assert_eq!(call.native_hash(&left), call.native_hash(&right));
+        Ok(call.return_value(()))
+    }
+
+    #[test]
+    fn typed_entries_preserve_duplicates_generic_values_and_builtin_semantics() {
+        let source = r#"
+pub fn main() {
+  let empty = text_entries([])
+  assert size(empty) == 0
+  assert get(empty, "absent") == Error(Nil)
+  compare(empty, new())
+  let values = text_entries([
+    #("a", "discarded"), #("a", "second"), #("b", ""),
+    #("a", "last"), #("한국어\u{0}🙂", "é"),
+  ])
+  assert size(values) == 3
+  assert get(values, "a") == Ok("last")
+  assert get(values, "b") == Ok("")
+  assert get(values, "한국어\u{0}🙂") == Ok("é")
+  compare(values, do_insert("a", "last", do_insert("b", "", do_insert("한국어\u{0}🙂", "é", new()))))
+  let numbers = integer_entries([#(1, ["old"]), #(9999999999999999999999999, []), #(1, ["one", "two"])])
+  assert size(numbers) == 2
+  assert get(numbers, 1) == Ok(["one", "two"])
+  assert get(numbers, 9999999999999999999999999) == Ok([])
+  compare(numbers, do_insert(1, ["one", "two"], do_insert(9999999999999999999999999, [], new())))
+  let compound = from_entries([#(#([1, 2], "x"), numbers)])
+  assert get(compound, #([1, 2], "x")) == Ok(numbers)
+  let keyed = from_entries([#(numbers, "nested")])
+  let equal_numbers = do_insert(9999999999999999999999999, [], do_insert(1, ["one", "two"], new()))
+  assert get(keyed, equal_numbers) == Ok("nested")
+  compare(compound, do_insert(#([1, 2], "x"), equal_numbers, new()))
+  let changed = do_insert("a", "changed", values)
+  let deleted = changed |> to_transient |> transient_delete("b", _) |> from_transient
+  assert get(values, "a") == Ok("last")
+  assert get(values, "b") == Ok("")
+  assert get(deleted, "a") == Ok("changed")
+  assert get(deleted, "b") == Error(Nil)
+  text_entries([#("only", "old"), #("only", "retained")])
+}
+"#;
+        let mut execution = execution(
+            &format!("{CONSTRUCTION_DECLARATIONS}\n{source}"),
+            [],
+            construction_provider(),
+        );
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let mut echo = Vec::new();
+        let first = crate::execution_fixture::run(&mut execution, &mut state, &mut echo).unwrap();
+        let second = crate::execution_fixture::run(&mut execution, &mut state, &mut echo).unwrap();
+        drop(execution);
+        drop(state);
+        for value in [first, second] {
+            assert_eq!(
+                value.inspect().to_string(),
+                r#"dict.from_list([#("only", "retained")])"#
+            );
+        }
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn typed_entries_retain_the_last_equal_key_as_well_as_its_item() {
+        let mut execution = execution(
+            &format!(
+                "{CONSTRUCTION_DECLARATIONS}\n{}",
+                r#"
+pub fn main() {
+  let negative = from_entries([#(0.0, "first"), #(-0.0, "last")])
+  let positive = from_entries([#(-0.0, "first"), #(0.0, "last")])
+  assert size(negative) == 1
+  assert size(positive) == 1
+  assert get(negative, 0.0) == Ok("last")
+  assert get(positive, -0.0) == Ok("last")
+  #(negative, positive)
+}
+"#
+            ),
+            [],
+            construction_provider(),
+        );
+        let value = crate::execution_fixture::run(
+            &mut execution,
+            &mut GleamStdlibRunState::from_seed([0; 32]),
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            value.inspect().to_string(),
+            r#"#(dict.from_list([#(-0.0, "last")]), dict.from_list([#(0.0, "last")]))"#
+        );
+    }
+
+    #[test]
+    fn typed_entries_resolve_real_source_hash_collisions_and_replace_the_last_pair() {
+        let mut execution = collision_execution(
+            &format!(
+                "{CONSTRUCTION_DECLARATIONS}\n{}",
+                r#"
+import host/collision
+
+pub fn main() {
+  let a = collision.new(1)
+  let b = collision.new(2)
+  let values = from_entries([#(a, 1), #(b, 2), #(collision.new(1), 3)])
+  assert size(values) == 2
+  assert get(values, a) == Ok(3)
+  assert get(values, b) == Ok(2)
+  assert get(values, collision.new(3)) == Error(Nil)
+  compare(values, do_insert(a, 3, do_insert(b, 2, new())))
+  values
+}
+"#
+            ),
+            construction_provider(),
+        );
+        let mut state = CollisionRunState {
+            stdlib: GleamStdlibRunState::from_seed([0; 32]),
+            keys: (),
+        };
+        let value =
+            crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()).unwrap();
+        assert_eq!(
+            value.inspect().to_string(),
+            "dict.from_list([#(CollisionKey(1), 3), #(CollisionKey(2), 2)])"
+        );
     }
 
     #[test]
@@ -933,7 +1236,7 @@ pub fn main() {
   final
 }
 "#;
-        let mut execution = execution(source, [float]);
+        let mut execution = execution(source, [float], host_provider().unwrap());
         let mut echoes = Vec::new();
         let actual = crate::execution_fixture::run(
             &mut execution,
@@ -970,6 +1273,7 @@ pub fn main() {
   remaining
 }
 "#,
+            host_provider().unwrap(),
         );
         let mut state = CollisionRunState {
             stdlib: GleamStdlibRunState::from_seed([0; 32]),
@@ -1042,6 +1346,7 @@ pub fn main() {
   Nil
 }
 "#,
+            host_provider().unwrap(),
         );
         let mut state = CollisionRunState {
             stdlib: GleamStdlibRunState::from_seed([0; 32]),
@@ -1072,7 +1377,7 @@ pub fn main() {
   do_map_values(failure.reject, values)
 }
 "#;
-        let mut execution = execution(source, [failure]);
+        let mut execution = execution(source, [failure], host_provider().unwrap());
         let error = crate::execution_fixture::run(
             &mut execution,
             &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -1107,7 +1412,7 @@ pub fn main() {
   do_fold(failure.reject, 0, do_insert("a", 1, new()))
 }
 "#;
-        let mut execution = execution(source, [failure]);
+        let mut execution = execution(source, [failure], host_provider().unwrap());
         let error = crate::execution_fixture::run(
             &mut execution,
             &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -1139,7 +1444,7 @@ pub fn main() {
   Nil
 }
 "#;
-        let mut execution = execution(source, [failure]);
+        let mut execution = execution(source, [failure], host_provider().unwrap());
         let error = crate::execution_fixture::run(
             &mut execution,
             &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -1165,7 +1470,11 @@ pub fn main() {
   do_map_values(reject, do_insert("a", 1, new()))
 }
 "#;
-        let mut execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
+        let mut execution = execution(
+            source,
+            Vec::<HostModule<GleamStdlibProfile>>::new(),
+            host_provider().unwrap(),
+        );
         let error = crate::execution_fixture::run(
             &mut execution,
             &mut GleamStdlibRunState::from_seed([0; 32]),
@@ -1185,7 +1494,11 @@ pub fn main() {
   size(new())
 }
 "#;
-        let execution = execution(source, Vec::<HostModule<GleamStdlibProfile>>::new());
+        let execution = execution(
+            source,
+            Vec::<HostModule<GleamStdlibProfile>>::new(),
+            host_provider().unwrap(),
+        );
 
         assert_eq!(
             execution.explain().to_string().trim(),
