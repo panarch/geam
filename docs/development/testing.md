@@ -657,6 +657,46 @@ cargo llvm-cov clean --manifest-path tests/fixtures/otp_service/provider/Cargo.t
 cargo llvm-cov --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
 
+## Charlist Service Consumer
+
+The independent [Charlist fixture](../../tests/fixtures/charlist_service) verifies
+manual external-provider construction through the public Erlang value service.
+Its locked Gleam project uses original `gleam_erlang` 1.3.0 and `gleam_stdlib`
+1.0.3 source. The test acquires those locked packages and checks that acquisition
+preserves the manifest bytes; downloaded source and build products stay outside Git.
+
+The provider owns a direct text constructor, a header pair, and a nested status
+tuple/header-list return. The separate `provider/tests/public_usage.rs` target
+composes its public component with the original built-ins. Source assertions fix
+empty, ASCII, NUL, Unicode and combining characters, equality and dictionary key
+behavior, and every nested field. An integration-owned native observer compares
+the resulting native views with explicit integer-list data using public APIs.
+Repeated execution and inspection after dropping execution and state verify the
+consumer's retained outputs. The observer neither constructs nor replaces a Charlist.
+
+`geam-erlang` owner tests beside `service/values.rs` and `charlist.rs` separately
+prove input-text independence, producer storage semantics, exact inspection,
+source/native equality and hashing, and retained lifetime. Consumer execution
+does not substitute for that package's coverage closure.
+
+```sh
+cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/charlist_service/project/src
+cargo llvm-cov clean --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --package geam-charlist-service-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace runs its Rust formatting and Clippy, Acceptance runs its original-source
+tests and Gleam formatting, and Coverage includes it in the service-consumer
+matrix. Its fresh, independent 100% line/full-region denominator is the fixture
+provider package, not its Geam dependencies. Geam packages retain their own gates.
+This fixture establishes Charlist construction, not HTTP behavior or general
+foreign-value macro authoring.
+
 ## Benchmark Tooling
 
 The independently locked [`benchmarks/`](https://github.com/panarch/geam/tree/main/benchmarks) workspace

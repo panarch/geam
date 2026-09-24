@@ -671,6 +671,41 @@ jobs:
         run: cargo test --package geam --test provider_examples --locked -- --exact otp_service::runs_profile_dependent_otp_callbacks_in_the_generated_standalone_host
 
 
+  charlist-service-consumer:
+    name: Charlist service consumer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Gleam toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          gleam-version: "1.18.1"
+          rebar3-version: "3"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache independent consumer build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "tests/fixtures/charlist_service/provider -> target"
+
+      - name: Fetch locked consumer dependencies
+        run: cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+
+      - name: Verify producer-owned Charlist values through original source
+        run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
+
+      - name: Verify fixture source formatting
+        run: gleam format --check tests/fixtures/charlist_service/project/src
+
   external-provider-sdk:
     name: External provider SDK
     runs-on: ubuntu-latest

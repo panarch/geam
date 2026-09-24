@@ -1,4 +1,5 @@
 use crate::schema::{Charlist, CharlistSchema};
+use crate::service::charlist_from_string;
 use crate::{Component, GleamErlangHostProfile};
 use ecow::EcoString;
 use geam_core::StringValue;
@@ -6,29 +7,34 @@ use geam_core::host::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstructions,
     HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
     HostExternalInspection, HostExternalStorage, HostExternalStore, HostListType,
-    HostProviderModule, HostRegistrationError, HostStoredValue, HostTypeIndex0, HostTypeList,
-    HostTypeListEnd,
+    HostProviderModule, HostRegistrationError, HostStoredValue, HostTypeIndex0, HostTypeIndexNext,
+    HostTypeList, HostTypeListEnd,
 };
 use geam_core::provider::advanced::NativeValue;
 
 pub struct Storage;
 
+type Constructions = HostTypeList<Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>>;
+
 pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
 -> Result<HostProviderModule<Profile>, HostRegistrationError> {
     HostProviderModule::new("gleam_erlang", "gleam/erlang/charlist")
         .and_then(|module| module.with_external_type::<Component<Profile>, CharlistSchema>())
-        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (StringValue,), Charlist, HostTypeList<HostListType<char>, HostTypeListEnd>, _>("from_string", from_string::<Profile>))
+        .and_then(|module| module.with_scoped_function_and_constructions::<Component<Profile>, (StringValue,), Charlist, Constructions, _>("from_string", from_string::<Profile>))
         .and_then(|module| module.with_scoped_function::<Component<Profile>, (Charlist,), StringValue, _>("to_string", to_string::<Profile>))
 }
 
 fn from_string<'call, Profile: GleamErlangHostProfile>(
     mut call: HostCall<'call, Profile, Component<Profile>, Charlist>,
-    constructions: HostConstructions<'call, HostTypeList<HostListType<char>, HostTypeListEnd>>,
+    constructions: HostConstructions<'call, Constructions>,
     string: StringValue,
 ) -> Result<HostCallCompletion<'call, Charlist>, HostCallError> {
-    let characters = call.construct_list(constructions.at::<HostTypeIndex0>(), string.chars());
-    let value =
-        call.create_external_with(|builder| builder.store::<HostListType<char>>(characters));
+    let value = charlist_from_string(
+        &mut call,
+        constructions.at::<HostTypeIndex0>(),
+        constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(),
+        &string,
+    );
     Ok(call.return_value(value))
 }
 

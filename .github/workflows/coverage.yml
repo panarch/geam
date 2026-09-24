@@ -225,6 +225,8 @@ jobs:
             directory: examples/provider/process_service/provider
           - consumer: original_otp
             directory: tests/fixtures/otp_service/provider
+          - consumer: charlist_service
+            directory: tests/fixtures/charlist_service/provider
 
     steps:
       - name: Checkout
