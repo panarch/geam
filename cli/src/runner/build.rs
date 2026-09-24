@@ -1,4 +1,5 @@
 use super::SystemCargo;
+use super::control::{CONTROL_ENV, RunnerControl};
 use super::source::{APPLICATION_SOURCE, GENERATED_HEADER, PROGRAM_SOURCE, read_generated_source};
 use crate::cargo::{CargoMetadataLoader, CargoMetadataMode, SystemCargoMetadata};
 use crate::error::CliError;
@@ -141,12 +142,10 @@ fn preparation_command(
     profile: BuildProfile,
 ) -> Command {
     let mut command = cargo_command(root, "run", "geam-runner", profile);
-    command
-        .arg("--")
-        .arg("prepare")
-        .arg(root)
-        .arg(module)
-        .arg(destination);
+    command.arg("--").env(
+        CONTROL_ENV,
+        RunnerControl::Prepare(destination).encode(root, module),
+    );
     command
 }
 
@@ -238,9 +237,11 @@ mod tests {
     };
     use crate::error::CliError;
     use crate::progress::Progress;
+    use crate::runner::control::CONTROL_ENV;
     use camino::{Utf8Path, Utf8PathBuf};
     use cargo_metadata::PackageId;
     use serde_json::json;
+    use std::ffi::OsStr;
     use std::fs;
     use std::io::{self, Write};
     use std::process::Command;
@@ -261,28 +262,38 @@ mod tests {
             let build = build_command(root, "my_app", profile);
             let mut expected = vec!["run", "--locked", "--bin", "geam-runner"];
             expected.extend(flag);
-            expected.extend([
-                "--",
-                "prepare",
-                "project with spaces",
-                "tools/report",
-                "output.rs",
-            ]);
+            expected.push("--");
             assert_eq!(prepare.get_args().collect::<Vec<_>>(), expected);
             let mut expected = vec!["build", "--locked", "--bin", "my_app"];
             expected.extend(flag);
             expected.push("--message-format=json-render-diagnostics");
             assert_eq!(build.get_args().collect::<Vec<_>>(), expected);
+            assert_eq!(
+                prepare.get_envs().collect::<Vec<_>>(),
+                [
+                    (
+                        OsStr::new("CARGO_TARGET_DIR"),
+                        Some(root.join("build/geam/target").as_os_str())
+                    ),
+                    (
+                        OsStr::new(CONTROL_ENV),
+                        Some(OsStr::new(concat!(
+                            "schema = 1\nmode = \"prepare\"\nproject_root = \"project with spaces\"\nmodule = \"tools/report\"\n",
+                            "output = \"output.rs\"\n",
+                        )))
+                    ),
+                ],
+            );
+            assert_eq!(
+                build.get_envs().collect::<Vec<_>>(),
+                [(
+                    OsStr::new("CARGO_TARGET_DIR"),
+                    Some(root.join("build/geam/target").as_os_str())
+                ),]
+            );
             for command in [prepare, build] {
                 assert_eq!(command.get_program(), "cargo");
                 assert_eq!(command.get_current_dir(), Some(root.as_std_path()));
-                assert_eq!(
-                    command.get_envs().collect::<Vec<_>>(),
-                    [(
-                        std::ffi::OsStr::new("CARGO_TARGET_DIR"),
-                        Some(root.join("build/geam/target").as_os_str())
-                    )]
-                );
             }
         }
     }
@@ -447,6 +458,8 @@ mod tests {
 name = "build_fixture"
 version = "0.0.0"
 edition = "2024"
+[dependencies]
+toml = "0.9"
 [[bin]]
 name = "geam-runner"
 path = "build/geam/runner.rs"
@@ -460,11 +473,13 @@ path = "build/geam/application.rs"
         .unwrap();
         fs::write(root.join("build/geam/runner.rs"), r#"
 fn main() {
-    let args: Vec<_> = std::env::args_os().collect();
-    assert_eq!(args[1], "prepare");
-    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(&args[2]));
-    let module = args[3].to_str().unwrap();
-    let destination = std::path::Path::new(&args[4]);
+    assert_eq!(std::env::args_os().count(), 1);
+    let control: toml::Table = std::env::var("GEAM_RUNNER_CONTROL").unwrap().parse().unwrap();
+    assert_eq!(control["schema"].as_integer(), Some(1));
+    assert_eq!(control["mode"].as_str(), Some("prepare"));
+    assert_eq!(std::env::current_dir().unwrap(), std::path::Path::new(control["project_root"].as_str().unwrap()));
+    let module = control["module"].as_str().unwrap();
+    let destination = std::path::Path::new(control["output"].as_str().unwrap());
     match module {
         "fail" => std::process::exit(7),
         "missing" => { std::fs::remove_file(destination).unwrap(); return; },
@@ -473,7 +488,7 @@ fn main() {
         "broken_metadata" => { std::fs::write("Cargo.toml", "invalid TOML").unwrap(); },
         "metadata" => {
             std::fs::create_dir("member").unwrap();
-            std::fs::write("member/Cargo.toml", "[package]\nname = 'build_fixture'\nversion = '0.0.0'\nedition = '2024'\n[lib]\npath = 'lib.rs'\n").unwrap();
+            std::fs::write("member/Cargo.toml", "[package]\nname = 'build_fixture'\nversion = '0.0.0'\nedition = '2024'\n[dependencies]\ntoml = '0.9'\n[lib]\npath = 'lib.rs'\n").unwrap();
             std::fs::write("member/lib.rs", "").unwrap();
             std::fs::write("Cargo.toml", "[workspace]\nmembers = ['member']\nresolver = '3'\n").unwrap();
         },

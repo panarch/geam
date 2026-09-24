@@ -1,0 +1,4 @@
+name = "application_arguments"
+version = "1.0.0"
+description = "Private native argument observation for Geam acceptance tests"
+licences = ["Apache-2.0"]

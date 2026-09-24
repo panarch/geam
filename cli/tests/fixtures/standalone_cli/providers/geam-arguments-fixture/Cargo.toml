@@ -1,0 +1,15 @@
+[package]
+name = "geam-arguments-fixture"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Application argument observation for Geam acceptance tests"
+license = "Apache-2.0"
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "application_arguments"
+gleam-version = ">= 1.0.0 and < 2.0.0"
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider"] }

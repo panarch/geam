@@ -1,5 +1,6 @@
 mod build;
 mod cargo;
+mod control;
 mod generator;
 mod source;
 

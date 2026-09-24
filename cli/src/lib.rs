@@ -75,6 +75,7 @@ fn run_project_command(
                     &current_directory,
                     module,
                     command.provider_configs,
+                    &command.arguments,
                 )
             }),
         ProjectCommand::Build(command) => project::entry_module(&project_root, command.module)

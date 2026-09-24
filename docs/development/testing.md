@@ -601,6 +601,53 @@ boundary cases that are clearer as complete Gleam modules than as planner unit
 tests.
 
 
+## Application Argument Forwarding
+
+The `cli/tests/fixtures/standalone_cli/providers` workspace contains the private
+[`geam-arguments-fixture`](../../cli/tests/fixtures/standalone_cli/providers/geam-arguments-fixture)
+provider and its local `application_arguments` Gleam package. Only the argument
+acceptance case adds this package and selects its provider. The default
+catalog/counter project remains unchanged.
+
+The provider snapshots `args_os().skip(1)` during initialization. Ordinary Gleam
+source compares its typed String and native-unit Lists against the supplied
+arguments. String conversion is a lossy observation; Unix bytes and Windows
+UTF-16 code units separately prove native forwarding. This fixture does not
+implement the `argv` package.
+
+`standalone_build` checks real `geam run --` execution, empty and repeated
+arguments, option boundaries, Unicode and non-Unicode values, provider config,
+and source-free relocated execution. Invalid internal control must fail before
+provider initialization. Prepare and build must not initialize state or execute
+main. The existing Prepared distribution matrix runs this target on Linux,
+macOS and Windows. Owner tests separately fix CLI parsing, dispatch, complete
+command construction, TOML encoding/admission, and generated runner source.
+
+The provider's `tests/public_usage.rs` uses the public typed host API with
+caller-owned state and retained results. Its independent coverage denominator
+is this provider package, not its Geam dependencies. From the repository root:
+
+```sh
+(
+  set -e
+  cd cli/tests/fixtures/standalone_cli/providers
+  cargo fetch --locked --config net.offline=false
+  cargo test --package geam-arguments-fixture --locked
+  cargo fmt --all --check
+  cargo clippy --workspace --all-targets --locked -- -D warnings
+  cargo llvm-cov clean --workspace
+  cargo llvm-cov --package geam-arguments-fixture --no-report --locked
+  cargo llvm-cov report --package geam-arguments-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+)
+gleam format --check cli/tests/fixtures/standalone_cli/project/packages/application_arguments/src
+```
+
+Run Cargo from the providers directory so its local patch and offline
+configuration are applied. Workspace owns formatting and Clippy; Acceptance's
+Root package job runs the provider tests and Gleam formatting, and Coverage's
+Application arguments job requires fresh 100% line and full-region coverage.
+CLI and root production coverage remain in their existing separate closure.
+
 ## Execution Service Consumers
 
 The [process service example](../../examples/provider/process_service) owns an

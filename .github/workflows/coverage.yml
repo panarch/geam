@@ -214,6 +214,47 @@ jobs:
       - name: Check geam-benchmark-support coverage
         run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --summary-only --fail-under-lines 100 --fail-under-regions 100
 
+  application-arguments-coverage:
+    name: Application arguments
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools-preview
+          cache: false
+          rustflags: ""
+
+      - name: Cache independent provider build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: application-arguments
+          workspaces: "cli/tests/fixtures/standalone_cli/providers -> target"
+
+      - name: Fetch locked provider dependencies
+        run: cargo fetch --locked --config net.offline=false
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Clean independent provider coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Collect application argument provider coverage
+        run: cargo llvm-cov --package geam-arguments-fixture --no-report --locked
+
+      - name: Check application argument provider coverage
+        run: cargo llvm-cov report --package geam-arguments-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+
   service-consumer-coverage:
     name: Service consumer (${{ matrix.consumer }})
     runs-on: ubuntu-latest

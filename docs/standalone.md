@@ -61,6 +61,24 @@ code. `run` continues by starting the application. Normal Gleam IO keeps its
 selected output stream, while Gleam's `echo` output is written to stderr. A
 value returned by `main` is not printed automatically.
 
+### Pass application arguments
+
+Put application arguments after an explicit `--` separator:
+
+```sh
+geam run -- hello world
+geam run --module tools/report --provider-config search=search.toml -- "two words" --help
+```
+
+Geam options go before the separator. Everything after it belongs to the
+application, including option-like values such as `--help`, empty arguments,
+and another `--`. Their order and native OS representation are preserved.
+`geam run` and `geam run --` both supply no application arguments.
+
+A Rust provider can read these values with `std::env::args_os().skip(1)` during
+state initialization. A Gleam package that reads arguments still needs a
+matching provider; forwarding does not itself implement that package.
+
 ## Build an executable
 
 From the same Gleam project, build a release executable:
@@ -92,6 +110,13 @@ The executable uses the same IO, Echo, Future completion and process shutdown
 behavior as `geam run`. Building does not initialize provider state or execute
 the application. Arguments passed to the executable belong to the application;
 Geam does not interpret them as options.
+
+```sh
+./build/geam/target/release/hello_geam hello world
+```
+
+No Geam separator is needed when starting the executable directly. A `--` passed
+to it is an application argument like any other.
 
 ### Configure the deployed application
 

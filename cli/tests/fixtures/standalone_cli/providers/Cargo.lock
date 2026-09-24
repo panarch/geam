@@ -966,6 +966,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "geam-arguments-fixture"
+version = "1.0.0"
+dependencies = [
+ "geam",
+]
+
+[[package]]
 name = "geam-catalog"
 version = "1.0.0"
 dependencies = [

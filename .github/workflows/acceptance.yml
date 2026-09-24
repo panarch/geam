@@ -57,6 +57,15 @@ jobs:
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-catalog
           cargo package --quiet --offline --allow-dirty --no-verify --locked --package geam-counter
 
+      - name: Test application argument provider
+        working-directory: cli/tests/fixtures/standalone_cli/providers
+        run: |
+          cargo fetch --locked --config net.offline=false
+          cargo test --package geam-arguments-fixture --locked
+
+      - name: Check application argument Gleam formatting
+        run: gleam format --check cli/tests/fixtures/standalone_cli/project/packages/application_arguments/src
+
       - name: Verify standalone Gleam packages
         run: |
           for package in catalog counter pure_labels; do

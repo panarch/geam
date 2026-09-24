@@ -426,6 +426,196 @@ fn application_stdout_checks_resource_locations_without_rewriting_other_output()
     }
 }
 
+#[test]
+fn forwards_application_arguments_through_run_and_relocated_native_execution() {
+    let fixture = fixture();
+    let project = fixture.path().join("project").canonicalize().unwrap();
+    let manifest_path = project.join("gleam.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&manifest_path).unwrap().parse().unwrap();
+    manifest["dependencies"].as_table_mut().unwrap().insert(
+        "application_arguments".into(),
+        toml::toml! { path = "packages/application_arguments" }.into(),
+    );
+    fs::write(&manifest_path, toml::to_string(&manifest).unwrap()).unwrap();
+    for provider in ["geam-counter", "geam-arguments-fixture"] {
+        checked(&mut geam(
+            &project,
+            &[
+                "provider",
+                "add",
+                "--path",
+                "../providers",
+                "--package",
+                provider,
+            ],
+        ));
+    }
+    let mut native: Vec<OsString> = [
+        "",
+        "space value",
+        "--help",
+        "--module",
+        "--provider-config",
+        "counter=not-a-config",
+        "--",
+        "한글",
+        "quote\"'\\",
+        "line\nbreak",
+        "repeat",
+        "repeat",
+    ]
+    .map(Into::into)
+    .into();
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        native.push(OsString::from_vec(b"native-\xff".to_vec()));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        native.push(OsString::from_wide(&[0x61, 0xd800]));
+    }
+    let cases = [
+        (false, Vec::new()),
+        (true, Vec::new()),
+        (true, vec![OsString::from("alpha"), OsString::from("beta")]),
+        (true, native.clone()),
+    ];
+    for (separator, arguments) in cases {
+        let strings: Vec<_> = arguments
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+        let units: Vec<Vec<u32>> = arguments
+            .iter()
+            .map(|value| {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::ffi::OsStrExt;
+                    value.as_bytes().iter().copied().map(u32::from).collect()
+                }
+                #[cfg(windows)]
+                {
+                    use std::os::windows::ffi::OsStrExt;
+                    value.encode_wide().map(u32::from).collect()
+                }
+            })
+            .collect();
+        let source = format!(
+            r#"import application_arguments
+import counter
+import gleam/io
+
+pub fn main() {{
+  let snapshot = application_arguments.snapshot()
+  let assert {strings:?} = snapshot.0
+  let assert {units:?} = snapshot.1
+  let assert "args:3" = counter.next("args")
+  io.println("arguments-observed")
+}}
+"#
+        );
+        fs::write(project.join("src/arguments.gleam"), source).unwrap();
+        let mut command = geam(
+            &project,
+            &[
+                "run",
+                "--module",
+                "arguments",
+                "--provider-config",
+                "counter=config/counter.toml",
+            ],
+        );
+        if separator {
+            command.arg("--");
+        }
+        let output = checked(command.args(&arguments));
+        assert_eq!(
+            output.stdout,
+            b"arguments-initialized\narguments-observed\n"
+        );
+    }
+    let runner = project.join(format!(
+        "build/geam/target/debug/geam-runner{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    for (control, diagnostic) in [
+        (None, "missing GEAM_RUNNER_CONTROL"),
+        (
+            Some("="),
+            "invalid runner control TOML: unquoted keys cannot be empty, expected letters, numbers, `-`, `_`",
+        ),
+        (Some("schema = 2"), "runner control schema must be 1"),
+        (
+            Some("schema=1\nmode='other'\nproject_root='unused'\nmodule='unused'"),
+            "unknown runner control mode other",
+        ),
+    ] {
+        let mut command = Command::new(&runner);
+        command
+            .current_dir(&project)
+            .env_remove("GEAM_RUNNER_CONTROL");
+        if let Some(control) = control {
+            command.env("GEAM_RUNNER_CONTROL", control);
+        }
+        // Legacy positional control is application data, never a fallback protocol.
+        command.args(["run", "unused", "unused"]);
+        let output = capture(&mut command, Duration::from_secs(30));
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            output.stdout.is_empty(),
+            "invalid control initialized provider state"
+        );
+        assert_eq!(
+            output.stderr,
+            format!("geam runner: {diagnostic}\n").as_bytes()
+        );
+    }
+    let prepared = checked(&mut geam(&project, &["prepare", "--module", "arguments"]));
+    assert!(
+        prepared.stdout.is_empty(),
+        "checking initialized provider state"
+    );
+    let build = checked(&mut geam(&project, &["build", "--module", "arguments"]));
+    assert!(
+        build.stdout.is_empty(),
+        "building initialized provider state"
+    );
+    let binary = project.join(format!(
+        "build/geam/target/debug/standalone_fixture{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let destination = tempfile::Builder::new()
+        .prefix("geam arguments deployed ")
+        .tempdir()
+        .unwrap();
+    let deployed_binary = destination
+        .path()
+        .join(format!("application{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(built_executable(&build, &binary), &deployed_binary).unwrap();
+    fs::write(destination.path().join("counter.toml"), "start = 3\n").unwrap();
+    let config = destination.path().join("runtime.toml");
+    fs::write(&config, "[providers]\ncounter = 'counter.toml'\n").unwrap();
+    fixture.close().unwrap();
+    for private_control in [None, Some("malformed and irrelevant to native execution")] {
+        let mut command = deployed(&deployed_binary, destination.path());
+        command
+            .env("GEAM_CONFIG", &config)
+            .env_remove("GEAM_RUNNER_CONTROL")
+            .args(&native);
+        if let Some(value) = private_control {
+            command.env("GEAM_RUNNER_CONTROL", value);
+        }
+        let output = checked(&mut command);
+        assert_eq!(
+            output.stdout,
+            b"arguments-initialized\narguments-observed\n"
+        );
+        assert!(output.stderr.is_empty());
+    }
+}
+
 fn fixture() -> tempfile::TempDir {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
     let canonical = repository.join("cli/tests/fixtures/standalone_cli");

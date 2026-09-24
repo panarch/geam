@@ -5,6 +5,7 @@ use crate::provider::{ManagedProject, ProviderSelectionValidator, SystemProvider
 use crate::runner::{BuildProfile, BuildSession, ExecutableBuilder};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 
 #[cfg(test)]
 mod integration;
@@ -26,6 +27,7 @@ pub(super) fn run(
     current_directory: &Utf8Path,
     module: String,
     configuration_specs: Vec<String>,
+    arguments: &[OsString],
 ) -> Result<(), CliError> {
     let mut progress_output = std::io::stderr();
     let providers = SystemProviderValidator::new();
@@ -39,6 +41,7 @@ pub(super) fn run(
         current_directory,
         module,
         configuration_specs,
+        arguments,
         &crate::runner::SystemCargo,
     )
 }
@@ -89,6 +92,7 @@ impl Preparation<'_> {
         current_directory: &Utf8Path,
         module: String,
         configuration_specs: Vec<String>,
+        arguments: &[OsString],
         executor: &dyn crate::runner::RunnerExecutor,
     ) -> Result<(), CliError> {
         let managed = self.reconcile(&module)?;
@@ -96,7 +100,7 @@ impl Preparation<'_> {
             resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
         self.progress
             .report(format_args!("Starting standalone runner for {module}"))?;
-        executor.execute(self.project_root, &module, &configurations)
+        executor.execute(self.project_root, &module, &configurations, arguments)
     }
 
     fn build(
@@ -199,6 +203,7 @@ mod tests {
     };
     use camino::{Utf8Path, Utf8PathBuf};
     use std::cell::{Cell, RefCell};
+    use std::ffi::OsString;
     use std::fs;
     use std::io::{self, Write};
     use tempfile::{TempDir, tempdir};
@@ -209,6 +214,15 @@ mod tests {
     #[derive(Default)]
     struct RecordingCargo {
         operations: RefCell<Vec<String>>,
+        runs: RefCell<Vec<RecordedRun>>,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct RecordedRun {
+        root: Utf8PathBuf,
+        module: String,
+        configurations: Vec<(String, Utf8PathBuf)>,
+        arguments: Vec<OsString>,
     }
 
     impl CargoLock for RecordingCargo {
@@ -239,10 +253,17 @@ mod tests {
     impl RunnerExecutor for RecordingCargo {
         fn execute(
             &self,
-            _project_root: &Utf8Path,
+            project_root: &Utf8Path,
             module: &str,
             configurations: &[(String, Utf8PathBuf)],
+            arguments: &[OsString],
         ) -> Result<(), CliError> {
+            self.runs.borrow_mut().push(RecordedRun {
+                root: project_root.to_owned(),
+                module: module.to_owned(),
+                configurations: configurations.to_vec(),
+                arguments: arguments.to_vec(),
+            });
             self.operations.borrow_mut().push(format!(
                 "run:{module}:{}",
                 configurations
@@ -431,6 +452,7 @@ mod tests {
             _project_root: &Utf8Path,
             _module: &str,
             _configurations: &[(String, Utf8PathBuf)],
+            _arguments: &[OsString],
         ) -> Result<(), CliError> {
             Err(CliError::InheritedProcessFailure {
                 command: "cargo run".to_owned(),
@@ -520,7 +542,13 @@ mod tests {
             providers: &UnchangedProviders,
             progress: Progress::Hidden,
         }
-        .run(current_directory, module, configuration_specs, executor)
+        .run(
+            current_directory,
+            module,
+            configuration_specs,
+            &[],
+            executor,
+        )
     }
 
     #[test]
@@ -665,7 +693,7 @@ mod tests {
             providers: &UnchangedProviders,
             progress: Progress::Visible(&mut output),
         }
-        .run(&root, "application".to_owned(), Vec::new(), &cargo)
+        .run(&root, "application".to_owned(), Vec::new(), &[], &cargo)
         .expect("run should prepare and execute once");
         assert_eq!(
             cargo.operations.borrow().as_slice(),
@@ -684,6 +712,79 @@ mod tests {
             )
             .as_bytes()
         );
+    }
+
+    #[test]
+    fn forwards_native_arguments_separately_from_resolved_configuration() {
+        let project = project("application", "pub fn main() { 1 }\n");
+        let root = utf8_path(&project);
+        write_managed_manifest(
+            &root,
+            "geam_provider_application = { package = \"geam-application\", path = \"/provider\" }\n",
+        );
+        let directory = root.join("subdirectory");
+        let cargo = RecordingCargo::default();
+        let mut preparation = super::Preparation {
+            project_root: &root,
+            lock: &cargo,
+            providers: &UnchangedProviders,
+            progress: Progress::Hidden,
+        };
+        let mut arguments: Vec<OsString> = ["", "--help", "application=not-a-config", "한글", "--"]
+            .map(Into::into)
+            .into();
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            arguments.push(OsString::from_vec(b"native-\xff".to_vec()));
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStringExt;
+            arguments.push(OsString::from_wide(&[0x61, 0xd800]));
+        }
+        preparation
+            .run(
+                &directory,
+                "application".into(),
+                vec!["application=config=a.toml".into()],
+                &arguments,
+                &cargo,
+            )
+            .unwrap();
+        preparation
+            .run(&directory, "application".into(), Vec::new(), &[], &cargo)
+            .unwrap();
+        assert_eq!(
+            cargo.runs.borrow().as_slice(),
+            [
+                RecordedRun {
+                    root: root.clone(),
+                    module: "application".into(),
+                    configurations: vec![("application".into(), directory.join("config=a.toml"))],
+                    arguments,
+                },
+                RecordedRun {
+                    root: root.clone(),
+                    module: "application".into(),
+                    configurations: Vec::new(),
+                    arguments: Vec::new(),
+                },
+            ]
+        );
+        let error = preparation
+            .run(
+                &directory,
+                "application".into(),
+                vec!["unknown=config.toml".into()],
+                &[],
+                &cargo,
+            )
+            .unwrap_err();
+        assert!(
+            matches!(error, CliError::UnknownProviderConfiguration { package } if package == "unknown")
+        );
+        assert_eq!(cargo.runs.borrow().len(), 2);
     }
 
     #[test]
@@ -777,7 +878,7 @@ mod tests {
                 progress: Progress::Visible(&mut output),
             };
             let result = if run {
-                preparation.run(&root, "application".to_owned(), Vec::new(), &cargo)
+                preparation.run(&root, "application".to_owned(), Vec::new(), &[], &cargo)
             } else {
                 preparation.prepare("application".to_owned(), &cargo)
             };

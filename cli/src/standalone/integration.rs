@@ -162,6 +162,7 @@ fn selects_locks_builds_and_runs_explicit_path_providers() {
             "catalog=config/catalog.toml".to_owned(),
             "counter=config/counter.toml".to_owned(),
         ],
+        &[],
         &SystemCargo,
     )
     .expect("selected providers should execute through the generated runner");
