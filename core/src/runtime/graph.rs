@@ -10,11 +10,19 @@ pub(crate) use environment::RetainedValues;
 
 pub(in crate::runtime) use self::environment::BlockEnvironment;
 pub(in crate::runtime) use self::terminator::RuntimeGraphState;
-use crate::plan::execution::graph::{BlockGraphExitId, BlockId, Transfer};
-use crate::runtime::ExecutableRuntimePlan;
+use crate::ExecutionError;
+use crate::plan::execution::graph::{
+    BlockGraphExitId, BlockId, ExternalFunctionInstruction, ExternalListInstruction, Transfer,
+};
+use crate::plan::execution::host::HostedExecutionProfile;
+use crate::plan::execution::type_::ValueType;
 use crate::runtime::error::ExecutionResult;
-pub(in crate::runtime) use activation::{Activation, Frame, Returns};
+use crate::runtime::{CaptureStorage, ExecutableRuntimePlan};
+pub(in crate::runtime) use activation::Returns;
 pub(in crate::runtime) use activation::{Execution as GraphExecution, Progress as GraphProgress};
+pub(in crate::runtime) use instruction::{
+    ExternalFunctionInstructionValue, ExternalListInstructionValue,
+};
 
 struct GraphPosition {
     block: BlockId,
@@ -54,31 +62,29 @@ impl CompletedGraph {
     }
 }
 
-pub(in crate::runtime) fn advance_external_list_instruction<'plan, Plan>(
-    plan: &'plan Plan,
-    state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-    frame: Frame<'plan, Plan>,
-    returns: &mut Returns<'plan, Plan>,
-    instruction: &crate::plan::execution::graph::ExternalListInstruction,
-    expected: &crate::plan::execution::type_::ValueType,
-) -> ExecutionResult<Activation<'plan, Plan>>
+pub(in crate::runtime) fn evaluate_external_list_instruction<Plan>(
+    plan: &Plan,
+    state: &mut impl RuntimeGraphState<Error = ExecutionError>,
+    environment: &BlockEnvironment,
+    instruction: &ExternalListInstruction,
+    expected: &ValueType,
+) -> ExecutionResult<ExternalListInstructionValue>
 where
-    Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
+    Plan: ExecutableRuntimePlan<Profile = HostedExecutionProfile>,
 {
-    instruction::advance_external_list(plan, state, frame, returns, instruction, expected)
+    instruction::evaluate_external_list(plan, state, environment, instruction, expected)
 }
 
-pub(in crate::runtime) fn advance_external_function_instruction<'plan, Plan>(
-    plan: &'plan Plan,
-    captures: &crate::runtime::CaptureStorage,
-    frame: Frame<'plan, Plan>,
-    returns: &mut Returns<'plan, Plan>,
-    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> Activation<'plan, Plan>
+pub(in crate::runtime) fn evaluate_external_function_instruction<Plan>(
+    plan: &Plan,
+    captures: &CaptureStorage,
+    environment: &BlockEnvironment,
+    instruction: &ExternalFunctionInstruction,
+) -> ExternalFunctionInstructionValue
 where
-    Plan: ExecutableRuntimePlan<Profile = crate::plan::execution::host::HostedExecutionProfile>,
+    Plan: ExecutableRuntimePlan<Profile = HostedExecutionProfile>,
 {
-    instruction::advance_external_function(plan, captures, frame, returns, instruction)
+    instruction::evaluate_external_function(plan, captures, environment, instruction)
 }
 
 #[cfg(test)]

@@ -1,9 +1,10 @@
 use super::RuntimeGraphState;
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
-use crate::plan::execution::constant::{ConstantId, ConstantValue};
+use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use crate::plan::execution::function::{
-    ExecutionFunctionEntry, ExecutionFunctionRef, FunctionBodyOwner, FunctionExit,
+    ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionNeverFunctionBody, FunctionBodyOwner,
+    FunctionExit,
 };
 use crate::plan::execution::graph::BlockGraphView;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -31,27 +32,62 @@ pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan>
     Complete(CompletedGraph),
 }
 
-pub(in crate::runtime) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
+pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
     Return(Return<'plan, Plan>),
     Complete(CompletedGraph),
 }
 
-pub(in crate::runtime) struct Frame<'plan, Plan: ExecutableRuntimePlan> {
+pub(super) struct Frame<'plan, Plan: ExecutableRuntimePlan> {
     pub(super) graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
     pub(super) position: GraphPosition,
-    exit: GraphExit<'plan, Plan>,
+    exit: Box<dyn GraphExit<'plan, Plan> + 'plan>,
 }
 
-type GraphExit<'plan, Plan> = Box<
-    dyn FnOnce(
-            CompletedGraph,
-            &mut Returns<'plan, Plan>,
-        ) -> ExecutionResult<Activation<'plan, Plan>>
-        + Send
-        + 'plan,
->;
+trait GraphExit<'plan, Plan: ExecutableRuntimePlan>: Send {
+    fn exit(
+        self: Box<Self>,
+        completed: CompletedGraph,
+        returns: &mut Returns<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>>;
+}
+
+struct RootExit;
+
+impl<'plan, Plan: ExecutableRuntimePlan> GraphExit<'plan, Plan> for RootExit {
+    fn exit(
+        self: Box<Self>,
+        completed: CompletedGraph,
+        _returns: &mut Returns<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        Ok(Activation::Complete(completed))
+    }
+}
+
+struct FunctionContinuation<'plan, Plan, Id, Value, Map>
+where
+    Plan: ExecutableRuntimePlan,
+    Id: EntryTarget<Plan>,
+{
+    plan: &'plan Plan,
+    id: Id,
+    body: &'plan Id::Body,
+    destination: Destination<Value>,
+    map: Map,
+}
+
+struct ConstantContinuation<'plan, Plan: ExecutableRuntimePlan, Local: 'static, Value, Map> {
+    constant: &'plan ProfiledConstantProgram<Local, RuntimeGraph<Plan>>,
+    destination: Destination<Value>,
+    map: Map,
+}
+
+struct NeverContinuation<'plan, Plan: ExecutableRuntimePlan> {
+    plan: &'plan Plan,
+    body: &'plan ExecutionNeverFunctionBody<Plan::Profile>,
+}
+
 type Return<'plan, Plan> =
     Box<dyn FnOnce(&mut Returns<'plan, Plan>) -> Activation<'plan, Plan> + Send + 'plan>;
 
@@ -107,7 +143,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
             active: Activation::Graph(Frame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
-                exit: Box::new(|completed, _| Ok(Activation::Complete(completed))),
+                exit: Box::new(RootExit),
             }),
         }
     }
@@ -123,7 +159,53 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(mut frame) => loop {
-                match frame.step(plan, state, returns)? {
+                let block = frame.graph.block(frame.position.block);
+                let active = if frame.position.instruction < block.instructions().len() {
+                    super::instruction::advance(plan, state, frame, returns, remaining)?
+                } else {
+                    use super::terminator::{GraphAction, NeverCall, terminator_action};
+
+                    match terminator_action(
+                        plan,
+                        state,
+                        frame.position.environment,
+                        block.terminator(),
+                    )? {
+                        GraphAction::Continue { block, inputs } => {
+                            frame.position = GraphPosition::new(block, inputs);
+                            if *remaining > 0 {
+                                *remaining -= 1;
+                                continue;
+                            }
+                            break Activation::Graph(frame);
+                        }
+                        GraphAction::Exit { exit, environment } => frame
+                            .exit
+                            .exit(CompletedGraph { exit, environment }, returns)?,
+                        GraphAction::NeverCall {
+                            function,
+                            mut inputs,
+                            site,
+                        } => {
+                            drop(frame.exit);
+                            let function = match function {
+                                NeverCall::Direct(function) => function,
+                                NeverCall::Value(function) => {
+                                    inputs.append_captures(function.capture_frame());
+                                    function.runtime_id()
+                                }
+                            };
+                            if let Some(cancelled) = plan
+                                .reject_foreign_callable(&inputs, Some(state.captures().domain()))
+                            {
+                                Activation::Host(cancelled)
+                            } else {
+                                enter_never(plan, function, HostCallOrigin::source(site), inputs)
+                            }
+                        }
+                    }
+                };
+                match active {
                     Activation::Graph(next) if *remaining > 0 => {
                         *remaining -= 1;
                         frame = next;
@@ -144,55 +226,6 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
-    fn step(
-        mut self,
-        plan: &'plan Plan,
-        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-        returns: &mut Returns<'plan, Plan>,
-    ) -> ExecutionResult<Activation<'plan, Plan>> {
-        use super::terminator::{GraphAction, NeverCall, terminator_action};
-
-        let block = self.graph.block(self.position.block);
-        if let Some(instruction) = block.instructions().get(self.position.instruction) {
-            self.position.instruction += 1;
-            return super::instruction::advance(plan, state, self, returns, instruction);
-        }
-        match terminator_action(plan, state, self.position.environment, block.terminator())? {
-            GraphAction::Continue { block, inputs } => {
-                self.position = GraphPosition::new(block, inputs);
-                Ok(Activation::Graph(self))
-            }
-            GraphAction::Exit { exit, environment } => {
-                (self.exit)(CompletedGraph { exit, environment }, returns)
-            }
-            GraphAction::NeverCall {
-                function,
-                mut inputs,
-                site,
-            } => {
-                drop(self.exit);
-                let function = match function {
-                    NeverCall::Direct(function) => function,
-                    NeverCall::Value(function) => {
-                        inputs.append_captures(function.capture_frame());
-                        function.runtime_id()
-                    }
-                };
-                if let Some(cancelled) =
-                    plan.reject_foreign_callable(&inputs, Some(state.captures().domain()))
-                {
-                    return Ok(Activation::Host(cancelled));
-                }
-                Ok(enter_never(
-                    plan,
-                    function,
-                    HostCallOrigin::source(site),
-                    inputs,
-                ))
-            }
-        }
-    }
-
     pub(super) fn store<Value: ReturnValue>(mut self, value: Value) -> Activation<'plan, Plan> {
         value.push(&mut self.position.environment);
         Activation::Graph(self)
@@ -279,29 +312,14 @@ where
         return Activation::Host(cancelled);
     }
     match id.entry(plan) {
-        ExecutionFunctionRef::Graph(function) => {
-            let body = function.body().function_body();
-            let graph = body.block_graph().as_view();
-            Activation::Graph(Frame {
-                graph,
-                position: GraphPosition::new(graph.entry(), inputs),
-                exit: Box::new(
-                    move |completed, returns| match body.exit(completed.exit()) {
-                        FunctionExit::Return(value) => {
-                            let value = map(completed.into_value(value))?;
-                            Ok(destination.resume(returns, value))
-                        }
-                        FunctionExit::TailCall {
-                            function, transfer, ..
-                        } => {
-                            let (id, origin) = id.next(function);
-                            let inputs = completed.into_retained(transfer);
-                            Ok(enter_function(plan, id, origin, inputs, destination, map))
-                        }
-                    },
-                ),
-            })
-        }
+        ExecutionFunctionRef::Graph(function) => Box::new(FunctionContinuation {
+            plan,
+            id,
+            body: function.body(),
+            destination,
+            map,
+        })
+        .enter(inputs),
         ExecutionFunctionRef::Host(target) => Activation::Host(Plan::map_host(
             Id::prepare_host(plan, origin, target, inputs),
             move |value| {
@@ -311,6 +329,85 @@ where
                 })))
             },
         )),
+    }
+}
+
+impl<'plan, Plan, Id, Value, Map> FunctionContinuation<'plan, Plan, Id, Value, Map>
+where
+    Plan: ExecutableRuntimePlan,
+    Id: EntryTarget<Plan> + 'plan,
+    Value: ReturnValue,
+    Map: FnOnce(
+            <<Id::Body as FunctionBodyOwner>::Return as super::GraphValue>::Evaluated,
+        ) -> ExecutionResult<Value>
+        + Send
+        + 'plan,
+{
+    fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
+        let graph = self.body.function_body().block_graph().as_view();
+        Activation::Graph(Frame {
+            graph,
+            position: GraphPosition::new(graph.entry(), inputs),
+            exit: self,
+        })
+    }
+}
+
+impl<'plan, Plan, Id, Value, Map> GraphExit<'plan, Plan>
+    for FunctionContinuation<'plan, Plan, Id, Value, Map>
+where
+    Plan: ExecutableRuntimePlan,
+    Id: EntryTarget<Plan> + 'plan,
+    Value: ReturnValue,
+    Map: FnOnce(
+            <<Id::Body as FunctionBodyOwner>::Return as super::GraphValue>::Evaluated,
+        ) -> ExecutionResult<Value>
+        + Send
+        + 'plan,
+{
+    fn exit(
+        mut self: Box<Self>,
+        completed: CompletedGraph,
+        returns: &mut Returns<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        match self.body.function_body().exit(completed.exit()) {
+            FunctionExit::Return(value) => {
+                let value = (self.map)(completed.into_value(value))?;
+                Ok(self.destination.resume(returns, value))
+            }
+            FunctionExit::TailCall {
+                function, transfer, ..
+            } => {
+                let (id, origin) = self.id.next(function);
+                let inputs = completed.into_retained(transfer);
+                // A direct source tail transfers locals within this activation.
+                // Callable-value entry and capture-domain checks stay in enter_function.
+                match id.entry(self.plan) {
+                    ExecutionFunctionRef::Graph(function) => {
+                        self.id = id;
+                        self.body = function.body();
+                        Ok(self.enter(inputs))
+                    }
+                    ExecutionFunctionRef::Host(target) => {
+                        let Self {
+                            plan,
+                            destination,
+                            map,
+                            ..
+                        } = *self;
+                        Ok(Activation::Host(Plan::map_host(
+                            Id::prepare_host(plan, origin, target, inputs),
+                            move |value| {
+                                let value = map(value)?;
+                                Ok(Activation::Return(Box::new(move |returns| {
+                                    destination.resume(returns, value)
+                                })))
+                            },
+                        )))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -330,12 +427,31 @@ where
     Activation::Graph(Frame {
         graph,
         position: GraphPosition::new(graph.entry(), RetainedValues::empty()),
-        exit: Box::new(move |completed, returns| {
-            let local = constant.return_(completed.exit());
-            let value = map(completed.into_value(local));
-            Ok(destination.resume(returns, value))
+        exit: Box::new(ConstantContinuation::<Plan, _, _, _> {
+            constant,
+            destination,
+            map,
         }),
     })
+}
+
+impl<'plan, Plan, Local, Value, Map> GraphExit<'plan, Plan>
+    for ConstantContinuation<'plan, Plan, Local, Value, Map>
+where
+    Plan: ExecutableRuntimePlan,
+    Local: ConstantValue + super::GraphValue + Sync + 'plan,
+    Value: ReturnValue,
+    Map: FnOnce(Local::Evaluated) -> Value + Send + 'plan,
+{
+    fn exit(
+        self: Box<Self>,
+        completed: CompletedGraph,
+        returns: &mut Returns<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        let local = self.constant.return_(completed.exit());
+        let value = (self.map)(completed.into_value(local));
+        Ok(self.destination.resume(returns, value))
+    }
 }
 
 fn enter_never<'plan, Plan: ExecutableRuntimePlan>(
@@ -345,32 +461,54 @@ fn enter_never<'plan, Plan: ExecutableRuntimePlan>(
     inputs: RetainedValues,
 ) -> Activation<'plan, Plan> {
     match plan.never_function(id).as_ref() {
-        ExecutionFunctionRef::Graph(function) => {
-            let body = function.body().function_body();
-            let graph = body.block_graph().as_view();
-            Activation::Graph(Frame {
-                graph,
-                position: GraphPosition::new(graph.entry(), inputs),
-                exit: Box::new(move |completed, _| match body.exit(completed.exit()) {
-                    FunctionExit::Return(never) => match *never {},
-                    FunctionExit::TailCall {
-                        function, transfer, ..
-                    } => {
-                        let inputs = completed.into_retained(transfer);
-                        Ok(enter_never(
-                            plan,
-                            *function.function(),
-                            HostCallOrigin::source(function.site().clone()),
-                            inputs,
-                        ))
-                    }
-                }),
-            })
-        }
+        ExecutionFunctionRef::Graph(function) => Box::new(NeverContinuation {
+            plan,
+            body: function.body(),
+        })
+        .enter(inputs),
         ExecutionFunctionRef::Host(target) => Activation::Host(Plan::map_host(
             plan.prepare_host_never(origin, target, inputs),
             |never| match never {},
         )),
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> NeverContinuation<'plan, Plan> {
+    fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
+        let graph = self.body.function_body().block_graph().as_view();
+        Activation::Graph(Frame {
+            graph,
+            position: GraphPosition::new(graph.entry(), inputs),
+            exit: self,
+        })
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> GraphExit<'plan, Plan> for NeverContinuation<'plan, Plan> {
+    fn exit(
+        mut self: Box<Self>,
+        completed: CompletedGraph,
+        _returns: &mut Returns<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        match self.body.function_body().exit(completed.exit()) {
+            FunctionExit::Return(never) => match *never {},
+            FunctionExit::TailCall {
+                function, transfer, ..
+            } => {
+                let inputs = completed.into_retained(transfer);
+                let origin = HostCallOrigin::source(function.site().clone());
+                match self.plan.never_function(*function.function()).as_ref() {
+                    ExecutionFunctionRef::Graph(function) => {
+                        self.body = function.body();
+                        Ok(self.enter(inputs))
+                    }
+                    ExecutionFunctionRef::Host(target) => Ok(Activation::Host(Plan::map_host(
+                        self.plan.prepare_host_never(origin, target, inputs),
+                        |never| match never {},
+                    ))),
+                }
+            }
+        }
     }
 }
 
@@ -437,15 +575,23 @@ impl ReturnValue for () {
 
 #[cfg(test)]
 mod tests {
-    use super::{Execution, Progress, Returns};
+    use super::{
+        Activation, Execution, Frame, GraphPosition, Progress, Returns, RootExit, enter_function,
+        enter_never,
+    };
     use crate::ExecutionPlan;
     use crate::plan::execution::function::{FunctionExit, IntFunctionId};
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::state::RuntimeState;
-    use crate::runtime::{RuntimeListStorage, Value};
+    use crate::runtime::{EvaluatedValue, HostCallOrigin, RuntimeListStorage, Value};
+    use num_bigint::BigInt;
+    use std::collections::BTreeSet;
+    use std::ptr;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn returned_int(plan: &ExecutionPlan, completed: CompletedGraph) -> num_bigint::BigInt {
-        let body = plan.int_function(IntFunctionId(0)).body();
+    fn returned_int(plan: &ExecutionPlan, id: IntFunctionId, completed: CompletedGraph) -> BigInt {
+        let body = plan.int_function(id).body();
         match body.exit(completed.exit()) {
             FunctionExit::Return(value) => completed.into_value(value),
             FunctionExit::TailCall { .. } => {
@@ -458,6 +604,23 @@ mod tests {
         match progress {
             Progress::Continue(next) => next,
             Progress::Complete(_) => panic!("fixture graph must still be running"),
+            Progress::Host(invoke) => match invoke {},
+        }
+    }
+
+    fn active_frame<'run, 'plan>(
+        execution: &'run Execution<'plan, ExecutionPlan>,
+    ) -> &'run Frame<'plan, ExecutionPlan> {
+        match &execution.active {
+            Activation::Graph(frame) => frame,
+            _ => panic!("fixture activation must be a graph"),
+        }
+    }
+
+    fn completed(progress: Progress<'_, ExecutionPlan>) -> CompletedGraph {
+        match progress {
+            Progress::Complete(completed) => completed,
+            Progress::Continue(_) => panic!("fixture graph must have completed"),
             Progress::Host(invoke) => match invoke {},
         }
     }
@@ -481,10 +644,133 @@ mod tests {
     }
 
     #[test]
+    fn instruction_runs_preserve_typed_values_at_every_budget_boundary() {
+        let plan = crate::runtime::plan_src(
+            r#"
+pub fn main() {
+  let number = 20 + 21
+  let values = [number, 1]
+  let fields = #(number, values, fn(x) { x + number })
+  fields.0 + 1
+}
+"#,
+        );
+        let graph = plan
+            .int_function(IntFunctionId(0))
+            .body()
+            .block_graph()
+            .as_view();
+        let instructions = graph.block(graph.entry()).instructions();
+        assert!(instructions.len() > 3);
+        for budget in 1..=instructions.len() {
+            let mut returns = Returns::new();
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            let mut remaining = budget - 1;
+            let execution = continuing(
+                Execution::new(graph, RetainedValues::empty())
+                    .advance(&plan, &mut state, &mut returns, &mut remaining)
+                    .unwrap(),
+            );
+            assert_eq!(remaining, 0);
+            let frame = active_frame(&execution);
+            assert_eq!(frame.position.block, graph.entry());
+            assert_eq!(frame.position.instruction, budget);
+            // Resume the stored prefix to the end, without charging its terminator.
+            let execution = if budget == instructions.len() {
+                execution
+            } else {
+                continuing(
+                    execution
+                        .advance(
+                            &plan,
+                            &mut state,
+                            &mut returns,
+                            &mut (instructions.len() - budget - 1),
+                        )
+                        .unwrap(),
+                )
+            };
+            let frame = active_frame(&execution);
+            assert_eq!(frame.position.instruction, instructions.len());
+            assert_eq!(
+                frame
+                    .position
+                    .environment
+                    .value(instructions.last().unwrap().output().local()),
+                EvaluatedValue::Int(42.into()),
+            );
+            let execution = continuing(
+                execution
+                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .unwrap(),
+            );
+            let completed = completed(
+                execution
+                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .unwrap(),
+            );
+            assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn empty_and_single_instruction_blocks_keep_separate_termination_steps() {
+        for (source, id, instruction_count, inputs) in [
+            (
+                "fn identity(value: Int) { value } pub fn main() { identity(42) }",
+                IntFunctionId(1),
+                0,
+                vec![EvaluatedValue::Int(42.into())],
+            ),
+            ("pub fn main() { 42 }", IntFunctionId(0), 1, Vec::new()),
+        ] {
+            let plan = crate::runtime::plan_src(source);
+            let graph = plan.int_function(id).body().block_graph().as_view();
+            assert_eq!(
+                graph.block(graph.entry()).instructions().len(),
+                instruction_count
+            );
+            let mut retained = RetainedValues::empty();
+            for value in inputs {
+                retained.push_evaluated(value);
+            }
+            let mut execution = Execution::new(graph, retained);
+            let mut returns = Returns::new();
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            for _ in 0..instruction_count {
+                execution = continuing(
+                    execution
+                        .advance(&plan, &mut state, &mut returns, &mut 0)
+                        .unwrap(),
+                );
+                assert_eq!(
+                    active_frame(&execution).position.instruction,
+                    instruction_count
+                );
+            }
+            execution = continuing(
+                execution
+                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .unwrap(),
+            );
+            let completed = completed(
+                execution
+                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .unwrap(),
+            );
+            assert_eq!(returned_int(&plan, id, completed), 42.into());
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "fixture root returns rather than tail-calling")]
     fn returned_int_rejects_a_source_tail_call() {
         let plan = crate::runtime::plan_src("fn answer() { 42 } pub fn main() { answer() }");
-        returned_int(&plan, complete_int_graph(&plan));
+        returned_int(&plan, IntFunctionId(0), complete_int_graph(&plan));
     }
 
     #[test]
@@ -492,6 +778,220 @@ mod tests {
     fn continuing_rejects_a_completed_source_graph() {
         let plan = crate::runtime::plan_src("pub fn main() { 42 }");
         continuing(Progress::Complete(complete_int_graph(&plan)));
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture activation must be a graph")]
+    fn active_frame_rejects_a_completed_activation() {
+        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
+        active_frame(&Execution {
+            active: Activation::Complete(complete_int_graph(&plan)),
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture graph must have completed")]
+    fn completed_rejects_a_running_source_graph() {
+        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
+        let graph = plan
+            .int_function(IntFunctionId(0))
+            .body()
+            .block_graph()
+            .as_view();
+        completed(Progress::Continue(Execution::new(
+            graph,
+            RetainedValues::empty(),
+        )));
+    }
+
+    #[test]
+    fn source_tail_calls_keep_one_exit_owner_across_self_and_mutual_recursion() {
+        for (source, expected_bodies) in [
+            (
+                r#"
+fn walk(n) { case n { 0 -> 41 _ -> walk(n - 1) } }
+pub fn main() { walk(20) + 1 }
+"#,
+                1,
+            ),
+            (
+                r#"
+fn left(n) { case n { 0 -> 41 _ -> right(n - 1) } }
+fn right(n) { case n { 0 -> 41 _ -> left(n - 1) } }
+pub fn main() { left(20) + 1 }
+"#,
+                2,
+            ),
+        ] {
+            let plan = crate::runtime::plan_src(source);
+            let graph = plan
+                .int_function(IntFunctionId(0))
+                .body()
+                .block_graph()
+                .as_view();
+            let root_instructions = graph.block(graph.entry()).instructions().as_ptr();
+            let mut execution = Execution::new(graph, RetainedValues::empty());
+            let mut returns = Returns::new();
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            let mut owner = None;
+            let mut bodies = BTreeSet::new();
+            let mut observations = 0;
+            let completed = loop {
+                if let Activation::Graph(frame) = &execution.active {
+                    let instructions = frame
+                        .graph
+                        .block(frame.graph.entry())
+                        .instructions()
+                        .as_ptr();
+                    if instructions != root_instructions {
+                        let address = ptr::from_ref(frame.exit.as_ref()).cast::<()>();
+                        assert_eq!(address, *owner.get_or_insert(address));
+                        assert_eq!(returns.ints.len(), 1);
+                        bodies.insert(instructions as usize);
+                        observations += 1;
+                    }
+                }
+                match execution
+                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .unwrap()
+                {
+                    Progress::Continue(next) => execution = next,
+                    Progress::Complete(completed) => break completed,
+                    Progress::Host(never) => match never {},
+                }
+            };
+            assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
+            assert_eq!(bodies.len(), expected_bodies);
+            assert!(observations > 20);
+            assert!(returns.ints.is_empty());
+            assert!(echo.is_empty());
+        }
+    }
+
+    struct MapperLease(Arc<AtomicUsize>);
+
+    impl Drop for MapperLease {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn tail_exit_keeps_its_once_mapper_until_return_or_abandonment() {
+        use crate::plan::execution::graph::IntLocalId;
+
+        let plan = crate::runtime::plan_src(
+            r#"
+fn walk(n) { case n { 0 -> 41 _ -> walk(n - 1) } }
+pub fn main() { walk(100) + 1 }
+"#,
+        );
+        let caller = plan
+            .int_function(IntFunctionId(0))
+            .body()
+            .block_graph()
+            .as_view();
+        for complete in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let drops = Arc::new(AtomicUsize::new(0));
+            let lease = MapperLease(drops.clone());
+            let observed_calls = calls.clone();
+            let mut returns = Returns::new();
+            let destination = returns.suspend(Frame {
+                graph: caller,
+                position: GraphPosition::new(caller.entry(), RetainedValues::empty()),
+                exit: Box::new(RootExit),
+            });
+            let mut inputs = RetainedValues::empty();
+            inputs.push_evaluated(EvaluatedValue::Int(100.into()));
+            let mut execution = Execution {
+                active: enter_function(
+                    &plan,
+                    IntFunctionId(1),
+                    HostCallOrigin::Entry,
+                    inputs,
+                    destination,
+                    move |value: BigInt| {
+                        observed_calls.fetch_add(1, Ordering::SeqCst);
+                        drop(lease);
+                        Ok(value + 1)
+                    },
+                ),
+            };
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            for _ in 0..30 {
+                execution = continuing(
+                    execution
+                        .advance(&plan, &mut state, &mut returns, &mut 0)
+                        .unwrap(),
+                );
+            }
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+            assert_eq!(drops.load(Ordering::SeqCst), 0);
+            if complete {
+                while !returns.ints.is_empty() {
+                    execution = continuing(
+                        execution
+                            .advance(&plan, &mut state, &mut returns, &mut 0)
+                            .unwrap(),
+                    );
+                }
+                assert_eq!(
+                    active_frame(&execution)
+                        .position
+                        .environment
+                        .int(IntLocalId(0)),
+                    42.into()
+                );
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+            }
+            drop(execution);
+            drop(returns);
+            assert_eq!(calls.load(Ordering::SeqCst), usize::from(complete));
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn never_tail_calls_reuse_the_exit_owner_until_the_original_panic() {
+        use crate::plan::execution::function::NeverFunctionId;
+
+        let plan = crate::runtime::plan_src(
+            r#"
+fn left(n) { case n { 0 -> panic as "tail stopped" _ -> right(n - 1) } }
+fn right(n) { left(n) }
+pub fn main() { left(20) }
+"#,
+        );
+        let mut execution = Execution {
+            active: enter_never(
+                &plan,
+                NeverFunctionId(0),
+                HostCallOrigin::Entry,
+                RetainedValues::empty(),
+            ),
+        };
+        let mut owner = None;
+        let mut observations = 0;
+        let mut returns = Returns::new();
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let error = loop {
+            let address = ptr::from_ref(active_frame(&execution).exit.as_ref()).cast::<()>();
+            assert_eq!(address, *owner.get_or_insert(address));
+            observations += 1;
+            match execution.advance(&plan, &mut state, &mut returns, &mut 0) {
+                Ok(progress) => execution = continuing(progress),
+                Err(error) => break error,
+            }
+        };
+        assert!(observations > 20);
+        assert_eq!(error.to_string(), "panic: tail stopped");
+        assert!(echo.is_empty());
     }
 
     #[test]
@@ -557,7 +1057,7 @@ pub fn main() {
                 }
             }
         });
-        assert_eq!(returned_int(&plan, completed), 42.into());
+        assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
         assert!(steps > 20);
         assert_eq!(
             output
@@ -628,10 +1128,15 @@ pub fn main() { count(0) + 1 }
         use crate::{HostFailure, HostProviderModule, HostProviderSet, StatelessHostProfile};
         use std::convert::Infallible;
 
-        for (callee, expected) in [
-            ("source_stop", "panic: source stopped"),
+        for (body, expected) in [
+            ("let stop = source_stop stop()", "panic: source stopped"),
+            ("source_stop()", "panic: source stopped"),
             (
-                "native_stop",
+                "let stop = native_stop stop()",
+                "host function application::main.native_stop failed: native stopped",
+            ),
+            (
+                "native_stop()",
                 "host function application::main.native_stop failed: native stopped",
             ),
         ] {
@@ -640,7 +1145,7 @@ pub fn main() { count(0) + 1 }
 @external(erlang, "native", "stop")
 fn native_stop() -> value
 fn source_stop() {{ panic as "source stopped" }}
-fn forward() {{ let stop = {callee} stop() }}
+fn forward() {{ {body} }}
 pub fn main() {{ let stop = forward stop() }}
 "#
             );
@@ -677,6 +1182,105 @@ pub fn main() {{ let stop = forward stop() }}
             assert_eq!(error.to_string(), expected);
             assert!(echo.is_empty());
         }
+    }
+
+    #[test]
+    fn graph_driver_propagates_instruction_and_return_invariants_with_prior_echo() {
+        use crate::execution_fixture::TestHost;
+        use crate::plan::execution::function::{FunctionReturnFamily, TupleFunctionId};
+        use crate::runtime::execution::Domain;
+        use crate::runtime::{ExecutionError, InvariantError};
+        use crate::{
+            HostProviderSet, HostedExecution, ModuleSource, PackageSource, StatelessHostProfile,
+        };
+        let source = r#"
+fn project(value: #(Int)) { echo "projection" value.0 + 1 }
+fn apply(factory: fn() -> fn() -> Int) {
+  echo "return"
+  let callback = factory()
+  callback()
+}
+fn factory() { fn() { 1.5 } }
+pub fn main() { #(project, apply, factory) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = execution.parts_mut();
+        let host = TestHost::default();
+        let mut state = ();
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<StatelessHostProfile>::DEFAULT_BUDGET,
+        );
+        let context = domain.context();
+        host.block_on(domain.drive(async {
+            let values = context
+                .call(
+                    TupleFunctionId(0),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(values.len(), 3);
+            for (entry, input, expected) in [
+                (
+                    IntFunctionId(0),
+                    EvaluatedValue::Tuple(vec![EvaluatedValue::Bool(true)]),
+                    InvariantError::TupleIndexFamilyMismatch {
+                        expected: crate::ValueType::Int,
+                        actual: crate::ValueType::Bool,
+                    },
+                ),
+                (
+                    IntFunctionId(1),
+                    values[2].clone(),
+                    InvariantError::FunctionReturnFamilyMismatch {
+                        expected: FunctionReturnFamily::Int,
+                        actual: FunctionReturnFamily::Float,
+                    },
+                ),
+            ] {
+                let mut inputs = RetainedValues::empty();
+                inputs.push_evaluated(input);
+                assert_eq!(
+                    context
+                        .call(entry, HostCallOrigin::Entry, inputs)
+                        .await
+                        .unwrap(),
+                    Err(ExecutionError::Invariant(expected))
+                );
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            echo.iter()
+                .map(|output| output.value().clone())
+                .collect::<Vec<_>>(),
+            vec![
+                Value::String("projection".into()),
+                Value::String("return".into())
+            ]
+        );
     }
 
     #[test]
@@ -729,7 +1333,8 @@ fn apply_float(factory: fn(fn() -> Float) -> fn() -> Float, value: fn() -> Float
 fn integer(_value: fn() -> Float) { fn() { 42 } }
 fn floating(value: fn() -> Float) { leaf(value) }
 fn leaf(value: fn() -> Float) { value }
-pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5 }) }
+fn native_tail(value: fn() -> Float) { forward(value) }
+pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5 }, native_tail) }
 "#;
         let typed = crate::compile_typed_host_program(
             "application",
@@ -773,11 +1378,12 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
                 .await
                 .unwrap()
                 .unwrap();
-            assert_eq!(values.len(), 6);
+            assert_eq!(values.len(), 7);
             for (entry, factory, expected) in [
                 (IntFunctionId(0), 2, Ok(42.into())),
                 (IntFunctionId(1), 3, Ok(42.into())),
                 (IntFunctionId(1), 4, Ok(42.into())),
+                (IntFunctionId(1), 6, Ok(42.into())),
                 (
                     IntFunctionId(0),
                     3,
@@ -798,8 +1404,18 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
                         },
                     )),
                 ),
+                (
+                    IntFunctionId(0),
+                    6,
+                    Err(ExecutionError::Invariant(
+                        InvariantError::FunctionReturnFamilyMismatch {
+                            expected: FunctionReturnFamily::Int,
+                            actual: FunctionReturnFamily::Float,
+                        },
+                    )),
+                ),
             ] {
-                // The last two cases corrupt only the evaluated factory argument.
+                // The last three cases corrupt only the evaluated factory argument.
                 // The compiled entries, native adapter and return slots are unchanged.
                 let mut inputs = RetainedValues::empty();
                 inputs.push_evaluated(values[factory].clone());
@@ -812,7 +1428,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, forward, fn() { 1.5
             }
         }))
         .unwrap();
-        assert_eq!(state, 2);
+        assert_eq!(state, 4);
         assert!(echo.is_empty());
     }
 }
