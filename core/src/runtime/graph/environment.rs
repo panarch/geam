@@ -272,6 +272,24 @@ impl BlockEnvironment {
         self.values.parameter_lists[local.0]
     }
 
+    pub(super) fn push_stored_list(&mut self, value: StoredListValueId) {
+        match value {
+            StoredListValueId::Int(value) => self.push_int_list(value),
+            StoredListValueId::String(value) => self.push_string_list(value),
+            StoredListValueId::BitArray(value) => self.push_bit_array_list(value),
+            StoredListValueId::UtfCodepoint(value) => self.push_utf_codepoint_list(value),
+            StoredListValueId::Custom(value) => self.push_custom_list(value),
+            StoredListValueId::External(value) => self.push_external_list(value),
+            StoredListValueId::Float(value) => self.push_float_list(value),
+            StoredListValueId::Bool(value) => self.push_bool_list(value),
+            StoredListValueId::Nil(value) => self.push_nil_list(value),
+            StoredListValueId::Tuple(value) => self.push_tuple_list(value),
+            StoredListValueId::ParameterList(value) => self.push_parameter_list_list(value),
+            StoredListValueId::List(value) => self.push_list_list(value),
+            StoredListValueId::Function(value) => self.push_function_list(value),
+        }
+    }
+
     pub(super) fn push_int_list(&mut self, value: IntListValueId) {
         self.values.int_lists.push(value);
     }
@@ -965,6 +983,7 @@ impl BlockValues {
 #[cfg(test)]
 mod tests {
     use super::{BlockEnvironment, RetainedValues};
+    use crate::host::ExternalTestProfile;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostFunctionDefinition, HostScopedValue, HostValueFamily, expect_value_implementation,
@@ -974,8 +993,150 @@ mod tests {
         TupleLocalId,
     };
     use crate::runtime::graph::CompletedGraph;
+    use crate::runtime::plan_src;
+    use crate::runtime::profile::external_test::{RuntimeCounterProvider, RuntimeCounterSchema};
+    use crate::runtime::state::list::{
+        CustomListAllocation, ExternalListAllocation, RuntimeListStorage,
+    };
     use crate::runtime::{EvaluatedValue, ListValue, Value};
+    use crate::{
+        HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+        compile_typed_host_program, plan_host_program,
+    };
     use num_bigint::BigInt;
+    use std::slice;
+
+    #[test]
+    fn projected_lists_retain_their_exact_owner_in_every_core_column() {
+        let plan = plan_src(
+            r#"
+fn ints() -> List(Int) { [] }
+fn strings() -> List(String) { [] }
+fn bits() -> List(BitArray) { [] }
+fn codepoints() -> List(UtfCodepoint) { [] }
+pub type Marker { Marker }
+fn customs() -> List(Marker) { [] }
+fn floats() -> List(Float) { [] }
+fn bools() -> List(Bool) { [] }
+fn nils() -> List(Nil) { [] }
+fn tuples() -> List(#(Int)) { [] }
+fn lists() -> List(List(Int)) { [] }
+fn functions() -> List(fn() -> Int) { [] }
+fn parameters(values: List(List(value))) { values }
+pub fn main() {
+  let _ = #(ints, strings, bits, codepoints, customs, floats, bools, nils, tuples, lists, functions)
+  parameters([[]])
+}
+"#,
+        );
+        let storage = RuntimeListStorage::default();
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        macro_rules! project {
+            ($column:ident, $value:expr) => {{
+                let original = $value;
+                environment.push_stored_list(original.clone().into());
+                assert_eq!(
+                    environment.values.$column.as_slice(),
+                    slice::from_ref(&original)
+                );
+            }};
+        }
+        project!(
+            int_lists,
+            storage.int(plan.int_list_function_id(0).type_id(), vec![1.into()])
+        );
+        project!(
+            string_lists,
+            storage.string(
+                plan.string_list_function_id(0).type_id(),
+                vec!["one".into()]
+            )
+        );
+        project!(
+            bit_array_lists,
+            storage.bit_array(plan.bit_array_list_function_id(0).type_id(), Vec::new())
+        );
+        project!(
+            utf_codepoint_lists,
+            storage.utf_codepoint(plan.utf_codepoint_list_function_id(0).type_id(), vec!['A'])
+        );
+        project!(
+            custom_lists,
+            storage.custom(CustomListAllocation::new(
+                plan.custom_list_function_id(0).type_id(),
+                Vec::new()
+            ))
+        );
+        project!(
+            float_lists,
+            storage.float(plan.float_list_function_id(0).type_id(), vec![1.0])
+        );
+        project!(
+            bool_lists,
+            storage.bool(plan.bool_list_function_id(0).type_id(), vec![true])
+        );
+        project!(
+            nil_lists,
+            storage.nil(plan.nil_list_function_id(0).type_id(), 1)
+        );
+        project!(
+            tuple_lists,
+            storage.tuple(
+                plan.tuple_list_function_id(0).type_id(),
+                vec![vec![EvaluatedValue::Int(1.into())]]
+            )
+        );
+        project!(
+            list_lists,
+            storage.list(plan.list_list_function_id(0).type_id(), Vec::new())
+        );
+        project!(
+            function_lists,
+            storage.function(plan.function_list_function_id(0).type_id(), Vec::new())
+        );
+        project!(
+            parameter_list_lists,
+            storage.parameter_list_list(plan.parameter_list_list_function_id(0).type_id(), 1)
+        );
+    }
+
+    #[test]
+    fn projected_external_lists_retain_their_exact_owner_in_the_external_column() {
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .unwrap()
+            .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "Counter")
+pub type Counter
+pub fn main() -> List(Counter) { [] }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let plan = plan_host_program(typed).unwrap();
+        let execution = HostedExecution::try_from_module_plan(plan).unwrap();
+        let type_id = execution.external_list_function_id(0).type_id();
+        let storage = RuntimeListStorage::default();
+        let original = storage.external(ExternalListAllocation::new(type_id, Vec::new()));
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        environment.push_stored_list(original.clone().into());
+        assert_eq!(
+            environment.values.external_lists.as_slice(),
+            slice::from_ref(&original)
+        );
+    }
 
     #[test]
     fn completed_graph_handoff_reuses_its_owned_storage() {

@@ -6,6 +6,7 @@ mod value;
 pub(in crate::runtime) use function::ExternalFunctionInstructionValue;
 pub(in crate::runtime) use list::ExternalListInstructionValue;
 
+use self::list::ListInstructionValue;
 use self::value::{InstructionValue, InstructionValueWithoutConstant};
 use super::activation::{Activation, Frame, ReturnValue, Returns, enter_constant, enter_function};
 use super::{BlockEnvironment, RuntimeGraphState};
@@ -48,6 +49,42 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                         ));
                     }
                     InstructionValue::Call {
+                        function,
+                        origin,
+                        inputs,
+                    } => {
+                        let destination = returns.suspend(frame);
+                        return Ok(enter_function(
+                            plan,
+                            function,
+                            origin,
+                            inputs,
+                            destination,
+                            Ok,
+                        ));
+                    }
+                }
+            };
+        }
+        macro_rules! store_list {
+            ($value:expr) => {
+                match $value {
+                    ListInstructionValue::Ready(value) => {
+                        value.push(&mut frame.position.environment)
+                    }
+                    ListInstructionValue::Projected(value) => {
+                        frame.position.environment.push_stored_list(value)
+                    }
+                    ListInstructionValue::Constant(id) => {
+                        let destination = returns.suspend(frame);
+                        return Ok(enter_constant(
+                            plan,
+                            id,
+                            destination,
+                            std::convert::identity,
+                        ));
+                    }
+                    ListInstructionValue::Call {
                         function,
                         origin,
                         inputs,
@@ -130,7 +167,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                 )?);
             }
             ProfiledInstructionKind::ExternalList(instruction) => {
-                store_value!(plan.evaluate_external_list_instruction(
+                store_list!(plan.evaluate_external_list_instruction(
                     state,
                     environment,
                     instruction,
@@ -183,7 +220,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
             ProfiledInstructionKind::List(instruction) => {
                 macro_rules! evaluate_list {
                     ($family:ident, $type_id:expr, $instruction:expr) => {
-                        store_value!(list::typed::<list::$family, _, _>(
+                        store_list!(list::typed::<list::$family, _, _>(
                             plan,
                             state,
                             environment,

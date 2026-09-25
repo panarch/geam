@@ -19,34 +19,51 @@ use crate::runtime::evaluated::{
     EvaluatedValue,
 };
 
+#[derive(Clone, Default)]
+pub(crate) struct RuntimeListStorage {
+    releases: Arc<ListReleaseQueue>,
+}
+
+// Typed handles retain both their exact storage identity and their payload.
+// Only construction and composite destruction use the storage's release queue.
 macro_rules! typed_list_value_id {
-    ($name:ident, $type_id:ty, $variant:ident) => {
-        #[derive(Debug, Clone, PartialEq)]
+    ($name:ident, $type_id:ty, $variant:ident, items $item:ty) => {
+        typed_list_value_id!(@owner $name, $type_id, $variant, ListLease<$item>);
+
+        impl $name {
+            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item> {
+                &self.lease.values
+            }
+        }
+    };
+    ($name:ident, $type_id:ty, $variant:ident, composite $item:ty) => {
+        typed_list_value_id!(@owner $name, $type_id, $variant, dyn ListReadOwner<$item>);
+
+        impl $name {
+            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item> {
+                self.lease.values()
+            }
+        }
+    };
+    ($name:ident, $type_id:ty, $variant:ident, length) => {
+        typed_list_value_id!(@owner $name, $type_id, $variant, usize);
+
+        impl $name {
+            pub(in crate::runtime) fn len(&self) -> usize {
+                *self.lease
+            }
+        }
+    };
+    (@owner $name:ident, $type_id:ty, $variant:ident, $owner:ty) => {
+        #[derive(Clone)]
         pub(in crate::runtime) struct $name {
             type_id: $type_id,
-            core: crate::runtime::state::list::ListHandleCore,
+            lease: Arc<$owner>,
         }
 
         impl $name {
-            pub(in crate::runtime) fn new(
-                type_id: $type_id,
-                core: crate::runtime::state::list::ListHandleCore,
-            ) -> Self {
-                Self { type_id, core }
-            }
-
             pub(in crate::runtime) fn type_id(&self) -> $type_id {
                 self.type_id
-            }
-
-            pub(in crate::runtime) fn core(&self) -> &crate::runtime::state::list::ListHandleCore {
-                &self.core
-            }
-
-            pub(in crate::runtime) fn into_core(
-                self,
-            ) -> crate::runtime::state::list::ListHandleCore {
-                self.core
             }
 
             pub(in crate::runtime) fn from_stored(value: &StoredListValueId) -> Option<Self> {
@@ -54,6 +71,23 @@ macro_rules! typed_list_value_id {
                     StoredListValueId::$variant(value) => Some(value.clone()),
                     _ => None,
                 }
+            }
+        }
+
+        // This is handle identity, not source list equality.
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.type_id == other.type_id && Arc::ptr_eq(&self.lease, &other.lease)
+            }
+        }
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter
+                    .debug_struct(stringify!($name))
+                    .field("type_id", &self.type_id)
+                    .field("lease", &Arc::as_ptr(&self.lease))
+                    .finish()
             }
         }
 
@@ -65,27 +99,24 @@ macro_rules! typed_list_value_id {
     };
 }
 
-typed_list_value_id!(IntListValueId, IntListTypeId, Int);
-typed_list_value_id!(StringListValueId, StringListTypeId, String);
-typed_list_value_id!(BitArrayListValueId, BitArrayListTypeId, BitArray);
-typed_list_value_id!(
-    UtfCodepointListValueId,
-    UtfCodepointListTypeId,
-    UtfCodepoint
-);
-typed_list_value_id!(CustomListValueId, CustomListTypeId, Custom);
-typed_list_value_id!(ExternalListValueId, ExternalListTypeId, External);
-typed_list_value_id!(FloatListValueId, FloatListTypeId, Float);
-typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool);
-typed_list_value_id!(NilListValueId, NilListTypeId, Nil);
-typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple);
+typed_list_value_id!(IntListValueId, IntListTypeId, Int, items BigInt);
+typed_list_value_id!(StringListValueId, StringListTypeId, String, items StringValue);
+typed_list_value_id!(BitArrayListValueId, BitArrayListTypeId, BitArray, items EvaluatedBitArray);
+typed_list_value_id!(UtfCodepointListValueId, UtfCodepointListTypeId, UtfCodepoint, items char);
+typed_list_value_id!(CustomListValueId, CustomListTypeId, Custom, composite EvaluatedCustomValue);
+typed_list_value_id!(ExternalListValueId, ExternalListTypeId, External, composite EvaluatedExternalValue);
+typed_list_value_id!(FloatListValueId, FloatListTypeId, Float, items f64);
+typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool, items bool);
+typed_list_value_id!(NilListValueId, NilListTypeId, Nil, length);
+typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple, composite Vec<EvaluatedValue>);
 typed_list_value_id!(
     ParameterListListValueId,
     ParameterListListTypeId,
-    ParameterList
+    ParameterList,
+    length
 );
-typed_list_value_id!(ListListValueId, ListListTypeId, List);
-typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function);
+typed_list_value_id!(ListListValueId, ListListTypeId, List, composite StoredListValueId);
+typed_list_value_id!(FunctionListValueId, FunctionListTypeId, Function, composite EvaluatedFunctionValue);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::runtime) struct ParameterListValueId {
@@ -231,24 +262,6 @@ impl StoredListValueId {
             Self::Function(value) => ListValueId::Function(value),
         }
     }
-
-    pub(in crate::runtime) fn into_core(self) -> crate::runtime::state::list::ListHandleCore {
-        match self {
-            Self::Int(value) => value.into_core(),
-            Self::String(value) => value.into_core(),
-            Self::BitArray(value) => value.into_core(),
-            Self::UtfCodepoint(value) => value.into_core(),
-            Self::Custom(value) => value.into_core(),
-            Self::External(value) => value.into_core(),
-            Self::Float(value) => value.into_core(),
-            Self::Bool(value) => value.into_core(),
-            Self::Nil(value) => value.into_core(),
-            Self::Tuple(value) => value.into_core(),
-            Self::ParameterList(value) => value.into_core(),
-            Self::List(value) => value.into_core(),
-            Self::Function(value) => value.into_core(),
-        }
-    }
 }
 
 impl From<StoredListValueId> for ListValueId {
@@ -257,265 +270,118 @@ impl From<StoredListValueId> for ListValueId {
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct RuntimeListStorage {
-    storage: Arc<SharedListStorage>,
+struct ListLease<Item: ListItem> {
+    values: ListSequence<Item>,
+    release: Item::Release,
 }
 
-#[derive(Clone)]
-pub(crate) struct ListHandleCore {
-    lease: Arc<ListLease>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ListStorageKey {
-    Int(usize),
-    String(usize),
-    BitArray(usize),
-    UtfCodepoint(usize),
-    Custom(usize),
-    External(usize),
-    Float(usize),
-    Bool(usize),
-    Nil(usize),
-    Tuple(usize),
-    ParameterList(usize),
-    List(usize),
-    Function(usize),
-}
-
-impl ListStorageKey {
-    fn slot(self) -> usize {
-        match self {
-            Self::Int(slot)
-            | Self::String(slot)
-            | Self::BitArray(slot)
-            | Self::UtfCodepoint(slot)
-            | Self::Custom(slot)
-            | Self::External(slot)
-            | Self::Float(slot)
-            | Self::Bool(slot)
-            | Self::Nil(slot)
-            | Self::Tuple(slot)
-            | Self::ParameterList(slot)
-            | Self::List(slot)
-            | Self::Function(slot) => slot,
-        }
-    }
-}
-
-struct ListLease {
-    key: ListStorageKey,
-    storage: Arc<SharedListStorage>,
-}
-
-impl Drop for ListLease {
-    fn drop(&mut self) {
-        self.storage.release(self.key);
-    }
-}
-
-impl PartialEq for ListHandleCore {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.lease, &other.lease)
-    }
-}
-
-impl fmt::Debug for ListHandleCore {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ListHandleCore")
-            .field("key", &self.lease.key)
-            .finish()
-    }
-}
-
-impl ListHandleCore {
-    fn slot(&self) -> usize {
-        self.lease.key.slot()
-    }
-
-    fn storage(&self) -> &SharedListStorage {
-        &self.lease.storage
-    }
-}
-
-struct ListPool<Value> {
-    // Read owners share the immutable sequence independently of slot reuse.
-    slots: Vec<ListSequence<Value>>,
-    free: Vec<usize>,
-}
-
-impl<Value> Default for ListPool<Value> {
-    fn default() -> Self {
+impl<Item: ListItem> ListLease<Item> {
+    fn new(values: ListSequence<Item>, releases: &Arc<ListReleaseQueue>) -> Self {
         Self {
-            slots: Vec::new(),
-            free: Vec::new(),
+            values,
+            release: Item::release_context(releases),
         }
     }
 }
 
-impl<Value> ListPool<Value> {
-    fn allocate(&mut self, value: ListSequence<Value>) -> usize {
-        if let Some(slot) = self.free.pop() {
-            self.slots[slot] = value;
-            slot
-        } else {
-            let slot = self.slots.len();
-            self.slots.push(value);
-            slot
+impl<Item: ListItem> Drop for ListLease<Item> {
+    fn drop(&mut self) {
+        Item::release(&self.release, std::mem::take(&mut self.values));
+    }
+}
+
+// The item type remains exact, while this narrow read owner stops recursive
+// auto-trait expansion in external consumers. Leaf handles stay concrete.
+trait ListReadOwner<Item>: Send + Sync {
+    fn values(&self) -> &ListSequence<Item>;
+}
+
+impl<Item: ListItem + Send + Sync> ListReadOwner<Item> for ListLease<Item>
+where
+    Item::Release: Send + Sync,
+{
+    fn values(&self) -> &ListSequence<Item> {
+        &self.values
+    }
+}
+
+// This private, closed trait selects release behavior at construction. Reads
+// neither inspect a family tag nor acquire the release lock.
+trait ListItem: Sized {
+    type Release;
+
+    fn release_context(queue: &Arc<ListReleaseQueue>) -> Self::Release;
+    fn release(context: &Self::Release, values: ListSequence<Self>);
+}
+
+macro_rules! leaf_list_item {
+    ($item:ty) => {
+        impl ListItem for $item {
+            type Release = ();
+
+            fn release_context(_queue: &Arc<ListReleaseQueue>) {}
+
+            fn release(_context: &(), values: ListSequence<Self>) {
+                drop(values);
+            }
         }
-    }
+    };
+}
 
-    fn get(&self, slot: usize) -> ListSequence<Value> {
-        self.slots[slot].clone()
-    }
+leaf_list_item!(BigInt);
+leaf_list_item!(StringValue);
+leaf_list_item!(EvaluatedBitArray);
+leaf_list_item!(char);
+leaf_list_item!(f64);
+leaf_list_item!(bool);
 
-    fn release(&mut self, slot: usize) -> ListSequence<Value> {
-        let value = std::mem::take(&mut self.slots[slot]);
-        self.free.push(slot);
-        value
-    }
+macro_rules! composite_list_item {
+    ($item:ty, $variant:ident) => {
+        impl ListItem for $item {
+            type Release = Arc<ListReleaseQueue>;
+
+            fn release_context(queue: &Arc<ListReleaseQueue>) -> Self::Release {
+                Arc::clone(queue)
+            }
+
+            fn release(context: &Self::Release, values: ListSequence<Self>) {
+                context.release(ReleasedList::$variant(values));
+            }
+        }
+    };
+}
+
+composite_list_item!(EvaluatedCustomValue, Custom);
+composite_list_item!(EvaluatedExternalValue, External);
+composite_list_item!(Vec<EvaluatedValue>, Tuple);
+composite_list_item!(StoredListValueId, List);
+composite_list_item!(EvaluatedFunctionValue, Function);
+
+#[derive(Default)]
+struct ListReleaseQueue {
+    state: Mutex<ListReleaseState>,
 }
 
 #[derive(Default)]
-struct LengthPool {
-    slots: Vec<usize>,
-    free: Vec<usize>,
+struct ListReleaseState {
+    pending: Vec<ReleasedList>,
+    draining: bool,
 }
 
-impl LengthPool {
-    fn allocate(&mut self, value: usize) -> usize {
-        if let Some(slot) = self.free.pop() {
-            self.slots[slot] = value;
-            slot
-        } else {
-            let slot = self.slots.len();
-            self.slots.push(value);
-            slot
-        }
-    }
-
-    fn get(&self, slot: usize) -> usize {
-        self.slots[slot]
-    }
-
-    fn release(&mut self, slot: usize) -> usize {
-        let value = std::mem::take(&mut self.slots[slot]);
-        self.free.push(slot);
-        value
-    }
-}
-
-#[derive(Default)]
-struct ListPools {
-    ints: ListPool<BigInt>,
-    strings: ListPool<StringValue>,
-    bit_arrays: ListPool<EvaluatedBitArray>,
-    utf_codepoints: ListPool<char>,
-    customs: ListPool<EvaluatedCustomValue>,
-    externals: ListPool<EvaluatedExternalValue>,
-    floats: ListPool<f64>,
-    bools: ListPool<bool>,
-    nils: LengthPool,
-    tuples: ListPool<Vec<EvaluatedValue>>,
-    parameter_list_lists: LengthPool,
-    lists: ListPool<StoredListValueId>,
-    functions: ListPool<EvaluatedFunctionValue>,
-}
-
+// Only pending destruction is type-erased. Live payloads remain in typed leases.
 enum ReleasedList {
-    Int(ListSequence<BigInt>),
-    String(ListSequence<StringValue>),
-    BitArray(ListSequence<EvaluatedBitArray>),
-    UtfCodepoint(ListSequence<char>),
     Custom(ListSequence<EvaluatedCustomValue>),
     External(ListSequence<EvaluatedExternalValue>),
-    Float(ListSequence<f64>),
-    Bool(ListSequence<bool>),
-    Nil(usize),
     Tuple(ListSequence<Vec<EvaluatedValue>>),
-    ParameterList(usize),
     List(ListSequence<StoredListValueId>),
     Function(ListSequence<EvaluatedFunctionValue>),
 }
 
-impl ReleasedList {
-    fn drop_values(self) {
-        match self {
-            Self::Int(values) => drop(values),
-            Self::String(values) => drop(values),
-            Self::BitArray(values) => drop(values),
-            Self::UtfCodepoint(values) => drop(values),
-            Self::Custom(values) => drop(values),
-            Self::External(values) => drop(values),
-            Self::Float(values) => drop(values),
-            Self::Bool(values) => drop(values),
-            Self::Nil(len) | Self::ParameterList(len) => {
-                let _released_len = len;
-            }
-            Self::Tuple(values) => drop(values),
-            Self::List(values) => drop(values),
-            Self::Function(values) => drop(values),
-        }
-    }
-}
-
-impl ListPools {
-    fn release(&mut self, key: ListStorageKey) -> ReleasedList {
-        match key {
-            ListStorageKey::Int(slot) => ReleasedList::Int(self.ints.release(slot)),
-            ListStorageKey::String(slot) => ReleasedList::String(self.strings.release(slot)),
-            ListStorageKey::BitArray(slot) => ReleasedList::BitArray(self.bit_arrays.release(slot)),
-            ListStorageKey::UtfCodepoint(slot) => {
-                ReleasedList::UtfCodepoint(self.utf_codepoints.release(slot))
-            }
-            ListStorageKey::Custom(slot) => ReleasedList::Custom(self.customs.release(slot)),
-            ListStorageKey::External(slot) => ReleasedList::External(self.externals.release(slot)),
-            ListStorageKey::Float(slot) => ReleasedList::Float(self.floats.release(slot)),
-            ListStorageKey::Bool(slot) => ReleasedList::Bool(self.bools.release(slot)),
-            ListStorageKey::Nil(slot) => ReleasedList::Nil(self.nils.release(slot)),
-            ListStorageKey::Tuple(slot) => ReleasedList::Tuple(self.tuples.release(slot)),
-            ListStorageKey::ParameterList(slot) => {
-                ReleasedList::ParameterList(self.parameter_list_lists.release(slot))
-            }
-            ListStorageKey::List(slot) => ReleasedList::List(self.lists.release(slot)),
-            ListStorageKey::Function(slot) => ReleasedList::Function(self.functions.release(slot)),
-        }
-    }
-}
-
-#[derive(Default)]
-struct ListStorageState {
-    releases: Vec<ListStorageKey>,
-    draining: bool,
-    pools: ListPools,
-}
-
-#[derive(Default)]
-struct SharedListStorage {
-    state: Mutex<ListStorageState>,
-}
-
-struct FinishReleaseOnUnwind<'storage> {
-    storage: &'storage SharedListStorage,
-    armed: bool,
-}
-
-impl SharedListStorage {
-    fn core(self: &Arc<Self>, key: ListStorageKey) -> ListHandleCore {
-        ListHandleCore {
-            lease: Arc::new(ListLease {
-                key,
-                storage: Arc::clone(self),
-            }),
-        }
-    }
-
-    fn release(&self, key: ListStorageKey) {
+impl ListReleaseQueue {
+    fn release(&self, values: ReleasedList) {
         let should_drain = {
             let mut state = lock(&self.state);
-            state.releases.push(key);
+            state.pending.push(values);
             if state.draining {
                 false
             } else {
@@ -523,65 +389,60 @@ impl SharedListStorage {
                 true
             }
         };
-        if !should_drain {
-            return;
+        if should_drain {
+            self.drain();
         }
-        self.drain();
     }
 
     fn drain(&self) {
         let mut finish = FinishReleaseOnUnwind {
-            storage: self,
+            queue: self,
             armed: true,
         };
         loop {
             let released = {
                 let mut state = lock(&self.state);
-                let Some(key) = state.releases.pop() else {
+                let Some(values) = state.pending.pop() else {
                     state.draining = false;
                     finish.armed = false;
                     return;
                 };
-                state.pools.release(key)
+                values
             };
+            // Payload Drop can enqueue more work or re-enter the runtime.
             released.drop_values();
         }
     }
+}
 
-    fn values<Value>(
-        &self,
-        core: &ListHandleCore,
-        pool: impl FnOnce(&ListPools) -> &ListPool<Value>,
-    ) -> ListSequence<Value> {
-        let state = lock(&self.state);
-        pool(&state.pools).get(core.slot())
+impl ReleasedList {
+    fn drop_values(self) {
+        match self {
+            Self::Custom(values) => drop(values),
+            Self::External(values) => drop(values),
+            Self::Tuple(values) => drop(values),
+            Self::List(values) => drop(values),
+            Self::Function(values) => drop(values),
+        }
     }
+}
 
-    fn len(&self, core: &ListHandleCore, pool: impl FnOnce(&ListPools) -> &LengthPool) -> usize {
-        let state = lock(&self.state);
-        pool(&state.pools).get(core.slot())
-    }
+struct FinishReleaseOnUnwind<'queue> {
+    queue: &'queue ListReleaseQueue,
+    armed: bool,
 }
 
 impl Drop for FinishReleaseOnUnwind<'_> {
     fn drop(&mut self) {
         if self.armed {
-            self.storage.drain();
-        }
-    }
-}
-
-impl Default for RuntimeListStorage {
-    fn default() -> Self {
-        Self {
-            storage: Arc::new(SharedListStorage::default()),
+            self.queue.drain();
         }
     }
 }
 
 macro_rules! value_storage {
     ($allocate:ident, $store:ident, $read:ident, $prepend:ident, $tail:ident,
-     $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
+     $type_id:ty, $item:ty, $handle:ident) => {
         pub(in crate::runtime) fn $allocate(
             &self,
             type_id: $type_id,
@@ -590,25 +451,25 @@ macro_rules! value_storage {
             self.$store(type_id, values.into())
         }
 
-        sequence_storage!(
-            $store, $read, $prepend, $tail, $type_id, $item, $handle, $pool, $key
-        );
+        sequence_storage!($store, $read, $prepend, $tail, $type_id, $item, $handle);
     };
 }
 
 macro_rules! sequence_storage {
     ($store:ident, $read:ident, $prepend:ident, $tail:ident,
-     $type_id:ty, $item:ty, $handle:ident, $pool:ident, $key:ident) => {
+     $type_id:ty, $item:ty, $handle:ident) => {
         fn $store(&self, type_id: $type_id, values: ListSequence<$item>) -> $handle {
-            let slot = lock(&self.storage.state).pools.$pool.allocate(values);
-            $handle::new(type_id, self.storage.core(ListStorageKey::$key(slot)))
+            $handle {
+                type_id,
+                lease: Arc::new(ListLease::new(values, &self.releases)),
+            }
         }
 
-        pub(in crate::runtime) fn $read(&self, value: &$handle) -> ListSequence<$item> {
-            value
-                .core()
-                .storage()
-                .values(value.core(), |pools| &pools.$pool)
+        pub(in crate::runtime) fn $read<'value>(
+            &self,
+            value: &'value $handle,
+        ) -> &'value ListSequence<$item> {
+            value.values()
         }
 
         pub(in crate::runtime) fn $prepend(
@@ -632,12 +493,6 @@ macro_rules! sequence_storage {
 }
 
 impl RuntimeListStorage {
-    pub(in crate::runtime) fn from_handle(handle: &ListHandleCore) -> Self {
-        Self {
-            storage: Arc::clone(&handle.lease.storage),
-        }
-    }
-
     value_storage!(
         int,
         store_int,
@@ -646,9 +501,7 @@ impl RuntimeListStorage {
         tail_int,
         IntListTypeId,
         BigInt,
-        IntListValueId,
-        ints,
-        Int
+        IntListValueId
     );
     value_storage!(
         string,
@@ -658,9 +511,7 @@ impl RuntimeListStorage {
         tail_string,
         StringListTypeId,
         StringValue,
-        StringListValueId,
-        strings,
-        String
+        StringListValueId
     );
     value_storage!(
         bit_array,
@@ -670,9 +521,7 @@ impl RuntimeListStorage {
         tail_bit_array,
         BitArrayListTypeId,
         EvaluatedBitArray,
-        BitArrayListValueId,
-        bit_arrays,
-        BitArray
+        BitArrayListValueId
     );
     value_storage!(
         utf_codepoint,
@@ -682,9 +531,7 @@ impl RuntimeListStorage {
         tail_utf_codepoint,
         UtfCodepointListTypeId,
         char,
-        UtfCodepointListValueId,
-        utf_codepoints,
-        UtfCodepoint
+        UtfCodepointListValueId
     );
     value_storage!(
         float,
@@ -694,9 +541,7 @@ impl RuntimeListStorage {
         tail_float,
         FloatListTypeId,
         f64,
-        FloatListValueId,
-        floats,
-        Float
+        FloatListValueId
     );
     value_storage!(
         bool,
@@ -706,9 +551,7 @@ impl RuntimeListStorage {
         tail_bool,
         BoolListTypeId,
         bool,
-        BoolListValueId,
-        bools,
-        Bool
+        BoolListValueId
     );
     value_storage!(
         tuple,
@@ -718,9 +561,7 @@ impl RuntimeListStorage {
         tail_tuple,
         TupleListTypeId,
         Vec<EvaluatedValue>,
-        TupleListValueId,
-        tuples,
-        Tuple
+        TupleListValueId
     );
     value_storage!(
         list,
@@ -730,9 +571,7 @@ impl RuntimeListStorage {
         tail_list,
         ListListTypeId,
         StoredListValueId,
-        ListListValueId,
-        lists,
-        List
+        ListListValueId
     );
     value_storage!(
         function,
@@ -742,9 +581,7 @@ impl RuntimeListStorage {
         tail_function,
         FunctionListTypeId,
         EvaluatedFunctionValue,
-        FunctionListValueId,
-        functions,
-        Function
+        FunctionListValueId
     );
 
     pub(in crate::runtime) fn custom(&self, allocation: CustomListAllocation) -> CustomListValueId {
@@ -758,9 +595,7 @@ impl RuntimeListStorage {
         tail_custom,
         CustomListTypeId,
         EvaluatedCustomValue,
-        CustomListValueId,
-        customs,
-        Custom
+        CustomListValueId
     );
 
     pub(in crate::runtime) fn external(
@@ -777,21 +612,18 @@ impl RuntimeListStorage {
         tail_external,
         ExternalListTypeId,
         EvaluatedExternalValue,
-        ExternalListValueId,
-        externals,
-        External
+        ExternalListValueId
     );
 
     pub(in crate::runtime) fn nil(&self, type_id: NilListTypeId, len: usize) -> NilListValueId {
-        let slot = lock(&self.storage.state).pools.nils.allocate(len);
-        NilListValueId::new(type_id, self.storage.core(ListStorageKey::Nil(slot)))
+        NilListValueId {
+            type_id,
+            lease: Arc::new(len),
+        }
     }
 
     pub(in crate::runtime) fn nil_len(&self, value: &NilListValueId) -> usize {
-        value
-            .core()
-            .storage()
-            .len(value.core(), |pools| &pools.nils)
+        value.len()
     }
 
     pub(in crate::runtime) fn parameter_list_list(
@@ -799,24 +631,17 @@ impl RuntimeListStorage {
         type_id: ParameterListListTypeId,
         len: usize,
     ) -> ParameterListListValueId {
-        let slot = lock(&self.storage.state)
-            .pools
-            .parameter_list_lists
-            .allocate(len);
-        ParameterListListValueId::new(
+        ParameterListListValueId {
             type_id,
-            self.storage.core(ListStorageKey::ParameterList(slot)),
-        )
+            lease: Arc::new(len),
+        }
     }
 
     pub(in crate::runtime) fn parameter_list_list_len(
         &self,
         value: &ParameterListListValueId,
     ) -> usize {
-        value
-            .core()
-            .storage()
-            .len(value.core(), |pools| &pools.parameter_list_lists)
+        value.len()
     }
 
     pub(in crate::runtime) fn list_len(&self, value: &ListValueId) -> usize {
@@ -1077,13 +902,18 @@ fn lock<Value>(mutex: &Mutex<Value>) -> MutexGuard<'_, Value> {
 
 #[cfg(test)]
 mod storage_tests {
-    use super::{ListPool, ListSequence, RuntimeListStorage, lock};
+    use super::{ListSequence, RuntimeListStorage, lock};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
         EvaluatedIntFunction,
     };
 
-    use crate::runtime::EvaluatedValue;
+    use crate::host::{
+        ExternalTestProfile, HostExternalEquality, HostExternalHashing, HostExternalInspection,
+        HostExternalStore,
+    };
+    use crate::plan::execution::function::IntFunctionId;
+    use crate::plan::execution::type_::{ExternalListTypeId, FunctionType, ValueType};
     use crate::runtime::profile::external_test::{RuntimeCounterProvider, RuntimeCounterSchema};
     use crate::runtime::retained::{
         RetainedValueEquality, RetainedValueHashing, RetainedValueInspection, RetainedValueRef,
@@ -1092,14 +922,17 @@ mod storage_tests {
         CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
         StoredListValueId,
     };
+    use crate::runtime::{EvaluatedValue, plan_src};
     use crate::{
         HostModule, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource,
         PackageSource, compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
-    use std::ptr;
-    use std::sync::Arc;
+    use std::cell::Cell;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::{iter, ptr, slice, thread};
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
@@ -1138,12 +971,11 @@ pub fn main() {
 
     fn assert_send<Value: Send>() {}
 
-    fn external_list_type() -> crate::plan::execution::type_::ExternalListTypeId {
-        let provider =
-            HostProviderModule::<crate::host::ExternalTestProfile>::new("application", "main")
-                .expect("provider module should be valid")
-                .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
-                .expect("external type should be valid");
+    fn external_list_type() -> ExternalListTypeId {
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
+            .expect("external type should be valid");
         let typed = compile_typed_host_program(
             "application",
             "main",
@@ -1164,7 +996,7 @@ pub fn main() -> List(Counter) {
                 )],
             )],
             HostProviderSet::with_providers(
-                Vec::<HostModule<crate::host::ExternalTestProfile>>::new(),
+                Vec::<HostModule<ExternalTestProfile>>::new(),
                 [provider],
             )
             .expect("provider module should be unique"),
@@ -1176,27 +1008,20 @@ pub fn main() -> List(Counter) {
         execution.external_list_function_id(0).type_id()
     }
 
-    fn external_equal(
-        context: &crate::host::HostExternalEquality<'_>,
-        left: &BigInt,
-        right: &BigInt,
-    ) -> bool {
+    fn external_equal(context: &HostExternalEquality<'_>, left: &BigInt, right: &BigInt) -> bool {
         context.0.stored_values_equal(
             &RetainedValueRef::new(&EvaluatedValue::Int(left.clone())),
             &RetainedValueRef::new(&EvaluatedValue::Int(right.clone())),
         )
     }
 
-    fn external_hash(context: &crate::host::HostExternalHashing<'_>, value: &BigInt) -> u64 {
+    fn external_hash(context: &HostExternalHashing<'_>, value: &BigInt) -> u64 {
         context
             .0
             .stored_value_hash(&RetainedValueRef::new(&EvaluatedValue::Int(value.clone())))
     }
 
-    fn external_inspect(
-        context: &crate::host::HostExternalInspection<'_>,
-        value: &BigInt,
-    ) -> EcoString {
+    fn external_inspect(context: &HostExternalInspection<'_>, value: &BigInt) -> EcoString {
         format!(
             "Counter({})",
             context
@@ -1204,6 +1029,327 @@ pub fn main() -> List(Counter) {
                 .inspect_stored_value(&RetainedValueRef::new(&EvaluatedValue::Int(value.clone())))
         )
         .into()
+    }
+
+    // The Cell makes the payload Send but not Sync; it deliberately has no Clone.
+    struct ReleaseProbe {
+        id: Cell<usize>,
+        drops: Arc<Mutex<Vec<usize>>>,
+        on_drop: Option<Box<dyn FnOnce() + Send>>,
+    }
+
+    impl Drop for ReleaseProbe {
+        fn drop(&mut self) {
+            lock(&self.drops).push(self.id.get());
+            if let Some(on_drop) = self.on_drop.take() {
+                on_drop();
+            }
+        }
+    }
+
+    fn external_probe(
+        store: &HostExternalStore<ReleaseProbe>,
+        type_id: ExternalListTypeId,
+        value: ReleaseProbe,
+    ) -> EvaluatedExternalValue {
+        EvaluatedExternalValue::new(
+            type_id.item_type(),
+            store.insert(
+                value,
+                |context, left, right| {
+                    external_equal(context, &left.id.get().into(), &right.id.get().into())
+                },
+                |context, value| external_hash(context, &value.id.get().into()),
+                |context, value| external_inspect(context, &value.id.get().into()),
+                |_| None,
+            ),
+        )
+    }
+
+    #[test]
+    fn external_payload_reentry_and_single_unwind_finish_the_lifo_drain() {
+        let type_id = external_list_type();
+        let int_plan = plan_src("pub fn main() -> List(Int) { [7] }");
+        let int_type = int_plan.int_list_function_id(0).type_id();
+        for unwind in [false, true] {
+            let storage = RuntimeListStorage::default();
+            let store = HostExternalStore::default();
+            let drops = Arc::new(Mutex::new(Vec::new()));
+            let mut children = Vec::new();
+            let mut owners = Vec::new();
+            for id in 1..=2 {
+                let child = storage.external(ExternalListAllocation::new(
+                    type_id,
+                    vec![external_probe(
+                        &store,
+                        type_id,
+                        ReleaseProbe {
+                            id: id.into(),
+                            drops: Arc::clone(&drops),
+                            on_drop: None,
+                        },
+                    )],
+                ));
+                owners.push(Arc::downgrade(&child.lease));
+                children.push(child);
+            }
+            let reentrant_storage = storage.clone();
+            let reentrant_drops = Arc::clone(&drops);
+            let root = storage.external(ExternalListAllocation::new(
+                type_id,
+                vec![external_probe(
+                    &store,
+                    type_id,
+                    ReleaseProbe {
+                        id: 0.into(),
+                        drops: Arc::clone(&drops),
+                        on_drop: Some(Box::new(move || {
+                            assert!(
+                                reentrant_storage
+                                    .releases
+                                    .state
+                                    .try_lock()
+                                    .unwrap()
+                                    .draining
+                            );
+                            // The active drainer owns both releases; neither child drops here.
+                            drop(children);
+                            assert_eq!(*lock(&reentrant_drops), [0]);
+                            assert_eq!(lock(&reentrant_storage.releases.state).pending.len(), 2);
+                            let value = reentrant_storage.int(int_type, vec![7.into()]);
+                            assert_eq!(value.values().get(0), Some(&BigInt::from(7)));
+                            drop(value);
+                            if unwind {
+                                panic!("list payload unwind");
+                            }
+                        })),
+                    },
+                )],
+            ));
+            owners.push(Arc::downgrade(&root.lease));
+            let result = catch_unwind(AssertUnwindSafe(|| drop(root)));
+            assert_eq!(result.is_err(), unwind);
+            if let Err(error) = result {
+                assert_eq!(error.downcast_ref::<&str>(), Some(&"list payload unwind"));
+            }
+            assert_eq!(*lock(&drops), [0, 2, 1]);
+            assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+            assert!(lock(&storage.releases.state).pending.is_empty());
+            assert!(!lock(&storage.releases.state).draining);
+
+            let next = storage.external(ExternalListAllocation::new(
+                type_id,
+                vec![external_probe(
+                    &store,
+                    type_id,
+                    ReleaseProbe {
+                        id: 3.into(),
+                        drops: Arc::clone(&drops),
+                        on_drop: None,
+                    },
+                )],
+            ));
+            drop(next);
+            assert_eq!(*lock(&drops), [0, 2, 1, 3]);
+            assert!(lock(&storage.releases.state).pending.is_empty());
+            assert!(!lock(&storage.releases.state).draining);
+        }
+    }
+
+    #[test]
+    fn concurrent_last_owners_enqueue_while_a_payload_drop_is_running() {
+        let type_id = external_list_type();
+        let storage = RuntimeListStorage::default();
+        let store = HostExternalStore::default();
+        let drops = Arc::new(Mutex::new(Vec::new()));
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let drop_entered = Arc::clone(&entered);
+        let drop_release = Arc::clone(&release);
+        let active = storage.external(ExternalListAllocation::new(
+            type_id,
+            vec![external_probe(
+                &store,
+                type_id,
+                ReleaseProbe {
+                    id: 0.into(),
+                    drops: Arc::clone(&drops),
+                    on_drop: Some(Box::new(move || {
+                        drop_entered.wait();
+                        drop_release.wait();
+                    })),
+                },
+            )],
+        ));
+        let mut owners = vec![Arc::downgrade(&active.lease)];
+        let mut batches = Vec::new();
+        for batch in 0..4 {
+            let mut values = Vec::new();
+            for index in 1..=256 {
+                values.push(external_probe(
+                    &store,
+                    type_id,
+                    ReleaseProbe {
+                        id: (batch * 256 + index).into(),
+                        drops: Arc::clone(&drops),
+                        on_drop: None,
+                    },
+                ));
+            }
+            let values = storage.external(ExternalListAllocation::new(type_id, values));
+            owners.push(Arc::downgrade(&values.lease));
+            batches.push(values);
+        }
+        thread::scope(|threads| {
+            let drainer = threads.spawn(move || drop(active));
+            entered.wait();
+            let workers: Vec<_> = batches
+                .into_iter()
+                .map(|batch| threads.spawn(move || drop(batch)))
+                .collect();
+            for worker in workers {
+                worker.join().unwrap();
+            }
+            let observed_drops = lock(&drops).clone();
+            let pending = lock(&storage.releases.state).pending.len();
+            let draining = lock(&storage.releases.state).draining;
+            release.wait();
+            drainer.join().unwrap();
+            assert_eq!(observed_drops, [0]);
+            assert_eq!(pending, 4);
+            assert!(draining);
+        });
+        lock(&drops).sort_unstable();
+        assert_eq!(*lock(&drops), (0..=1024).collect::<Vec<_>>());
+        assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+        assert!(lock(&storage.releases.state).pending.is_empty());
+        assert!(!lock(&storage.releases.state).draining);
+    }
+
+    #[test]
+    fn wide_release_reuses_pending_capacity_without_retaining_payloads() {
+        let type_id = external_list_type();
+        let storage = RuntimeListStorage::default();
+        let store = HostExternalStore::default();
+        let drops = Arc::new(Mutex::new(Vec::new()));
+        let mut capacities = Vec::new();
+        for _ in 0..3 {
+            lock(&drops).clear();
+            let mut children = Vec::new();
+            let mut owners = Vec::new();
+            for id in 1..=10_000 {
+                let child = storage.external(ExternalListAllocation::new(
+                    type_id,
+                    vec![external_probe(
+                        &store,
+                        type_id,
+                        ReleaseProbe {
+                            id: id.into(),
+                            drops: Arc::clone(&drops),
+                            on_drop: None,
+                        },
+                    )],
+                ));
+                owners.push(Arc::downgrade(&child.lease));
+                children.push(child);
+            }
+            let reentrant_storage = storage.clone();
+            let root = storage.external(ExternalListAllocation::new(
+                type_id,
+                vec![external_probe(
+                    &store,
+                    type_id,
+                    ReleaseProbe {
+                        id: 0.into(),
+                        drops: Arc::clone(&drops),
+                        on_drop: Some(Box::new(move || {
+                            drop(children);
+                            assert_eq!(
+                                lock(&reentrant_storage.releases.state).pending.len(),
+                                10_000
+                            );
+                        })),
+                    },
+                )],
+            ));
+            owners.push(Arc::downgrade(&root.lease));
+            let alias = root.clone();
+            drop(root);
+            assert!(lock(&drops).is_empty());
+            thread::Builder::new()
+                .stack_size(128 * 1024)
+                .spawn(move || drop(alias))
+                .unwrap()
+                .join()
+                .unwrap();
+            assert_eq!(
+                *lock(&drops),
+                iter::once(0).chain((1..=10_000).rev()).collect::<Vec<_>>()
+            );
+            assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+            let state = lock(&storage.releases.state);
+            assert!(state.pending.is_empty());
+            assert!(!state.draining);
+            capacities.push(state.pending.capacity());
+        }
+        assert!(capacities[0] >= 10_000);
+        assert_eq!(capacities, vec![capacities[0]; 3]);
+        let queue = Arc::downgrade(&storage.releases);
+        drop(storage);
+        assert_eq!(queue.strong_count(), 0);
+    }
+
+    #[test]
+    fn non_clone_send_only_payloads_keep_identity_and_drop_at_the_suffix_boundary() {
+        let type_id = external_list_type();
+        let storage = RuntimeListStorage::default();
+        let store = HostExternalStore::default();
+        let drops = Arc::new(Mutex::new(Vec::new()));
+        let mut values = Vec::new();
+        for id in 0..65 {
+            values.push(external_probe(
+                &store,
+                type_id,
+                ReleaseProbe {
+                    id: id.into(),
+                    drops: Arc::clone(&drops),
+                    on_drop: None,
+                },
+            ));
+        }
+        let value = storage.external(ExternalListAllocation::new(type_id, values));
+        let first = value.values().get(0).unwrap();
+        let equality =
+            |left: &RetainedValueRef, right: &RetainedValueRef| left.value() == right.value();
+        let hash = |_: &RetainedValueRef| 0;
+        let inspect = |_: &RetainedValueRef| "0".into();
+        assert!(first.source_equal(&RetainedValueEquality::new(&equality), first));
+        assert!(!first.source_equal(
+            &RetainedValueEquality::new(&equality),
+            value.values().get(1).unwrap()
+        ));
+        assert_eq!(first.source_hash(&RetainedValueHashing::new(&hash)), 0);
+        assert_eq!(
+            first
+                .lease()
+                .inspection(&RetainedValueInspection::new(&inspect)),
+            "Counter(0)"
+        );
+        let suffix = storage.tail_external(type_id, &value, 1);
+        assert!(ptr::eq(
+            value.values().get(1).unwrap(),
+            suffix.values().get(0).unwrap()
+        ));
+        let independent = suffix.values().clone();
+        drop(value);
+        assert_eq!(*lock(&drops), [0]);
+        drop(storage);
+        drop(suffix);
+        assert_eq!(*lock(&drops), [0]);
+        thread::spawn(move || drop(independent)).join().unwrap();
+        lock(&drops).sort_unstable();
+        assert_eq!(*lock(&drops), (0..65).collect::<Vec<_>>());
+        drop(store);
     }
 
     #[test]
@@ -1215,18 +1361,18 @@ pub fn main() -> List(Counter) {
 
     #[test]
     fn cloned_and_escaped_lists_keep_the_exact_allocation_alive() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
         let storage = RuntimeListStorage::default();
         let value = storage.int(type_id, vec![1.into(), 2.into()]);
         let retained = value.clone();
-        let slot = value.core().slot();
+        let weak = Arc::downgrade(&value.lease);
 
         assert_eq!(value, retained);
         assert_eq!(storage.list_len(&ListValueId::Int(value.clone())), 2);
+        assert_eq!(weak.strong_count(), 2);
         drop(value);
-        assert!(lock(&storage.storage.state).pools.ints.free.is_empty());
-
+        assert_eq!(weak.strong_count(), 1);
         drop(storage);
         let reader = RuntimeListStorage::default();
         assert_eq!(
@@ -1237,60 +1383,68 @@ pub fn main() -> List(Counter) {
                 .collect::<Vec<_>>(),
             vec![1.into(), 2.into()]
         );
-
-        let owner = Arc::clone(&retained.core().lease.storage);
         drop(retained);
-        assert_eq!(lock(&owner.state).pools.ints.free, [slot]);
+        assert_eq!(weak.strong_count(), 0);
     }
 
     #[test]
-    fn released_list_slots_are_reused_without_changing_live_values() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+    fn releasing_and_allocating_lists_preserves_independent_live_values() {
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
         let storage = RuntimeListStorage::default();
         let first = storage.int(type_id, vec![1.into()]);
-        let slot = first.core().slot();
-
+        let live = storage.int(type_id, vec![3.into()]);
+        let weak = Arc::downgrade(&first.lease);
         drop(first);
+        assert_eq!(weak.strong_count(), 0);
         let second = storage.int(type_id, vec![2.into()]);
-
-        assert_eq!(second.core().slot(), slot);
         assert_eq!(
-            storage
-                .int_values(&second)
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            second.values().iter().cloned().collect::<Vec<_>>(),
             vec![2.into()]
         );
+        assert_eq!(
+            live.values().iter().cloned().collect::<Vec<_>>(),
+            vec![3.into()]
+        );
+        assert_ne!(live, second);
     }
 
     #[test]
-    fn deeply_nested_lists_release_iteratively() {
-        let plan = crate::runtime::plan_src(
-            r#"
-fn inner() -> List(Int) { [] }
-pub fn main() -> List(List(Int)) { [inner()] }
-"#,
+    fn deeply_nested_recursive_custom_lists_release_iteratively() {
+        let plan = plan_src(
+            "pub type Chain { Link(List(Chain)) } pub fn main() -> List(Chain) { [Link([])] }",
         );
+        let type_id = plan.custom_list_function_id(0).type_id();
+        let constructor = plan.custom_constructor_id(0, 0);
         let storage = RuntimeListStorage::default();
-        let int = storage
-            .int(plan.int_list_function_id(0).type_id(), vec![1.into()])
-            .into();
-        let mut nested = int;
-
-        for _ in 0..10_000 {
-            nested = storage
-                .list(plan.list_list_function_id(0).type_id(), vec![nested])
-                .into();
+        let mut value = storage.custom(CustomListAllocation::new(type_id, Vec::new()));
+        let leaf = Arc::downgrade(&value.lease);
+        let mut owners = Vec::new();
+        for _ in 0..50_000 {
+            value = storage.custom(CustomListAllocation::new(
+                type_id,
+                vec![EvaluatedCustomValue::from_fields(
+                    constructor,
+                    vec![EvaluatedValue::List(value.into())].into_boxed_slice(),
+                )],
+            ));
+            owners.push(Arc::downgrade(&value.lease));
         }
-
-        drop(nested);
-        let state = lock(&storage.storage.state);
-        assert_eq!(state.pools.ints.free.len(), 1);
-        assert_eq!(state.pools.lists.free.len(), 10_000);
-        assert!(state.releases.is_empty());
+        let queue = Arc::downgrade(&storage.releases);
+        thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || drop(value))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert_eq!(leaf.strong_count(), 0);
+        assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+        let state = lock(&storage.releases.state);
+        assert!(state.pending.is_empty());
         assert!(!state.draining);
+        drop(state);
+        drop(storage);
+        assert_eq!(queue.strong_count(), 0);
     }
 
     #[test]
@@ -1301,11 +1455,8 @@ pub fn main() -> List(List(Int)) { [inner()] }
 
         for len in [1_000, 10_000] {
             let input: Vec<_> = (0..len).map(|value| Item { value }).collect();
-            let mut pool = ListPool::default();
-            let slot = pool.allocate(input.into());
-
-            let original = pool.get(slot);
-            let alias = pool.get(slot);
+            let original = ListSequence::from(input);
+            let alias = original.clone();
             assert!(ptr::eq(
                 original.get(0).expect("original item"),
                 alias.get(0).expect("shared item")
@@ -1339,7 +1490,7 @@ pub fn main() -> List(List(Int)) { [inner()] }
 
     #[test]
     fn tail_and_prepend_preserve_order_at_chunk_and_tree_boundaries() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [] }");
+        let plan = plan_src("pub fn main() -> List(Int) { [] }");
         let type_id = plan.int_list_function_id(0).type_id();
         let storage = RuntimeListStorage::default();
 
@@ -1386,7 +1537,7 @@ pub fn main() -> List(List(Int)) { [inner()] }
 
     #[test]
     fn nil_and_parameter_list_updates_use_only_lengths() {
-        let plan = crate::runtime::plan_src(
+        let plan = plan_src(
             r#"
 fn nils() -> List(Nil) { [] }
 fn parameters(values: List(List(a))) { values }
@@ -1437,7 +1588,7 @@ pub fn main() {
 
     #[test]
     fn indexing_and_suffixes_preserve_lazy_typed_storage() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1, 2, 3] }");
+        let plan = plan_src("pub fn main() -> List(Int) { [1, 2, 3] }");
         let storage = RuntimeListStorage::default();
         let value = storage.int(
             plan.int_list_function_id(0).type_id(),
@@ -1463,16 +1614,13 @@ pub fn main() {
 
     #[test]
     fn every_transfer_list_family_preserves_lazy_typed_storage() {
-        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
+        let plan = plan_src(EVERY_LIST_FAMILY_SOURCE);
         let storage = RuntimeListStorage::default();
         let int_function = EvaluatedIntFunction::reference(
-            crate::plan::execution::function::IntFunctionId(0),
+            IntFunctionId(0),
             Vec::new(),
             Default::default(),
-            crate::plan::execution::type_::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::type_::ValueType::Int,
-            ),
+            FunctionType::new(Vec::new(), ValueType::Int),
         );
         let int = storage.int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let string = storage.string(
@@ -1497,7 +1645,7 @@ pub fn main() {
             vec![custom_value.clone()],
         ));
         let external_list_type = external_list_type();
-        let external_store = crate::host::HostExternalStore::default();
+        let external_store = HostExternalStore::default();
         let external_value = EvaluatedExternalValue::new(
             external_list_type.item_type(),
             external_store.insert(
@@ -1552,6 +1700,39 @@ pub fn main() {
             plan.function_list_function_id(0).type_id(),
             vec![function_value.clone()],
         );
+        macro_rules! identity {
+            ($value:ident, $name:ident) => {{
+                let alias = $value.clone();
+                assert_eq!($value, alias);
+                let stored: StoredListValueId = $value.clone().into();
+                assert_ne!(stored, storage.drop_first(&stored, 0));
+                let mut relabeled = alias;
+                relabeled.type_id.list_type.0 += 1000;
+                assert_ne!($value, relabeled);
+                assert_eq!(
+                    format!("{:?}", $value),
+                    format!(
+                        concat!(stringify!($name), " {{ type_id: {:?}, lease: {:p} }}"),
+                        $value.type_id(),
+                        Arc::as_ptr(&$value.lease)
+                    ),
+                );
+            }};
+        }
+        identity!(int, IntListValueId);
+        identity!(string, StringListValueId);
+        identity!(bit_array, BitArrayListValueId);
+        identity!(utf_codepoint, UtfCodepointListValueId);
+        identity!(custom, CustomListValueId);
+        identity!(external, ExternalListValueId);
+        identity!(float, FloatListValueId);
+        identity!(bool_, BoolListValueId);
+        identity!(nil, NilListValueId);
+        identity!(tuple, TupleListValueId);
+        identity!(parameter_list, ParameterListListValueId);
+        identity!(list, ListListValueId);
+        identity!(function, FunctionListValueId);
+
         let values = [
             (
                 StoredListValueId::from(int.clone()),
@@ -1599,7 +1780,6 @@ pub fn main() {
             ),
         ];
 
-        assert!(format!("{int:?}").contains("ListHandleCore"));
         assert_eq!(storage.list_len(&ListValueId::Parameter(parameter)), 0,);
         assert_eq!(
             storage.evaluated_value_at(&ListValueId::Parameter(parameter), 0),
@@ -1611,7 +1791,7 @@ pub fn main() {
             assert_eq!(storage.list_len(&value), 1);
             assert_eq!(
                 storage.evaluated_values(&stored),
-                std::slice::from_ref(&expected)
+                slice::from_ref(&expected)
             );
             assert_eq!(storage.evaluated_value_at(&value, 0), Some(expected));
             assert_eq!(storage.evaluated_value_at(&value, 1), None);
@@ -1626,36 +1806,47 @@ pub fn main() {
 #[cfg(test)]
 mod tests {
     use super::super::RuntimeState;
-    use super::lock;
     use super::{
-        CustomListAllocation, ListListTypeId, ListValueId, ParameterListValueId, StoredListValueId,
+        CustomListAllocation, ListLease, ListListTypeId, ListValueId, ParameterListListValueId,
+        ParameterListValueId, RuntimeListStorage, StoredListValueId, lock,
     };
     use crate::plan::execution::function::{
-        CoreRuntimeFunctionId, ListFunctionId, RuntimeFunctionId, RuntimeListFunctionId,
+        CoreRuntimeFunctionId, IntFunctionId, ListFunctionId, ProfiledListFunctionId,
+        RuntimeFunctionId, RuntimeListFunctionId, TupleFunctionId,
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
-    use crate::plan::execution::type_::ListStorageTypeId;
+    use crate::plan::execution::type_::{FunctionType, ListStorageTypeId, ValueType};
+    use crate::provider::{self, ProviderValueContext};
+    use crate::runtime::error::HostCallOrigin;
+    use crate::runtime::function::{run_int_list, run_list, run_tuple};
     use crate::runtime::graph::RetainedValues;
+    use crate::runtime::retained_list::RetainedList;
     use crate::runtime::{
-        EvaluatedBitArray, EvaluatedCapture, EvaluatedCustomValue, EvaluatedFunctionValue,
-        EvaluatedIntFunction, EvaluatedValue, StoredRuntimeValue,
+        BorrowedValue, EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue,
+        EvaluatedIntFunction, EvaluatedValue, ExecutionError, Panic, PanicMessage, PanicValue,
+        StoredRuntimeValue, plan_src,
     };
     use crate::{
-        HostCall, HostCallCompletion, HostCallError, HostCallable, HostFailure, HostFunctionType,
-        HostList, HostListType, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+        HostConstructions, HostFailure, HostFunctionType, HostList, HostListType, HostModule,
+        HostOwnedCompletion, HostProfile, HostProvider, HostProviderModule, HostProviderSet,
+        HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        HostedExecution, ModuleSource, PackageSource, PanicKind, Value, compile_typed_host_program,
+        execution_fixture, plan_host_program,
     };
     use num_bigint::BigInt;
-    use std::sync::Arc;
+    use std::sync::{Arc, Weak};
+    use std::thread;
 
     struct LeaseProfile;
     struct LeaseProvider;
-    impl crate::HostProfile for LeaseProfile {
-        type RunState = Option<super::RuntimeListStorage>;
+    impl HostProfile for LeaseProfile {
+        type RunState = Option<Weak<ListLease<BigInt>>>;
         type ExternalStores = ();
         type ExecutionState = ();
     }
-    impl crate::HostProvider<LeaseProfile> for LeaseProvider {
-        type State = Option<super::RuntimeListStorage>;
+    impl HostProvider<LeaseProfile> for LeaseProvider {
+        type State = Option<Weak<ListLease<BigInt>>>;
         fn project(state: &mut Self::State) -> &mut Self::State {
             state
         }
@@ -1663,14 +1854,21 @@ mod tests {
 
     fn return_host_list<'call>(
         mut call: HostCall<'call, LeaseProfile, LeaseProvider, HostListType<BigInt>>,
-        constructions: crate::HostConstructions<
+        constructions: HostConstructions<
             'call,
             HostTypeList<HostListType<BigInt>, HostTypeListEnd>,
         >,
         value: BigInt,
     ) -> Result<HostCallCompletion<'call, HostListType<BigInt>>, HostCallError> {
-        let value = call.construct_list(constructions.at::<crate::HostTypeIndex0>(), [value]);
-        let storage = list_storage(&call.retain_value::<HostListType<BigInt>>(value));
+        if let Some(previous) = call.state().as_ref() {
+            assert_eq!(
+                previous.strong_count(),
+                0,
+                "the previous call's list must be released"
+            );
+        }
+        let value = call.construct_list(constructions.at::<HostTypeIndex0>(), [value]);
+        let storage = list_lease(&call.retain_value::<HostListType<BigInt>>(value));
         *call.state() = Some(storage);
         Ok(call.return_value(value))
     }
@@ -1679,7 +1877,7 @@ mod tests {
         mut call: HostCall<'call, LeaseProfile, LeaseProvider, BigInt>,
         values: HostList<'call, BigInt>,
     ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
-        let storage = list_storage(&call.retain_value::<HostListType<BigInt>>(values));
+        let storage = list_lease(&call.retain_value::<HostListType<BigInt>>(values));
         *call.state() = Some(storage);
         Err(HostFailure::new("stop").into())
     }
@@ -1690,15 +1888,12 @@ mod tests {
 
     fn invoke_generic_callback<'call>(
         mut call: HostCall<'call, LeaseProfile, LeaseProvider, CallbackValue>,
-        constructions: crate::HostConstructions<'call, HostTypeListEnd>,
+        constructions: HostConstructions<'call, HostTypeListEnd>,
         function: HostCallable<'call, CallbackArguments, CallbackValue>,
         value: HostValue<'call, CallbackValue>,
-    ) -> Result<crate::HostCallContinuation<'call, CallbackValue>, HostCallError> {
-        type Owned = crate::provider::Value<
-            CallbackValue,
-            crate::provider::ProviderValueContext<CallbackValue>,
-        >;
-        let storage = list_storage(&call.retain_value::<CallbackValue>(value));
+    ) -> Result<HostCallContinuation<'call, CallbackValue>, HostCallError> {
+        type Owned = provider::Value<CallbackValue, ProviderValueContext<CallbackValue>>;
+        let storage = list_lease(&call.retain_value::<CallbackValue>(value));
         *call.state() = Some(storage);
         let value = Owned::from_host(&call, value);
         let callback = call.owned_callable(function, &constructions);
@@ -1711,7 +1906,7 @@ mod tests {
                         |call, _, value| Ok(Owned::from_host(&call, value)),
                     )
                     .await?;
-                Ok(crate::HostOwnedCompletion::new(move |mut call, _| {
+                Ok(HostOwnedCompletion::new(move |mut call, _| {
                     let value = value.into_host(&mut call);
                     Ok(call.return_value(value))
                 }))
@@ -1719,7 +1914,7 @@ mod tests {
         }))
     }
 
-    fn list_storage(value: &StoredRuntimeValue) -> super::RuntimeListStorage {
+    fn list_lease(value: &StoredRuntimeValue) -> Weak<ListLease<BigInt>> {
         let value = match value.value() {
             EvaluatedValue::Custom(custom) => custom.fields().first(),
             value => Some(value),
@@ -1727,29 +1922,18 @@ mod tests {
         let Some(EvaluatedValue::List(StoredListValueId::Int(value))) = value else {
             panic!("expected an integer list lease");
         };
-        super::RuntimeListStorage {
-            storage: Arc::clone(&value.core.lease.storage),
-        }
+        Arc::downgrade(&value.lease)
     }
 
     #[test]
     #[should_panic(expected = "expected an integer list lease")]
-    fn list_storage_rejects_a_scalar_fixture() {
-        list_storage(&StoredRuntimeValue::test_int(1.into()));
+    fn list_lease_rejects_a_scalar_fixture() {
+        list_lease(&StoredRuntimeValue::test_int(1.into()));
     }
 
-    fn int_main(plan: &crate::ExecutionPlan) -> crate::plan::execution::function::IntFunctionId {
-        match plan.main_runtime() {
-            RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(main)) => main,
-            _ => panic!("main should lower into the Int function table"),
-        }
-    }
-
-    fn source_panic(
-        result: Result<(), crate::runtime::ExecutionError>,
-    ) -> crate::runtime::Panic<crate::runtime::PanicValue> {
+    fn source_panic(result: Result<(), ExecutionError>) -> Panic<PanicValue> {
         match result {
-            Err(crate::runtime::ExecutionError::Panic(panic)) => panic,
+            Err(ExecutionError::Panic(panic)) => panic,
             other => panic!("expected source panic, got {other:?}"),
         }
     }
@@ -1790,73 +1974,59 @@ pub fn main() {
 "#;
 
     #[test]
-    fn last_owner_enqueues_release_and_reuses_the_exact_slot() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+    fn last_owner_releases_leaf_values_without_using_the_release_queue() {
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let value = state.lists_mut().int(type_id, vec![1.into()]);
-        let slot = value.core.slot();
+        let storage = RuntimeListStorage::default();
+        let value = storage.int(type_id, vec![1.into()]);
+        let weak = Arc::downgrade(&value.lease);
         let retained = value.clone();
-
+        let queue = lock(&storage.releases.state);
+        for _ in 0..10_000 {
+            assert_eq!(value.values().get(0), Some(&BigInt::from(1)));
+            assert_eq!(Arc::strong_count(&value.lease), 2);
+        }
         drop(value);
-        assert_eq!(lock(&state.lists.storage.state).releases.as_slice(), &[]);
+        assert_eq!(weak.strong_count(), 1);
         drop(retained);
-        assert_eq!(lock(&state.lists.storage.state).releases.as_slice(), &[]);
-
-        assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot],);
-        let reused = state.lists_mut().int(type_id, vec![2.into()]);
-        assert_eq!(reused.core.slot(), slot);
-        assert_eq!(
-            state
-                .lists()
-                .int_values(&reused)
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
-            vec![2.into()]
-        );
+        assert_eq!(weak.strong_count(), 0);
+        assert!(queue.pending.is_empty());
+        assert_eq!(queue.pending.capacity(), 0);
+        assert!(!queue.draining);
     }
 
     #[test]
-    fn owned_read_view_survives_releasing_and_reusing_its_slot() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+    fn explicitly_owned_read_survives_its_handle_and_state() {
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let value = state.lists_mut().int(type_id, vec![1.into()]);
-        let slot = value.core.slot();
-        let items = state.lists().int_values(&value);
-
+        let storage = RuntimeListStorage::default();
+        let value = storage.int(type_id, vec![1.into()]);
+        let weak = Arc::downgrade(&value.lease);
+        let items = storage.int_values(&value).clone();
         drop(value);
-        assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot]);
-        let replacement = state.lists_mut().int(type_id, vec![2.into()]);
-        assert_eq!(replacement.core.slot(), slot);
+        assert_eq!(weak.strong_count(), 0);
+        let replacement = storage.int(type_id, vec![2.into()]);
+        drop(storage);
         assert_eq!(items.iter().cloned().collect::<Vec<_>>(), vec![1.into()]);
         assert_eq!(
-            state
-                .lists()
-                .int_values(&replacement)
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            replacement.values().iter().cloned().collect::<Vec<_>>(),
             vec![2.into()]
         );
     }
 
     #[test]
-    fn bit_array_list_pool_preserves_type_and_reuses_released_slots() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(BitArray) { [<<1>>] }");
+    fn bit_array_list_owners_preserve_type_and_release_independently() {
+        let plan = plan_src("pub fn main() -> List(BitArray) { [<<1>>] }");
         let type_id = plan.bit_array_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let first = state.lists_mut().bit_array(
             type_id,
-            vec![crate::runtime::EvaluatedBitArray::new(
-                bitvec::vec::BitVec::from_vec(vec![1]),
-            )],
+            vec![EvaluatedBitArray::new(bitvec::vec::BitVec::from_vec(vec![
+                1,
+            ]))],
         );
-        let slot = first.core.slot();
+        let weak = Arc::downgrade(&first.lease);
 
         assert_eq!(first.type_id(), type_id);
         assert_eq!(
@@ -1870,7 +2040,7 @@ pub fn main() {
         drop(first);
 
         let second = state.lists_mut().bit_array(type_id, Vec::new());
-        assert_eq!(second.core.slot(), slot);
+        assert_eq!(weak.strong_count(), 0);
         assert_eq!(state.lists().bit_array_values(&second).len(), 0);
 
         let value = ListValueId::BitArray(second.clone());
@@ -1886,28 +2056,35 @@ pub fn main() {
     }
 
     #[test]
-    fn repeated_release_and_allocation_keeps_one_slot_high_water_mark() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+    fn repeated_creation_leaves_no_leaf_owner_or_release_capacity() {
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-
+        let storage = RuntimeListStorage::default();
         for value in 0..10_000 {
-            let list = state.lists_mut().int(type_id, vec![value.into()]);
+            let list = storage.int(type_id, vec![value.into()]);
+            let weak = Arc::downgrade(&list.lease);
+            assert_eq!(weak.strong_count(), 1);
             drop(list);
+            assert_eq!(weak.strong_count(), 0);
         }
-
-        let storage_state = lock(&state.lists.storage.state);
-        assert_eq!(storage_state.pools.ints.slots.len(), 1);
-        assert_eq!(storage_state.pools.ints.free, vec![0]);
-        assert_eq!(storage_state.releases.as_slice(), &[]);
+        assert_eq!(Arc::strong_count(&storage.releases), 1);
+        let state = lock(&storage.releases.state);
+        assert!(state.pending.is_empty());
+        assert_eq!(state.pending.capacity(), 0);
+        assert!(!state.draining);
     }
 
     #[test]
     fn host_calls_release_scoped_list_leases_after_success_and_failure() {
-        let returned = crate::HostProviderModule::<LeaseProfile>::new("host_support", "host/lists")
+        let returned = HostProviderModule::<LeaseProfile>::new("host_support", "host/lists")
             .expect("host module should be valid")
-            .with_scoped_function_and_constructions::<LeaseProvider, (BigInt,), HostListType<BigInt>, HostTypeList<HostListType<BigInt>, HostTypeListEnd>, _>(
+            .with_scoped_function_and_constructions::<
+                LeaseProvider,
+                (BigInt,),
+                HostListType<BigInt>,
+                HostTypeList<HostListType<BigInt>, HostTypeListEnd>,
+                _,
+            >(
                 "wrap",
                 return_host_list,
             )
@@ -1920,42 +2097,36 @@ pub fn main() {
   0
 }
 "#;
-        let typed = crate::compile_typed_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "main",
-            [crate::PackageSource::new(
+            [PackageSource::new(
                 "application",
                 ["host_support"],
-                [crate::ModuleSource::new("main", "src/main.gleam", source)],
-            ), crate::PackageSource::new("host_support", Vec::<String>::new(), [
-                crate::ModuleSource::new("host/lists", "src/host/lists.gleam", "@external(erlang, \"native\", \"wrap\") pub fn wrap(value: Int) -> List(Int)")
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            ), PackageSource::new("host_support", Vec::<String>::new(), [
+                ModuleSource::new("host/lists", "src/host/lists.gleam", "@external(erlang, \"native\", \"wrap\") pub fn wrap(value: Int) -> List(Int)")
             ])],
-            crate::HostProviderSet::from_providers([returned]).expect("host module should be unique"),
+            HostProviderSet::from_providers([returned]).expect("host module should be unique"),
         )
         .expect("host source should compile");
-        let plan = crate::plan_host_program(typed).expect("host source should plan");
-        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
-            .expect("hosted execution should seal");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let mut storage = None;
         let mut echo = Vec::new();
-        let result = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo);
+        let result = execution_fixture::run(&mut execution, &mut storage, &mut echo);
         let lists = storage.expect("native output storage was recorded");
-        assert_eq!(result, Ok(crate::Value::Int(BigInt::from(0))),);
-        {
-            let storage_state = lock(&lists.storage.state);
-            assert_eq!(storage_state.pools.ints.slots.len(), 1);
-            assert_eq!(storage_state.pools.ints.free, [0]);
-        }
-        assert!(lock(&lists.storage.state).releases.is_empty());
+        assert_eq!(result, Ok(Value::Int(BigInt::from(0))),);
+        assert_eq!(lists.strong_count(), 0);
 
-        let failed =
-            crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/lists")
-                .expect("host module should be valid")
-                .with_scoped_function::<LeaseProvider, (HostListType<BigInt>,), BigInt, _>(
-                    "fail",
-                    fail_with_host_list,
-                )
-                .expect("host function should be valid");
+        let failed = HostModule::<LeaseProfile>::new_for_profile("host_support", "host/lists")
+            .expect("host module should be valid")
+            .with_scoped_function::<LeaseProvider, (HostListType<BigInt>,), BigInt, _>(
+                "fail",
+                fail_with_host_list,
+            )
+            .expect("host function should be valid");
         let source = r#"
 import host/lists
 
@@ -1963,46 +2134,41 @@ pub fn main() {
   lists.fail([1])
 }
 "#;
-        let typed = crate::compile_typed_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "main",
-            [crate::PackageSource::new(
+            [PackageSource::new(
                 "application",
                 ["host_support"],
-                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+                [ModuleSource::new("main", "src/main.gleam", source)],
             )],
-            crate::HostProviderSet::new([failed]).expect("host module should be unique"),
+            HostProviderSet::new([failed]).expect("host module should be unique"),
         )
         .expect("host source should compile");
-        let plan = crate::plan_host_program(typed).expect("host source should plan");
-        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
-            .expect("hosted execution should seal");
+        let plan = plan_host_program(typed).expect("host source should plan");
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
         let mut storage = None;
         let mut echo = Vec::new();
-        let error = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo)
+        let error = execution_fixture::run(&mut execution, &mut storage, &mut echo)
             .expect_err("the host callback should fail");
         let lists = storage.expect("native input storage was recorded");
         assert_eq!(
             error.to_string(),
             "host function host_support::host/lists.fail failed: stop",
         );
-        {
-            let storage_state = lock(&lists.storage.state);
-            assert_eq!(storage_state.pools.ints.slots.len(), 1);
-            assert_eq!(storage_state.pools.ints.free, [0]);
-        }
-        assert!(lock(&lists.storage.state).releases.is_empty());
+        assert_eq!(lists.strong_count(), 0);
     }
 
     #[test]
     fn nested_callbacks_release_retained_custom_list_values_after_success() {
-        let host = crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
+        let host = HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
             .expect("host module should be valid")
             .with_resumable_function::<
                 LeaseProvider,
                 (Callback, CallbackValue),
                 CallbackValue,
-                geam_core::HostTypeListEnd, _,
+                HostTypeListEnd, _,
             >("invoke", invoke_generic_callback)
             .expect("generic callback should be valid");
         let source = r#"
@@ -2021,42 +2187,37 @@ pub fn main() {
   0
 }
 "#;
-        let typed = crate::compile_typed_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "main",
-            [crate::PackageSource::new(
+            [PackageSource::new(
                 "application",
                 ["host_support"],
-                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+                [ModuleSource::new("main", "src/main.gleam", source)],
             )],
-            crate::HostProviderSet::new([host]).expect("host module should be unique"),
+            HostProviderSet::new([host]).expect("host module should be unique"),
         )
         .expect("successful callback source should compile");
-        let plan = crate::plan_host_program(typed).expect("successful callback source should plan");
-        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
+        let plan = plan_host_program(typed).expect("successful callback source should plan");
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("successful callback execution should seal");
         let mut storage = None;
         let mut echo = Vec::new();
-        let result = crate::execution_fixture::run(&mut execution, &mut storage, &mut echo);
+        let result = execution_fixture::run(&mut execution, &mut storage, &mut echo);
         let lists = storage.expect("callback input storage was recorded");
-        assert_eq!(result, Ok(crate::Value::Int(BigInt::from(0))),);
-        {
-            let storage_state = lock(&lists.storage.state);
-            assert_eq!(storage_state.pools.ints.slots.len(), 1);
-            assert_eq!(storage_state.pools.ints.free, [0]);
-        }
-        assert!(lock(&lists.storage.state).releases.is_empty());
+        assert_eq!(result, Ok(Value::Int(BigInt::from(0))),);
+        assert_eq!(lists.strong_count(), 0);
     }
 
     #[test]
     fn nested_callbacks_release_retained_custom_list_values_after_panic() {
-        let host = crate::HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
+        let host = HostModule::<LeaseProfile>::new_for_profile("host_support", "host/callback")
             .expect("host module should be valid")
             .with_resumable_function::<
                 LeaseProvider,
                 (Callback, CallbackValue),
                 CallbackValue,
-                geam_core::HostTypeListEnd, _,
+                HostTypeListEnd, _,
             >("invoke", invoke_generic_callback)
             .expect("generic callback should be valid");
         let source = r#"
@@ -2074,39 +2235,33 @@ pub fn main() {
   callback.invoke(stop, Boxed([1]))
 }
 "#;
-        let typed = crate::compile_typed_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "main",
-            [crate::PackageSource::new(
+            [PackageSource::new(
                 "application",
                 ["host_support"],
-                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+                [ModuleSource::new("main", "src/main.gleam", source)],
             )],
-            crate::HostProviderSet::new([host]).expect("host module should be unique"),
+            HostProviderSet::new([host]).expect("host module should be unique"),
         )
         .expect("panicking callback source should compile");
-        let plan = crate::plan_host_program(typed).expect("panicking callback source should plan");
-        let mut execution = crate::HostedExecution::try_from_module_plan(plan)
+        let plan = plan_host_program(typed).expect("panicking callback source should plan");
+        let mut execution = HostedExecution::try_from_module_plan(plan)
             .expect("panicking callback execution should seal");
         let mut storage = None;
         let mut echo = Vec::new();
-        let panic = source_panic(
-            crate::execution_fixture::run(&mut execution, &mut storage, &mut echo).map(drop),
-        );
+        let panic =
+            source_panic(execution_fixture::run(&mut execution, &mut storage, &mut echo).map(drop));
         let lists = storage.expect("failed callback input storage was recorded");
-        assert_eq!(panic.kind(), crate::PanicKind::Panic);
+        assert_eq!(panic.kind(), PanicKind::Panic);
         assert_eq!(panic.site().function(), "stop");
-        {
-            let storage_state = lock(&lists.storage.state);
-            assert_eq!(storage_state.pools.ints.slots.len(), 1);
-            assert_eq!(storage_state.pools.ints.free, [0]);
-        }
-        assert!(lock(&lists.storage.state).releases.is_empty());
+        assert_eq!(lists.strong_count(), 0);
     }
 
     #[test]
-    fn tail_recursive_block_replacement_reuses_a_fixed_list_slot_set() {
-        let plan = crate::runtime::plan_src(
+    fn tail_recursive_block_replacement_returns_one_independent_list() {
+        let plan = plan_src(
             r#"fn done(count: Int, values: List(Int)) {
   case count {
     0 -> values
@@ -2131,11 +2286,11 @@ pub fn main() {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
 
-        let value = crate::runtime::function::run_int_list(
+        let value = run_int_list(
             &plan,
             &mut state,
             main,
-            crate::runtime::error::HostCallOrigin::Entry,
+            HostCallOrigin::Entry,
             RetainedValues::empty(),
         )
         .expect("tail-recursive list graph should return");
@@ -2149,98 +2304,115 @@ pub fn main() {
                 .collect::<Vec<_>>(),
             vec![1.into()]
         );
-        {
-            let storage_state = lock(&state.lists.storage.state);
-            assert_eq!(storage_state.pools.ints.slots.len(), 1);
-            assert_eq!(storage_state.pools.ints.free.len(), 0);
-        }
+        let weak = Arc::downgrade(&value.lease);
+        assert_eq!(weak.strong_count(), 1);
         drop(value);
-        assert_eq!(lock(&state.lists.storage.state).pools.ints.free.len(), 1);
-        assert_eq!(lock(&state.lists.storage.state).releases.as_slice(), &[]);
+        assert_eq!(weak.strong_count(), 0);
+        assert!(lock(&state.lists.releases.state).pending.is_empty());
     }
 
     #[test]
     fn never_terminator_releases_the_caller_environment_before_running_the_callee() {
-        let plan = crate::runtime::plan_src(
-            r#"
-fn stop() -> value { panic as "stop" }
-
+        let source = r#"
+import host/lists
+fn stop() -> value {
+  let _ = lists.wrap(2)
+  panic as "stop"
+}
 pub fn main() -> Int {
-  let values = [1]
+  let values = lists.wrap(1)
   let _ = values
   stop()
 }
-"#,
-        );
-        let main = int_main(&plan);
+"#;
+        let mut execution = observed_list_execution(source);
+        let mut storage = None;
         let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-
-        let panic = source_panic(
-            crate::runtime::function::run_int(
-                &plan,
-                &mut state,
-                main,
-                crate::runtime::error::HostCallOrigin::Entry,
-                RetainedValues::empty(),
-            )
-            .map(drop),
-        );
-
-        assert_eq!(panic.kind(), crate::runtime::PanicKind::Panic);
-        assert_eq!(
-            panic.message(),
-            &crate::runtime::PanicMessage::Explicit("stop".into()),
-        );
-        let storage_state = lock(&state.lists.storage.state);
-        assert_eq!(storage_state.pools.ints.slots.len(), 1);
-        assert_eq!(storage_state.pools.ints.free, vec![0]);
-        assert_eq!(storage_state.releases.as_slice(), &[]);
+        let panic =
+            source_panic(execution_fixture::run(&mut execution, &mut storage, &mut echo).map(drop));
+        assert_eq!(panic.kind(), PanicKind::Panic);
+        assert_eq!(panic.message(), &PanicMessage::Explicit("stop".into()));
+        assert_eq!(storage.unwrap().strong_count(), 0);
     }
 
     #[test]
     fn match_transition_releases_unretained_subject_before_the_target_runs() {
-        let plan = crate::runtime::plan_src(
-            r#"
+        let source = r#"
+import host/lists
 pub fn main() -> Int {
-  case [1] {
+  case lists.wrap(1) {
     [] -> panic as "empty"
-    _ -> panic as "non-empty"
+    _ -> {
+      let _ = lists.wrap(2)
+      panic as "non-empty"
+    }
   }
 }
-"#,
-        );
-        let main = int_main(&plan);
+"#;
+        let mut execution = observed_list_execution(source);
+        let mut storage = None;
         let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-
-        let panic = source_panic(
-            crate::runtime::function::run_int(
-                &plan,
-                &mut state,
-                main,
-                crate::runtime::error::HostCallOrigin::Entry,
-                RetainedValues::empty(),
-            )
-            .map(drop),
-        );
-
-        assert_eq!(
-            panic.message(),
-            &crate::runtime::PanicMessage::Explicit("non-empty".into()),
-        );
-        let storage_state = lock(&state.lists.storage.state);
-        assert_eq!(storage_state.pools.ints.slots.len(), 1);
-        assert_eq!(storage_state.pools.ints.free, vec![0]);
-        assert_eq!(storage_state.releases.as_slice(), &[]);
+        let panic =
+            source_panic(execution_fixture::run(&mut execution, &mut storage, &mut echo).map(drop));
+        assert_eq!(panic.message(), &PanicMessage::Explicit("non-empty".into()));
+        assert_eq!(storage.unwrap().strong_count(), 0);
     }
 
     #[test]
-    #[should_panic(expected = "main should lower into the Int function table")]
-    fn int_main_guard_rejects_other_function_tables() {
-        int_main(&crate::runtime::plan_src(
-            "pub fn main() -> List(Int) { [] }",
-        ));
+    fn tail_iterations_release_previous_lists_before_the_next_allocation() {
+        let source = r#"
+import host/lists
+fn done(count, values) {
+  case count {
+    0 -> values
+    _ -> done(count - 1, lists.wrap(count))
+  }
+}
+pub fn main() { done(10000, []) == [1] }
+"#;
+        let mut execution = observed_list_execution(source);
+        let mut storage = None;
+        let mut echo = Vec::new();
+        assert_eq!(
+            execution_fixture::run(&mut execution, &mut storage, &mut echo),
+            Ok(Value::Bool(true))
+        );
+        assert_eq!(storage.unwrap().strong_count(), 0);
+    }
+
+    fn observed_list_execution(source: &str) -> HostedExecution<LeaseProfile> {
+        let provider = HostProviderModule::<LeaseProfile>::new("host_support", "host/lists")
+            .unwrap()
+            .with_scoped_function_and_constructions::<
+                LeaseProvider,
+                (BigInt,),
+                HostListType<BigInt>,
+                HostTypeList<HostListType<BigInt>, HostTypeListEnd>,
+                _,
+            >("wrap", return_host_list)
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "application",
+                    ["host_support"],
+                    [ModuleSource::new("main", "src/main.gleam", source)],
+                ),
+                PackageSource::new(
+                    "host_support",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "host/lists",
+                        "src/host/lists.gleam",
+                        r#"@external(erlang, "native", "wrap") pub fn wrap(value: Int) -> List(Int)"#,
+                    )],
+                ),
+            ],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        ).unwrap();
+        HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap()
     }
 
     #[test]
@@ -2251,77 +2423,45 @@ pub fn main() -> Int {
 
     #[test]
     fn list_handles_own_live_allocations_after_runtime_state_drop() {
-        let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
+        let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
-        let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let value = state.lists_mut().int(type_id, vec![1.into()]);
+        let storage = RuntimeListStorage::default();
+        let value = storage.int(type_id, vec![1.into()]);
         let clone = value.clone();
-        let storage = Arc::clone(&value.core.lease.storage);
-        let discarded = state.lists_mut().int(type_id, vec![2.into()]);
-        let discarded_slot = discarded.core.slot();
-        let mut other_echo = Vec::new();
-        let mut other_state = RuntimeState::new(&mut other_echo);
-        let other = other_state.lists_mut().int(type_id, vec![1.into()]);
-
+        let weak = Arc::downgrade(&value.lease);
+        let discarded = storage.int(type_id, vec![2.into()]);
+        let discarded_weak = Arc::downgrade(&discarded.lease);
+        let other_storage = RuntimeListStorage::default();
+        let other = other_storage.int(type_id, vec![1.into()]);
         assert_eq!(value, clone);
         assert_ne!(value, other);
         drop(discarded);
-        assert_eq!(lock(&storage.state).pools.ints.get(discarded_slot).len(), 0);
-        drop(state);
+        assert_eq!(discarded_weak.strong_count(), 0);
+        drop(storage);
         assert_eq!(
-            lock(&storage.state)
-                .pools
-                .ints
-                .get(value.core.slot())
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
-            vec![1.into()],
+            value.values().iter().cloned().collect::<Vec<_>>(),
+            vec![1.into()]
         );
         drop(value);
         assert_eq!(
-            lock(&storage.state)
-                .pools
-                .ints
-                .get(clone.core.slot())
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
-            vec![1.into()],
+            clone.values().iter().cloned().collect::<Vec<_>>(),
+            vec![1.into()]
         );
         drop(clone);
-        {
-            let state = lock(&storage.state);
-            assert_eq!(state.pools.ints.slots.len(), 2);
-            assert!(
-                state
-                    .pools
-                    .ints
-                    .slots
-                    .iter()
-                    .all(|values| values.len() == 0)
-            );
-            assert_eq!(state.pools.ints.free, vec![discarded_slot, 0]);
-        }
-
-        drop(other_state);
-        drop(other);
+        assert_eq!(weak.strong_count(), 0);
+        assert_eq!(other.values().get(0), Some(&BigInt::from(1)));
     }
 
     #[test]
     fn list_value_facade_reconstructs_every_exact_storage_family() {
-        let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
+        let plan = plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let int_function = EvaluatedIntFunction::reference(
-            crate::plan::execution::function::IntFunctionId(0),
+            IntFunctionId(0),
             Vec::new(),
             Default::default(),
-            crate::plan::execution::type_::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::type_::ValueType::Int,
-            ),
+            FunctionType::new(Vec::new(), ValueType::Int),
         );
         let int = state
             .lists_mut()
@@ -2552,8 +2692,8 @@ pub fn main() -> Int {
         }
 
         assert_eq!(
-            StoredListValueId::from(parameter_list.clone()).into_core(),
-            parameter_list.clone().into_core(),
+            ParameterListListValueId::from_stored(&parameter_list.clone().into()),
+            Some(parameter_list.clone()),
         );
         assert_eq!(
             state.lists().list_len(&ListValueId::Parameter(parameter)),
@@ -2580,41 +2720,27 @@ pub fn main() -> Int {
 
     #[test]
     fn parent_release_preserves_a_separately_owned_child() {
-        let plan = crate::runtime::plan_src(
+        let plan = plan_src(
             "fn ints() -> List(Int) { [] } pub fn main() -> List(List(Int)) { let _ = ints [[1]] }",
         );
         let parent_type = plan.list_list_function_id(0).type_id();
         let child_type = plan.int_list_function_id(0).type_id();
         assert_eq!(parent_type.item_type(), child_type.list_type());
-        let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let child = state.lists_mut().int(child_type, vec![1.into()]);
-        let child_slot = child.core.slot();
-        let parent = state
-            .lists_mut()
-            .list(parent_type, vec![child.clone().into()]);
-
+        let storage = RuntimeListStorage::default();
+        let child = storage.int(child_type, vec![1.into()]);
+        let child_weak = Arc::downgrade(&child.lease);
+        let parent = storage.list(parent_type, vec![child.clone().into()]);
+        let parent_weak = Arc::downgrade(&parent.lease);
         drop(parent);
-        {
-            let storage_state = lock(&state.lists.storage.state);
-            assert_eq!(storage_state.pools.lists.free.len(), 1);
-            assert_eq!(storage_state.pools.ints.free, Vec::<usize>::new());
-        }
+        assert_eq!(parent_weak.strong_count(), 0);
+        assert_eq!(child_weak.strong_count(), 1);
         assert_eq!(
-            state
-                .lists()
-                .int_values(&child)
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            child.values().iter().cloned().collect::<Vec<_>>(),
             vec![1.into()]
         );
-
         drop(child);
-        assert_eq!(
-            lock(&state.lists.storage.state).pools.ints.free,
-            vec![child_slot],
-        );
+        assert_eq!(child_weak.strong_count(), 0);
+        assert!(lock(&storage.releases.state).pending.is_empty());
     }
 
     #[test]
@@ -2624,7 +2750,7 @@ pub fn main() -> Int {
         let source = format!(
             "fn ints() -> List(Int) {{ [] }} pub fn main() -> {nested_type} {{ let _ = ints [] }}"
         );
-        let plan = crate::runtime::plan_src(&source);
+        let plan = plan_src(&source);
         let mut type_id = plan.list_list_function_id(0).type_id().list_type();
         let mut parents = Vec::new();
         let child_type = plan.int_list_function_id(0).type_id();
@@ -2641,23 +2767,28 @@ pub fn main() -> Int {
         );
 
         let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let mut value: StoredListValueId = state.lists_mut().int(child_type, vec![1.into()]).into();
+        let state = RuntimeState::new(&mut echo);
+        let child = state.lists().int(child_type, vec![1.into()]);
+        let child_weak = Arc::downgrade(&child.lease);
+        let mut value: StoredListValueId = child.into();
+        let mut owners = Vec::new();
         for parent in parents.into_iter().rev() {
-            value = state.lists_mut().list(parent, vec![value]).into();
+            let list = state.lists().list(parent, vec![value]);
+            owners.push(Arc::downgrade(&list.lease));
+            value = list.into();
         }
-        let allocated_list_slots = lock(&state.lists.storage.state).pools.lists.slots.len();
 
-        std::thread::Builder::new()
+        thread::Builder::new()
             .stack_size(128 * 1024)
             .spawn(move || drop(value))
             .expect("small-stack release worker")
             .join()
             .expect("nested lists release without recursion");
-        let storage_state = lock(&state.lists.storage.state);
-        assert_eq!(storage_state.pools.ints.free.len(), 1);
-        assert_eq!(storage_state.pools.lists.free.len(), allocated_list_slots);
-        assert_eq!(storage_state.releases.as_slice(), &[]);
+        assert_eq!(child_weak.strong_count(), 0);
+        assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+        let state = lock(&state.lists.releases.state);
+        assert!(state.pending.is_empty());
+        assert!(!state.draining);
     }
 
     #[test]
@@ -2667,7 +2798,7 @@ pub fn main() -> Int {
         let source = format!(
             "fn ints() -> List(Int) {{ [] }} pub fn main() -> {nested_type} {{ let _ = ints [] }}"
         );
-        let plan = crate::runtime::plan_src(&source);
+        let plan = plan_src(&source);
         let mut type_id = plan.list_list_function_id(0).type_id().list_type();
         let mut parents = Vec::new();
         let child_type = plan.int_list_function_id(0).type_id();
@@ -2679,37 +2810,38 @@ pub fn main() -> Int {
         }
 
         let mut echo = Vec::new();
-        let mut state = RuntimeState::new(&mut echo);
-        let mut value: StoredListValueId = state.lists_mut().int(child_type, vec![1.into()]).into();
+        let state = RuntimeState::new(&mut echo);
+        let child = state.lists().int(child_type, vec![1.into()]);
+        let child_weak = Arc::downgrade(&child.lease);
+        let mut value: StoredListValueId = child.into();
+        let mut owners = Vec::new();
         for parent in parents.into_iter().rev() {
-            value = state.lists_mut().list(parent, vec![value]).into();
+            let list = state.lists().list(parent, vec![value]);
+            owners.push(Arc::downgrade(&list.lease));
+            value = list.into();
         }
-        let allocated_list_slots = lock(&state.lists.storage.state).pools.lists.slots.len();
         let evaluated = EvaluatedValue::List(value.clone());
         let stored = StoredRuntimeValue::new(evaluated, plan.value_metadata());
-        let retained = crate::runtime::retained_list::RetainedList::new(value.clone());
+        let retained = RetainedList::new(value.clone());
 
         drop(value);
-        {
-            let storage_state = lock(&state.lists.storage.state);
-            assert!(storage_state.pools.ints.free.is_empty());
-            assert!(storage_state.pools.lists.free.is_empty());
-        }
-
+        assert!(owners.iter().all(|owner| owner.strong_count() > 0));
+        assert_eq!(child_weak.strong_count(), 1);
         drop(stored);
-        assert!(lock(&state.lists.storage.state).pools.ints.free.is_empty());
-        assert!(lock(&state.lists.storage.state).pools.lists.free.is_empty());
+        assert!(owners.iter().all(|owner| owner.strong_count() > 0));
+        assert_eq!(child_weak.strong_count(), 1);
         assert_eq!(retained.len(), 1);
         drop(retained);
-        let storage_state = lock(&state.lists.storage.state);
-        assert_eq!(storage_state.pools.ints.free.len(), 1);
-        assert_eq!(storage_state.pools.lists.free.len(), allocated_list_slots);
-        assert_eq!(storage_state.releases.as_slice(), &[]);
+        assert_eq!(child_weak.strong_count(), 0);
+        assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+        let state = lock(&state.lists.releases.state);
+        assert!(state.pending.is_empty());
+        assert!(!state.draining);
     }
 
     #[test]
     fn list_suffix_releases_removed_closure_captures_while_preserving_the_rest() {
-        let plan = crate::runtime::plan_src(
+        let plan = plan_src(
             r#"
 fn keep(value: List(Int)) { fn() { value } }
 fn build(count: Int) {
@@ -2731,71 +2863,113 @@ pub fn main() { build(65) }
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let original = EvaluatedValue::from(
-            crate::runtime::function::run_list(
+            run_list(
                 &plan,
                 &mut state,
-                crate::plan::execution::function::ProfiledListFunctionId::Core(
-                    ListFunctionId::Function(main),
-                ),
-                crate::runtime::error::HostCallOrigin::Entry,
+                ProfiledListFunctionId::Core(ListFunctionId::Function(main)),
+                HostCallOrigin::Entry,
                 RetainedValues::empty(),
             )
-            .expect("captured lists"),
+            .unwrap(),
         );
-        let suffix = state.lists().drop_first(
-            crate::runtime::BorrowedValue::from_value(&original).stored_list(),
-            1,
-        );
-        {
-            let storage = lock(&state.lists.storage.state);
-            assert_eq!(storage.pools.ints.slots.len(), 65);
-            assert!(storage.pools.ints.free.is_empty());
-        }
+        let owners = state
+            .lists()
+            .evaluated_values(BorrowedValue::from_value(&original).stored_list())
+            .iter()
+            .map(captured_int_list)
+            .collect::<Option<Vec<_>>>()
+            .unwrap();
+        assert_eq!(owners.len(), 65);
+        assert!(owners.iter().all(|owner| owner.strong_count() == 1));
+        let suffix = state
+            .lists()
+            .drop_first(BorrowedValue::from_value(&original).stored_list(), 1);
         drop(original);
-        assert_eq!(lock(&state.lists.storage.state).pools.ints.free.len(), 1);
-        assert_eq!(state.lists().list_len(&suffix.clone().into_value()), 64);
+        assert_eq!(owners[0].strong_count(), 0);
+        assert!(owners[1..].iter().all(|owner| owner.strong_count() == 1));
+        assert_eq!(state.lists().list_len(&suffix.clone().into()), 64);
         drop(suffix);
-        let storage = lock(&state.lists.storage.state);
-        assert_eq!(storage.pools.ints.free.len(), 65);
-        assert_eq!(
-            storage.pools.functions.free.len(),
-            storage.pools.functions.slots.len()
-        );
-        assert!(storage.releases.is_empty());
+        assert!(owners.iter().all(|owner| owner.strong_count() == 0));
+        let state = lock(&state.lists.releases.state);
+        assert!(state.pending.is_empty());
+        assert!(!state.draining);
     }
 
     #[test]
     fn closure_capture_retains_its_list_until_the_closure_is_dropped() {
-        let plan = crate::runtime::plan_src(
-            "fn keep(values: List(Int)) { fn() { values } } pub fn main() { keep([1]) }",
+        let plan = plan_src(
+            "fn keep(values: List(Int)) { fn() { values } } pub fn main() { [keep([1])] }",
         );
-        let type_id = plan.int_list_function_id(0).type_id();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let value = state.lists_mut().int(type_id, vec![1.into()]);
-        let slot = value.core.slot();
-        let closure = EvaluatedIntFunction::reference(
-            crate::plan::execution::function::IntFunctionId(0),
-            Vec::new(),
-            state.captures().capture(vec![EvaluatedCapture::list(
-                crate::runtime::EvaluatedListCapture::Int {
-                    local: crate::plan::execution::graph::IntListLocalId(0),
-                    value: value.clone(),
-                },
-            )]),
-            crate::plan::execution::type_::FunctionType::new(
-                Vec::new(),
-                crate::plan::execution::type_::ValueType::Int,
-            ),
-        );
-
-        drop(value);
-        assert_eq!(
-            lock(&state.lists.storage.state).pools.ints.free,
-            Vec::<usize>::new(),
-        );
+        let original = run_list(
+            &plan,
+            &mut state,
+            ProfiledListFunctionId::Core(ListFunctionId::Function(
+                plan.function_list_function_id(0),
+            )),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )
+        .unwrap();
+        let original = EvaluatedValue::from(original);
+        let values = state
+            .lists()
+            .evaluated_values(BorrowedValue::from_value(&original).stored_list());
+        assert_eq!(values.len(), 1);
+        let closure = values.into_iter().next().unwrap();
+        let weak = captured_int_list(&closure).unwrap();
+        drop(original);
+        drop(state);
+        drop(plan);
+        assert_eq!(weak.strong_count(), 1);
         drop(closure);
-        assert_eq!(lock(&state.lists.storage.state).pools.ints.free, vec![slot],);
+        assert_eq!(weak.strong_count(), 0);
+    }
+
+    fn captured_int_list(value: &EvaluatedValue) -> Option<Weak<ListLease<BigInt>>> {
+        use crate::runtime::EvaluatedListCapture;
+        use crate::runtime::evaluated::{EvaluatedCaptureKind, EvaluatedFunctionValueKind};
+        match value {
+            EvaluatedValue::Function(function) => {
+                match function.kind() {
+                    EvaluatedFunctionValueKind::List(function) => function
+                        .captures()
+                        .iter()
+                        .find_map(|capture| match capture.kind() {
+                            EvaluatedCaptureKind::List(EvaluatedListCapture::Int {
+                                value, ..
+                            }) => Some(Arc::downgrade(&value.lease)),
+                            _ => None,
+                        }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn capture_observation_rejects_non_list_functions_and_non_list_captures() {
+        let plan = plan_src(
+            "fn keep(value: Int) { fn() { [value] } } pub fn main() { #(1, fn() { 2 }, keep(3)) }",
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let values = run_tuple(
+            &plan,
+            &mut state,
+            TupleFunctionId(0),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )
+        .unwrap();
+        assert_eq!(values.len(), 3);
+        assert!(
+            values
+                .iter()
+                .all(|value| captured_int_list(value).is_none())
+        );
     }
 
     fn nested_list_storage(storage: ListStorageTypeId) -> Option<ListListTypeId> {

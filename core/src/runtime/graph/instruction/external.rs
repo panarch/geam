@@ -8,6 +8,8 @@ use crate::runtime::RuntimeGraph;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
 use crate::runtime::graph::RuntimeGraphState;
 
+// Keep this evaluator's temporaries and branches out of the shared instruction loop.
+#[inline(never)]
 pub(in crate::runtime) fn evaluate_action<Plan, State>(
     plan: &Plan,
     state: &State,
@@ -60,7 +62,7 @@ where
         ExternalInstructionRef::ListIndex { list, index } => {
             let list = environment.external_list(list);
             let values = state.lists().external_values(&list);
-            list_element(plan, expected, index, &values).map(V::Ready)
+            list_element(plan, expected, index, values).map(V::Ready)
         }
     }
 }

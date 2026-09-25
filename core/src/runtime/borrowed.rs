@@ -129,12 +129,9 @@ impl BorrowedValue<'_> {
         index: usize,
         read: impl FnOnce(BorrowedValue<'_>) -> Output,
     ) -> Option<Output> {
-        use crate::runtime::RuntimeListStorage;
-        let handle = value.clone().into_core();
-        let storage = RuntimeListStorage::from_handle(&handle);
         macro_rules! item {
-            ($value:expr, $read:ident, $field:ident) => {{
-                let values = storage.$read($value);
+            ($value:expr, $field:ident) => {{
+                let values = $value.values();
                 values.get(index).map(|value| {
                     let mut row = BorrowedValue::empty();
                     row.$field = slice::from_ref(value);
@@ -143,28 +140,29 @@ impl BorrowedValue<'_> {
             }};
         }
         match value {
-            StoredListValueId::Int(value) => item!(value, int_values, ints),
-            StoredListValueId::Float(value) => item!(value, float_values, floats),
-            StoredListValueId::String(value) => item!(value, string_values, strings),
-            StoredListValueId::BitArray(value) => item!(value, bit_array_values, bit_arrays),
+            StoredListValueId::Int(value) => item!(value, ints),
+            StoredListValueId::Float(value) => item!(value, floats),
+            StoredListValueId::String(value) => item!(value, strings),
+            StoredListValueId::BitArray(value) => item!(value, bit_arrays),
             StoredListValueId::UtfCodepoint(value) => {
-                item!(value, utf_codepoint_values, utf_codepoints)
+                item!(value, utf_codepoints)
             }
-            StoredListValueId::Bool(value) => item!(value, bool_values, bools),
-            StoredListValueId::Tuple(value) => item!(value, tuple_values, tuples),
-            StoredListValueId::Custom(value) => item!(value, custom_values, customs),
-            StoredListValueId::External(value) => item!(value, external_values, externals),
-            StoredListValueId::List(value) => item!(value, list_values, lists),
-            StoredListValueId::Function(value) => {
-                storage.function_values(value).get(index).map(|value| {
-                    let mut row = BorrowedValue::empty();
-                    row.functions = crate::runtime::embedding::CallableView::new(value);
-                    read(row)
-                })
+            StoredListValueId::Bool(value) => item!(value, bools),
+            StoredListValueId::Tuple(value) => item!(value, tuples),
+            StoredListValueId::Custom(value) => item!(value, customs),
+            StoredListValueId::External(value) => item!(value, externals),
+            StoredListValueId::List(value) => item!(value, lists),
+            StoredListValueId::Function(value) => value.values().get(index).map(|value| {
+                let mut row = BorrowedValue::empty();
+                row.functions = crate::runtime::embedding::CallableView::new(value);
+                read(row)
+            }),
+            StoredListValueId::Nil(value) => {
+                (index < value.len()).then(|| read(BorrowedValue::empty()))
             }
-            StoredListValueId::Nil(_) | StoredListValueId::ParameterList(_) => (index
-                < storage.list_len(&value.clone().into()))
-            .then(|| read(BorrowedValue::empty())),
+            StoredListValueId::ParameterList(value) => {
+                (index < value.len()).then(|| read(BorrowedValue::empty()))
+            }
         }
     }
 }
@@ -369,7 +367,7 @@ pub fn run() {
             vec![BigInt::from(1u64) << 256],
         );
         let values = storage.int_values(&handle);
-        let retained: StoredListValueId = handle.into();
+        let retained: StoredListValueId = handle.clone().into();
         for _ in 0..2 {
             assert_eq!(
                 BorrowedValue::read_list_item(&retained, 0, |value| {
