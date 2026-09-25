@@ -749,6 +749,188 @@ pub fn main() { start(Builder(None)) }
         );
     }
 
+    #[test]
+    fn nested_list_projections_require_the_original_list_storage_identity() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::instruction::InstructionError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::graph::{
+            IntListLocalId, IntLocalId, ListInstruction, ListLocal, ParamLocal,
+            ProfiledInstructionKind, TupleInstruction, TypedListInstruction,
+        };
+        use crate::plan::execution::type_::{
+            IntListTypeId, ListStorageTypeId, ListTypeId, ValueShapeId, ValueType,
+        };
+
+        for (name, source, tuple) in [
+            (
+                "guard",
+                r#"
+pub fn main() {
+  let expected = [42]
+  let nested = [[42]]
+  case nested {
+    [first, ..] if first == expected -> True
+    _ -> False
+  }
+}
+"#,
+                false,
+            ),
+            (
+                "tuple",
+                r#"
+pub fn main() {
+  let expected = [42]
+  let nested = #([42])
+  let first = nested.0
+  first == expected
+}
+"#,
+                true,
+            ),
+            (
+                "binding",
+                r#"
+pub fn main() {
+  let expected = [42]
+  let nested = [[42]]
+  let assert [first, ..] = nested
+  first == expected
+}
+"#,
+                false,
+            ),
+        ] {
+            for (alias, linked) in [(false, false), (true, false), (true, true)] {
+                let typed =
+                    crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+                let (bindings, _) = ModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let mut artifact = artifact(bindings.prepare());
+                if alias {
+                    let graph = &mut owned_mut(
+                        &mut artifact.program.functions.value_returns.bool_functions,
+                    )[0]
+                    .body
+                    .block_graph;
+                    let instructions = owned_mut(&mut graph.instructions);
+                    let original = IntListTypeId {
+                        list_type: ListTypeId(0),
+                    };
+                    assert_eq!(
+                        instructions
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, instruction)| {
+                                match &instruction.kind {
+                                    ProfiledInstructionKind::List(ListInstruction::Int(
+                                        type_id,
+                                        TypedListInstruction::Value(items),
+                                    )) => Some((index, *type_id, items.to_vec())),
+                                    _ => None,
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                        vec![
+                            (1, original, vec![IntLocalId(0)]),
+                            (3, original, vec![IntLocalId(1)])
+                        ]
+                    );
+                    let original_child = ParamLocal::List(ListLocal::Int {
+                        local: IntListLocalId(1),
+                        type_id: original,
+                    });
+                    assert_eq!(
+                        instructions
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, instruction)| {
+                                match &instruction.kind {
+                                    ProfiledInstructionKind::Tuple(TupleInstruction::Value(
+                                        items,
+                                    )) => Some((index, items.to_vec())),
+                                    _ => None,
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                        if tuple {
+                            vec![(4, vec![original_child.clone()])]
+                        } else {
+                            Vec::new()
+                        }
+                    );
+                    let child = &mut instructions[3];
+                    assert_eq!(child.output.local, original_child);
+                    let alias_type = IntListTypeId {
+                        list_type: ListTypeId(artifact.program.list_types.types.len()),
+                    };
+                    let mut list_types = artifact.program.list_types.types.to_vec();
+                    list_types.push(ListStorageTypeId::Int(alias_type));
+                    artifact.program.list_types.types = list_types.into();
+                    let shapes = &mut artifact.program.value_shapes;
+                    let alias_shape = ValueShapeId(shapes.shapes.len());
+                    let mut descriptors = shapes.shapes.to_vec();
+                    descriptors.push(descriptors[child.output.shape.index()].clone());
+                    let mut shape_types = shapes.shape_types.to_vec();
+                    shape_types.push(ValueType::List(alias_type.list_type));
+                    shapes.shapes = descriptors.into();
+                    shapes.shape_types = shape_types.into();
+
+                    if linked {
+                        // The child is locally well-typed. Only its enclosing
+                        // container still requires the original storage identity.
+                        child.kind = ProfiledInstructionKind::List(ListInstruction::Int(
+                            alias_type,
+                            TypedListInstruction::Value(vec![IntLocalId(1)].into()),
+                        ));
+                        child.output.shape = alias_shape;
+                        child.output.local = ParamLocal::List(ListLocal::Int {
+                            local: IntListLocalId(1),
+                            type_id: alias_type,
+                        });
+                        let child_local = child.output.local.clone();
+                        if tuple {
+                            instructions[4].kind = ProfiledInstructionKind::Tuple(
+                                TupleInstruction::Value(vec![child_local].into()),
+                            );
+                        }
+                    }
+                }
+                let artifact = Box::leak(Box::new(artifact));
+                let error = module(artifact, &functions::InfallibleHosts).err();
+                if linked {
+                    assert_eq!(
+                        error,
+                        Some(Error::Functions(FunctionError {
+                            family: FunctionTableFamily::Bool,
+                            index: 0,
+                            kind: FunctionErrorKind::Body(BodyError::Instruction {
+                                block: 0,
+                                index: 4,
+                                error: InstructionError::Flow,
+                            }),
+                        })),
+                        "{name}"
+                    );
+                } else {
+                    assert_eq!(error, None, "{name}");
+                    let execution = crate::ExecutionPlan {
+                        program: artifact.program.execution(),
+                    };
+                    assert_eq!(
+                        crate::run_main(&execution, &mut Vec::new()).unwrap(),
+                        crate::Value::Bool(true),
+                        "{name}"
+                    );
+                }
+            }
+        }
+    }
+
     fn artifact(prepared: PreparedModule) -> ModuleArtifact<Infallible> {
         let common = Arc::try_unwrap(prepared.program.common).ok().unwrap();
         let functions = owned(prepared.program.functions);
