@@ -24,7 +24,8 @@ pub mod provider {
 
     pub use geam_core::provider::{
         BigInt, BitArrayValue, Call, Callback, Configuration, EcoString, ExternalPayload, Factory,
-        Future, HostFailure, HostResult, InitializationError, List, Stored, StringValue, Value,
+        Future, GleamError, GleamOk, GleamResult, HostFailure, HostResult, InitializationError,
+        List, Stored, StringValue, Value,
     };
 }
 

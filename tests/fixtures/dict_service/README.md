@@ -13,6 +13,13 @@ including an empty iterator and a repeated key. `groups` constructs
 `nested` returns `#(Dict(String, String), List(Dict(String, String)))`, including
 an empty child Dict. Returning a Dict directly is not required.
 
+The same component also registers `lookup` returning `Result(String, Nil)` and
+`try_entries` returning `Result(Dict(String, String), Nil)`. Both use the public
+`geam::provider::{GleamResult, GleamOk, GleamError}` markers. `lookup` returns
+fixed fixture data, while `try_entries` passes a Dict constructed by the same
+stdlib service into `Ok`. They use the ordinary typed host construction path;
+neither duplicates the Result schema nor imports hidden support.
+
 Keys use Gleam equality and hashing. The last equal pair wins, matching
 `dict.from_list`; iteration order is unspecified. Input pairs are consumed and
 unique entries retained, so the value does not borrow the input container.
@@ -24,8 +31,10 @@ its unchanged `get`, `size`, `from_list`, `insert` and `delete` bodies to check
 each returned value, missing keys, source equality, Dict keys and persistent
 aliases. [public_usage.rs](provider/tests/public_usage.rs) composes the public
 components, checks locked source acquisition, executes twice, and inspects the
-complete nested result after dropping execution and state. Component projection
-unit tests live beside the provider implementation.
+complete nested result after dropping execution and state. Result assertions
+fix both variants, empty and Unicode/NUL String payloads, source and stdlib
+Result equality, and the original Dict operations on a Result payload.
+Component projection unit tests live beside the provider implementation.
 
 From the repository root, with Rust and Gleam 1.18.1:
 
@@ -48,5 +57,7 @@ Geam dependencies retain their separate owner gates. See the
 [testing guide](../../../docs/development/testing.md#dict-service-consumer) and
 [service guide](../../../docs/reference/execution-services.md#constructing-standard-library-dicts).
 
-This verifies Dict construction. It does not implement `envoy` or read or change
-the process environment.
+This verifies Dict construction and its composition with canonical Results.
+The [Provider SDK fixture](../provider_sdk) separately proves Result-only use
+without stdlib. Neither fixture implements `envoy` or reads or changes the
+process environment.

@@ -47,6 +47,15 @@ The canonical flow invokes a Rust-created function directly from Gleam and
 through another provider callback, with exact alias identity and state effects.
 Its private native body needs no synthetic source external.
 
+The same manual provider registers `non_empty` as `Result(String, Int)` using
+`geam::provider::{GleamResult, GleamOk, GleamError}`. Empty input returns
+`Error(0)`; other input returns `Ok(value)` without copying its payload. The
+canonical flow pattern-matches both variants, compares them with source-created
+Results, and continues after the ordinary source Error. The provider enables
+only Geam's `provider` feature; Result construction needs no standard library.
+See [manual prelude Results](../../../docs/reference/provider-boundary.md#manual-prelude-results)
+for the import, registration, and return syntax.
+
 The remaining tests in that file show independent run states, opaque external
 values that outlive execution, and callback failure propagation. Provider-local
 tests cover configuration validation and the domain crate separately verifies

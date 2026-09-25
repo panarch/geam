@@ -1,4 +1,4 @@
-use geam::provider::{BigInt, EcoString, StringValue};
+use geam::provider::{BigInt, EcoString, GleamError, GleamOk, GleamResult, StringValue};
 use geam::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
     HostCallableSchema, HostCaptures, HostComponentProfile, HostConstructions, HostCreatedFunction,
@@ -127,6 +127,11 @@ where
                     SummaryConstructions,
                     _,
                 >("summarize", summarize::<Profile>)
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function::<
+                    Provider, (StringValue,), GleamResult<StringValue, BigInt>, _,
+                >("non_empty", non_empty::<Profile>)
             })
             .map(|provider| vec![provider])
     }
@@ -360,6 +365,20 @@ where
             }))
         })
     }))
+}
+
+fn non_empty<'call, Profile>(
+    call: HostCall<'call, Profile, Provider, GleamResult<StringValue, BigInt>>,
+    value: StringValue,
+) -> Result<HostCallCompletion<'call, GleamResult<StringValue, BigInt>>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    if value.as_str().is_empty() {
+        Ok(call.return_custom::<GleamError<StringValue, BigInt>>((BigInt::from(0), ())))
+    } else {
+        Ok(call.return_custom::<GleamOk<StringValue, BigInt>>((value, ())))
+    }
 }
 
 #[cfg(test)]

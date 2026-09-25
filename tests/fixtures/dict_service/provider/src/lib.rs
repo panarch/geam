@@ -1,4 +1,4 @@
-//! An independent manual consumer of producer-owned typed Dict construction.
+//! An independent manual consumer of typed Dict and canonical Result construction.
 
 use geam::gleam_stdlib::{Component as StdlibComponent, DictOf, GleamStdlibHostProfile, service};
 use geam::host::{
@@ -7,12 +7,13 @@ use geam::host::{
     HostProviderModule, HostRegistrationError, HostTupleType, HostTypeIndex0, HostTypeIndexNext,
     HostTypeList, HostTypeListEnd,
 };
-use geam::provider::{BigInt, StringValue};
+use geam::provider::{BigInt, GleamError, GleamOk, GleamResult, StringValue};
 
 pub struct Component;
 
 type TextDict = DictOf<StringValue, StringValue>;
 type TextConstructions = HostTypeList<TextDict, HostTypeListEnd>;
+type EntryResult = GleamResult<TextDict, ()>;
 type Strings = HostListType<StringValue>;
 type Groups = DictOf<BigInt, Strings>;
 type GroupConstructions = HostTypeList<Groups, HostTypeList<Strings, HostTypeListEnd>>;
@@ -57,6 +58,18 @@ where
                 provider.with_scoped_function_and_constructions::<
                     Self, (), Nested, NestedConstructions, _,
                 >("nested", nested::<Profile>)
+            })
+            .and_then(|provider| {
+                provider
+                    .with_scoped_function::<Self, (StringValue,), GleamResult<StringValue, ()>, _>(
+                        "lookup",
+                        lookup::<Profile>,
+                    )
+            })
+            .and_then(|provider| {
+                provider.with_scoped_function_and_constructions::<
+                    Self, (bool,), EntryResult, TextConstructions, _,
+                >("try_entries", try_entries::<Profile>)
             })
             .map(|provider| vec![provider])
     }
@@ -128,6 +141,47 @@ where
     );
     let dicts = call.construct_list(constructions.at::<ListIndex>(), [inner, empty]);
     Ok(call.return_tuple((outer, (dicts, ()))))
+}
+
+fn lookup<'call, Profile>(
+    call: HostCall<'call, Profile, Component, GleamResult<StringValue, ()>>,
+    key: StringValue,
+) -> Result<HostCallCompletion<'call, GleamResult<StringValue, ()>>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    let item = match key.as_str() {
+        "LANG" => Some("한국어\0🙂"),
+        "EMPTY" => Some(""),
+        "MESSAGE" => Some("ready"),
+        _ => None,
+    };
+    match item {
+        Some(item) => Ok(call.return_custom::<GleamOk<StringValue, ()>>((item.into(), ()))),
+        None => Ok(call.return_custom::<GleamError<StringValue, ()>>(((), ()))),
+    }
+}
+
+fn try_entries<'call, Profile>(
+    mut call: HostCall<'call, Profile, Component, EntryResult>,
+    constructions: HostConstructions<'call, TextConstructions>,
+    available: bool,
+) -> Result<HostCallCompletion<'call, EntryResult>, HostCallError>
+where
+    Profile: GleamStdlibHostProfile
+        + HostComponentProfile<StdlibComponent<Profile::Io>>
+        + HostComponentProfile<Component>,
+{
+    if available {
+        let dict = service::dict_from_entries(
+            &mut call,
+            constructions.at::<HostTypeIndex0>(),
+            [(StringValue::from("status"), StringValue::from("ready"))],
+        );
+        Ok(call.return_custom::<GleamOk<TextDict, ()>>((dict, ())))
+    } else {
+        Ok(call.return_custom::<GleamError<TextDict, ()>>(((), ())))
+    }
 }
 
 #[cfg(test)]

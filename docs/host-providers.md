@@ -339,6 +339,11 @@ The [provider examples](../examples/provider) form an executable path through
 those choices, beginning with scalar functions and ending with a separately
 published Hex package and provider crate.
 
+For manual typed registration, the public `GleamResult`, `GleamOk`, and
+`GleamError` markers construct the same prelude Result without requiring
+stdlib. See [manual prelude Results](reference/provider-boundary.md#manual-prelude-results)
+for the exact import, registration, and return syntax.
+
 ## Use the provider from an application
 
 Provider crates are native code. A standalone project records an explicit

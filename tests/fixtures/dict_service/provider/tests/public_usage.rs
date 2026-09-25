@@ -1,4 +1,4 @@
-//! Original Gleam Dict source consuming values created by another Rust provider.
+//! Original Gleam Dict source and prelude Results consuming another Rust provider's values.
 extern crate geam as geam_core;
 
 #[path = "../../../../support/execution_host.rs"]
@@ -60,7 +60,7 @@ impl HostComponentProfile<Component> for Profile {
 }
 
 #[test]
-fn original_dict_source_reads_independently_constructed_values() {
+fn original_dict_source_reads_independently_constructed_dicts_and_results() {
     let project = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../project");
     let manifest = fs::read(project.join("manifest.toml")).unwrap();
     let acquisition = Command::new("gleam")
@@ -105,7 +105,9 @@ fn original_dict_source_reads_independently_constructed_values() {
             "#(dict.from_list([#(\"LANG\", \"한국어\\0🙂\")]), \
 dict.from_list([#(1, [\"one\", \"하나\"]), #(2, [])]), \
 #(dict.from_list([#(\"outer\", \"ready\")]), \
-[dict.from_list([#(\"inner\", \"nested\")]), dict.from_list([])]))"
+[dict.from_list([#(\"inner\", \"nested\")]), dict.from_list([])]), \
+Ok(\"한국어\\0🙂\"), Error(Nil), \
+Ok(dict.from_list([#(\"status\", \"ready\")])), Error(Nil))"
         );
     }
     assert!(echo.is_empty());

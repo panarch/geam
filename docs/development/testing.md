@@ -224,6 +224,11 @@ cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspac
 This workspace is independently locked and needs neither a Gleam CLI nor
 downloaded Gleam package source. Its Rust dependencies use Cargo's ordinary
 locked acquisition path. CI runs it as a separate provider SDK boundary.
+Its provider enables only `provider`, with default features disabled. The
+manual `non_empty` function uses public `GleamResult`, `GleamOk`, and
+`GleamError` markers to return `Result(String, Int)`. Source assertions cover
+both variants, exact payloads, equality with source-created Results, and
+continued execution after an Error without any stdlib provider.
 
 The independently locked managed embedding examples fix the user-facing
 progression from the first generated function call through recursive ordinary
@@ -763,6 +768,14 @@ empty/duplicate entries, exact keys/items, missing keys, equality, Dict keys
 and persistent insert/delete aliases. Repeated execution and exact inspection
 after execution/state drop verify ordinary retained results. Provider projection
 unit tests stay beside the implementation.
+
+The same manual provider also returns `Result(String, Nil)` and
+`Result(Dict(String, String), Nil)` through the public canonical Result markers.
+The original source checks both variants, empty/Unicode/NUL String payloads,
+equality with stdlib-produced Results, and Dict operations on the success
+payload. Repeated execution and inspection after execution/state drop include
+those Results. These cases reuse the existing consumer gates and independent
+provider coverage denominator; they do not replace core Result owner tests.
 
 `geam-stdlib` owner tests in `dict/function.rs` separately cover typed generic
 construction, source/native equality and hashing, actual hash collisions, the

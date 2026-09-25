@@ -57,6 +57,7 @@ pub use list::{
     ProviderListItemValue, ProviderListTupleItems, ProviderOwnedExternal,
     ProviderOwnedExternalListDecoder, ProviderScalarListDecoder, ProviderTypedListItemDecoder,
 };
+pub use prelude::{GleamError, GleamOk, GleamResult};
 #[doc(hidden)]
 pub use prelude::{
     ProviderError, ProviderNone, ProviderOk, ProviderOption, ProviderOptionSchema, ProviderResult,
