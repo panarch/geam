@@ -99,9 +99,6 @@ It must not be recovered through runtime family checks or represented as an
 execution error. Runtime list storage uses reference counting rather than a
 tracing collector; features that can create cyclic evaluated value graphs stay
 outside the profile until they have a separate ownership design.
-Prepared list flow must preserve that exact storage identity as well as item
-refinements. Structurally equal item shapes do not make distinct list storage
-IDs interchangeable.
 Profile boundaries, list-match length guards, and typed-AST margins remain
 planner responsibilities.
 
