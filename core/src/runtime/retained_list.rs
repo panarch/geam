@@ -3,8 +3,7 @@ use super::evaluated::{
     EvaluatedValue,
 };
 use super::state::list::{
-    ListSequence, ListSequenceIter, ListValueId, ParameterListValueId, RuntimeListStorage,
-    StoredListValueId,
+    ListSequence, ListSequenceIter, ListValueId, ParameterListValueId, StoredListValueId,
 };
 use crate::StringValue;
 use num_bigint::BigInt;
@@ -110,50 +109,28 @@ enum ListReadIter<'a> {
     Function(ListSequenceIter<'a, EvaluatedFunctionValue>),
 }
 
+// Retained readers own a shared sequence independently of the source handle.
+// Call-borrowed item access uses the handle directly instead.
 impl ListRead {
     fn new(value: &ListValueId) -> Self {
         match value {
             ListValueId::Parameter(_) => Self::Empty,
-            ListValueId::Nil(value) => {
-                Self::Nil(RuntimeListStorage::from_handle(value.core()).nil_len(value))
-            }
+            ListValueId::Nil(value) => Self::Nil(value.len()),
             ListValueId::ParameterList(value) => Self::ParameterList(
                 ParameterListValueId::new(value.type_id().item_type()),
-                RuntimeListStorage::from_handle(value.core()).parameter_list_list_len(value),
+                value.len(),
             ),
-            ListValueId::Int(value) => {
-                Self::Int(RuntimeListStorage::from_handle(value.core()).int_values(value))
-            }
-            ListValueId::String(value) => {
-                Self::String(RuntimeListStorage::from_handle(value.core()).string_values(value))
-            }
-            ListValueId::BitArray(value) => Self::BitArray(
-                RuntimeListStorage::from_handle(value.core()).bit_array_values(value),
-            ),
-            ListValueId::UtfCodepoint(value) => Self::UtfCodepoint(
-                RuntimeListStorage::from_handle(value.core()).utf_codepoint_values(value),
-            ),
-            ListValueId::Custom(value) => {
-                Self::Custom(RuntimeListStorage::from_handle(value.core()).custom_values(value))
-            }
-            ListValueId::External(value) => {
-                Self::External(RuntimeListStorage::from_handle(value.core()).external_values(value))
-            }
-            ListValueId::Float(value) => {
-                Self::Float(RuntimeListStorage::from_handle(value.core()).float_values(value))
-            }
-            ListValueId::Bool(value) => {
-                Self::Bool(RuntimeListStorage::from_handle(value.core()).bool_values(value))
-            }
-            ListValueId::Tuple(value) => {
-                Self::Tuple(RuntimeListStorage::from_handle(value.core()).tuple_values(value))
-            }
-            ListValueId::List(value) => {
-                Self::List(RuntimeListStorage::from_handle(value.core()).list_values(value))
-            }
-            ListValueId::Function(value) => {
-                Self::Function(RuntimeListStorage::from_handle(value.core()).function_values(value))
-            }
+            ListValueId::Int(value) => Self::Int(value.values().clone()),
+            ListValueId::String(value) => Self::String(value.values().clone()),
+            ListValueId::BitArray(value) => Self::BitArray(value.values().clone()),
+            ListValueId::UtfCodepoint(value) => Self::UtfCodepoint(value.values().clone()),
+            ListValueId::Custom(value) => Self::Custom(value.values().clone()),
+            ListValueId::External(value) => Self::External(value.values().clone()),
+            ListValueId::Float(value) => Self::Float(value.values().clone()),
+            ListValueId::Bool(value) => Self::Bool(value.values().clone()),
+            ListValueId::Tuple(value) => Self::Tuple(value.values().clone()),
+            ListValueId::List(value) => Self::List(value.values().clone()),
+            ListValueId::Function(value) => Self::Function(value.values().clone()),
         }
     }
 

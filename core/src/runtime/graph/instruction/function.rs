@@ -40,6 +40,8 @@ pub(in crate::runtime) trait FunctionParameterPlan:
     fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal>;
 }
 
+// Keep this evaluator's temporaries and branches out of the shared instruction loop.
+#[inline(never)]
 pub(in crate::runtime) fn evaluate_action<Plan, State>(
     plan: &Plan,
     state: &State,
@@ -126,7 +128,7 @@ where
             plan,
             expected,
             *index,
-            &state
+            state
                 .lists()
                 .function_values(&environment.function_list(*list)),
         )

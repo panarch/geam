@@ -106,7 +106,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().int_values(&environment.int_list(*list)),
+            state.lists().int_values(&environment.int_list(*list)),
         )
         .map(V::Ready),
         I::Add { left, right } => Ok(V::Ready(environment.int(*left) + environment.int(*right))),
@@ -205,7 +205,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().float_values(&environment.float_list(*list)),
+            state.lists().float_values(&environment.float_list(*list)),
         )
         .map(V::Ready),
         I::Add { left, right } => Ok(V::Ready(
@@ -301,7 +301,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().string_values(&environment.string_list(*list)),
+            state.lists().string_values(&environment.string_list(*list)),
         )
         .map(V::Ready),
         I::Concatenate { left, right } => Ok(V::Ready(
@@ -394,7 +394,7 @@ where
             plan,
             expected,
             *index,
-            &state
+            state
                 .lists()
                 .bit_array_values(&environment.bit_array_list(*list)),
         )
@@ -469,7 +469,7 @@ where
             plan,
             expected,
             *index,
-            &state
+            state
                 .lists()
                 .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
         )
@@ -564,7 +564,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().custom_values(&environment.custom_list(*list)),
+            state.lists().custom_values(&environment.custom_list(*list)),
         )
         .map(V::Ready),
     }
@@ -643,7 +643,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().bool_values(&environment.bool_list(*list)),
+            state.lists().bool_values(&environment.bool_list(*list)),
         )
         .map(V::Ready),
         I::Not(value) => Ok(V::Ready(!environment.bool(*value))),
@@ -825,7 +825,7 @@ where
             plan,
             expected,
             *index,
-            &state.lists().tuple_values(&environment.tuple_list(*list)),
+            state.lists().tuple_values(&environment.tuple_list(*list)),
         )
         .map(V::Ready),
     }

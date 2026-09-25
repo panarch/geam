@@ -89,8 +89,17 @@ impl Types<'_> {
                     }
                     pending.extend(source.iter().copied().zip(target.iter().copied()));
                 }
-                (ValueShapeDescriptor::List(source), ValueShapeDescriptor::List(target)) => {
-                    pending.push((*source, *target));
+                (
+                    ValueShapeDescriptor::List(source_item),
+                    ValueShapeDescriptor::List(target_item),
+                ) => {
+                    // Typed runtime handles retain this identity through projection.
+                    if self.shapes.shape_types[source.index()]
+                        != self.shapes.shape_types[target.index()]
+                    {
+                        return false;
+                    }
+                    pending.push((*source_item, *target_item));
                 }
                 (
                     ValueShapeDescriptor::Function {
@@ -148,6 +157,55 @@ mod tests {
         FunctionType, ListStorageTypeId, ListTypeId, ListTypeTable, NominalTypeMetadata,
         ValueShapeTable, ValueType,
     };
+
+    #[test]
+    fn list_flow_preserves_storage_identity_between_equivalent_item_shapes() {
+        use crate::plan::execution::type_::IntListTypeId;
+
+        let lists = ListTypeTable {
+            types: [0, 1]
+                .into_iter()
+                .map(|index| {
+                    ListStorageTypeId::Int(IntListTypeId {
+                        list_type: ListTypeId(index),
+                    })
+                })
+                .collect(),
+            tuple_items: Table::Static(&[]),
+            function_items: Table::Static(&[]),
+        };
+        let customs = CustomTypeTable::new(Vec::new(), Vec::new());
+        let externals = ExternalTypeTable {
+            types: Table::Static(&[]),
+        };
+        let shapes = ValueShapeTable {
+            shapes: Table::Static(&[
+                ValueShapeDescriptor::Int,
+                ValueShapeDescriptor::List(ValueShapeId(0)),
+                ValueShapeDescriptor::List(ValueShapeId(0)),
+                ValueShapeDescriptor::List(ValueShapeId(0)),
+            ]),
+            shape_types: Table::Static(&[
+                ValueType::Int,
+                ValueType::List(ListTypeId(0)),
+                ValueType::List(ListTypeId(0)),
+                ValueType::List(ListTypeId(1)),
+            ]),
+            custom_shapes: Table::Static(&[]),
+        };
+        let types = Types::admit(&lists, &customs, &externals, &shapes).unwrap();
+        for (source, target, expected) in [(1, 2, true), (2, 1, true), (1, 3, false), (3, 1, false)]
+        {
+            assert_eq!(
+                types.can_flow(ValueShapeId(source), ValueShapeId(target)),
+                Ok(expected)
+            );
+            assert_eq!(
+                types.equivalent(ValueShapeId(source), ValueShapeId(target)),
+                Ok(expected)
+            );
+        }
+    }
 
     #[test]
     fn preserves_constructor_widening_and_function_variance_over_borrowed_shapes() {

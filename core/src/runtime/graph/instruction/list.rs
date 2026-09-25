@@ -2,6 +2,7 @@ use super::super::environment::BlockEnvironment;
 use super::super::{GraphValue, RuntimeGraphState};
 use super::value::{InstructionValue, custom_projection, ensure_list_index, tuple_projection};
 use crate::StringValue;
+use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::function::{
     BitArrayListFunctionId, BoolListFunctionId, CustomListFunctionId, ExternalListFunctionId,
     FloatListFunctionId, FunctionListFunctionId, IntListFunctionId, ListFunctionId,
@@ -26,6 +27,7 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalListFunction, EvaluatedExternalValue,
     EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
 };
+use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     ExternalListAllocation, ExternalListValueId, FloatListValueId, FunctionListValueId,
@@ -35,8 +37,19 @@ use crate::runtime::state::list::{
 };
 use num_bigint::BigInt;
 
+pub(in crate::runtime) enum ListInstructionValue<Value, Function, Constant> {
+    Ready(Value),
+    Projected(StoredListValueId),
+    Constant(ConstantId<Constant>),
+    Call {
+        function: Function,
+        origin: HostCallOrigin,
+        inputs: RetainedValues,
+    },
+}
+
 pub(in crate::runtime) type ExternalListInstructionValue =
-    InstructionValue<ExternalListValueId, ExternalListFunctionId, ExternalListLocalId>;
+    ListInstructionValue<ExternalListValueId, ExternalListFunctionId, ExternalListLocalId>;
 
 pub(in crate::runtime) fn evaluate_external<Plan, State>(
     plan: &Plan,
@@ -176,13 +189,9 @@ pub(super) trait RuntimeTypedList {
         count: usize,
     ) -> Self::Handle;
     fn projected(value: &StoredListValueId) -> Option<Self::Handle>;
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle;
 }
 
-type TypedListInstructionValue<Family> = InstructionValue<
+type TypedListInstructionValue<Family> = ListInstructionValue<
     <Family as RuntimeTypedList>::Handle,
     <Family as RuntimeTypedList>::Function,
     <Family as RuntimeTypedList>::Local,
@@ -206,7 +215,7 @@ where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValue as V;
+    use ListInstructionValue as V;
     use TypedListInstruction as I;
 
     match instruction {
@@ -275,10 +284,7 @@ where
             let list = environment.list_list(*list);
             let values = state.lists().list_values(&list);
             match values.get(*index) {
-                Some(value) => Ok(V::Ready(Family::from_core(
-                    type_id,
-                    value.clone().into_core(),
-                ))),
+                Some(value) => Ok(V::Projected(value.clone())),
                 None => Err(InvariantError::ListIndexOutOfBounds {
                     item_type: plan.value_type(expected),
                     index: *index,
@@ -395,13 +401,6 @@ macro_rules! vector_family {
 
             fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
                 <$handle>::from_stored(value)
-            }
-
-            fn from_core(
-                type_id: Self::TypeId,
-                core: crate::runtime::state::list::ListHandleCore,
-            ) -> Self::Handle {
-                <$handle>::new(type_id, core)
             }
         }
     };
@@ -568,13 +567,6 @@ impl RuntimeTypedList for TupleFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         TupleListValueId::from_stored(value)
     }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        TupleListValueId::new(type_id, core)
-    }
 }
 
 pub(super) struct CustomFamily;
@@ -649,13 +641,6 @@ impl RuntimeTypedList for CustomFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         CustomListValueId::from_stored(value)
     }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        CustomListValueId::new(type_id, core)
-    }
 }
 
 struct ExternalFamily;
@@ -727,13 +712,6 @@ impl RuntimeTypedList for ExternalFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         ExternalListValueId::from_stored(value)
     }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        ExternalListValueId::new(type_id, core)
-    }
 }
 
 pub(super) struct NilFamily;
@@ -802,13 +780,6 @@ impl RuntimeTypedList for NilFamily {
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         NilListValueId::from_stored(value)
-    }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        NilListValueId::new(type_id, core)
     }
 }
 
@@ -883,13 +854,6 @@ impl RuntimeTypedList for ParameterListFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         ParameterListListValueId::from_stored(value)
     }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        ParameterListListValueId::new(type_id, core)
-    }
 }
 
 pub(super) struct ListFamily;
@@ -962,13 +926,6 @@ impl RuntimeTypedList for ListFamily {
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         ListListValueId::from_stored(value)
     }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        ListListValueId::new(type_id, core)
-    }
 }
 
 pub(super) struct FunctionFamily;
@@ -1040,13 +997,6 @@ impl RuntimeTypedList for FunctionFamily {
 
     fn projected(value: &StoredListValueId) -> Option<Self::Handle> {
         FunctionListValueId::from_stored(value)
-    }
-
-    fn from_core(
-        type_id: Self::TypeId,
-        core: crate::runtime::state::list::ListHandleCore,
-    ) -> Self::Handle {
-        FunctionListValueId::new(type_id, core)
     }
 }
 
