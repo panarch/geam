@@ -11,10 +11,9 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::{
     BitArrayListLocalId, BoolListLocalId, CustomListLocalId, ExternalListFunctionLocalId,
     ExternalListInstruction, ExternalListInstructionView, ExternalListLocalId, FloatListLocalId,
-    FunctionListLocalId, IntListLocalId, ListFunctionLocal, ListInstruction, ListListLocalId,
-    NilListLocalId, ParameterListInstruction, ParameterListListLocalId, ParameterListLocalId,
-    StoredListLocal, StringListLocalId, TupleListLocalId, TypedListInstruction,
-    UtfCodepointListLocalId,
+    FunctionListLocalId, IntListLocalId, ListFunctionLocal, ListListLocalId, NilListLocalId,
+    ParameterListInstruction, ParameterListListLocalId, ParameterListLocalId, StoredListLocal,
+    StringListLocalId, TupleListLocalId, TypedListInstruction, UtfCodepointListLocalId,
 };
 use crate::plan::execution::type_::{
     BitArrayListTypeId, BoolListTypeId, CustomListTypeId, ExternalListTypeId, FloatListTypeId,
@@ -36,116 +35,8 @@ use crate::runtime::state::list::{
 };
 use num_bigint::BigInt;
 
-pub(in crate::runtime) enum ListInstructionValue {
-    Parameter(
-        InstructionValue<ParameterListValueId, ParameterListFunctionId, ParameterListLocalId>,
-    ),
-    ParameterList(
-        InstructionValue<
-            ParameterListListValueId,
-            ParameterListListFunctionId,
-            ParameterListListLocalId,
-        >,
-    ),
-    Int(InstructionValue<IntListValueId, IntListFunctionId, IntListLocalId>),
-    String(InstructionValue<StringListValueId, StringListFunctionId, StringListLocalId>),
-    BitArray(InstructionValue<BitArrayListValueId, BitArrayListFunctionId, BitArrayListLocalId>),
-    UtfCodepoint(
-        InstructionValue<
-            UtfCodepointListValueId,
-            UtfCodepointListFunctionId,
-            UtfCodepointListLocalId,
-        >,
-    ),
-    Custom(InstructionValue<CustomListValueId, CustomListFunctionId, CustomListLocalId>),
-    Float(InstructionValue<FloatListValueId, FloatListFunctionId, FloatListLocalId>),
-    Bool(InstructionValue<BoolListValueId, BoolListFunctionId, BoolListLocalId>),
-    Nil(InstructionValue<NilListValueId, NilListFunctionId, NilListLocalId>),
-    Tuple(InstructionValue<TupleListValueId, TupleListFunctionId, TupleListLocalId>),
-    List(InstructionValue<ListListValueId, ListListFunctionId, ListListLocalId>),
-    Function(InstructionValue<FunctionListValueId, FunctionListFunctionId, FunctionListLocalId>),
-}
-
 pub(in crate::runtime) type ExternalListInstructionValue =
     InstructionValue<ExternalListValueId, ExternalListFunctionId, ExternalListLocalId>;
-
-pub(in crate::runtime) fn evaluate<Plan, State>(
-    plan: &Plan,
-    state: &mut State,
-    environment: &BlockEnvironment,
-    instruction: &ListInstruction,
-    expected: &ValueType,
-) -> Result<ListInstructionValue, State::Error>
-where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
-    State: RuntimeGraphState,
-{
-    use ListInstructionValue as V;
-
-    match instruction {
-        ListInstruction::Parameter(type_id, instruction) => {
-            parameter(plan, state, environment, *type_id, instruction, expected).map(V::Parameter)
-        }
-        ListInstruction::ParameterList(type_id, instruction) => typed::<ParameterListFamily, _, _>(
-            plan,
-            state,
-            environment,
-            *type_id,
-            instruction,
-            expected,
-        )
-        .map(V::ParameterList),
-        ListInstruction::Int(type_id, instruction) => {
-            typed::<IntFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Int)
-        }
-        ListInstruction::String(type_id, instruction) => {
-            typed::<StringFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::String)
-        }
-        ListInstruction::BitArray(type_id, instruction) => {
-            typed::<BitArrayFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::BitArray)
-        }
-        ListInstruction::UtfCodepoint(type_id, instruction) => typed::<UtfCodepointFamily, _, _>(
-            plan,
-            state,
-            environment,
-            *type_id,
-            instruction,
-            expected,
-        )
-        .map(V::UtfCodepoint),
-        ListInstruction::Custom(type_id, instruction) => {
-            typed::<CustomFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Custom)
-        }
-        ListInstruction::Float(type_id, instruction) => {
-            typed::<FloatFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Float)
-        }
-        ListInstruction::Bool(type_id, instruction) => {
-            typed::<BoolFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Bool)
-        }
-        ListInstruction::Nil(type_id, instruction) => {
-            typed::<NilFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Nil)
-        }
-        ListInstruction::Tuple(type_id, instruction) => {
-            typed::<TupleFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Tuple)
-        }
-        ListInstruction::List(type_id, instruction) => {
-            typed::<ListFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::List)
-        }
-        ListInstruction::Function(type_id, instruction) => {
-            typed::<FunctionFamily, _, _>(plan, state, environment, *type_id, instruction, expected)
-                .map(V::Function)
-        }
-    }
-}
 
 pub(in crate::runtime) fn evaluate_external<Plan, State>(
     plan: &Plan,
@@ -168,7 +59,7 @@ where
     )
 }
 
-fn parameter<Plan, State>(
+pub(super) fn parameter<Plan, State>(
     plan: &Plan,
     state: &State,
     environment: &BlockEnvironment,
@@ -249,7 +140,7 @@ where
     }
 }
 
-trait RuntimeTypedList {
+pub(super) trait RuntimeTypedList {
     type TypeId: Copy;
     type ElementLocal: 'static;
     type Elements;
@@ -297,7 +188,7 @@ type TypedListInstructionValue<Family> = InstructionValue<
     <Family as RuntimeTypedList>::Local,
 >;
 
-fn typed<Family, Plan, State>(
+pub(super) fn typed<Family, Plan, State>(
     plan: &Plan,
     state: &mut State,
     environment: &BlockEnvironment,
@@ -428,7 +319,7 @@ macro_rules! vector_family {
         $prepend_method:ident,
         $tail_method:ident
     ) => {
-        struct $family;
+        pub(super) struct $family;
 
         impl RuntimeTypedList for $family {
             type TypeId = $type_id;
@@ -607,7 +498,7 @@ vector_family!(
     tail_bool
 );
 
-struct TupleFamily;
+pub(super) struct TupleFamily;
 
 impl RuntimeTypedList for TupleFamily {
     type TypeId = TupleListTypeId;
@@ -686,7 +577,7 @@ impl RuntimeTypedList for TupleFamily {
     }
 }
 
-struct CustomFamily;
+pub(super) struct CustomFamily;
 
 impl RuntimeTypedList for CustomFamily {
     type TypeId = CustomListTypeId;
@@ -845,7 +736,7 @@ impl RuntimeTypedList for ExternalFamily {
     }
 }
 
-struct NilFamily;
+pub(super) struct NilFamily;
 
 impl RuntimeTypedList for NilFamily {
     type TypeId = NilListTypeId;
@@ -921,7 +812,7 @@ impl RuntimeTypedList for NilFamily {
     }
 }
 
-struct ParameterListFamily;
+pub(super) struct ParameterListFamily;
 
 impl RuntimeTypedList for ParameterListFamily {
     type TypeId = ParameterListListTypeId;
@@ -1001,7 +892,7 @@ impl RuntimeTypedList for ParameterListFamily {
     }
 }
 
-struct ListFamily;
+pub(super) struct ListFamily;
 
 impl RuntimeTypedList for ListFamily {
     type TypeId = ListListTypeId;
@@ -1080,7 +971,7 @@ impl RuntimeTypedList for ListFamily {
     }
 }
 
-struct FunctionFamily;
+pub(super) struct FunctionFamily;
 
 impl RuntimeTypedList for FunctionFamily {
     type TypeId = FunctionListTypeId;
@@ -1165,7 +1056,7 @@ mod tests {
     use super::{
         BitArrayFamily, BoolFamily, CustomFamily, ExternalFamily, FloatFamily, FunctionFamily,
         IntFamily, ListFamily, NilFamily, ParameterListFamily, RuntimeTypedList, StringFamily,
-        TupleFamily, UtfCodepointFamily, evaluate, list_function_mismatch, parameter, typed,
+        TupleFamily, UtfCodepointFamily, list_function_mismatch, parameter, typed,
     };
     use crate::frontend::compile_typed_host_program;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet};
@@ -1175,9 +1066,8 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         CustomLocal, ExternalListFunctionLocalId, ExternalListLocalId, ExternalLocal,
-        IntListFunctionLocalId, ListFunctionLocal, ListInstruction, ListListLocalId,
-        ParameterListInstruction, ParameterListListLocalId, Terminator, TupleLocalId,
-        TypedListInstruction,
+        IntListFunctionLocalId, ListFunctionLocal, ListListLocalId, ParameterListInstruction,
+        ParameterListListLocalId, Terminator, TupleLocalId, TypedListInstruction,
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::{
@@ -1338,28 +1228,26 @@ pub fn main() {
     }
 
     #[test]
-    fn nested_parameter_list_dispatch_propagates_projection_invariants() {
+    fn nested_parameter_list_projection_preserves_exact_invariant() {
         let plan = crate::runtime::plan_src(LIST_FUNCTION_FAMILY_SOURCE);
         let type_id = plan.parameter_list_list_function_id(0).type_id();
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
         let environment = BlockEnvironment::from_retained(retained);
-        let instruction = ListInstruction::ParameterList(
-            type_id,
-            TypedListInstruction::TupleIndex {
-                tuple: TupleLocalId(0),
-                index: 0,
-            },
-        );
+        let instruction = TypedListInstruction::TupleIndex {
+            tuple: TupleLocalId(0),
+            index: 0,
+        };
         let expected = ValueType::List(Box::new(ValueType::List(Box::new(ValueType::Parameter(
             TypeParameterId(1),
         )))));
 
         assert_eq!(
-            evaluate(
+            typed::<ParameterListFamily, _, _>(
                 &plan,
                 &mut RuntimeState::new(&mut Vec::new()),
                 &environment,
+                type_id,
                 &instruction,
                 &ExecutionValueType::List(type_id.list_type()),
             )
@@ -1374,26 +1262,24 @@ pub fn main() {
     }
 
     #[test]
-    fn parameter_list_dispatch_propagates_projection_invariants() {
+    fn parameter_list_projection_preserves_exact_invariant() {
         let plan = crate::runtime::plan_src(LIST_FUNCTION_FAMILY_SOURCE);
         let type_id = plan.parameter_list_function_id(0).type_id();
         let mut retained = RetainedValues::empty();
         retained.push_evaluated(EvaluatedValue::Tuple(vec![EvaluatedValue::Int(1.into())]));
         let environment = BlockEnvironment::from_retained(retained);
-        let instruction = ListInstruction::Parameter(
-            type_id,
-            ParameterListInstruction::TupleIndex {
-                tuple: TupleLocalId(0),
-                index: 0,
-            },
-        );
+        let instruction = ParameterListInstruction::TupleIndex {
+            tuple: TupleLocalId(0),
+            index: 0,
+        };
         let expected = ValueType::List(Box::new(ValueType::Parameter(TypeParameterId(0))));
 
         assert_eq!(
-            evaluate(
+            parameter(
                 &plan,
-                &mut RuntimeState::new(&mut Vec::new()),
+                &RuntimeState::new(&mut Vec::new()),
                 &environment,
+                type_id,
                 &instruction,
                 &ExecutionValueType::List(type_id.list_type()),
             )
