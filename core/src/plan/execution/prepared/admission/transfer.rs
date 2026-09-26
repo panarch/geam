@@ -12,6 +12,9 @@ pub(super) enum TransferError {
         expected: usize,
         found: usize,
     },
+    Steps {
+        family: StorageFamily,
+    },
     Source {
         family: StorageFamily,
         output: usize,
@@ -86,34 +89,55 @@ fn check(
     counts: BTreeMap<StorageFamily, usize>,
     args: impl Iterator<Item = StorageSlot>,
 ) -> Result<(), TransferError> {
-    if !counts
-        .keys()
-        .copied()
-        .eq(transfer.families.iter().map(|route| route.family))
-    {
-        return Err(TransferError::Families);
-    }
     let mut outputs = BTreeMap::<_, Vec<_>>::new();
     for slot in args {
         outputs.entry(slot.family).or_default().push(slot.index);
     }
-    for (route, (_, count)) in transfer.families.iter().zip(counts) {
-        let expected = outputs.remove(&route.family).unwrap_or_default();
-        if route.positions.len() != expected.len() {
+    let mut routes = transfer.families.iter().peekable();
+    for (family, count) in counts {
+        let expected = outputs.remove(&family).unwrap_or_default();
+        let route = match routes.peek() {
+            Some(route) if route.family == family => routes.next(),
+            _ => None,
+        };
+        let Some(route) = route else {
+            if expected.into_iter().eq(0..count) {
+                continue;
+            }
+            return Err(TransferError::Families);
+        };
+        if route.length != expected.len() {
             return Err(TransferError::Arity {
-                family: route.family,
+                family,
                 expected: expected.len(),
-                found: route.positions.len(),
+                found: route.length,
             });
+        }
+        if route
+            .steps
+            .iter()
+            .any(|step| step.source == step.destination || step.destination >= route.length)
+            || route
+                .steps
+                .windows(2)
+                .any(|pair| pair[0].destination >= pair[1].destination)
+        {
+            return Err(TransferError::Steps { family });
         }
         // Track provenance, not runtime values or a reconstructed execution graph.
         let mut origins = (0..count).collect::<Vec<_>>();
-        for (output, (&position, origin)) in route.positions.iter().zip(expected).enumerate() {
+        let mut steps = route.steps.iter().peekable();
+        for (output, origin) in expected.into_iter().enumerate() {
+            let position = match steps.peek() {
+                Some(step) if step.destination == output => {
+                    let source = step.source;
+                    steps.next();
+                    source
+                }
+                _ => output,
+            };
             if origins.get(position) != Some(&origin) {
-                return Err(TransferError::Source {
-                    family: route.family,
-                    output,
-                });
+                return Err(TransferError::Source { family, output });
             }
             if position < output {
                 origins.push(origin);
@@ -124,20 +148,24 @@ fn check(
             }
         }
     }
+    if routes.next().is_some() {
+        return Err(TransferError::Families);
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{TransferError, arguments, matched};
+    use super::{TransferError, arguments, check, matched};
     use crate::plan::execution::function::FunctionExit;
     use crate::plan::execution::graph::{
         BlockId, FamilyTransfer, IntLocalId, MatchEdge, MatchEdgeArgument, NilLocalId, ParamLocal,
-        ParamSlot, StorageFamily, Transfer,
+        ParamSlot, StorageFamily, StorageSlot, Transfer, TransferStep,
     };
     use crate::plan::execution::prepared::admission::{local::Locals, type_::Types};
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::{ValueShapeDescriptor, ValueShapeId};
+    use std::collections::BTreeMap;
 
     #[test]
     fn admits_real_tail_routing_and_rejects_wrong_same_family_sources_and_unbounded_work() {
@@ -183,54 +211,76 @@ pub fn main() { swap(10, 20) }
                 }
                 assert_eq!(transfer.families.len(), 1);
                 assert_eq!(transfer.families[0].family, StorageFamily::Int);
-                assert_eq!(&*transfer.families[0].positions, &[1, 3, 0]);
+                assert_eq!(transfer.families[0].length, 3);
+                assert_eq!(
+                    &*transfer.families[0].steps,
+                    &[
+                        TransferStep {
+                            source: 1,
+                            destination: 0
+                        },
+                        TransferStep {
+                            source: 3,
+                            destination: 1
+                        },
+                        TransferStep {
+                            source: 0,
+                            destination: 2
+                        },
+                    ]
+                );
                 assert_eq!(arguments(transfer, args, &locals), Ok(()));
-                for (positions, error) in [
-                    (
-                        vec![0, 1, 0],
-                        TransferError::Source {
+                let mut malformed = transfer.clone();
+                let mut route = malformed.families[0].clone();
+                let mut steps = route.steps.to_vec();
+                steps[1].destination = steps[0].destination;
+                route.steps = steps.into();
+                malformed.families = vec![route].into();
+                assert_eq!(
+                    arguments(&malformed, args, &locals),
+                    Err(TransferError::Steps {
+                        family: StorageFamily::Int
+                    })
+                );
+                for (source, output) in [(2, 0), (usize::MAX, 2)] {
+                    let mut malformed = transfer.clone();
+                    let mut steps = malformed.families[0].steps.to_vec();
+                    steps[output].source = source;
+                    let mut route = malformed.families[0].clone();
+                    route.steps = steps.into();
+                    malformed.families = vec![route].into();
+                    assert_eq!(
+                        arguments(&malformed, args, &locals),
+                        Err(TransferError::Source {
                             family: StorageFamily::Int,
-                            output: 0,
-                        },
-                    ),
-                    (
-                        vec![1, 3, usize::MAX],
-                        TransferError::Source {
-                            family: StorageFamily::Int,
-                            output: 2,
-                        },
-                    ),
-                    (
-                        vec![1, 3],
-                        TransferError::Arity {
+                            output,
+                        })
+                    );
+                }
+                for length in [2, 4] {
+                    let mut route = transfer.families[0].clone();
+                    route.length = length;
+                    assert_eq!(
+                        arguments(
+                            &Transfer {
+                                families: vec![route].into()
+                            },
+                            args,
+                            &locals
+                        ),
+                        Err(TransferError::Arity {
                             family: StorageFamily::Int,
                             expected: 3,
-                            found: 2,
-                        },
-                    ),
-                    (
-                        vec![1, 3, 0, 0],
-                        TransferError::Arity {
-                            family: StorageFamily::Int,
-                            expected: 3,
-                            found: 4,
-                        },
-                    ),
-                ] {
-                    let malformed = Transfer {
-                        families: vec![FamilyTransfer {
-                            family: StorageFamily::Int,
-                            positions: positions.into(),
-                        }]
-                        .into(),
-                    };
-                    assert_eq!(arguments(&malformed, args, &locals), Err(error));
+                            found: length,
+                        })
+                    );
                 }
                 for families in [
                     vec![],
                     vec![FamilyTransfer {
                         family: StorageFamily::String,
-                        positions: Table::Static(&[1, 2, 0]),
+                        length: 3,
+                        steps: transfer.families[0].steps.clone(),
                     }],
                     vec![transfer.families[0].clone(), transfer.families[0].clone()],
                 ] {
@@ -249,6 +299,163 @@ pub fn main() { swap(10, 20) }
             }
         }
         assert_eq!(checked, 1);
+    }
+
+    #[test]
+    fn validates_sparse_positions_and_omitted_or_truncated_families() {
+        let counts = BTreeMap::from([(StorageFamily::Int, 3), (StorageFamily::Bool, 1)]);
+        let args = [
+            StorageSlot {
+                family: StorageFamily::Int,
+                index: 0,
+            },
+            StorageSlot {
+                family: StorageFamily::Int,
+                index: 1,
+            },
+            StorageSlot {
+                family: StorageFamily::Int,
+                index: 2,
+            },
+        ];
+        let discard = FamilyTransfer {
+            family: StorageFamily::Bool,
+            length: 0,
+            steps: Table::Static(&[]),
+        };
+        assert_eq!(
+            check(
+                &Transfer {
+                    families: vec![discard.clone()].into()
+                },
+                counts.clone(),
+                args.iter().copied()
+            ),
+            Ok(())
+        );
+        // A bounded explicit identity family is legal external data too.
+        let identity = FamilyTransfer {
+            family: StorageFamily::Int,
+            length: 3,
+            steps: Table::Static(&[]),
+        };
+        assert_eq!(
+            check(
+                &Transfer {
+                    families: vec![identity.clone(), discard.clone()].into()
+                },
+                counts.clone(),
+                args.iter().copied()
+            ),
+            Ok(())
+        );
+        for families in [
+            vec![],
+            vec![discard.clone(), identity.clone()],
+            vec![identity.clone(), discard.clone(), discard.clone()],
+        ] {
+            assert_eq!(
+                check(
+                    &Transfer {
+                        families: families.into()
+                    },
+                    counts.clone(),
+                    args.iter().copied()
+                ),
+                Err(TransferError::Families)
+            );
+        }
+        let shrinking = FamilyTransfer {
+            family: StorageFamily::Int,
+            length: 1,
+            steps: Table::Static(&[]),
+        };
+        assert_eq!(
+            check(
+                &Transfer {
+                    families: vec![shrinking, discard.clone()].into()
+                },
+                counts.clone(),
+                args[..1].iter().copied()
+            ),
+            Ok(())
+        );
+        for steps in [
+            vec![TransferStep {
+                source: 0,
+                destination: 0,
+            }],
+            vec![TransferStep {
+                source: 0,
+                destination: 3,
+            }],
+            vec![TransferStep {
+                source: 0,
+                destination: usize::MAX,
+            }],
+            vec![
+                TransferStep {
+                    source: 2,
+                    destination: 0,
+                },
+                TransferStep {
+                    source: 1,
+                    destination: 0,
+                },
+            ],
+            vec![
+                TransferStep {
+                    source: 0,
+                    destination: 2,
+                },
+                TransferStep {
+                    source: 0,
+                    destination: 1,
+                },
+            ],
+        ] {
+            let route = FamilyTransfer {
+                steps: steps.into(),
+                ..identity.clone()
+            };
+            assert_eq!(
+                check(
+                    &Transfer {
+                        families: vec![route, discard.clone()].into()
+                    },
+                    counts.clone(),
+                    args.iter().copied()
+                ),
+                Err(TransferError::Steps {
+                    family: StorageFamily::Int
+                })
+            );
+        }
+        // Omitting a required movement must still fail source provenance.
+        let swapped = [args[2], args[1], args[0]];
+        assert_eq!(
+            check(
+                &Transfer {
+                    families: vec![identity, discard].into()
+                },
+                counts,
+                swapped.iter().copied()
+            ),
+            Err(TransferError::Source {
+                family: StorageFamily::Int,
+                output: 0
+            })
+        );
+        assert_eq!(
+            check(
+                &Transfer {
+                    families: Table::Static(&[])
+                },
+                BTreeMap::new(),
+                [].iter().copied()
+            ),
+            Ok(())
+        );
     }
 
     #[test]
@@ -301,7 +508,17 @@ pub fn main() { swap(10, 20) }
             transfer: Transfer {
                 families: vec![FamilyTransfer {
                     family: StorageFamily::Int,
-                    positions: Table::Static(&[1, 1, 0]),
+                    length: 3,
+                    steps: Table::Static(&[
+                        TransferStep {
+                            source: 1,
+                            destination: 0,
+                        },
+                        TransferStep {
+                            source: 0,
+                            destination: 2,
+                        },
+                    ]),
                 }]
                 .into(),
             },

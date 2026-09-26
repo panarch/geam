@@ -1,3 +1,4 @@
+mod alignment;
 mod instruction;
 mod pattern;
 mod transfer;
@@ -5,8 +6,8 @@ mod value;
 
 use super::draft::{
     DraftBlock, DraftBlockId, DraftEdge, DraftGraph, DraftGraphBuilder, DraftGraphValue,
-    DraftInstruction, DraftMatchEdge, DraftMatchEdgeArgument, DraftNeverCallTarget,
-    DraftTerminator, DraftValueRef, LoweredFunctionGraph,
+    DraftMatchEdge, DraftMatchEdgeArgument, DraftNeverCallTarget, DraftTerminator, DraftValueRef,
+    LoweredFunctionGraph,
 };
 use super::liveness::GraphLiveness;
 use crate::plan::execution;
@@ -16,9 +17,25 @@ use value::BlockValues;
 pub(in crate::plan::execution::lowering) use value::FreezeGraphValue;
 
 struct BlockLayout {
+    parameters: Vec<ParameterSource>,
     id: execution::graph::BlockId,
     params: Vec<execution::graph::ParamSlot>,
     values: BlockValues,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum ParameterSource {
+    Explicit(usize),
+    Inherited(DraftValueRef),
+}
+
+impl ParameterSource {
+    fn value<'a>(&'a self, block: &'a DraftBlock) -> &'a DraftValueRef {
+        match self {
+            Self::Explicit(index) => &block.explicit_params[*index],
+            Self::Inherited(value) => value,
+        }
+    }
 }
 
 struct FrozenGraph<Return, TailCall> {
@@ -111,22 +128,26 @@ where
         .filter(|(draft_id, _)| block_ids.contains_key(draft_id))
         .collect::<Vec<_>>();
     draft_blocks.sort_by_key(|(draft_id, _)| block_ids[draft_id].index());
-    let layouts = draft_blocks
+    let mut layouts = draft_blocks
         .iter()
         .map(|(id, block)| {
-            (
-                *id,
-                block_layout(
-                    *id,
-                    block_ids[id],
-                    &block.explicit_params,
-                    &block.instructions,
-                    &liveness,
-                    context,
-                ),
-            )
+            let parameters = liveness
+                .explicit_params(*id)
+                .iter()
+                .copied()
+                .map(ParameterSource::Explicit)
+                .chain(
+                    liveness
+                        .inherited(*id)
+                        .iter()
+                        .cloned()
+                        .map(ParameterSource::Inherited),
+                )
+                .collect();
+            (*id, block_layout(block_ids[id], block, parameters, context))
         })
         .collect::<HashMap<_, _>>();
+    alignment::select(&draft_blocks, entry, &mut layouts, context);
     let mut exits = Vec::new();
     let mut blocks = Vec::with_capacity(draft_blocks.len());
     for (draft_id, block) in draft_blocks {
@@ -146,7 +167,6 @@ where
             &tail_calls,
             layout,
             &layouts,
-            &liveness,
             &mut exits,
         );
         blocks.push(execution::graph::Block::new(
@@ -166,27 +186,25 @@ where
 }
 
 fn block_layout(
-    draft_id: DraftBlockId,
     id: execution::graph::BlockId,
-    explicit_params: &[DraftValueRef],
-    instructions: &[DraftInstruction],
-    liveness: &GraphLiveness,
+    block: &DraftBlock,
+    parameters: Vec<ParameterSource>,
     context: &mut super::super::LoweringContext,
 ) -> BlockLayout {
     let mut values = BlockValues::default();
-    let mut params = Vec::new();
-    for value in liveness
-        .explicit_params(draft_id)
+    let params = parameters
         .iter()
-        .map(|index| &explicit_params[*index])
-        .chain(liveness.inherited(draft_id))
-    {
-        params.push(values.allocate(value, context));
-    }
-    for instruction in instructions {
+        .map(|source| values.allocate(source.value(block), context))
+        .collect();
+    for instruction in &block.instructions {
         values.allocate(&instruction.output(), context);
     }
-    BlockLayout { id, params, values }
+    BlockLayout {
+        id,
+        parameters,
+        params,
+        values,
+    }
 }
 
 fn reachable_blocks(graph: &DraftGraph) -> Vec<DraftBlockId> {
@@ -210,7 +228,6 @@ fn freeze_terminator<Return, TailCall>(
     tail_calls: &[TailCall],
     layout: &BlockLayout,
     layouts: &HashMap<DraftBlockId, BlockLayout>,
-    liveness: &GraphLiveness,
     exits: &mut Vec<FrozenGraphExit<Return::Frozen, TailCall>>,
 ) -> execution::graph::Terminator
 where
@@ -221,7 +238,7 @@ where
 
     match terminator {
         DraftTerminator::Jump(edge) => E::Jump(execution::graph::Jump::new(freeze_edge(
-            &edge, layout, liveness, layouts,
+            &edge, layout, layouts,
         ))),
         DraftTerminator::BoolBranch {
             subject,
@@ -229,8 +246,8 @@ where
             false_,
         } => E::BoolBranch(execution::graph::BoolBranch::new(
             layout.values.bool(&subject),
-            freeze_edge(&true_, layout, liveness, layouts),
-            freeze_edge(&false_, layout, liveness, layouts),
+            freeze_edge(&true_, layout, layouts),
+            freeze_edge(&false_, layout, layouts),
         )),
         DraftTerminator::IntSwitch {
             subject,
@@ -240,15 +257,10 @@ where
             layout.values.int(&subject),
             clauses
                 .into_iter()
-                .map(|(pattern, edge)| {
-                    (
-                        pattern.into(),
-                        freeze_edge(&edge, layout, liveness, layouts),
-                    )
-                })
+                .map(|(pattern, edge)| (pattern.into(), freeze_edge(&edge, layout, layouts)))
                 .collect::<Vec<_>>()
                 .into(),
-            freeze_edge(&fallback, layout, liveness, layouts),
+            freeze_edge(&fallback, layout, layouts),
         )),
         DraftTerminator::FloatSwitch {
             subject,
@@ -258,10 +270,10 @@ where
             layout.values.float(&subject),
             clauses
                 .into_iter()
-                .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, liveness, layouts)))
+                .map(|(pattern, edge)| (pattern, freeze_edge(&edge, layout, layouts)))
                 .collect::<Vec<_>>()
                 .into(),
-            freeze_edge(&fallback, layout, liveness, layouts),
+            freeze_edge(&fallback, layout, layouts),
         )),
         DraftTerminator::StringSwitch {
             subject,
@@ -271,15 +283,10 @@ where
             layout.values.string(&subject),
             clauses
                 .into_iter()
-                .map(|(pattern, edge)| {
-                    (
-                        pattern.into(),
-                        freeze_edge(&edge, layout, liveness, layouts),
-                    )
-                })
+                .map(|(pattern, edge)| (pattern.into(), freeze_edge(&edge, layout, layouts)))
                 .collect::<Vec<_>>()
                 .into(),
-            freeze_edge(&fallback, layout, liveness, layouts),
+            freeze_edge(&fallback, layout, layouts),
         )),
         DraftTerminator::Match {
             subject,
@@ -289,8 +296,8 @@ where
         } => E::Match(execution::graph::Match::new(
             layout.values.any(&subject),
             pattern::freeze(draft_pattern, &layout.values),
-            freeze_match_edge(&success, layout, &layouts[&success.target], liveness),
-            freeze_edge(&failure, layout, liveness, layouts),
+            freeze_match_edge(&success, layout, &layouts[&success.target]),
+            freeze_edge(&failure, layout, layouts),
         )),
         DraftTerminator::Echo {
             subject,
@@ -303,7 +310,7 @@ where
                 .as_ref()
                 .map(|message| layout.values.string(message)),
             site,
-            freeze_edge(&next, layout, liveness, layouts),
+            freeze_edge(&next, layout, layouts),
         )),
         DraftTerminator::Return { value: _, index } => {
             let id = execution::graph::BlockGraphExitId::new(exits.len());
@@ -376,48 +383,58 @@ where
 fn freeze_edge(
     edge: &DraftEdge,
     source: &BlockLayout,
-    liveness: &GraphLiveness,
     layouts: &HashMap<DraftBlockId, BlockLayout>,
 ) -> execution::graph::Edge {
-    let mut args = liveness
-        .explicit_params(edge.target)
-        .iter()
-        .map(|index| source.values.any(&edge.explicit_args[*index]))
-        .collect::<Vec<_>>();
-    args.extend(
-        liveness
-            .inherited(edge.target)
-            .iter()
-            .map(|value| source.values.any(value)),
-    );
-    let target = layouts[&edge.target].id;
+    let target = &layouts[&edge.target];
+    let args = edge_arguments(edge, source, target);
     let transfer = transfer::arguments(source, &args);
-    execution::graph::Edge::new(target, args, transfer)
+    execution::graph::Edge::new(target.id, args, transfer)
+}
+
+fn edge_arguments(
+    edge: &DraftEdge,
+    source: &BlockLayout,
+    target: &BlockLayout,
+) -> Vec<execution::graph::ParamLocal> {
+    target
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let value = match parameter {
+                ParameterSource::Explicit(index) => &edge.explicit_args[*index],
+                ParameterSource::Inherited(value) => value,
+            };
+            source.values.any(value)
+        })
+        .collect()
 }
 
 fn freeze_match_edge(
     edge: &DraftMatchEdge,
     source: &BlockLayout,
-    target_layout: &BlockLayout,
-    liveness: &GraphLiveness,
+    target: &BlockLayout,
 ) -> execution::graph::MatchEdge {
-    let mut args = liveness
-        .explicit_params(edge.target)
+    let args = match_arguments(edge, source, target);
+    let (bindings, transfer) = transfer::matched(source, &args, &target.params);
+    execution::graph::MatchEdge::new(target.id, args, bindings, transfer)
+}
+
+fn match_arguments(
+    edge: &DraftMatchEdge,
+    source: &BlockLayout,
+    target: &BlockLayout,
+) -> Vec<execution::graph::MatchEdgeArgument> {
+    use execution::graph::MatchEdgeArgument;
+    target
+        .parameters
         .iter()
-        .map(|index| match &edge.explicit_args[*index] {
-            DraftMatchEdgeArgument::Binding(index) => {
-                execution::graph::MatchEdgeArgument::Binding(*index)
-            }
+        .map(|parameter| match parameter {
+            ParameterSource::Explicit(index) => match &edge.explicit_args[*index] {
+                DraftMatchEdgeArgument::Binding(index) => MatchEdgeArgument::Binding(*index),
+            },
+            ParameterSource::Inherited(value) => MatchEdgeArgument::Value(source.values.any(value)),
         })
-        .collect::<Vec<_>>();
-    args.extend(
-        liveness
-            .inherited(edge.target)
-            .iter()
-            .map(|value| execution::graph::MatchEdgeArgument::Value(source.values.any(value))),
-    );
-    let (bindings, transfer) = transfer::matched(source, &args, &target_layout.params);
-    execution::graph::MatchEdge::new(target_layout.id, args, bindings, transfer)
+        .collect()
 }
 
 #[cfg(test)]

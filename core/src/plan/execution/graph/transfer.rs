@@ -11,8 +11,16 @@ pub struct Transfer {
 #[derive(Clone)]
 pub struct FamilyTransfer {
     pub family: StorageFamily,
-    /// One source position per output, interpreted after earlier outputs are placed.
-    pub positions: Table<usize>,
+    /// Retained prefix length, including outputs that stay in place.
+    pub length: usize,
+    pub steps: Table<TransferStep>,
+}
+
+/// A non-identity placement, interpreted after earlier destinations are placed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferStep {
+    pub source: usize,
+    pub destination: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -159,7 +167,20 @@ impl Emit for FamilyTransfer {
     fn emit(&self, output: &mut Rust) {
         output.structure(
             "graph::FamilyTransfer",
-            &[("family", &self.family), ("positions", &self.positions)],
+            &[
+                ("family", &self.family),
+                ("length", &self.length),
+                ("steps", &self.steps),
+            ],
+        );
+    }
+}
+
+impl Emit for TransferStep {
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "graph::TransferStep",
+            &[("source", &self.source), ("destination", &self.destination)],
         );
     }
 }
@@ -224,7 +245,7 @@ impl Emit for StorageFamily {
 
 #[cfg(test)]
 mod tests {
-    use super::{FamilyTransfer, StorageFamily, Transfer};
+    use super::{FamilyTransfer, StorageFamily, Transfer, TransferStep};
     use crate::plan::execution::prepared::rust::Rust;
 
     #[test]
@@ -427,7 +448,22 @@ mod tests {
         let transfer = Transfer {
             families: vec![FamilyTransfer {
                 family: StorageFamily::Int,
-                positions: vec![2, 2, 0].into(),
+                length: 3,
+                steps: vec![
+                    TransferStep {
+                        source: 2,
+                        destination: 0,
+                    },
+                    TransferStep {
+                        source: 2,
+                        destination: 1,
+                    },
+                    TransferStep {
+                        source: 0,
+                        destination: 2,
+                    },
+                ]
+                .into(),
             }]
             .into(),
         };
@@ -438,10 +474,20 @@ data::graph::Transfer {
     families: data::Storage::Static(&[
         data::graph::FamilyTransfer {
             family: data::graph::StorageFamily::Int,
-            positions: data::Storage::Static(&[
-                2,
-                2,
-                0,
+            length: 3,
+            steps: data::Storage::Static(&[
+                data::graph::TransferStep {
+                    source: 2,
+                    destination: 0,
+                },
+                data::graph::TransferStep {
+                    source: 2,
+                    destination: 1,
+                },
+                data::graph::TransferStep {
+                    source: 0,
+                    destination: 2,
+                },
             ]),
         },
     ]),

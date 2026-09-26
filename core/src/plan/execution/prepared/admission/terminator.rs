@@ -216,7 +216,8 @@ mod tests {
                     ]
                     .map(|family| FamilyTransfer {
                         family,
-                        positions: Table::Static(&[]),
+                        length: 0,
+                        steps: vec![].into(),
                     })
                     .to_vec()
                     .into(),
@@ -442,19 +443,23 @@ pub fn main() { #(stop, "message", 42) }
                         families: vec![
                             FamilyTransfer {
                                 family: StorageFamily::Int,
-                                positions: Table::Static(&[]),
+                                length: 0,
+                                steps: vec![].into(),
                             },
                             FamilyTransfer {
                                 family: StorageFamily::String,
-                                positions: Table::Static(&[0]),
+                                length: 1,
+                                steps: vec![].into(),
                             },
                             FamilyTransfer {
                                 family: StorageFamily::Tuple,
-                                positions: Table::Static(&[]),
+                                length: 0,
+                                steps: vec![].into(),
                             },
                             FamilyTransfer {
                                 family: StorageFamily::NeverFunction,
-                                positions: Table::Static(&[]),
+                                length: 0,
+                                steps: vec![].into(),
                             },
                         ]
                         .into(),
@@ -601,7 +606,8 @@ pub fn main() { #(stop, "message", 42) }
                             families: [StorageFamily::Int, StorageFamily::String]
                                 .map(|family| FamilyTransfer {
                                     family,
-                                    positions: Table::Static(&[]),
+                                    length: 0,
+                                    steps: vec![].into(),
                                 })
                                 .to_vec()
                                 .into(),

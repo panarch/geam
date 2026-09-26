@@ -425,7 +425,7 @@ where
 mod emission_tests {
     use super::FunctionExit;
     use crate::plan::execution::graph::{
-        FamilyTransfer, IntLocalId, ParamLocal, StorageFamily, Transfer,
+        FamilyTransfer, IntLocalId, ParamLocal, StorageFamily, Transfer, TransferStep,
     };
     use crate::plan::execution::prepared::rust::Rust;
 
@@ -442,7 +442,12 @@ mod emission_tests {
             transfer: Transfer {
                 families: vec![FamilyTransfer {
                     family: StorageFamily::Int,
-                    positions: vec![2].into(),
+                    length: 1,
+                    steps: vec![TransferStep {
+                        source: 2,
+                        destination: 0,
+                    }]
+                    .into(),
                 }]
                 .into(),
             },
@@ -459,8 +464,12 @@ data::function::FunctionExit::TailCall {
         families: data::Storage::Static(&[
             data::graph::FamilyTransfer {
                 family: data::graph::StorageFamily::Int,
-                positions: data::Storage::Static(&[
-                    2,
+                length: 1,
+                steps: data::Storage::Static(&[
+                    data::graph::TransferStep {
+                        source: 2,
+                        destination: 0,
+                    },
                 ]),
             },
         ]),

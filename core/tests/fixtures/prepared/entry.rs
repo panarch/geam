@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 5,
+    format: 6,
     program: data::ProgramTables {
         root: data::source::module_id(1),
         modules: data::Storage::Static(&[
@@ -118,11 +118,13 @@ pub fn main() {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Bool,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::IntList,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -141,13 +143,8 @@ pub fn main() {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Bool,
-                                                            positions: data::Storage::Static(&[]),
-                                                        },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::IntList,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -178,13 +175,8 @@ pub fn main() {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Bool,
-                                                            positions: data::Storage::Static(&[]),
-                                                        },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::IntList,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -203,13 +195,8 @@ pub fn main() {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Bool,
-                                                            positions: data::Storage::Static(&[]),
-                                                        },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::IntList,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -406,11 +393,13 @@ pub fn main() {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::IntList,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                         ]),
                                                     },

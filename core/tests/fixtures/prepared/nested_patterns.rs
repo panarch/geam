@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 5,
+    format: 6,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -745,7 +745,8 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -762,14 +763,7 @@ data::ModuleArtifact {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
@@ -813,7 +807,8 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -830,14 +825,7 @@ data::ModuleArtifact {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
@@ -980,7 +968,8 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -997,14 +986,7 @@ data::ModuleArtifact {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
@@ -1059,7 +1041,8 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -1076,14 +1059,7 @@ data::ModuleArtifact {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
@@ -1130,7 +1106,8 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -1147,14 +1124,7 @@ data::ModuleArtifact {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Custom,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
-                                                            ]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),

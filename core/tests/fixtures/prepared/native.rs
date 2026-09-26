@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 5,
+        format: 6,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -186,8 +186,8 @@ pub fn bit_tail(value: BitArray) {
                                                 success: data::graph::MatchEdge {
                                                     target: data::graph::BlockId(1),
                                                     args: data::Storage::Static(&[
-                                                        data::graph::MatchEdgeArgument::Binding(0),
                                                         data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Binding(0),
                                                         data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
                                                         data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
                                                     ]),
@@ -195,22 +195,7 @@ pub fn bit_tail(value: BitArray) {
                                                         0,
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                    1,
-                                                                ]),
-                                                            },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    1,
-                                                                    1,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                                 failure: data::graph::Edge {
@@ -221,21 +206,7 @@ pub fn bit_tail(value: BitArray) {
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                    1,
-                                                                ]),
-                                                            },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                             }),
@@ -248,23 +219,29 @@ pub fn bit_tail(value: BitArray) {
                                                 true_: data::graph::Edge {
                                                     target: data::graph::BlockId(2),
                                                     args: data::Storage::Static(&[
-                                                        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                                        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
                                                                 ]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Bool,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                         ]),
                                                     },
@@ -272,7 +249,7 @@ pub fn bit_tail(value: BitArray) {
                                                 false_: data::graph::Edge {
                                                     target: data::graph::BlockId(3),
                                                     args: data::Storage::Static(&[
-                                                        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
+                                                        data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     ]),
@@ -280,20 +257,18 @@ pub fn bit_tail(value: BitArray) {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                    1,
-                                                                ]),
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    1,
-                                                                ]),
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Bool,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                         ]),
                                                     },
@@ -317,21 +292,7 @@ pub fn bit_tail(value: BitArray) {
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                    1,
-                                                                ]),
-                                                            },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                             }),
@@ -380,12 +341,17 @@ pub fn bit_tail(value: BitArray) {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    1,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
                                                                 ]),
                                                             },
                                                         ]),
@@ -398,11 +364,13 @@ pub fn bit_tail(value: BitArray) {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[]),
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
                                                             },
                                                         ]),
                                                     },
@@ -431,21 +399,7 @@ pub fn bit_tail(value: BitArray) {
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                    1,
-                                                                ]),
-                                                            },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                             }),
@@ -604,14 +558,7 @@ pub fn bit_tail(value: BitArray) {
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                         ]),
                                         transfer: data::graph::Transfer {
-                                            families: data::Storage::Static(&[
-                                                data::graph::FamilyTransfer {
-                                                    family: data::graph::StorageFamily::BitArray,
-                                                    positions: data::Storage::Static(&[
-                                                        0,
-                                                    ]),
-                                                },
-                                            ]),
+                                            families: data::Storage::Static(&[]),
                                         },
                                     },
                                     data::function::FunctionExit::TailCall {
@@ -626,13 +573,18 @@ pub fn bit_tail(value: BitArray) {
                                             families: data::Storage::Static(&[
                                                 data::graph::FamilyTransfer {
                                                     family: data::graph::StorageFamily::BitArray,
-                                                    positions: data::Storage::Static(&[
-                                                        1,
+                                                    length: 1,
+                                                    steps: data::Storage::Static(&[
+                                                        data::graph::TransferStep {
+                                                            source: 1,
+                                                            destination: 0,
+                                                        },
                                                     ]),
                                                 },
                                                 data::graph::FamilyTransfer {
                                                     family: data::graph::StorageFamily::BitArrayFunction,
-                                                    positions: data::Storage::Static(&[]),
+                                                    length: 0,
+                                                    steps: data::Storage::Static(&[]),
                                                 },
                                             ]),
                                         },
@@ -691,8 +643,12 @@ pub fn bit_tail(value: BitArray) {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    1,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
                                                                 ]),
                                                             },
                                                         ]),
@@ -704,14 +660,7 @@ pub fn bit_tail(value: BitArray) {
                                                         data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::BitArray,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                             }),
@@ -758,14 +707,7 @@ pub fn bit_tail(value: BitArray) {
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                         ]),
                                         transfer: data::graph::Transfer {
-                                            families: data::Storage::Static(&[
-                                                data::graph::FamilyTransfer {
-                                                    family: data::graph::StorageFamily::BitArray,
-                                                    positions: data::Storage::Static(&[
-                                                        0,
-                                                    ]),
-                                                },
-                                            ]),
+                                            families: data::Storage::Static(&[]),
                                         },
                                     },
                                 ]),
@@ -1492,8 +1434,12 @@ pub fn bit_tail(value: BitArray) {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::String,
-                                                                positions: data::Storage::Static(&[
-                                                                    1,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
                                                                 ]),
                                                             },
                                                         ]),
@@ -1505,14 +1451,7 @@ pub fn bit_tail(value: BitArray) {
                                                         data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                     ]),
                                                     transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::String,
-                                                                positions: data::Storage::Static(&[
-                                                                    0,
-                                                                ]),
-                                                            },
-                                                        ]),
+                                                        families: data::Storage::Static(&[]),
                                                     },
                                                 },
                                             }),
