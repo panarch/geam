@@ -27,7 +27,7 @@ pub(crate) use block::{
 pub(crate) use exit::BlockGraphExitId;
 pub(crate) use integer::IntegerLiteral;
 pub(in crate::plan::execution) use transfer::StorageSlot;
-pub(crate) use transfer::{FamilyTransfer, StorageFamily, Transfer};
+pub(crate) use transfer::{FamilyTransfer, StorageFamily, Transfer, TransferStep};
 pub(crate) use value::{
     BitArrayFunctionLocalId, BitArrayListFunctionLocalId, BitArrayListLocalId, BitArrayLocalId,
     BoolFunctionLocalId, BoolListFunctionLocalId, BoolListLocalId, BoolLocalId,

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 5,
+    format: 6,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -75,13 +75,18 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Int,
-                                                            positions: data::Storage::Static(&[
-                                                                2,
+                                                            length: 1,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 2,
+                                                                    destination: 0,
+                                                                },
                                                             ]),
                                                         },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::BitArray,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -93,11 +98,13 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Int,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::BitArray,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },
@@ -246,21 +253,26 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Int,
-                                                            positions: data::Storage::Static(&[
-                                                                1,
-                                                                2,
-                                                            ]),
-                                                        },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Float,
-                                                            positions: data::Storage::Static(&[
-                                                                0,
+                                                            length: 2,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 1,
+                                                                    destination: 0,
+                                                                },
+                                                                data::graph::TransferStep {
+                                                                    source: 2,
+                                                                    destination: 1,
+                                                                },
                                                             ]),
                                                         },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::BitArray,
-                                                            positions: data::Storage::Static(&[
-                                                                1,
+                                                            length: 1,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 1,
+                                                                    destination: 0,
+                                                                },
                                                             ]),
                                                         },
                                                     ]),
@@ -273,11 +285,13 @@ data::ModuleArtifact {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Int,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::BitArray,
-                                                            positions: data::Storage::Static(&[]),
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
                                                         },
                                                     ]),
                                                 },

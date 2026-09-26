@@ -1,6 +1,7 @@
 use super::BlockLayout;
 use crate::plan::execution::graph::{
     FamilyTransfer, MatchEdgeArgument, ParamLocal, ParamSlot, StorageFamily, StorageSlot, Transfer,
+    TransferStep,
 };
 use std::collections::BTreeMap;
 
@@ -58,21 +59,32 @@ fn freeze(
     Transfer {
         families: counts
             .into_iter()
-            .map(|(family, count)| FamilyTransfer {
-                family,
-                positions: positions(count, &outputs.remove(&family).unwrap_or_default()).into(),
+            .filter_map(|(family, count)| {
+                let outputs = outputs.remove(&family).unwrap_or_default();
+                let steps = steps(count, &outputs);
+                (count != outputs.len() || !steps.is_empty()).then(|| FamilyTransfer {
+                    family,
+                    length: outputs.len(),
+                    steps: steps.into(),
+                })
             })
             .collect(),
     }
 }
 
-fn positions(count: usize, outputs: &[usize]) -> Vec<usize> {
+fn steps(count: usize, outputs: &[usize]) -> Vec<TransferStep> {
     let mut labels = (0..count).collect::<Vec<_>>();
     let mut locations = labels.clone();
-    let mut positions = Vec::with_capacity(outputs.len());
+    let mut steps = Vec::new();
     for (destination, &origin) in outputs.iter().enumerate() {
         let source = locations[origin];
-        positions.push(source);
+        if source == destination {
+            continue;
+        }
+        steps.push(TransferStep {
+            source,
+            destination,
+        });
         if source < destination {
             labels.push(origin);
             let last = labels.len() - 1;
@@ -87,24 +99,117 @@ fn positions(count: usize, outputs: &[usize]) -> Vec<usize> {
             locations[origin] = destination;
         }
     }
-    positions
+    steps
 }
 
 #[cfg(test)]
 mod tests {
-    use super::positions;
+    use super::{freeze, steps};
+    use crate::plan::execution::graph::{StorageFamily, StorageSlot, TransferStep};
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn routes_reordered_and_repeated_outputs_without_losing_later_sources() {
-        assert_eq!(positions(3, &[2, 0, 2]), [2, 2, 0]);
-        assert_eq!(positions(3, &[0, 0, 1, 2, 1]), [0, 0, 3, 3, 2]);
-        assert_eq!(positions(1, &[0, 0, 0]), [0, 0, 0]);
-        assert!(positions(3, &[]).is_empty());
-        assert!(positions(0, &[]).is_empty());
+        assert_eq!(
+            steps(3, &[2, 0, 2]),
+            [
+                TransferStep {
+                    source: 2,
+                    destination: 0
+                },
+                TransferStep {
+                    source: 2,
+                    destination: 1
+                },
+                TransferStep {
+                    source: 0,
+                    destination: 2
+                },
+            ]
+        );
+        assert_eq!(
+            steps(3, &[0, 0, 1, 2, 1]),
+            [
+                TransferStep {
+                    source: 0,
+                    destination: 1
+                },
+                TransferStep {
+                    source: 3,
+                    destination: 2
+                },
+                TransferStep {
+                    source: 2,
+                    destination: 4
+                },
+            ]
+        );
+        assert_eq!(
+            steps(1, &[0, 0, 0]),
+            [
+                TransferStep {
+                    source: 0,
+                    destination: 1
+                },
+                TransferStep {
+                    source: 0,
+                    destination: 2
+                },
+            ]
+        );
+        assert!(steps(3, &[]).is_empty());
+        assert!(steps(0, &[]).is_empty());
     }
 
     #[test]
-    fn every_small_argument_pack_moves_first_uses_and_copies_only_repeats() {
+    fn omits_only_complete_identity_families_and_retains_drop_only_routes() {
+        let transfer = freeze(
+            BTreeMap::from([
+                (StorageFamily::Int, 3),
+                (StorageFamily::String, 2),
+                (StorageFamily::Bool, 1),
+            ]),
+            [
+                StorageSlot {
+                    family: StorageFamily::Int,
+                    index: 0,
+                },
+                StorageSlot {
+                    family: StorageFamily::String,
+                    index: 0,
+                },
+                StorageSlot {
+                    family: StorageFamily::Int,
+                    index: 1,
+                },
+                StorageSlot {
+                    family: StorageFamily::Int,
+                    index: 2,
+                },
+            ]
+            .into_iter(),
+        );
+        assert_eq!(
+            transfer
+                .families
+                .iter()
+                .map(|route| (route.family, route.length, &*route.steps))
+                .collect::<Vec<_>>(),
+            [
+                (StorageFamily::String, 1, &[][..]),
+                (StorageFamily::Bool, 0, &[][..]),
+            ]
+        );
+        assert!(
+            freeze(BTreeMap::new(), std::iter::empty())
+                .families
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn every_small_argument_pack_preserves_outputs_clones_and_discarded_occurrence_order() {
+        let mut checked = 0;
         for count in 0usize..=5 {
             for length in 0..=6 {
                 for mut encoded in 0..count.pow(length) {
@@ -115,29 +220,54 @@ mod tests {
                             origin
                         })
                         .collect::<Vec<_>>();
-                    let route = positions(count, &outputs);
-                    assert_eq!(route.len(), outputs.len());
-                    let mut values = (0..count).collect::<Vec<_>>();
-                    let mut copies = 0;
-                    for (destination, source) in route.into_iter().enumerate() {
+                    // Dense first-use routing is the old contract, independently
+                    // located by occurrence rather than the production index map.
+                    let mut dense = (0..count).map(|id| (id, id)).collect::<Vec<_>>();
+                    let mut cloned = Vec::new();
+                    for (destination, &origin) in outputs.iter().enumerate() {
+                        let source = dense.iter().position(|(id, _)| *id == origin).unwrap();
                         if source < destination {
-                            values.push(values[source]);
-                            let last = values.len() - 1;
-                            values.swap(last, destination);
-                            copies += 1;
+                            cloned.push(origin);
+                            dense.push((origin, count + cloned.len() - 1));
+                            let last = dense.len() - 1;
+                            dense.swap(last, destination);
                         } else {
-                            values.swap(source, destination);
+                            dense.swap(source, destination);
                         }
                     }
-                    values.truncate(outputs.len());
-                    assert_eq!(values, outputs);
-                    let unique = outputs
-                        .iter()
-                        .collect::<std::collections::BTreeSet<_>>()
-                        .len();
-                    assert_eq!(copies, outputs.len() - unique);
+                    let route = steps(count, &outputs);
+                    let mut sparse = (0..count).map(|id| (id, id)).collect::<Vec<_>>();
+                    let mut copies = Vec::new();
+                    for TransferStep {
+                        source,
+                        destination,
+                    } in route
+                    {
+                        assert_ne!(source, destination);
+                        if source < destination {
+                            copies.push(sparse[source].0);
+                            sparse.push((sparse[source].0, count + copies.len() - 1));
+                            let last = sparse.len() - 1;
+                            sparse.swap(last, destination);
+                        } else {
+                            sparse.swap(source, destination);
+                        }
+                    }
+                    assert_eq!(sparse, dense);
+                    assert_eq!(copies, cloned);
+                    assert_eq!(
+                        sparse[..outputs.len()]
+                            .iter()
+                            .map(|(id, _)| *id)
+                            .collect::<Vec<_>>(),
+                        outputs
+                    );
+                    let unique = outputs.iter().collect::<BTreeSet<_>>().len();
+                    assert_eq!(copies.len(), outputs.len() - unique);
+                    checked += 1;
                 }
             }
         }
+        assert_eq!(checked, 26220);
     }
 }

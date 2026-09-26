@@ -990,7 +990,7 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, FamilyTransfer, IntLocalId, ParamLocal, StorageFamily, Transfer,
-        TupleLocalId,
+        TransferStep, TupleLocalId,
     };
     use crate::runtime::graph::CompletedGraph;
     use crate::runtime::plan_src;
@@ -1155,11 +1155,17 @@ pub fn main() -> List(Counter) { [] }
             families: vec![
                 FamilyTransfer {
                     family: StorageFamily::Int,
-                    positions: vec![1, 1].into(),
+                    length: 2,
+                    steps: vec![TransferStep {
+                        source: 1,
+                        destination: 0,
+                    }]
+                    .into(),
                 },
                 FamilyTransfer {
                     family: StorageFamily::String,
-                    positions: Vec::new().into(),
+                    length: 0,
+                    steps: vec![].into(),
                 },
             ]
             .into(),

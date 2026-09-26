@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn successful_match_moves_selected_binding_buffers_and_duplicates_only_extra_uses() {
         use crate::plan::execution::graph::{
-            FamilyTransfer, StorageFamily, Transfer, TupleLocalId,
+            FamilyTransfer, StorageFamily, Transfer, TransferStep, TupleLocalId,
         };
 
         let first = vec![EvaluatedValue::Int(10.into())];
@@ -514,7 +514,18 @@ mod tests {
             &Transfer {
                 families: vec![FamilyTransfer {
                     family: StorageFamily::Tuple,
-                    positions: vec![1, 1, 0].into(),
+                    length: 3,
+                    steps: vec![
+                        TransferStep {
+                            source: 1,
+                            destination: 0,
+                        },
+                        TransferStep {
+                            source: 0,
+                            destination: 2,
+                        },
+                    ]
+                    .into(),
                 }]
                 .into(),
             },

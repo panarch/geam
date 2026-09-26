@@ -760,7 +760,7 @@ mod tests {
         let typed = crate::compile_typed_module(
             "example",
             "src/example.gleam",
-            "fn done(n) { n } pub fn main() { done(42) }",
+            "fn done(n) { n } pub fn main() { done(40 + 2) }",
         )
         .unwrap();
         let mut plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
@@ -772,6 +772,7 @@ mod tests {
         {
             for exit in owned_mut(&mut value.body.exits) {
                 if let FunctionExit::TailCall { transfer, .. } = exit {
+                    assert_eq!(transfer.families.len(), 1);
                     transfer.families = Table::Static(&[]);
                     changed.push(index);
                 }

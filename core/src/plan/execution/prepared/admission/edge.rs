@@ -93,7 +93,9 @@ fn transfer(
 #[cfg(test)]
 mod tests {
     use super::{BlockError, Blocks, Edge, EdgeError, Locals, Types, regular};
-    use crate::plan::execution::graph::{BlockId, Terminator, Transfer};
+    use crate::plan::execution::graph::{
+        BlockId, FamilyTransfer, StorageFamily, Terminator, Transfer, TransferStep,
+    };
     use crate::plan::execution::storage::Table;
 
     #[test]
@@ -238,13 +240,23 @@ mod tests {
                         bindings: selected.into(),
                         transfer: Transfer {
                             families: vec![
-                                crate::plan::execution::graph::FamilyTransfer {
-                                    family: crate::plan::execution::graph::StorageFamily::Int,
-                                    positions: vec![position].into(),
+                                FamilyTransfer {
+                                    family: StorageFamily::Int,
+                                    length: 1,
+                                    steps: if position == 0 {
+                                        Vec::new()
+                                    } else {
+                                        vec![TransferStep {
+                                            source: position,
+                                            destination: 0,
+                                        }]
+                                    }
+                                    .into(),
                                 },
-                                crate::plan::execution::graph::FamilyTransfer {
-                                    family: crate::plan::execution::graph::StorageFamily::Bool,
-                                    positions: Vec::new().into(),
+                                FamilyTransfer {
+                                    family: StorageFamily::Bool,
+                                    length: 0,
+                                    steps: Vec::new().into(),
                                 },
                             ]
                             .into(),

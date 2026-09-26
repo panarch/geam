@@ -154,7 +154,7 @@ impl Emit for MatchEdgeArgument {
 #[cfg(test)]
 mod emission_tests {
     use super::{BlockId, Edge, MatchEdge, MatchEdgeArgument, ParamLocal, Transfer};
-    use crate::plan::execution::graph::{FamilyTransfer, IntLocalId, StorageFamily};
+    use crate::plan::execution::graph::{FamilyTransfer, IntLocalId, StorageFamily, TransferStep};
     use crate::plan::execution::prepared::rust::Rust;
 
     #[test]
@@ -165,7 +165,12 @@ mod emission_tests {
             Transfer {
                 families: vec![FamilyTransfer {
                     family: StorageFamily::Int,
-                    positions: vec![2].into(),
+                    length: 1,
+                    steps: vec![TransferStep {
+                        source: 2,
+                        destination: 0,
+                    }]
+                    .into(),
                 }]
                 .into(),
             },
@@ -182,8 +187,12 @@ data::graph::Edge {
         families: data::Storage::Static(&[
             data::graph::FamilyTransfer {
                 family: data::graph::StorageFamily::Int,
-                positions: data::Storage::Static(&[
-                    2,
+                length: 1,
+                steps: data::Storage::Static(&[
+                    data::graph::TransferStep {
+                        source: 2,
+                        destination: 0,
+                    },
                 ]),
             },
         ]),
@@ -205,7 +214,12 @@ data::graph::Edge {
             Transfer {
                 families: vec![FamilyTransfer {
                     family: StorageFamily::Int,
-                    positions: vec![1, 1].into(),
+                    length: 2,
+                    steps: vec![TransferStep {
+                        source: 1,
+                        destination: 0,
+                    }]
+                    .into(),
                 }]
                 .into(),
             },
@@ -224,9 +238,12 @@ data::graph::MatchEdge {
         families: data::Storage::Static(&[
             data::graph::FamilyTransfer {
                 family: data::graph::StorageFamily::Int,
-                positions: data::Storage::Static(&[
-                    1,
-                    1,
+                length: 2,
+                steps: data::Storage::Static(&[
+                    data::graph::TransferStep {
+                        source: 1,
+                        destination: 0,
+                    },
                 ]),
             },
         ]),
