@@ -425,6 +425,46 @@ the declared capture sequence. `HostReturns` and `HostDiverges` retain the
 existing value and never-completion contracts. The independently locked
 [Provider SDK](../../tests/fixtures/provider_sdk) executes this public path.
 
+### Generic Failure-only Calls
+
+A generic provider may retain its ordinary value-returning registration even
+when one invocation has no successful result storage. For example, the same
+`defer(cleanup: fn() -> b, body: fn() -> a) -> a` registration can return a
+concrete `Int` or propagate an unannotated panic-only body's original error.
+This also applies to a callback-free `produce() -> a`; no opt-in or package
+exception is required. Sealing and referencing the function have no native
+call effects.
+
+With the resumable authoring form, cleanup remains ordinary provider logic:
+
+```rust
+#[geam::function(await)]
+async fn defer<Output, Cleanup>(
+    #[geam::call] call: &mut Call<RunState>,
+    cleanup: Callback<fn() -> Value<Cleanup>>,
+    body: Callback<fn() -> Value<Output>>,
+) -> HostResult<Value<Output>> {
+    let result = call.invoke(&body, ()).await;
+    call.invoke(&cleanup, ()).await?;
+    result
+}
+```
+
+This implementation always awaits cleanup after the body returns a result;
+cleanup failure takes precedence. An `on_crash` implementation can instead
+invoke cleanup only on an error. Core preserves the original source or nested
+host failure and does not install either policy as a built-in. Dropping or
+cancelling pending execution does not guarantee that cleanup executes.
+
+A failure-only call cannot manufacture a successful generic value. The
+low-level `HostOwnedCompletion` codec still executes before its result is
+accepted, so late codec errors and effects remain observable. Native data must
+pass the registered conversion contract. Callback input and capture storage
+must remain representable, and this support does not add arbitrary generic
+success values or structured exception rescue payloads. See
+[Specialization and re-entry](runtime-semantics.md#specialization-and-re-entry)
+for the execution and prepared-linking contract.
+
 ## Explicit Async Functions
 
 An ordinary `#[geam::function] async fn` constructs the canonical

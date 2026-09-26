@@ -62,6 +62,30 @@ mod callback_provider {
     }
 
     #[geam_macros::function(await)]
+    async fn defer<Output, Cleanup>(
+        #[geam_macros::call] call: &mut Call<RunState>,
+        cleanup: Callback<fn() -> Value<Cleanup>>,
+        body: Callback<fn() -> Value<Output>>,
+    ) -> HostResult<Value<Output>> {
+        let result = call.invoke(&body, ()).await;
+        call.invoke(&cleanup, ()).await?;
+        result
+    }
+
+    #[geam_macros::function(await)]
+    async fn on_crash<Output, Cleanup>(
+        #[geam_macros::call] call: &mut Call<RunState>,
+        cleanup: Callback<fn() -> Value<Cleanup>>,
+        body: Callback<fn() -> Value<Output>>,
+    ) -> HostResult<Value<Output>> {
+        let result = call.invoke(&body, ()).await;
+        if result.is_err() {
+            call.invoke(&cleanup, ()).await?;
+        }
+        result
+    }
+
+    #[geam_macros::function(await)]
     async fn apply<Item>(
         #[geam_macros::call] call: &mut Call<RunState>,
         callback: Callback<fn(Value<Item>) -> Value<Item>>,
@@ -483,6 +507,10 @@ fn produce_callbacks(producer: fn() -> List(fn(a) -> b)) -> List(fn(a) -> b)
 @external(erlang, "callback_provider", "pass_callbacks")
 fn pass_callbacks(consumer: fn(List(fn(a) -> b), a) -> b, callbacks: List(fn(a) -> b), value: a) -> b
 
+@external(erlang, "callback_provider", "defer")
+fn defer(cleanup: fn() -> b, body: fn() -> a) -> a
+@external(erlang, "callback_provider", "on_crash")
+fn on_crash(cleanup: fn() -> b, body: fn() -> a) -> a
 "#;
 
 const OPTION_SOURCE: &str = r#"
@@ -807,4 +835,80 @@ pub fn main() {
         returned.inspect().to_string(),
         "#(True, #(True, \"kept\"), #(False, \"kept\"), \"produced/called/called\")"
     );
+}
+
+#[test]
+fn generic_cleanup_wrappers_preserve_success_and_unresolved_failures() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for (wrapper, body, cleanup, expected, entries) in [
+        ("defer", "42", "Nil", Ok("42"), vec!["body", "cleanup"]),
+        ("on_crash", "42", "Nil", Ok("42"), vec!["body"]),
+        (
+            "defer",
+            "panic as \"body stopped\"",
+            "Nil",
+            Err("panic: body stopped"),
+            vec!["body", "cleanup"],
+        ),
+        (
+            "on_crash",
+            "panic as \"body stopped\"",
+            "Nil",
+            Err("panic: body stopped"),
+            vec!["body", "cleanup"],
+        ),
+        (
+            "defer",
+            "42",
+            "panic as \"cleanup stopped\"",
+            Err("panic: cleanup stopped"),
+            vec!["body", "cleanup"],
+        ),
+        (
+            "defer",
+            "panic as \"body stopped\"",
+            "panic as \"cleanup stopped\"",
+            Err("panic: cleanup stopped"),
+            vec!["body", "cleanup"],
+        ),
+        (
+            "on_crash",
+            "panic as \"body stopped\"",
+            "panic as \"cleanup stopped\"",
+            Err("panic: cleanup stopped"),
+            vec!["body", "cleanup"],
+        ),
+        (
+            "defer",
+            "fail() panic as \"unreachable\"",
+            "Nil",
+            Err(
+                "host function callback_provider::callback_provider.fail failed: callback provider failed",
+            ),
+            vec!["body", "cleanup"],
+        ),
+    ] {
+        let source = SOURCE.replace("pub fn main()", "fn original_main()")
+            + &format!(
+                r#"
+pub fn main() {{
+  {wrapper}(fn() {{ record("cleanup") {cleanup} }}, fn() {{ record("body") {body} }})
+}}
+"#
+            );
+        let mut state = ProfileState::default();
+        let result =
+            runtime.block_on(execution(&source).run_main(&host, &mut state, &mut Vec::new()));
+        assert_eq!(
+            result
+                .map(|value| value.inspect().to_string())
+                .map_err(|error| error.to_string()),
+            expected.map(str::to_owned).map_err(str::to_owned),
+            "{wrapper}: {body}; {cleanup}"
+        );
+        assert_eq!(state.component.entries, entries);
+    }
 }

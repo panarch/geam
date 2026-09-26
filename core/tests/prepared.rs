@@ -1,19 +1,27 @@
 use geam_core::__prepared_support as data;
-use geam_core::embedding::{BigInt, BitArrayValue, CallError, FunctionDeclaration, ModuleBuilder};
+use geam_core::embedding::{
+    BigInt, BitArrayValue, CallError, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder,
+    StringValue,
+};
+#[cfg(feature = "tokio")]
+use geam_core::execution::TokioHost;
+use geam_core::{
+    EchoOutput, ExecutionError, HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile,
+    compile_typed_host_program, compile_typed_module, compile_typed_program,
+};
+use std::convert::Infallible;
 
-static ARITHMETIC: data::ModuleArtifact<std::convert::Infallible> =
-    include!("fixtures/prepared/arithmetic.rs");
+static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
 
-static VALUES: data::ModuleArtifact<std::convert::Infallible> =
-    include!("fixtures/prepared/values.rs");
+static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/values.rs");
 
-static NESTED_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/nested_patterns.rs");
 
-static SPARSE_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+static SPARSE_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/sparse_patterns.rs");
 
-static BIT_ARRAY_PATTERNS: data::ModuleArtifact<std::convert::Infallible> =
+static BIT_ARRAY_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/bit_array_patterns.rs");
 
 #[path = "support/work_fixture.rs"]
@@ -53,7 +61,7 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
             .enable_all()
             .build()
             .unwrap();
-        let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+        let host = TokioHost::new(runtime.handle().clone());
         for prepared in [false, true] {
             let (mut module, main) = if prepared {
                 let mut bindings = SHARED_CUSTOM.load(shared_provider::hosts(true)).unwrap();
@@ -62,14 +70,14 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
                     .unwrap();
                 (bindings.seal(), main)
             } else {
-                let typed = geam_core::compile_typed_host_program(
+                let typed = compile_typed_host_program(
                     "consumer",
                     "consumer",
                     shared_provider::packages(),
                     shared_provider::hosts(true),
                 )
                 .unwrap();
-                let (bindings, main) = geam_core::embedding::HostedModuleBuilder::new(typed)
+                let (bindings, main) = HostedModuleBuilder::new(typed)
                     .unwrap()
                     .function(FunctionDeclaration::<(), (BigInt, BigInt)>::new("main"))
                     .unwrap();
@@ -93,10 +101,8 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
 
 #[test]
 fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
-    use geam_core::StringValue;
-
     let source = include_str!("fixtures/prepared/nested_patterns.gleam");
-    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, _) = ModuleBuilder::new(typed)
         .unwrap()
         .function(FunctionDeclaration::<(), StringValue>::new("main"))
@@ -114,8 +120,7 @@ fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
                 .unwrap();
             (bindings.seal(), main)
         } else {
-            let typed =
-                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
             let (bindings, main) = ModuleBuilder::new(typed)
                 .unwrap()
                 .function(FunctionDeclaration::<(), StringValue>::new("main"))
@@ -135,10 +140,8 @@ fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
 
 #[test]
 fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
-    use geam_core::StringValue;
-
     let source = include_str!("fixtures/prepared/sparse_patterns.gleam");
-    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, _) = ModuleBuilder::new(typed)
         .unwrap()
         .function(FunctionDeclaration::<(), StringValue>::new("main"))
@@ -156,8 +159,7 @@ fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
                 .unwrap();
             (bindings.seal(), main)
         } else {
-            let typed =
-                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
             let (bindings, main) = ModuleBuilder::new(typed)
                 .unwrap()
                 .function(FunctionDeclaration::<(), StringValue>::new("main"))
@@ -180,7 +182,7 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
     type Fields = (BigInt, f64, BitArrayValue, BigInt);
 
     let source = include_str!("fixtures/prepared/bit_array_patterns.gleam");
-    let typed = geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (mut bindings, _) = ModuleBuilder::new(typed)
         .unwrap()
         .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
@@ -207,8 +209,7 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
                 .unwrap();
             (bindings.seal(), function)
         } else {
-            let typed =
-                geam_core::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
             let (bindings, function) = ModuleBuilder::new(typed)
                 .unwrap()
                 .function(FunctionDeclaration::<(BitArrayValue, BigInt), Fields>::new(
@@ -281,7 +282,7 @@ fn signed_little_endian_fields_preserve_dynamic_and_prepared_results() {
                 .unwrap();
             (bindings.seal(), function)
         } else {
-            let typed = geam_core::compile_typed_module(
+            let typed = compile_typed_module(
                 "example",
                 "src/example.gleam",
                 include_str!("fixtures/prepared/bit_array_patterns.gleam"),
@@ -358,7 +359,7 @@ fn standalone_artifacts_match_preparation_and_link_without_embedding_exports() {
 #[cfg(feature = "tokio")]
 #[test]
 fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_behavior() {
-    use geam_core::execution::{RunError, TokioHost};
+    use geam_core::execution::RunError;
     use miette::Diagnostic;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -390,7 +391,7 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
     }
     let mut entry = ENTRY_FAILURE.load(work_provider::hosts()).unwrap();
     let mut echo = Vec::new();
-    let RunError::Execution(geam_core::ExecutionError::Panic(panic)) = runtime
+    let RunError::Execution(ExecutionError::Panic(panic)) = runtime
         .block_on(entry.run(&host, &mut (), &mut echo))
         .unwrap_err()
     else {
@@ -419,14 +420,14 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
-    static INCOMPATIBLE: data::ModuleArtifact<std::convert::Infallible> = data::ModuleArtifact {
-        format: 1,
+    static INCOMPATIBLE: data::ModuleArtifact<Infallible> = data::ModuleArtifact {
+        format: 4,
         ..include!("fixtures/prepared/arithmetic.rs")
     };
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 1 is incompatible with format 4; regenerate the prepared program"
+        "prepared format 4 is incompatible with format 5; regenerate the prepared program"
     );
 }
 
@@ -476,7 +477,7 @@ fn emitted_work_retains_captures_shared_completion_and_scope_ownership() {
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     let mut echo = Vec::new();
     let completed = runtime
         .block_on(
@@ -562,20 +563,19 @@ fn dynamic_and_prepared_calls_share_captures_through_opaque_values_and_native_wo
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     for prepared in [false, true] {
         let (mut module, (capture, extend, identities, invoke)) = if prepared {
             let mut bindings = WORK.load(work_provider::hosts()).unwrap();
             let functions = select!(bindings);
             (bindings.seal(), functions)
         } else {
-            let (mut bindings, _) =
-                geam_core::embedding::HostedModuleBuilder::new(work_provider::program())
-                    .unwrap()
-                    .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
-                        "make",
-                    ))
-                    .unwrap();
+            let (mut bindings, _) = HostedModuleBuilder::new(work_provider::program())
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt,), WorkType<BigInt>>::new(
+                    "make",
+                ))
+                .unwrap();
             let functions = select!(bindings);
             (bindings.seal().unwrap(), functions)
         };
@@ -622,7 +622,7 @@ fn dynamic_and_prepared_calls_share_captures_through_opaque_values_and_native_wo
 
 #[test]
 fn emitted_program_preserves_value_closure_constant_and_failure_paths() {
-    use geam_core::{ExecutionError, PanicDetails, PanicKind, PanicMessage, Value};
+    use geam_core::{PanicDetails, PanicKind, PanicMessage, Value};
     use miette::Diagnostic;
     let mut bindings = VALUES.load().unwrap();
     let run = bindings
@@ -637,7 +637,7 @@ fn emitted_program_preserves_value_closure_constant_and_failure_paths() {
     let module = bindings.seal();
     let mut echoes = Vec::new();
     assert_eq!(
-        module.call(&run, (), &mut |output: geam_core::EchoOutput| echoes
+        module.call(&run, (), &mut |output: EchoOutput| echoes
             .push(output.to_string())),
         Ok(BigInt::from(42))
     );
@@ -910,9 +910,9 @@ fn selected_program_covers_all_plain_function_storage_families() {
 
 #[test]
 fn value_data_matches_complete_selected_preparation_output() {
-    let module = geam_core::compile_typed_program(
+    let module = compile_typed_program(
         "example",
-        [geam_core::ModuleSource::new(
+        [ModuleSource::new(
             "example",
             "src/example.gleam",
             include_str!("fixtures/prepared/values.gleam"),
@@ -1003,8 +1003,7 @@ fn emitted_plain_program_loads_into_independent_callable_modules() {
 #[test]
 fn plain_data_matches_preparation_output() {
     let module =
-        geam_core::compile_typed_module("example", "src/example.gleam", "pub fn main() { 21 * 2 }")
-            .unwrap();
+        compile_typed_module("example", "src/example.gleam", "pub fn main() { 21 * 2 }").unwrap();
     let (bindings, _) = ModuleBuilder::new(module)
         .unwrap()
         .function(FunctionDeclaration::<(), BigInt>::new("main"))
@@ -1022,7 +1021,7 @@ static NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/native.r
 
 #[test]
 fn hosted_loading_rejects_missing_providers_before_selecting_functions() {
-    let providers = geam_core::HostProviderSet::<geam_core::StatelessHostProfile>::new([]).unwrap();
+    let providers = HostProviderSet::<StatelessHostProfile>::new([]).unwrap();
     let error = NATIVE.load(providers).err().unwrap();
     assert_eq!(
         error.to_string(),
@@ -1073,9 +1072,6 @@ fn hosted_selection_failure_preserves_the_name_and_success_reserves_it() {
 
 #[test]
 fn native_data_matches_preparation_output() {
-    use geam_core::embedding::HostedModuleBuilder;
-    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
-
     let program = compile_typed_host_program(
         "application",
         "main",
@@ -1096,22 +1092,18 @@ fn native_data_matches_preparation_output() {
         .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
         .unwrap();
     bindings
-        .function(FunctionDeclaration::<
-            (geam_core::StringValue,),
-            (bool, geam_core::StringValue),
-        >::new("substring"))
+        .function(FunctionDeclaration::<(StringValue,), (bool, StringValue)>::new("substring"))
         .unwrap();
     bindings
         .function(FunctionDeclaration::<
-            (geam_core::BitArrayValue, BigInt, BigInt),
-            geam_core::BitArrayValue,
+            (BitArrayValue, BigInt, BigInt),
+            BitArrayValue,
         >::new("bit_range"))
         .unwrap();
     bindings
-        .function(FunctionDeclaration::<
-            (geam_core::BitArrayValue,),
-            geam_core::BitArrayValue,
-        >::new("bit_tail"))
+        .function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
+            "bit_tail",
+        ))
         .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
@@ -1123,9 +1115,6 @@ fn native_data_matches_preparation_output() {
 #[cfg(feature = "tokio")]
 #[test]
 fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
-    use geam_core::embedding::{HostedModuleBuilder, StringValue};
-    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
-
     let program = compile_typed_host_program(
         "application",
         "main",
@@ -1153,7 +1142,7 @@ fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     for (mut module, entry) in [
         (dynamic.seal().unwrap(), dynamic_entry),
         (prepared.seal(), prepared_entry),
@@ -1179,9 +1168,6 @@ fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
 #[cfg(feature = "tokio")]
 #[test]
 fn dynamic_and_prepared_bit_ranges_preserve_storage_and_canonical_bytes_through_providers() {
-    use geam_core::embedding::{BitArrayValue, HostedModuleBuilder};
-    use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
-
     let program = compile_typed_host_program(
         "application",
         "main",
@@ -1224,7 +1210,7 @@ fn dynamic_and_prepared_bit_ranges_preserve_storage_and_canonical_bytes_through_
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
 
     for (mut module, range, tail) in [
         (dynamic.seal().unwrap(), dynamic_range, dynamic_tail),
@@ -1286,7 +1272,7 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     let mut echo = Vec::new();
     let value = runtime
         .block_on(
@@ -1328,9 +1314,9 @@ fn scoped_callable_artifact_matches_declaration_only_preparation() {
 #[cfg(feature = "tokio")]
 #[test]
 fn scoped_function_inputs_returns_and_nested_codecs_match_in_dynamic_and_prepared_modules() {
-    use geam_core::embedding::{CallableType, HostedModuleBuilder, List};
+    use geam_core::embedding::{CallableType, List};
     type Adjust = CallableType<(BigInt,), BigInt>;
-    let program = geam_core::compile_typed_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         callable_declarations::packages(),
@@ -1397,7 +1383,7 @@ fn scoped_function_inputs_returns_and_nested_codecs_match_in_dynamic_and_prepare
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     for (
         mut module,
         make,
@@ -1474,19 +1460,25 @@ fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindi
         callable_declarations::prepare().emit_rust(),
         include_str!("fixtures/prepared/callables.rs").trim()
     );
-    let program = geam_core::compile_typed_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         callable_declarations::packages(),
         callable_provider::implementations(),
     )
     .unwrap();
-    let (mut actual_bodies, _) = geam_core::embedding::HostedModuleBuilder::new(program)
+    let (mut actual_bodies, _) = HostedModuleBuilder::new(program)
         .unwrap()
         .function(FunctionDeclaration::<(), BigInt>::new("run"))
         .unwrap();
     actual_bodies
         .function(FunctionDeclaration::<(), bool>::new("check"))
+        .unwrap();
+    actual_bodies
+        .function(FunctionDeclaration::<(), BigInt>::new("fail"))
+        .unwrap();
+    actual_bodies
+        .function(FunctionDeclaration::<(), BigInt>::new("producer"))
         .unwrap();
     assert_eq!(
         actual_bodies.prepare().unwrap().emit_rust(),
@@ -1495,15 +1487,14 @@ fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindi
     CALLABLES
         .load(callable_provider::implementations())
         .unwrap();
-    let missing = geam_core::HostProviderSet::<geam_core::StatelessHostProfile>::new([]).unwrap();
+    let missing = HostProviderSet::<StatelessHostProfile>::new([]).unwrap();
     assert!(CALLABLES.load(missing).is_err());
 }
 
 #[cfg(feature = "tokio")]
 #[test]
 fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_identity_parity() {
-    use geam_core::embedding::HostedModuleBuilder;
-    let program = geam_core::compile_typed_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         callable_declarations::packages(),
@@ -1530,7 +1521,7 @@ fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_i
         .enable_all()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     for (mut module, run, check) in [
         (dynamic.seal().unwrap(), run, check),
         (prepared.seal(), prepared_run, prepared_check),
@@ -1559,13 +1550,13 @@ fn native_view_artifact_matches_declaration_only_preparation() {
 #[cfg(feature = "tokio")]
 #[test]
 fn native_construction_selects_exact_rust_views_in_dynamic_and_prepared_execution() {
-    use geam_core::embedding::{CallableType, HostedModuleBuilder};
+    use geam_core::embedding::CallableType;
     use geam_core::provider::ProviderResult;
     type Outcome = Result<BigInt, ()>;
     type Callback = CallableType<(BigInt,), Outcome>;
     type Constant = callable_declarations::Constant<ProviderResult<BigInt, ()>>;
     type Wrap = callable_declarations::Wrap<BigInt, ProviderResult<BigInt, ()>>;
-    let program = geam_core::compile_typed_host_program(
+    let program = compile_typed_host_program(
         "application",
         "library",
         callable_declarations::packages(),
@@ -1598,7 +1589,7 @@ fn native_construction_selects_exact_rust_views_in_dynamic_and_prepared_executio
     let runtime = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
-    let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+    let host = TokioHost::new(runtime.handle().clone());
     for (mut module, source, constant, wrap) in [
         (
             dynamic.seal().unwrap(),
@@ -1655,8 +1646,10 @@ fn malformed_native_construction_metadata_is_rejected_before_execution() {
             include!("fixtures/prepared/callable_embedding.rs");
         let mut artifact = ARTIFACT;
         let mut entries = artifact.callables.to_vec();
-        let entry = &mut entries[0];
-        assert_eq!(entry.declaration.name.as_ref(), "add");
+        let entry = entries
+            .iter_mut()
+            .find(|entry| entry.declaration.name.as_ref() == "add")
+            .unwrap();
         match change {
             Change::BodyIdentity => entry.declaration.name = "another_body".into(),
             Change::Completion => entry.declaration.returns_value = false,
@@ -1720,4 +1713,123 @@ fn native_selection_requires_a_prepared_exact_declaration_and_rust_view() {
         error.to_string(),
         "function constant has incompatible prepared Rust inputs: VariantCount { expected: 1, actual: 0 }; regenerate with the matching declarations"
     );
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn unresolved_producers_and_created_callables_link_fresh_value_registrations() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        for (name, expected, effect) in [
+            (
+                "fail",
+                "host function support::support/private.stop failed: callable stopped",
+                "\"before callable\"",
+            ),
+            (
+                "producer",
+                "host function support::support.produce failed: producer stopped",
+                "\"before producer\"",
+            ),
+        ] {
+            let (mut module, function) = if prepared {
+                let mut bindings = CALLABLES
+                    .load(callable_provider::implementations())
+                    .unwrap();
+                let function = bindings
+                    .function(FunctionDeclaration::<(), BigInt>::new(name))
+                    .unwrap();
+                (bindings.seal(), function)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "library",
+                    callable_declarations::packages(),
+                    callable_provider::implementations(),
+                )
+                .unwrap();
+                let (bindings, function) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), BigInt>::new(name))
+                    .unwrap();
+                (bindings.seal().unwrap(), function)
+            };
+            let mut echo = Vec::new();
+            let result = runtime
+                .block_on(
+                    module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                        scope.call(&function, ()).await
+                    }),
+                )
+                .unwrap();
+            assert_eq!(result.unwrap_err().to_string(), expected);
+            assert_eq!(
+                echo.iter()
+                    .map(|echo| echo.value().inspect().to_string())
+                    .collect::<Vec<_>>(),
+                [effect]
+            );
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn embedding_constructs_failure_only_callables_from_value_declarations() {
+    use callable_declarations::{Never, NeverView, Stop};
+    use geam_core::embedding::CallableType;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, run, factory) = if prepared {
+            let mut bindings = EMBEDDED_CALLABLES
+                .load(callable_provider::implementations())
+                .unwrap();
+            let run = bindings
+                .function(
+                    FunctionDeclaration::<(CallableType<(), NeverView>,), BigInt>::new(
+                        "call_never",
+                    ),
+                )
+                .unwrap();
+            let factory = bindings.callable::<Stop<Never>>().unwrap();
+            (bindings.seal(), run, factory)
+        } else {
+            let typed = compile_typed_host_program(
+                "application",
+                "library",
+                callable_declarations::packages(),
+                callable_provider::implementations(),
+            )
+            .unwrap();
+            let (mut bindings, run) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(
+                    FunctionDeclaration::<(CallableType<(), NeverView>,), BigInt>::new(
+                        "call_never",
+                    ),
+                )
+                .unwrap();
+            let factory = bindings.callable::<Stop<Never>>().unwrap();
+            (bindings.seal().unwrap(), run, factory)
+        };
+        let error = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut Vec::new(), async |scope| {
+                    let native = scope.construct(&factory, ()).unwrap();
+                    scope.call(&run, (&native,)).await
+                }),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "host function support::support/private.stop failed: callable stopped"
+        );
+    }
 }

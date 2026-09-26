@@ -4,7 +4,7 @@ use crate::host::{
     HostProvider, HostScopedValue, HostType, HostTypeSequence,
 };
 use crate::runtime::error::ExecutionResult;
-use crate::runtime::host::RuntimeHostCall;
+use crate::runtime::host::{RuntimeHostCall, host_call_error};
 use crate::runtime::work::Cancelled;
 use crate::runtime::{HostCallOrigin, StoredRuntimeValue};
 use std::future::Future;
@@ -23,7 +23,7 @@ impl<Output> Continuation<Output> {
         }
     }
 
-    pub(in crate::runtime) async fn complete(self) -> Result<ExecutionResult<Output>, Cancelled> {
+    pub(crate) async fn complete(self) -> Result<ExecutionResult<Output>, Cancelled> {
         self.operation.await
     }
 }
@@ -54,9 +54,7 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
                 .complete(&mut runtime, callable_base)
                 .map(|token| runtime.retain_stored(HostScopedValue::Value(token)));
             drop(runtime);
-            output.map_err(|error| {
-                crate::runtime::host::host_call_error(plan, origin, codec.function(), error)
-            })
+            output.map_err(|error| host_call_error(plan, origin, codec.function(), error))
         })
         .await
     }
@@ -72,12 +70,7 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
             HostExecutionError::Execution(error) => Ok(Err(error.0.read(Clone::clone))),
             HostExecutionError::Host(error) => {
                 self.with_runtime(move |plan, _| {
-                    Err(crate::runtime::host::host_call_error(
-                        plan,
-                        origin,
-                        codec.function(),
-                        error,
-                    ))
+                    Err(host_call_error(plan, origin, codec.function(), error))
                 })
                 .await
             }
@@ -91,11 +84,12 @@ mod tests {
     use crate::execution_fixture::TestHost;
     use crate::host::{
         HostCall, HostCallContinuation, HostCallError, HostConstructions, HostExecutionError,
-        HostProfile, HostProvider, HostProviderModule, HostProviderSet, HostTypeListEnd,
+        HostFailure, HostOwnedCompletion, HostProfile, HostProvider, HostProviderModule,
+        HostProviderSet, HostTypeListEnd,
     };
-    use crate::runtime::SharedExecutionError;
     use crate::runtime::shared::Shared;
-    use crate::{ModuleSource, PackageSource};
+    use crate::runtime::{SharedExecutionError, run_src_error};
+    use crate::{ModuleSource, PackageSource, compile_typed_host_program};
     use num_bigint::BigInt;
 
     struct Profile;
@@ -121,7 +115,7 @@ mod tests {
             Box::pin(async move {
                 match error {
                     Some(error) => Err(error),
-                    None => Ok(crate::HostOwnedCompletion::new(|call, _| {
+                    None => Ok(HostOwnedCompletion::new(|call, _| {
                         Ok(call.return_value(42.into()))
                     })),
                 }
@@ -131,8 +125,7 @@ mod tests {
 
     #[test]
     fn native_cancellation_and_shared_source_failure_keep_their_original_domains() {
-        let source_error =
-            crate::runtime::run_src_error("pub fn main() { panic as \"original source failure\" }");
+        let source_error = run_src_error("pub fn main() { panic as \"original source failure\" }");
         for (native, expected) in [
             (HostExecutionError::Cancelled, CallError::Cancelled),
             (
@@ -152,7 +145,7 @@ mod tests {
             )
             .unwrap()])
             .unwrap();
-            let typed = crate::compile_typed_host_program(
+            let typed = compile_typed_host_program(
                 "application",
                 "library",
                 [PackageSource::new(
@@ -194,7 +187,7 @@ pub fn run() { let value = complete() echo "completed" value }
                 (None, Ok(BigInt::from(42)), vec!["\"completed\""]),
                 (
                     Some(HostExecutionError::Host(
-                        crate::HostFailure::new("native failure").into(),
+                        HostFailure::new("native failure").into(),
                     )),
                     Err("host function application::library.complete failed: native failure"),
                     vec![],
@@ -221,6 +214,114 @@ pub fn run() { let value = complete() echo "completed" value }
                     expected_echo
                 );
             }
+        }
+    }
+
+    #[test]
+    fn unresolved_native_completion_runs_its_codec_and_preserves_late_errors() {
+        use crate::host::HostTypeParameter;
+        struct CodecProfile;
+        impl HostProfile for CodecProfile {
+            type RunState = Vec<&'static str>;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<CodecProfile> for CodecProfile {
+            type State = Vec<&'static str>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        type Item = HostTypeParameter<0>;
+        fn complete<'call>(
+            mut call: HostCall<'call, CodecProfile, CodecProfile, Item>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            late: bool,
+        ) -> Result<HostCallContinuation<'call, Item>, HostCallError> {
+            call.state().push("entered");
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    context
+                        .with_state(|state| state.push("resumed"))
+                        .await
+                        .expect("active test execution admits state access");
+                    if !late {
+                        return Err(HostFailure::new("async stopped").into());
+                    }
+                    Ok(HostOwnedCompletion::<
+                        CodecProfile,
+                        CodecProfile,
+                        Item,
+                        HostTypeListEnd,
+                    >::new(|mut call, _| {
+                        call.state().push("codec");
+                        Err(HostFailure::new("codec stopped").into())
+                    }))
+                })
+            }))
+        }
+        let source = r#"
+@external(erlang, "native", "complete")
+fn complete(late: Bool) -> a
+pub fn run(late: Bool) { echo "before" let _ = complete(late) echo "after" 42 }
+"#;
+        let hosts =
+            HostProviderSet::from_providers([HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_resumable_function::<CodecProfile, (bool,), Item, HostTypeListEnd, _>(
+                    "complete", complete,
+                )
+                .unwrap()])
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("library", "library.gleam", source)],
+            )],
+            hosts,
+        )
+        .unwrap();
+        let (bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(bool,), BigInt>::new("run"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        for late in [false, true] {
+            let mut state = Vec::new();
+            let mut echo = Vec::new();
+            let result = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&run, (late,)).await
+                    }),
+                )
+                .unwrap();
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                if late {
+                    "host function application::library.complete failed: codec stopped"
+                } else {
+                    "host function application::library.complete failed: async stopped"
+                }
+            );
+            assert_eq!(
+                state,
+                if late {
+                    vec!["entered", "resumed", "codec"]
+                } else {
+                    vec!["entered", "resumed"]
+                }
+            );
+            assert_eq!(
+                echo.iter()
+                    .map(|echo| echo.value().inspect().to_string())
+                    .collect::<Vec<_>>(),
+                ["\"before\""]
+            );
         }
     }
 }

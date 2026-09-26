@@ -1,3 +1,5 @@
+use geam::host::native::{NativeCall, NativeRules};
+use geam::provider::advanced::NativeValue;
 use geam::provider::{BigInt, EcoString, GleamError, GleamOk, GleamResult, StringValue};
 use geam::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
@@ -6,11 +8,12 @@ use geam::{
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
     HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
-    HostExternalStorage, HostExternalStore, HostExternalType, HostFunctionType, HostListType,
-    HostOwnedCompletion, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
-    HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
-    HostProviderModule, HostRegistrationError, HostReturns, HostTypeIndex0, HostTypeList,
-    HostTypeListEnd,
+    HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
+    HostListType, HostOwnedCompletion, HostProvider, HostProviderComponent,
+    HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
+    HostRegistrationError, HostReturns, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
+    HostTypeListEnd, HostTypeParameter,
 };
 use provider_sdk_example_domain::Catalog;
 use std::collections::hash_map::DefaultHasher;
@@ -44,6 +47,12 @@ struct SummaryDefinition;
 struct SummaryCountField;
 
 struct SummaryItemsField;
+
+type Output = HostTypeParameter<0>;
+type Cleanup = HostTypeParameter<1>;
+type UnitArguments = HostTypeList<(), HostTypeListEnd>;
+type GenericTargets = HostTypeList<(), HostTypeList<Output, HostTypeListEnd>>;
+type OutputTarget = HostTypeList<Output, HostTypeListEnd>;
 
 type TransformArguments = HostTypeList<StringValue, HostTypeListEnd>;
 type Transform = HostFunctionType<TransformArguments, StringValue>;
@@ -133,6 +142,13 @@ where
                     Provider, (StringValue,), GleamResult<StringValue, BigInt>, _,
                 >("non_empty", non_empty::<Profile>)
             })
+            .and_then(|provider| provider.with_resumable_native_function::<
+                Provider, (HostFunctionType<UnitArguments, Cleanup>, HostFunctionType<UnitArguments, Output>),
+                Output, GenericTargets, _,
+            >("around", NativeRules::default(), around::<Profile>))
+            .and_then(|provider| provider.with_scoped_function::<Provider, (), Output, _>("produce", produce::<Profile>))
+            .and_then(|provider| provider.with_resumable_function::<Provider, (), Output, HostTypeListEnd, _>("late_failure", late_failure::<Profile>))
+            .and_then(|provider| provider.with_resumable_native_function::<Provider, (), Output, OutputTarget, _>("native_value", NativeRules::default(), native_value::<Profile>))
             .map(|provider| vec![provider])
     }
 }
@@ -379,6 +395,70 @@ where
     } else {
         Ok(call.return_custom::<GleamOk<StringValue, BigInt>>((value, ())))
     }
+}
+
+fn around<'call, Profile>(
+    mut call: NativeCall<'call, Profile, Provider, Output, GenericTargets>,
+    cleanup: HostCallable<'call, UnitArguments, Cleanup>,
+    body: HostCallable<'call, UnitArguments, Output>,
+) -> Result<HostCallContinuation<'call, Output>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    call.call().state().calls += 1;
+    let cleanup = call.owned_callable::<HostTypeIndex0, _>(cleanup);
+    let body = call.owned_callable::<HostTypeIndex0, _>(body);
+    Ok(
+        call.resume::<HostTypeIndexNext<HostTypeIndex0>>(move |context| {
+            Box::pin(async move {
+                let result = body.invoke(&context, NativeValue::symbol("nil")).await;
+                cleanup.invoke(&context, NativeValue::symbol("nil")).await?;
+                result
+            })
+        }),
+    )
+}
+
+fn produce<'call, Profile>(
+    mut call: HostCall<'call, Profile, Provider, Output>,
+) -> Result<HostCallCompletion<'call, Output>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    call.state().calls += 1;
+    Err(HostFailure::new("producer stopped").into())
+}
+
+fn late_failure<'call, Profile>(
+    call: HostCall<'call, Profile, Provider, Output>,
+    constructions: HostConstructions<'call, HostTypeListEnd>,
+) -> Result<HostCallContinuation<'call, Output>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    Ok(call.resume(constructions, |_| {
+        Box::pin(async {
+            Ok(HostOwnedCompletion::<
+                Profile,
+                Provider,
+                Output,
+                HostTypeListEnd,
+            >::new(|mut call, _| {
+                call.state().calls += 1;
+                Err(HostFailure::new("codec stopped").into())
+            }))
+        })
+    }))
+}
+
+fn native_value<'call, Profile>(
+    mut call: NativeCall<'call, Profile, Provider, Output, OutputTarget>,
+) -> Result<HostCallContinuation<'call, Output>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    call.call().state().calls += 1;
+    Ok(call.resume::<HostTypeIndex0>(|_| Box::pin(async { Ok(NativeValue::symbol("nil")) })))
 }
 
 #[cfg(test)]

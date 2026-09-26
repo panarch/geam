@@ -39,7 +39,7 @@ pub(super) fn library<Profile: HostProfile>(
         if declaration.package.as_ref() != metadata.package()
             || declaration.module.as_ref() != metadata.module()
             || declaration.name.as_ref() != metadata.name()
-            || declaration.returns_value != returns_value
+            || declaration.returns_value != metadata.completion.declared_value()
             || metadata.type_ != construction.type_
             || entry.invocation.type_ != construction.type_
             || construction.parameters.len() != target.parameters.len()
@@ -86,7 +86,7 @@ pub(super) fn admit<Profile: HostProfile>(
     for (value, index, metadata, _) in metadata.clone() {
         if let Some(entry) = metadata.callable_entry
             && (hosts.callable_bindings.borrow().get(&entry).copied() != Some((value, index))
-                || definitions.insert(entry, (value, metadata)).is_some())
+                || definitions.insert(entry, metadata).is_some())
         {
             return Err(failure(value, index));
         }
@@ -139,13 +139,14 @@ pub(super) fn admit<Profile: HostProfile>(
                 family: target.family,
                 index: target.index,
             };
-            let Some((returns_value, body)) = definitions.get(&entry) else {
+            let Some(body) = definitions.get(&entry) else {
                 return Err(failure(value, index));
             };
             if body.package() != expected.identity.package.as_str()
                 || body.module() != expected.identity.module.as_str()
                 || body.name() != expected.identity.name.as_str()
-                || *returns_value != matches!(expected.completion, HostFunctionBinding::Value(()))
+                || body.completion.declared_value()
+                    != matches!(expected.completion, HostFunctionBinding::Value(()))
                 || construction.type_ != body.type_
                 || construction.parameters.len() != target.parameters.len()
                 || construction.captures.as_ref() != target.captures

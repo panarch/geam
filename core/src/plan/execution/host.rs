@@ -9,9 +9,9 @@ pub(crate) use function::HostConstructionTypes;
 pub(in crate::plan::execution) use function::HostTypeArgument;
 pub(in crate::plan::execution) use function::HostedFunctionParameters;
 pub(crate) use function::{
-    HostCallParameter, HostCallableConstruction, HostCallableEntry, HostFunctionId,
-    HostNeverFunctionId, HostedFunction, HostedFunctionMetadata, HostedFunctionTarget,
-    HostedNeverFunction, HostedValueFunction,
+    HostCallParameter, HostCallableConstruction, HostCallableEntry, HostFunctionCompletion,
+    HostFunctionId, HostNeverFunctionId, HostedFunction, HostedFunctionMetadata,
+    HostedFunctionTarget, HostedNeverFunction, HostedValueFunction,
 };
 pub(crate) use native::{
     NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,

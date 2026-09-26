@@ -10,7 +10,10 @@ type CompletionCodec<Profile> = dyn FnOnce(&mut dyn HostCallRuntime<Profile>, us
 /// An owned result and its exact codec, waiting for the originating execution.
 ///
 /// The result may cross await points. Its codec receives fresh call-scoped views
-/// only when the Rust host services the operation's completion.
+/// only when the Rust host services the operation's completion. Creating this
+/// owner does not establish successful completion: the codec may still fail.
+/// It also runs for failure-only generic specializations, preserving its errors
+/// and effects without allowing a successful generic value to escape.
 pub struct HostOwnedCompletion<Profile, Provider, Output, Constructions>
 where
     Profile: HostProfile,

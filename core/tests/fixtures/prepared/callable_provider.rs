@@ -1,11 +1,11 @@
 use super::callable_declarations::{
-    Add, AddFunction, Constant, ConstantFunction, End, MAKE_ADDER, MAKE_CONSTANT, One, T, U, WRAP,
-    Wrap, Wrapped,
+    Add, AddFunction, Constant, ConstantFunction, End, MAKE_ADDER, MAKE_CONSTANT, MAKE_STOP, One,
+    PRODUCE, Stop, T, U, WRAP, Wrap, Wrapped,
 };
 use geam_core::{
     HostCall, HostCallCompletion, HostCallError, HostCaptures, HostConstructions,
-    HostCreatedFunction, HostProvider, HostProviderModule, HostProviderSet, HostTypeIndex0,
-    HostValue, StatelessHostProfile,
+    HostCreatedFunction, HostFailure, HostProvider, HostProviderModule, HostProviderSet,
+    HostTypeIndex0, HostValue, StatelessHostProfile,
 };
 use num_bigint::BigInt;
 
@@ -91,6 +91,29 @@ fn wrap<'call>(
     }))
 }
 
+fn make_stop<'call>(
+    mut call: HostCall<'call, StatelessHostProfile, Provider, ConstantFunction<T>>,
+    constructions: HostConstructions<'call, One<HostCreatedFunction<Stop<T>>>>,
+) -> Result<HostCallCompletion<'call, ConstantFunction<T>>, HostCallError> {
+    let callback = call.construct_function(constructions.at::<HostTypeIndex0>(), ());
+    Ok(call.return_value(callback))
+}
+
+fn stop<'call>(
+    _: HostCall<'call, StatelessHostProfile, Provider, T>,
+    _: HostCaptures<'call, End>,
+    _: HostConstructions<'call, End>,
+) -> Result<HostCallCompletion<'call, T>, HostCallError> {
+    Err(HostFailure::new("callable stopped").into())
+}
+
+fn produce<'call>(
+    _: HostCall<'call, StatelessHostProfile, Provider, T>,
+    _: HostConstructions<'call, End>,
+) -> Result<HostCallCompletion<'call, T>, HostCallError> {
+    Err(HostFailure::new("producer stopped").into())
+}
+
 pub(crate) fn implementations() -> HostProviderSet<StatelessHostProfile> {
     HostProviderSet::from_providers([HostProviderModule::new("support", "support")
         .unwrap()
@@ -99,6 +122,12 @@ pub(crate) fn implementations() -> HostProviderSet<StatelessHostProfile> {
         .with_declared_function::<Provider, _, _, _, _>(MAKE_ADDER, make_adder)
         .unwrap()
         .with_declared_function::<Provider, _, _, _, _>(WRAP, make_wrapper)
+        .unwrap()
+        .with_declared_function::<Provider, _, _, _, _>(MAKE_STOP, make_stop)
+        .unwrap()
+        .with_declared_function::<Provider, _, _, _, _>(PRODUCE, produce)
+        .unwrap()
+        .with_callable::<Provider, Stop<T>, (), _>(stop)
         .unwrap()
         .with_callable::<Provider, Constant<T>, (), _>(constant)
         .unwrap()

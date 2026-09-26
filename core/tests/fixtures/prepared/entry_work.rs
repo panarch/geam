@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 4,
+    format: 5,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -744,6 +744,7 @@ pub fn main() {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "ready", data::source::SourceSpan::new(60, 86)),
@@ -841,6 +842,7 @@ pub fn main() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "map", data::source::SourceSpan::new(139, 187)),

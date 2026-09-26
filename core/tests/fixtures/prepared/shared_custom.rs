@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 4,
+        format: 5,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -1188,6 +1188,7 @@ pub fn main() {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("consumer"),
             site: data::source::HostCallSite::from_static("consumer", "retain", data::source::SourceSpan::new(54, 89)),
@@ -1344,6 +1345,7 @@ pub fn main() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("consumer"),
             site: data::source::HostCallSite::from_static("consumer", "increment", data::source::SourceSpan::new(152, 192)),
@@ -1495,6 +1497,7 @@ pub fn main() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("consumer"),
             site: data::source::HostCallSite::from_static("consumer", "retain", data::source::SourceSpan::new(54, 89)),

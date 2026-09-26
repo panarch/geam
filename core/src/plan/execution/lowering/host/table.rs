@@ -4,23 +4,25 @@ use super::super::specialization::{
 };
 use super::super::{LoweredExecution, LoweringCompletion, LoweringContext};
 use super::{parameter, return_, sealing};
-use crate::host::HostFunctionBinding;
+use crate::host::{HostFunctionBinding, RegisteredHostConstructions};
 use crate::plan::execution::host::{
-    HostBindingTables, HostSpecializationError, HostedExecutionProfile, HostedFunction,
-    HostedFunctionMetadata,
+    HostBindingTables, HostCallableEntry, HostFunctionCompletion, HostSpecializationError,
+    HostTypeArgument, HostedExecutionProfile, HostedFunction, HostedFunctionMetadata,
+    RegistrationContract,
 };
-use crate::plan::{HostFunctionTemplate, ProfiledHostImplementationBinding};
+use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
+use crate::plan::{FunctionTemplateId, HostFunctionTemplate, ProfiledHostImplementationBinding};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
 pub(super) struct HostFunctionRegistry<Value, Never> {
-    functions: HashMap<crate::plan::FunctionTemplateId, RegisteredHostFunction<Value, Never>>,
+    functions: HashMap<FunctionTemplateId, RegisteredHostFunction<Value, Never>>,
 }
 
 struct RegisteredHostFunction<Value, Never> {
-    constructions: crate::host::RegisteredHostConstructions,
+    constructions: RegisteredHostConstructions,
     implementation: Arc<HostFunctionBinding<Value, Never>>,
 }
 
@@ -117,7 +119,7 @@ impl<Value: Clone, Never: Clone> HostFunctionRegistry<Value, Never> {
     }
 }
 
-impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
+impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, Never> {
     pub(super) fn lower_specialized(
         &mut self,
         template: &HostFunctionTemplate,
@@ -125,13 +127,10 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
         context: &mut LoweringContext,
     ) -> Result<(), HostSpecializationError> {
         let index = context.specialization_index(key);
-        let callable_entry =
-            template
-                .is_callable()
-                .then(|| crate::plan::execution::host::HostCallableEntry {
-                    family: context.provisional_specializations[key].family,
-                    index,
-                });
+        let callable_entry = template.is_callable().then(|| HostCallableEntry {
+            family: context.provisional_specializations[key].family,
+            index,
+        });
         let shape =
             SpecializedFunctionShape::instantiate(template.signature().shape(), key.substitution());
         let parameters = context.specialization_parameters(key).to_vec();
@@ -141,10 +140,8 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
             .substitution()
             .arguments()
             .iter()
-            .map(|argument| crate::plan::execution::host::HostTypeArgument {
-                type_: crate::plan::execution::type_::TypeMetadata::from_public(
-                    &argument.to_module_shape().value_type(),
-                ),
+            .map(|argument| HostTypeArgument {
+                type_: TypeMetadata::from_public(&argument.to_module_shape().value_type()),
                 shape: context.types.value_shape(argument),
             })
             .collect();
@@ -154,47 +151,45 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
         let constructions =
             sealing::seal_host_types(template, &registered.constructions, key, context)?;
 
-        match implementation.as_ref() {
-            HostFunctionBinding::Value(implementation) => {
-                let ValueInhabitation::Inhabited(return_) = return_ else {
-                    return Err(HostSpecializationError::undetermined_return_storage(
-                        template.package().clone(),
-                        template.site().module().into(),
-                        template.site().function().into(),
-                        shape.to_module_shape().type_(),
-                    ));
-                };
-                sealing::seal_callbacks(template, key, &shape, &context.representations, true)?;
-                let parameters = parameter::lower_host_parameters(
-                    &parameters,
-                    template.layout(),
-                    &captures,
-                    context,
-                );
-                let type_ = context.lower_concrete_function_type(&shape);
+        let completion = match (implementation.as_ref(), &return_) {
+            (HostFunctionBinding::Value(_), ValueInhabitation::Inhabited(_)) => {
+                HostFunctionCompletion::Value
+            }
+            (HostFunctionBinding::Value(_), ValueInhabitation::Uninhabited(_)) => {
+                HostFunctionCompletion::Uninhabited
+            }
+            (HostFunctionBinding::Never(_), _) => HostFunctionCompletion::Never,
+        };
+        sealing::seal_callbacks(
+            template,
+            key,
+            &shape,
+            &context.representations,
+            completion == HostFunctionCompletion::Value,
+        )?;
+        let parameters =
+            parameter::lower_host_parameters(&parameters, template.layout(), &captures, context);
+        let metadata = HostedFunctionMetadata {
+            completion,
+            callable_entry,
+            package: template.package().clone().into(),
+            site: template.site().clone(),
+            signature: FunctionMetadata::from_public(&shape.to_module_shape().type_()),
+            type_arguments,
+            parameters,
+            constructions,
+            type_: context.lower_concrete_function_type(&shape),
+            registration: Box::new(RegistrationContract::from_template(
+                template,
+                &registered.constructions,
+            ))
+            .into(),
+        };
+        match (implementation.as_ref(), return_) {
+            (HostFunctionBinding::Value(implementation), ValueInhabitation::Inhabited(return_)) => {
                 let host_index = self.value_functions.len();
-                self.value_functions.push(HostedFunction::new(
-                    HostedFunctionMetadata {
-                        callable_entry,
-                        package: template.package().clone().into(),
-                        site: template.site().clone(),
-                        signature: crate::plan::execution::type_::FunctionMetadata::from_public(
-                            &shape.to_module_shape().type_(),
-                        ),
-                        type_arguments,
-                        parameters,
-                        constructions,
-                        type_,
-                        registration: Box::new(
-                            crate::plan::execution::host::RegistrationContract::from_template(
-                                template,
-                                &registered.constructions,
-                            ),
-                        )
-                        .into(),
-                    },
-                    implementation.clone(),
-                ));
+                self.value_functions
+                    .push(HostedFunction::new(metadata, implementation.clone()));
                 return_::lower_host_return(
                     index,
                     key,
@@ -204,38 +199,14 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
                     context,
                 );
             }
-            HostFunctionBinding::Never(implementation) => {
-                sealing::seal_callbacks(template, key, &shape, &context.representations, false)?;
-                let parameters = parameter::lower_host_parameters(
-                    &parameters,
-                    template.layout(),
-                    &captures,
-                    context,
-                );
-                let type_ = context.lower_concrete_function_type(&shape);
+            (implementation, return_) => {
+                let implementation = match implementation {
+                    HostFunctionBinding::Value(value) => Never::from(value.clone()),
+                    HostFunctionBinding::Never(never) => never.clone(),
+                };
                 let host_index = self.never_functions.len();
-                self.never_functions.push(HostedFunction::new(
-                    HostedFunctionMetadata {
-                        callable_entry,
-                        package: template.package().clone().into(),
-                        site: template.site().clone(),
-                        signature: crate::plan::execution::type_::FunctionMetadata::from_public(
-                            &shape.to_module_shape().type_(),
-                        ),
-                        type_arguments,
-                        parameters,
-                        constructions,
-                        type_,
-                        registration: Box::new(
-                            crate::plan::execution::host::RegistrationContract::from_template(
-                                template,
-                                &registered.constructions,
-                            ),
-                        )
-                        .into(),
-                    },
-                    implementation.clone(),
-                ));
+                self.never_functions
+                    .push(HostedFunction::new(metadata, implementation));
                 match return_ {
                     ValueInhabitation::Inhabited(return_) => return_::lower_host_return(
                         index,
@@ -245,14 +216,12 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
                         &mut self.additional,
                         context,
                     ),
-                    ValueInhabitation::Uninhabited(_) => {
-                        return_::lower_uninhabited_never_return(
-                            index,
-                            key,
-                            return_::HostNeverTargetIndex(host_index),
-                            &mut self.additional,
-                        );
-                    }
+                    ValueInhabitation::Uninhabited(_) => return_::lower_uninhabited_never_return(
+                        index,
+                        key,
+                        return_::HostNeverTargetIndex(host_index),
+                        &mut self.additional,
+                    ),
                 }
             }
         }
@@ -283,7 +252,7 @@ impl<Value: Clone, Never: Clone> HostFunctionLowering<'_, Value, Never> {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::{HostFailure, StatelessHostProfile};
+    use crate::host::{HostFailure, HostTypeDescriptor, StatelessHostProfile};
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId, ValueFunctionEntry};
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId};
     use crate::plan::execution::host::{
@@ -483,16 +452,14 @@ pub fn main() {
             assert_eq!(
                 function
                     .metadata()
-                    .resolve_type(&crate::host::HostTypeDescriptor::Parameter(index)),
+                    .resolve_type(&HostTypeDescriptor::Parameter(index)),
                 Some(argument.clone()),
             );
         }
         assert_eq!(
             function
                 .metadata()
-                .resolve_type(&crate::host::HostTypeDescriptor::Parameter(
-                    type_arguments.len()
-                )),
+                .resolve_type(&HostTypeDescriptor::Parameter(type_arguments.len())),
             None,
         );
         assert_eq!(function.type_(), &type_);

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 4,
+        format: 5,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -3612,6 +3612,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "ready", data::source::SourceSpan::new(60, 86)),
@@ -3709,6 +3710,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "map", data::source::SourceSpan::new(139, 187)),
@@ -3864,6 +3866,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("work_fixture"),
             site: data::source::HostCallSite::from_static("fixture/work", "all", data::source::SourceSpan::new(325, 358)),

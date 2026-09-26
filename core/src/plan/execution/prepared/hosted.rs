@@ -23,7 +23,7 @@ pub struct HostedModuleArtifact {
 }
 
 impl PreparedHostedModule {
-    pub(crate) fn new<Value: Clone, Never: Clone>(
+    pub(crate) fn new<Value: Clone, Never: Clone + From<Value>>(
         plan: crate::plan::ProfiledHostedLibraryModulePlan<
             crate::host::HostFunctionBinding<Value, Never>,
         >,

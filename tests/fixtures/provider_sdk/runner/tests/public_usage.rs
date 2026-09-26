@@ -70,6 +70,15 @@ pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
 
 @external(erlang, "provider_sdk", "non_empty")
 pub fn non_empty(value: String) -> Result(String, Int)
+@external(erlang, "provider_sdk", "around")
+pub fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+@external(erlang, "provider_sdk", "produce")
+pub fn produce() -> a
+@external(erlang, "provider_sdk", "late_failure")
+pub fn late_failure() -> a
+@external(erlang, "provider_sdk", "native_value")
+pub fn native_value() -> a
+
 "#;
 
 #[test]
@@ -356,4 +365,114 @@ pub fn main() {
 
     assert!(matches!(error, ExecutionError::Panic(_)));
     assert_eq!(state.provider.calls(), 0);
+}
+
+#[test]
+fn generic_public_registrations_keep_concrete_values_and_unresolved_errors() {
+    for (body, expected, effects, calls) in [
+        (
+            r#"sdk.around(fn(_) { echo "cleanup" }, fn(_) { echo "body" 42 })"#,
+            Ok("42"),
+            vec!["\"body\"", "\"cleanup\""],
+            1,
+        ),
+        (
+            r#"let _ = sdk.around(fn(_) { echo "cleanup" }, fn(_) { echo "body" panic as "stopped" }) 42"#,
+            Err("panic: stopped"),
+            vec!["\"body\"", "\"cleanup\""],
+            1,
+        ),
+        (
+            r#"let _ = sdk.around(fn(_) { echo "cleanup" panic as "cleanup stopped" }, fn(_) { echo "body" panic as "stopped" }) 42"#,
+            Err("panic: cleanup stopped"),
+            vec!["\"body\"", "\"cleanup\""],
+            1,
+        ),
+        ("let _ = sdk.produce 42", Ok("42"), vec![], 0),
+        (
+            "let _ = sdk.produce() 42",
+            Err(
+                "host function provider_sdk_example::provider/sdk.produce failed: producer stopped",
+            ),
+            vec![],
+            1,
+        ),
+        (
+            "sdk.produce() + 1",
+            Err(
+                "host function provider_sdk_example::provider/sdk.produce failed: producer stopped",
+            ),
+            vec![],
+            1,
+        ),
+        (
+            "let _ = sdk.late_failure() 42",
+            Err(
+                "host function provider_sdk_example::provider/sdk.late_failure failed: codec stopped",
+            ),
+            vec![],
+            1,
+        ),
+        (
+            "sdk.late_failure() + 1",
+            Err(
+                "host function provider_sdk_example::provider/sdk.late_failure failed: codec stopped",
+            ),
+            vec![],
+            1,
+        ),
+        ("let _: Nil = sdk.native_value() 42", Ok("42"), vec![], 1),
+        (
+            "let _ = sdk.native_value() 42",
+            Err(
+                "host function provider_sdk_example::provider/sdk.native_value failed: native value does not match the registered return type",
+            ),
+            vec![],
+            1,
+        ),
+    ] {
+        let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+            "prefix".into(),
+            EcoString::from("sdk:").into(),
+        )]));
+        let mut state = RunState {
+            provider: Component::initialize(&configuration).unwrap(),
+        };
+        let providers =
+            <Component as HostProviderComponentRegistration<Profile>>::providers().unwrap();
+        let hosts = HostProviderSet::from_providers(providers).unwrap();
+        let source = format!("import provider/sdk\npub fn main() {{ {body} }}");
+        let typed = compile_typed_host_program(
+            "provider_sdk_example",
+            "main",
+            [PackageSource::new(
+                "provider_sdk_example",
+                Vec::<&str>::new(),
+                [
+                    ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
+                    ModuleSource::new("main", "src/main.gleam", source),
+                ],
+            )],
+            hosts,
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let mut echo = Vec::new();
+        let result = execution_fixture::run(&mut execution, &mut state, &mut echo);
+        assert_eq!(
+            result
+                .map(|value| value.inspect().to_string())
+                .map_err(|error| error.to_string()),
+            expected.map(str::to_owned).map_err(str::to_owned),
+            "{body}"
+        );
+        assert_eq!(state.provider.calls(), calls);
+        assert_eq!(
+            echo.iter()
+                .map(|echo| echo.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            effects
+        );
+    }
 }

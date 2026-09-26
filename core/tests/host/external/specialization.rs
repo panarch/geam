@@ -2,22 +2,23 @@ use super::{
     Counter, CounterProvider, CounterSchema, ExternalProfile, ExternalRunState,
     GenericCounterSchema, HostCounter, HostGenericCounter,
 };
+use crate::execution_fixture;
 use geam_core::{
     ExecutionError, HostCall, HostCallCompletion, HostCallError, HostExternal, HostFailure,
     HostModule, HostProviderModule, HostProviderSet, HostTupleType, HostTypeList, HostTypeListEnd,
     HostTypeParameter, HostValue, HostedExecution, ModuleSource, PackageSource, PanicKind, Value,
-    compile_typed_host_program, plan_host_program,
+    ValueType, compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
 #[test]
-fn external_function_block_rejects_an_unrepresentable_step_before_its_callable() {
+fn external_function_block_executes_an_unresolved_step_before_its_callable() {
     type Item = HostTypeParameter<0>;
 
     fn produce<'call>(
         _call: HostCall<'call, ExternalProfile, CounterProvider, Item>,
     ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
-        Err(HostFailure::new("produce should not run").into())
+        Err(HostFailure::new("produce stopped").into())
     }
 
     fn new_counter<'call>(
@@ -71,9 +72,18 @@ pub fn main() {
     .expect("external function block source should compile");
     let plan =
         plan_host_program(typed).expect("external function block source should plan completely");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("the unresolved producer should prevent executable sealing");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let error = execution_fixture::run(
+        &mut execution,
+        &mut ExternalRunState::default(),
+        &mut Vec::new(),
+    )
+    .expect_err("native body should fail before the callable is returned");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
     };
+    assert_eq!(error.failure().message(), "produce stopped");
 
     assert_eq!(error.package(), "application");
     assert_eq!(error.module(), "main");
@@ -81,7 +91,7 @@ pub fn main() {
     assert!(error.signature().argument_types().is_empty());
     assert!(matches!(
         error.signature().return_(),
-        geam_core::ValueType::Parameter(_)
+        ValueType::Parameter(_)
     ));
 }
 
@@ -178,7 +188,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("generic external source should plan");
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external execution should seal");
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
@@ -249,7 +259,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("symbolic external callable source should plan");
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("symbolic external callable execution should seal");
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
@@ -338,7 +348,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("generic external source should plan");
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic external execution should seal");
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
@@ -469,7 +479,7 @@ pub fn main() {
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("generic function expression execution should seal");
 
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
@@ -543,7 +553,7 @@ pub fn main() {
         .expect("diverging external function call execution should seal");
 
     let mut echoes = Vec::new();
-    let error = crate::execution_fixture::run(
+    let error = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut echoes,
@@ -785,7 +795,7 @@ pub fn main() {
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external constant and list execution should seal");
 
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
@@ -981,7 +991,7 @@ pub fn main() {
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("external divergence execution should seal");
 
-    let returned = crate::execution_fixture::run(
+    let returned = execution_fixture::run(
         &mut execution,
         &mut ExternalRunState::default(),
         &mut Vec::new(),
