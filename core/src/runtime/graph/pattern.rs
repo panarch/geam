@@ -1,13 +1,12 @@
 use num_bigint::BigInt;
-use std::collections::HashMap;
 
 use super::bit_array;
 use super::environment::BlockEnvironment;
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, FloatBitSize,
-    IntegerLiteral, MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList,
-    MatchPatternListTail,
+    IntegerLiteral, MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding,
+    MatchPatternList, MatchPatternListTail,
 };
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
@@ -16,14 +15,14 @@ use crate::runtime::state::list::StoredListValueId;
 
 pub(super) struct MatchBindings {
     values: Vec<EvaluatedValue>,
-    ints: HashMap<MatchIntBindingId, BigInt>,
+    ints: Vec<BigInt>,
 }
 
 impl MatchBindings {
     fn new() -> Self {
         Self {
             values: Vec::new(),
-            ints: HashMap::new(),
+            ints: Vec::new(),
         }
     }
 
@@ -31,13 +30,15 @@ impl MatchBindings {
         self.values.push(value);
     }
 
-    fn bind_int(&mut self, binding: &MatchPatternBinding, value: &BigInt) {
-        self.ints.insert(binding.int_id(), value.clone());
-        self.bind(binding, EvaluatedValue::Int(value.clone()));
+    fn bind_int(&mut self, binding: &MatchIntPatternBinding, value: &BigInt) {
+        if binding.size.is_some() {
+            self.ints.push(value.clone());
+        }
+        self.bind(&binding.binding, EvaluatedValue::Int(value.clone()));
     }
 
     fn int(&self, binding: MatchIntBindingId) -> BigInt {
-        self.ints[&binding].clone()
+        self.ints[binding.index()].clone()
     }
 
     pub(in crate::runtime::graph) fn into_values(self) -> Vec<EvaluatedValue> {
@@ -349,11 +350,16 @@ fn evaluate_size(
     bindings: &MatchBindings,
     size: &BitArrayPatternSize,
 ) -> Option<usize> {
-    let value = evaluate_size_expression(environment, bindings, size.value());
-    let Ok(value) = usize::try_from(value) else {
-        return None;
-    };
-    value.checked_mul(usize::from(size.unit()))
+    match size {
+        BitArrayPatternSize::Fixed(bits) => usize::try_from(*bits).ok(),
+        BitArrayPatternSize::Dynamic { value, unit } => {
+            let value = evaluate_size_expression(environment, bindings, value);
+            let Ok(value) = usize::try_from(value) else {
+                return None;
+            };
+            value.checked_mul(usize::from(*unit))
+        }
+    }
 }
 
 fn evaluate_size_expression(
@@ -397,7 +403,7 @@ fn evaluate_size_expression(
 }
 
 fn match_int(
-    pattern: &BitArrayPatternValue<IntegerLiteral>,
+    pattern: &BitArrayPatternValue<IntegerLiteral, MatchIntPatternBinding>,
     value: &BigInt,
     bindings: &mut MatchBindings,
 ) -> bool {
@@ -484,8 +490,87 @@ mod tests {
     use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
-    use crate::runtime::{InvariantError, RuntimeListStorage, Value};
+    use crate::runtime::{InvariantError, RuntimeListStorage, Value, run_src};
     use ecow::EcoString;
+
+    #[test]
+    fn integer_results_without_size_dependencies_allocate_no_integer_scratch() {
+        let source = r#"
+pub fn main() {
+  let assert <<first, _ as alias, rest:bits>> = <<1, 2, 3>>
+  first + alias
+}
+"#;
+        assert_eq!(run_src(source), Value::Int(3.into()));
+        let plan = execution_plan(source);
+        let mut lists = RuntimeListStorage::default();
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let subject = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            BitArrayValue::from_bytes(vec![1, 2, 3]),
+        ));
+        let bindings = match_pattern(
+            &plan,
+            &mut lists,
+            &environment,
+            main_pattern(&plan),
+            &subject,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(bindings.ints.len(), 0);
+        assert_eq!(bindings.ints.capacity(), 0);
+        assert_eq!(
+            bindings.values,
+            vec![
+                EvaluatedValue::Int(1.into()),
+                EvaluatedValue::Int(2.into()),
+                EvaluatedValue::BitArray(EvaluatedBitArray::from_value(BitArrayValue::from_bytes(
+                    vec![3]
+                ),)),
+            ]
+        );
+    }
+
+    #[test]
+    fn size_scratch_keeps_only_referenced_aliases_and_is_fresh_for_each_match() {
+        let source = r#"
+pub fn main() {
+  let assert <<unused, _ as alias, first:size(alias), second:size(alias)>> = <<11, 8, 42, 7>>
+  first + second
+}
+"#;
+        assert_eq!(run_src(source), Value::Int(49.into()));
+        let plan = execution_plan(source);
+        let mut lists = RuntimeListStorage::default();
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        for (bytes, expected_size, expected_first, expected_second) in [
+            (vec![11, 8, 42, 7], 8, 42, 7),
+            (vec![11, 16, 1, 2, 3, 4], 16, 258, 772),
+        ] {
+            let subject = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+                BitArrayValue::from_bytes(bytes),
+            ));
+            let bindings = match_pattern(
+                &plan,
+                &mut lists,
+                &environment,
+                main_pattern(&plan),
+                &subject,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(bindings.ints, vec![expected_size.into()]);
+            assert_eq!(
+                bindings.values,
+                vec![
+                    EvaluatedValue::Int(11.into()),
+                    EvaluatedValue::Int(expected_size.into()),
+                    EvaluatedValue::Int(expected_first.into()),
+                    EvaluatedValue::Int(expected_second.into()),
+                ]
+            );
+        }
+    }
 
     #[test]
     fn successful_match_moves_selected_binding_buffers_and_duplicates_only_extra_uses() {
@@ -1205,6 +1290,58 @@ pub fn main() {
                 Value::Bool(false),
                 Value::Bool(false),
             ]),
+        );
+    }
+
+    #[test]
+    fn literal_sizes_preserve_zero_fields_units_and_late_pattern_failure() {
+        let source = r#"
+const zero_width = 0
+const negative_width = -1
+
+pub fn main() {
+  #(
+    case <<7>> { <<zero:signed-little-size(zero_width), byte>> -> zero + byte _ -> -1 },
+    case <<>> { <<zero:float-size(zero_width)>> -> zero _ -> -1.0 },
+    case <<>> { <<zero:float-little-size(zero_width)>> -> zero _ -> -1.0 },
+    case <<7>> {
+      <<empty:bits-size(zero_width), byte>> -> #(empty, byte)
+      _ -> #(<<1>>, -1)
+    },
+    case <<7>> {
+      <<zero:float-size(zero_width), byte>> if zero == 1.0 -> byte
+      <<byte>> -> byte + 1
+      _ -> -1
+    },
+    case <<18, 52>> { <<value:size(2)-unit(8)>> -> value _ -> -1 },
+    case <<7>> { <<head, _:size(4294967295)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+    case <<7>> { <<head, _:size(4294967296)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+    case <<7>> { <<head, _:size(18446744073709551615)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+    case <<7>> { <<head, _:size(9223372036854775808)-unit(2)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+    case <<7>> { <<head, _:size(18446744073709551616)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+    case <<7>> { <<head, _:size(negative_width)>> -> head + 100 <<byte>> -> byte _ -> -1 },
+  )
+}
+"#;
+        assert_eq!(
+            run_src(source),
+            Value::Tuple(vec![
+                Value::Int(7.into()),
+                Value::Float(0.0),
+                Value::Float(0.0),
+                Value::Tuple(vec![
+                    Value::BitArray(BitArrayValue::from_bytes(Vec::new())),
+                    Value::Int(7.into()),
+                ]),
+                Value::Int(8.into()),
+                Value::Int(4660.into()),
+                Value::Int(7.into()),
+                Value::Int(7.into()),
+                Value::Int(7.into()),
+                Value::Int(7.into()),
+                Value::Int(7.into()),
+                Value::Int(7.into()),
+            ])
         );
     }
 

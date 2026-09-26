@@ -1,7 +1,7 @@
 use super::{BindingValue, Bindings, PatternError};
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
-    BitArrayPatternSizeExpr, BitArrayPatternValue, MatchPatternBinding,
+    BitArrayPatternSizeExpr, BitArrayPatternValue, MatchIntPatternBinding, MatchPatternBinding,
 };
 use crate::plan::execution::prepared::admission::{local::Locals, operand::Operand};
 use crate::plan::execution::type_::ValueType;
@@ -17,13 +17,21 @@ impl Bindings {
             match segment {
                 BitArrayPatternSegment::Int { pattern, size, .. } => {
                     self.size(size, locals)?;
-                    self.bit_value(pattern, &ValueType::Int, true, |value| {
-                        super::super::literal::integer(value).map_err(PatternError::Integer)
-                    })?;
+                    self.bit_value(
+                        pattern,
+                        |value| {
+                            super::super::literal::integer(value).map_err(PatternError::Integer)
+                        },
+                        Self::int_binding,
+                    )?;
                 }
                 BitArrayPatternSegment::Float { pattern, size, .. } => {
                     self.size(size, locals)?;
-                    self.bit_value(pattern, &ValueType::Float, false, |_| Ok(()))?;
+                    self.bit_value(
+                        pattern,
+                        |_| Ok(()),
+                        |bindings, binding| bindings.bit_bind(binding, &ValueType::Float),
+                    )?;
                 }
                 BitArrayPatternSegment::Bits {
                     pattern,
@@ -52,14 +60,17 @@ impl Bindings {
         size: &BitArrayPatternSize,
         locals: &Locals<'data>,
     ) -> Result<(), PatternError> {
-        if size.unit == 0 {
+        let BitArrayPatternSize::Dynamic { value, unit } = size else {
+            return Ok(());
+        };
+        if *unit == 0 {
             return Err(PatternError::ZeroUnit);
         }
         enum Visit<'a> {
             Enter(&'a BitArrayPatternSizeExpr),
             Leave(*const BitArrayPatternSizeExpr),
         }
-        let mut pending = vec![Visit::Enter(&size.value)];
+        let mut pending = vec![Visit::Enter(value)];
         let mut active = HashSet::new();
         let mut complete = HashSet::new();
         while let Some(visit) = pending.pop() {
@@ -87,7 +98,7 @@ impl Bindings {
                     local.read(locals).map_err(PatternError::Local)?;
                 }
                 BitArrayPatternSizeExpr::Binding(binding) => {
-                    if !self.ints.contains(&binding.0) {
+                    if binding.index() >= self.ints {
                         return Err(PatternError::IntBinding { index: binding.0 });
                     }
                 }
@@ -104,18 +115,17 @@ impl Bindings {
         Ok(())
     }
 
-    fn bit_value<Value>(
+    fn bit_value<Value, Binding>(
         &mut self,
-        root: &BitArrayPatternValue<Value>,
-        type_: &'static ValueType,
-        integer: bool,
+        root: &BitArrayPatternValue<Value, Binding>,
         validate: fn(&Value) -> Result<(), PatternError>,
+        bind: fn(&mut Self, &Binding) -> Result<(), PatternError>,
     ) -> Result<(), PatternError> {
         let mut aliases = Vec::new();
         let mut visited = HashSet::new();
         let mut pattern = root;
         loop {
-            if !visited.insert(pattern as *const BitArrayPatternValue<Value>) {
+            if !visited.insert(pattern as *const BitArrayPatternValue<Value, Binding>) {
                 return Err(PatternError::RecursivePattern);
             }
             match pattern {
@@ -125,7 +135,7 @@ impl Bindings {
                 }
                 BitArrayPatternValue::Discard => break,
                 BitArrayPatternValue::Bind(binding) => {
-                    self.bit_bind(binding, type_, integer)?;
+                    bind(self, binding)?;
                     break;
                 }
                 BitArrayPatternValue::Alias {
@@ -138,7 +148,7 @@ impl Bindings {
             }
         }
         for binding in aliases.into_iter().rev() {
-            self.bit_bind(binding, type_, integer)?;
+            bind(self, binding)?;
         }
         Ok(())
     }
@@ -158,7 +168,7 @@ impl Bindings {
             match pattern {
                 BitArrayBindingPattern::Discard => break,
                 BitArrayBindingPattern::Bind(binding) => {
-                    self.bit_bind(binding, type_, false)?;
+                    self.bit_bind(binding, type_)?;
                     break;
                 }
                 BitArrayBindingPattern::Alias {
@@ -171,7 +181,7 @@ impl Bindings {
             }
         }
         for binding in aliases.into_iter().rev() {
-            self.bit_bind(binding, type_, false)?;
+            self.bit_bind(binding, type_)?;
         }
         Ok(())
     }
@@ -180,11 +190,20 @@ impl Bindings {
         &mut self,
         binding: &MatchPatternBinding,
         type_: &'static ValueType,
-        integer: bool,
     ) -> Result<(), PatternError> {
-        self.bind(binding, BindingValue::Scalar(type_))?;
-        if integer {
-            self.ints.insert(binding.index);
+        self.bind(binding, BindingValue::Scalar(type_))
+    }
+
+    fn int_binding(&mut self, binding: &MatchIntPatternBinding) -> Result<(), PatternError> {
+        self.bit_bind(&binding.binding, &ValueType::Int)?;
+        if let Some(slot) = binding.size {
+            if slot.index() != self.ints {
+                return Err(PatternError::IntBindingOrder {
+                    expected: self.ints,
+                    found: slot.index(),
+                });
+            }
+            self.ints += 1;
         }
         Ok(())
     }
@@ -199,37 +218,109 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         BitArrayStringPattern, Endianness, IntLocalId, IntegerLiteral, MatchIntBindingId,
-        StringEncoding,
+        MatchIntPatternBinding, StringEncoding,
     };
     use crate::plan::execution::prepared::admission::{literal::IntegerError, local::LocalError};
     use crate::plan::execution::storage::{Node, Table};
     use num_bigint::{BigInt, Sign};
-    use std::collections::HashSet;
 
     const FLOAT_LITERAL: fn(&f64) -> Result<(), PatternError> = |_| Ok(());
+    const FLOAT_BINDING: fn(&mut Bindings, &MatchPatternBinding) -> Result<(), PatternError> =
+        |bindings, binding| bindings.bit_bind(binding, &ValueType::Float);
     const INTEGER_LITERAL: fn(&IntegerLiteral) -> Result<(), PatternError> =
         |value| super::super::super::literal::integer(value).map_err(PatternError::Integer);
+
+    #[test]
+    fn fixed_sizes_admit_target_independent_bits_without_dynamic_state() {
+        let bindings = Bindings {
+            values: Vec::new(),
+            ints: 0,
+        };
+        let locals = Locals::default();
+        for bits in [0, u64::from(u32::MAX), u64::from(u32::MAX) + 1, u64::MAX] {
+            assert_eq!(
+                bindings.size(&BitArrayPatternSize::Fixed(bits), &locals),
+                Ok(())
+            );
+        }
+        assert_eq!(
+            bindings.size(
+                &BitArrayPatternSize::Dynamic {
+                    value: BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
+                    unit: 1,
+                },
+                &locals
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn integer_size_slots_are_dense_and_distinct_from_general_results() {
+        let mut bindings = Bindings {
+            values: Vec::new(),
+            ints: 0,
+        };
+        for (index, size) in [(0, None), (1, Some(MatchIntBindingId(0))), (2, None)] {
+            assert_eq!(
+                bindings.int_binding(&MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(index),
+                    size,
+                }),
+                Ok(())
+            );
+        }
+        assert_eq!(bindings.values.len(), 3);
+        assert_eq!(bindings.ints, 1);
+        for found in [0, 2] {
+            let mut invalid = Bindings {
+                values: Vec::new(),
+                ints: 0,
+            };
+            assert_eq!(
+                invalid.int_binding(&MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(0),
+                    size: Some(MatchIntBindingId(0)),
+                }),
+                Ok(())
+            );
+            assert_eq!(
+                invalid.int_binding(&MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(1),
+                    size: Some(MatchIntBindingId(found)),
+                }),
+                Err(PatternError::IntBindingOrder { expected: 1, found })
+            );
+        }
+    }
 
     #[test]
     fn aliases_preserve_binding_order_and_only_integer_values_become_size_bindings() {
         let mut bindings = Bindings {
             values: Vec::new(),
-            ints: HashSet::new(),
+            ints: 0,
         };
-        let int: BitArrayPatternValue<IntegerLiteral> = BitArrayPatternValue::Alias {
-            pattern: Box::new(BitArrayPatternValue::Bind(MatchPatternBinding::new(0))).into(),
-            binding: MatchPatternBinding::new(1),
-        };
+        let int: BitArrayPatternValue<IntegerLiteral, MatchIntPatternBinding> =
+            BitArrayPatternValue::Alias {
+                pattern: Box::new(BitArrayPatternValue::Bind(MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(0),
+                    size: Some(MatchIntBindingId(0)),
+                }))
+                .into(),
+                binding: MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(1),
+                    size: Some(MatchIntBindingId(1)),
+                },
+            };
         assert_eq!(
-            bindings.bit_value(&int, &ValueType::Int, true, INTEGER_LITERAL),
+            bindings.bit_value(&int, INTEGER_LITERAL, Bindings::int_binding),
             Ok(())
         );
         assert_eq!(
             bindings.bit_value(
                 &BitArrayPatternValue::Literal(BigInt::from(42).into()),
-                &ValueType::Int,
-                true,
                 INTEGER_LITERAL,
+                Bindings::int_binding,
             ),
             Ok(())
         );
@@ -239,31 +330,35 @@ mod tests {
                     sign: Sign::Plus,
                     digits: Table::Static(&[]),
                 }),
-                &ValueType::Int,
-                true,
                 INTEGER_LITERAL,
+                Bindings::int_binding,
             ),
             Err(PatternError::Integer(IntegerError::EmptyMagnitude))
         );
-        assert_eq!(bindings.ints, HashSet::from([0, 1]));
+        assert_eq!(bindings.ints, 2);
         assert_eq!(
             bindings.bit_value(
                 &BitArrayPatternValue::Discard,
-                &ValueType::Int,
-                true,
-                INTEGER_LITERAL
+                INTEGER_LITERAL,
+                Bindings::int_binding
             ),
             Ok(())
         );
         for pattern in [
-            BitArrayPatternValue::Bind(MatchPatternBinding::new(3)),
+            BitArrayPatternValue::Bind(MatchIntPatternBinding {
+                binding: MatchPatternBinding::new(3),
+                size: None,
+            }),
             BitArrayPatternValue::Alias {
                 pattern: Box::new(BitArrayPatternValue::Discard).into(),
-                binding: MatchPatternBinding::new(3),
+                binding: MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(3),
+                    size: None,
+                },
             },
         ] {
             assert_eq!(
-                bindings.bit_value(&pattern, &ValueType::Int, true, INTEGER_LITERAL),
+                bindings.bit_value(&pattern, INTEGER_LITERAL, Bindings::int_binding),
                 Err(PatternError::BindingOrder {
                     expected: 2,
                     found: 3
@@ -283,12 +378,12 @@ mod tests {
             binding: MatchPatternBinding::new(2),
         };
         assert_eq!(
-            bindings.bit_value(&float, &ValueType::Float, false, FLOAT_LITERAL),
+            bindings.bit_value(&float, FLOAT_LITERAL, FLOAT_BINDING),
             Ok(())
         );
         let discard = BitArrayPatternValue::<f64>::Discard;
         assert_eq!(
-            bindings.bit_value(&discard, &ValueType::Float, false, FLOAT_LITERAL),
+            bindings.bit_value(&discard, FLOAT_LITERAL, FLOAT_BINDING),
             Ok(())
         );
         let bits = BitArrayBindingPattern::Alias {
@@ -304,7 +399,7 @@ mod tests {
             bindings.bit_binding(&point, &ValueType::UtfCodepoint),
             Ok(())
         );
-        assert_eq!(bindings.ints, HashSet::from([0, 1]));
+        assert_eq!(bindings.ints, 2);
         assert!(matches!(
             bindings.values[2..],
             [
@@ -334,7 +429,7 @@ mod tests {
         );
         let value = BitArrayPatternValue::<f64>::Bind(MatchPatternBinding::new(7));
         assert_eq!(
-            bindings.bit_value(&value, &ValueType::Float, false, FLOAT_LITERAL),
+            bindings.bit_value(&value, FLOAT_LITERAL, FLOAT_BINDING),
             Err(PatternError::BindingOrder {
                 expected: 6,
                 found: 7
@@ -345,7 +440,7 @@ mod tests {
             binding: MatchPatternBinding::new(7),
         };
         assert_eq!(
-            bindings.bit_value(&alias, &ValueType::Float, false, FLOAT_LITERAL),
+            bindings.bit_value(&alias, FLOAT_LITERAL, FLOAT_BINDING),
             Err(PatternError::BindingOrder {
                 expected: 6,
                 found: 7
@@ -355,10 +450,14 @@ mod tests {
 
     #[test]
     fn cyclic_literal_and_capture_aliases_are_rejected_before_binding() {
-        static INT: BitArrayPatternValue<IntegerLiteral> = BitArrayPatternValue::Alias {
-            pattern: Node::Static(&INT),
-            binding: MatchPatternBinding { index: 0 },
-        };
+        static INT: BitArrayPatternValue<IntegerLiteral, MatchIntPatternBinding> =
+            BitArrayPatternValue::Alias {
+                pattern: Node::Static(&INT),
+                binding: MatchIntPatternBinding {
+                    binding: MatchPatternBinding { index: 0 },
+                    size: Some(MatchIntBindingId(0)),
+                },
+            };
         static FLOAT: BitArrayPatternValue<f64> = BitArrayPatternValue::Alias {
             pattern: Node::Static(&FLOAT),
             binding: MatchPatternBinding { index: 0 },
@@ -369,14 +468,14 @@ mod tests {
         };
         let mut bindings = Bindings {
             values: Vec::new(),
-            ints: HashSet::new(),
+            ints: 0,
         };
         assert_eq!(
-            bindings.bit_value(&INT, &ValueType::Int, true, INTEGER_LITERAL),
+            bindings.bit_value(&INT, INTEGER_LITERAL, Bindings::int_binding),
             Err(PatternError::RecursivePattern)
         );
         assert_eq!(
-            bindings.bit_value(&FLOAT, &ValueType::Float, false, FLOAT_LITERAL),
+            bindings.bit_value(&FLOAT, FLOAT_LITERAL, FLOAT_BINDING),
             Err(PatternError::RecursivePattern)
         );
         assert_eq!(
@@ -384,7 +483,7 @@ mod tests {
             Err(PatternError::RecursivePattern)
         );
         assert!(bindings.values.is_empty());
-        assert!(bindings.ints.is_empty());
+        assert_eq!(bindings.ints, 0);
     }
 
     #[test]
@@ -400,7 +499,7 @@ mod tests {
         let locals = Locals::default();
         let bindings = Bindings {
             values: vec![BindingValue::Scalar(&ValueType::Int)],
-            ints: HashSet::from([0]),
+            ints: 1,
         };
         for value in [
             BitArrayPatternSizeExpr::Add {
@@ -426,7 +525,7 @@ mod tests {
             BitArrayPatternSizeExpr::Binding(MatchIntBindingId(0)),
         ] {
             assert_eq!(
-                bindings.size(&BitArrayPatternSize { value, unit: 1 }, &locals),
+                bindings.size(&BitArrayPatternSize::Dynamic { value, unit: 1 }, &locals),
                 Ok(())
             );
         }
@@ -464,7 +563,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                bindings.size(&BitArrayPatternSize { value, unit }, &locals),
+                bindings.size(&BitArrayPatternSize::Dynamic { value, unit }, &locals),
                 Err(expected)
             );
         }
@@ -472,13 +571,13 @@ mod tests {
 
     #[test]
     fn segment_validation_preserves_literal_size_and_capture_diagnostics() {
-        let size = BitArrayPatternSize {
+        let size = BitArrayPatternSize::Dynamic {
             value: BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
             unit: 1,
         };
         let mut bindings = Bindings {
             values: Vec::new(),
-            ints: HashSet::new(),
+            ints: 0,
         };
         let pattern = BitArrayPattern {
             segments: vec![
@@ -517,9 +616,9 @@ mod tests {
             (
                 BitArrayPatternSegment::Int {
                     pattern: BitArrayPatternValue::Discard,
-                    size: BitArrayPatternSize {
+                    size: BitArrayPatternSize::Dynamic {
+                        value: BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
                         unit: 0,
-                        ..size.clone()
                     },
                     endianness: Endianness::Big,
                     signedness: crate::plan::execution::graph::Signedness::Unsigned,
@@ -529,9 +628,9 @@ mod tests {
             (
                 BitArrayPatternSegment::Float {
                     pattern: BitArrayPatternValue::Discard,
-                    size: BitArrayPatternSize {
+                    size: BitArrayPatternSize::Dynamic {
+                        value: BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
                         unit: 0,
-                        ..size.clone()
                     },
                     endianness: Endianness::Big,
                 },
@@ -571,9 +670,9 @@ mod tests {
             (
                 BitArrayPatternSegment::Bits {
                     pattern: BitArrayBindingPattern::Discard,
-                    size: Some(BitArrayPatternSize {
+                    size: Some(BitArrayPatternSize::Dynamic {
+                        value: BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
                         unit: 0,
-                        ..size.clone()
                     }),
                     unit: 1,
                 },

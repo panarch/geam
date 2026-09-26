@@ -18,11 +18,11 @@ pub(crate) use block::{
     ExternalListInstruction, ExternalListInstructionView, FloatInstruction, FloatSwitch,
     FunctionCapture, FunctionInstruction, FunctionInstructionKind, FunctionTarget, Instruction,
     InstructionKind, IntInstruction, IntSwitch, Jump, LetAssertPanic, ListInstruction, Match,
-    MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchPattern, MatchPatternBinding,
-    MatchPatternList, MatchPatternListTail, NeverCall, NeverCallTarget, NilInstruction,
-    ParameterListInstruction, ProfiledBlock, ProfiledInstruction, ProfiledInstructionKind,
-    Signedness, SourceStop, SourceStopKind, StringInstruction, StringSwitch, Terminator,
-    TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
+    MatchEdge, MatchEdgeArgument, MatchIntBindingId, MatchIntPatternBinding, MatchPattern,
+    MatchPatternBinding, MatchPatternList, MatchPatternListTail, NeverCall, NeverCallTarget,
+    NilInstruction, ParameterListInstruction, ProfiledBlock, ProfiledInstruction,
+    ProfiledInstructionKind, Signedness, SourceStop, SourceStopKind, StringInstruction,
+    StringSwitch, Terminator, TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use exit::BlockGraphExitId;
 pub(crate) use integer::IntegerLiteral;
