@@ -13,7 +13,6 @@ pub struct HostSpecializationError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostSpecializationErrorReason {
-    UndeterminedReturnStorage,
     UninhabitedCallableCapture { capture: crate::plan::ValueType },
     UninhabitedCallbackArguments { callback: FunctionType },
     ConflictingNativeConversions { type_: crate::plan::ValueType },
@@ -31,21 +30,6 @@ impl HostSpecializationError {
             function: template.name().into(),
             signature,
             reason: HostSpecializationErrorReason::UninhabitedCallableCapture { capture },
-        }
-    }
-
-    pub(in crate::plan::execution) fn undetermined_return_storage(
-        package: EcoString,
-        module: EcoString,
-        function: EcoString,
-        signature: FunctionType,
-    ) -> Self {
-        Self {
-            package,
-            module,
-            function,
-            signature,
-            reason: HostSpecializationErrorReason::UndeterminedReturnStorage,
         }
     }
 
@@ -110,11 +94,6 @@ impl fmt::Display for HostSpecializationError {
                 "host function `{}::{}.{}` constructs a native callable `{:?}` with uninhabited capture `{:?}`",
                 self.package, self.module, self.function, self.signature, capture,
             ),
-            HostSpecializationErrorReason::UndeterminedReturnStorage => write!(
-                formatter,
-                "host function `{}::{}.{}` has an executable specialization `{:?}` whose successful return storage cannot be determined",
-                self.package, self.module, self.function, self.signature,
-            ),
             HostSpecializationErrorReason::UninhabitedCallbackArguments { callback } => write!(
                 formatter,
                 "host function `{}::{}.{}` has an executable specialization `{:?}` that exposes callback `{:?}` with uninhabited arguments",
@@ -160,34 +139,6 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "host function `application::pricing.adjust` constructs a native callable `FunctionType { arguments: [Int], return_: Bool }` with uninhabited capture `Parameter(TypeParameterId(0))`",
-        );
-        assert_eq!(error.clone(), error);
-    }
-
-    #[test]
-    fn exposes_the_undetermined_return_storage_specialization() {
-        let signature = FunctionType::new(
-            Vec::new(),
-            ValueType::Parameter(crate::plan::TypeParameterId(0)),
-        );
-        let error = HostSpecializationError::undetermined_return_storage(
-            "host_support".into(),
-            "host/generic".into(),
-            "produce".into(),
-            signature.clone(),
-        );
-
-        assert_eq!(error.package(), "host_support");
-        assert_eq!(error.module(), "host/generic");
-        assert_eq!(error.function(), "produce");
-        assert_eq!(error.signature(), &signature);
-        assert_eq!(
-            error.reason(),
-            &HostSpecializationErrorReason::UndeterminedReturnStorage,
-        );
-        assert_eq!(
-            error.to_string(),
-            "host function `host_support::host/generic.produce` has an executable specialization `FunctionType { arguments: [], return_: Parameter(TypeParameterId(0)) }` whose successful return storage cannot be determined",
         );
         assert_eq!(error.clone(), error);
     }

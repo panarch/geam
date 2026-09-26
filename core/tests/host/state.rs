@@ -1,3 +1,4 @@
+use crate::execution_fixture;
 use geam_core::StringValue;
 use geam_core::{
     BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostFailure,
@@ -108,7 +109,7 @@ pub fn main() {
         audit_enabled: false,
     };
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut state, &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(1.into()),
             Value::Float(2.5),
@@ -154,7 +155,7 @@ pub fn main() {
         total: BigInt::from(9),
         audit_enabled: false,
     };
-    let error = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
+    let error = execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect_err("fallible Bool host function should fail");
     let ExecutionError::Host(error) = error else {
         panic!("fallible Bool host function should produce a host error");
@@ -171,13 +172,14 @@ pub fn main() {
 }
 
 #[test]
-fn stateful_profiles_reject_reachable_unresolved_value_returns_while_sealing() {
+fn stateful_profiles_execute_unresolved_returns_with_the_original_state() {
     type Item = HostTypeParameter<0>;
 
     fn produce<'call>(
-        _call: HostCall<'call, StatefulProfile, Counter, Item>,
+        mut call: HostCall<'call, StatefulProfile, Counter, Item>,
     ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
-        Err(HostFailure::new("produce should not run").into())
+        *call.state() += 1;
+        Err(HostFailure::new("produce stopped").into())
     }
 
     let provider = HostProviderModule::<StatefulProfile>::new("application", "main")
@@ -205,9 +207,20 @@ pub fn main() {
     )
     .expect("host program should compile");
     let plan = plan_host_program(typed).expect("host program should plan");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("reachable unresolved value return should not seal");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let mut state = RunState {
+        total: BigInt::from(9),
+        audit_enabled: false,
     };
+    let error = execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
+        .expect_err("native body should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
+    };
+    assert_eq!(error.failure().message(), "produce stopped");
+    assert_eq!(state.total, BigInt::from(10));
+    assert!(!state.audit_enabled);
 
     assert_eq!(error.package(), "application");
     assert_eq!(error.module(), "main");
@@ -252,7 +265,7 @@ pub fn main() {
         total: BigInt::from(9),
         audit_enabled: true,
     };
-    let value = crate::execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut state, &mut Vec::new())
         .expect("generic list program should execute");
     let Value::List(value) = value else {
         panic!("main should return a list");
@@ -335,7 +348,7 @@ pub fn main() {
     let mut echoes = Vec::new();
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut state, &mut echoes),
+        execution_fixture::run(&mut execution, &mut state, &mut echoes),
         Ok(Value::Tuple(vec![
             Value::Int(3.into()),
             Value::Int(12.into()),
@@ -352,7 +365,7 @@ pub fn main() {
         audit_enabled: true,
     };
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut independent_state, &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(103.into()),
             Value::Int(112.into()),

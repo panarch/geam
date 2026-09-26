@@ -27,6 +27,10 @@ impl HostFailure {
     pub fn message(&self) -> &EcoString {
         &self.message
     }
+
+    pub(super) fn uninhabited_return() -> Self {
+        Self::new("native call completed with a value for an uninhabited return type")
+    }
 }
 
 impl HostCallError {

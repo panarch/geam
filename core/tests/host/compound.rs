@@ -1,14 +1,15 @@
+use crate::execution_fixture;
 use geam_core::StringValue;
 use geam_core::{
-    BitArrayValue, HostCall, HostCallCompletion, HostCallError, HostCustom,
+    BitArrayValue, ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCustom,
     HostCustomConstructorAt, HostCustomConstructorDefinition, HostCustomConstructorList,
     HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
     HostCustomTypeArgument, HostFailure, HostList, HostListType, HostLocation, HostModule,
     HostProvider, HostProviderModule, HostProviderSet, HostTuple, HostTupleType, HostTypeIndex0,
     HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, HostedExecution, ListValue,
-    ModuleSource, PackageSource, StatelessHostProfile, Value, compile_typed_host_program,
-    plan_host_program,
+    ModuleSource, PackageSource, StatelessHostProfile, Value, ValueType,
+    compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
 
@@ -212,7 +213,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("recursive custom source should plan");
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("recursive custom execution should seal");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("recursive custom host return should run");
 
     assert_eq!(value.inspect().to_string(), "Next(End)");
@@ -282,7 +283,7 @@ function tuple#0
 
     assert_eq!(execution.explain().to_string().trim(), expected_explanation);
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Int(42.into()),
             Value::Int(2.into()),
@@ -336,7 +337,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -467,7 +468,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("every returned function family should execute");
 
     assert_eq!(
@@ -526,7 +527,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("symbolic host references should materialize");
 
     assert_eq!(
@@ -575,7 +576,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution = HostedExecution::try_from_module_plan(plan)
         .expect("uninhabited host callback should be erased");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("uninhabited function reference should materialize");
 
     assert_eq!(value.inspect().to_string(), "//fn(a) { ... }");
@@ -626,7 +627,7 @@ pub fn main() {
         .expect("uninhabited custom alternative should not block sealing");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(1.into())),
     );
 }
@@ -703,7 +704,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("unresolved empty lists should remain representable");
 
     assert_eq!(value.inspect().to_string(), "#([], [], 1)");
@@ -751,7 +752,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
             .expect("list tuple provider should run")
             .inspect()
             .to_string(),
@@ -806,7 +807,7 @@ pub fn main() {
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
     let nested = ListValue::try_list(
-        geam_core::ValueType::Int,
+        ValueType::Int,
         vec![ListValue::int(vec![1.into(), 2.into()])],
     )
     .expect("nested list item type should match");
@@ -817,11 +818,11 @@ pub fn main() {
     ]);
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(expected.clone()),
     );
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(expected),
     );
 }
@@ -866,7 +867,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::List(ListValue::int(vec![
             1.into(),
             2.into(),
@@ -937,7 +938,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -988,9 +989,9 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let error = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let error = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect_err("empty generic list should fail");
-    let geam_core::ExecutionError::Host(error) = error else {
+    let ExecutionError::Host(error) = error else {
         panic!("generic list provider should produce a host error");
     };
 
@@ -1000,11 +1001,9 @@ pub fn main() {
     assert_eq!(error.failure().message(), "list is empty");
     assert_eq!(
         error.signature().argument_types(),
-        [geam_core::ValueType::List(Box::new(
-            geam_core::ValueType::Int
-        ))],
+        [ValueType::List(Box::new(ValueType::Int))],
     );
-    assert_eq!(error.signature().return_(), &geam_core::ValueType::Int);
+    assert_eq!(error.signature().return_(), &ValueType::Int);
     let HostLocation::Resolved { site, path, line } = error.location() else {
         panic!("source-backed compound failure should resolve its call site");
     };
@@ -1015,7 +1014,7 @@ pub fn main() {
 }
 
 #[test]
-fn rejects_a_reachable_generic_list_return_without_a_concrete_item_family() {
+fn generic_list_access_preserves_empty_failure_without_a_concrete_item_family() {
     type Item = HostTypeParameter<0>;
     type Values = HostListType<Item>;
 
@@ -1054,9 +1053,14 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("unresolved reachable host return should not seal");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let error = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+        .expect_err("native body should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
     };
+    assert_eq!(error.failure().message(), "list is empty");
 
     assert_eq!(error.package(), "application");
     assert_eq!(error.module(), "main");
@@ -1064,26 +1068,26 @@ pub fn main() {
     let [argument] = error.signature().argument_types() else {
         panic!("first should have one argument");
     };
-    let geam_core::ValueType::List(item) = argument else {
+    let ValueType::List(item) = argument else {
         panic!("first should accept a list");
     };
-    let geam_core::ValueType::Parameter(argument) = item.as_ref() else {
+    let ValueType::Parameter(argument) = item.as_ref() else {
         panic!("the list item should remain generic");
     };
-    let geam_core::ValueType::Parameter(return_) = error.signature().return_() else {
+    let ValueType::Parameter(return_) = error.signature().return_() else {
         panic!("the return should remain generic");
     };
     assert_eq!(argument, return_);
 }
 
 #[test]
-fn rejects_a_reachable_value_producer_without_a_concrete_return_family() {
+fn executes_a_value_producer_without_a_concrete_return_family() {
     type Item = HostTypeParameter<0>;
 
     fn produce<'call>(
         _call: HostCall<'call, StatelessHostProfile, Identity, Item>,
     ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
-        Err(HostFailure::new("produce should not run").into())
+        Err(HostFailure::new("produce stopped").into())
     }
 
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
@@ -1111,9 +1115,14 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("unresolved reachable host return should not seal");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let error = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+        .expect_err("native body should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
     };
+    assert_eq!(error.failure().message(), "produce stopped");
 
     assert_eq!(error.package(), "application");
     assert_eq!(error.module(), "main");
@@ -1121,24 +1130,24 @@ pub fn main() {
     assert!(error.signature().argument_types().is_empty());
     assert!(matches!(
         error.signature().return_(),
-        geam_core::ValueType::Parameter(_)
+        ValueType::Parameter(_)
     ));
 }
 
 #[test]
-fn reports_the_first_unrepresentable_specialization_in_source_evaluation_order() {
+fn reports_the_first_native_failure_in_source_evaluation_order() {
     type Item = HostTypeParameter<0>;
 
     fn first<'call>(
         _call: HostCall<'call, StatelessHostProfile, Identity, Item>,
     ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
-        Err(HostFailure::new("first should not run").into())
+        Err(HostFailure::new("first stopped").into())
     }
 
     fn second<'call>(
         _call: HostCall<'call, StatelessHostProfile, Identity, Item>,
     ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
-        Err(HostFailure::new("second should not run").into())
+        Err(HostFailure::new("second stopped").into())
     }
 
     let provider = HostProviderModule::<StatelessHostProfile>::new("application", "main")
@@ -1173,9 +1182,14 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("the first unresolved reachable host return should not seal");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let error = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+        .expect_err("native body should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
     };
+    assert_eq!(error.failure().message(), "first stopped");
 
     assert_eq!(error.package(), "application");
     assert_eq!(error.module(), "main");
@@ -1183,7 +1197,7 @@ pub fn main() {
     assert!(error.signature().argument_types().is_empty());
     assert!(matches!(
         error.signature().return_(),
-        geam_core::ValueType::Parameter(_)
+        ValueType::Parameter(_)
     ));
 }
 
@@ -1226,13 +1240,13 @@ pub fn main() {
         .expect("unused provider should not block sealing");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
 
 #[test]
-fn applies_specialization_sealing_to_dependency_package_providers() {
+fn executes_unresolved_dependency_package_providers() {
     type Item = HostTypeParameter<0>;
     type Values = HostListType<Item>;
 
@@ -1285,16 +1299,21 @@ pub fn main() {
     )
     .expect("host source should compile");
     let plan = plan_host_program(typed).expect("host source should plan");
-    let Err(error) = HostedExecution::try_from_module_plan(plan) else {
-        panic!("dependency provider should use the same sealing boundary");
+    let mut execution = HostedExecution::try_from_module_plan(plan)
+        .expect("failure-only specialization should seal");
+    let error = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+        .expect_err("native body should fail");
+    let ExecutionError::Host(error) = error else {
+        panic!("native failure should retain its host error domain");
     };
+    assert_eq!(error.failure().message(), "list is empty");
 
     assert_eq!(error.package(), "host_support");
     assert_eq!(error.module(), "host/generic");
     assert_eq!(error.function(), "first");
     assert!(matches!(
         error.signature().return_(),
-        geam_core::ValueType::Parameter(_)
+        ValueType::Parameter(_)
     ));
 }
 
@@ -1363,7 +1382,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(42.into())),
     );
 }
@@ -1409,7 +1428,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("source-less compound host should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Int(5.into())),
     );
 }
@@ -1488,7 +1507,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Tuple(
                 [8, 7, 6, 5, 4, 3, 2, 1]
@@ -1572,7 +1591,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Bool(true)),
     );
 }
@@ -1654,7 +1673,7 @@ pub fn main() {
     let plan = plan_host_program(typed).expect("host source should plan");
     let mut execution =
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
-    let value = crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
+    let value = execution_fixture::run(&mut execution, &mut (), &mut Vec::new())
         .expect("custom host calls should run");
 
     assert_eq!(
@@ -1730,7 +1749,7 @@ pub fn main() {
         HostedExecution::try_from_module_plan(plan).expect("hosted execution should seal");
 
     assert_eq!(
-        crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+        execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
         Ok(Value::Tuple(vec![
             Value::Bool(true),
             Value::Bool(true),

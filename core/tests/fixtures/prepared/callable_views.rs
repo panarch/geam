@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 4,
+        format: 5,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -14,6 +14,10 @@ pub fn make_constant(value: a) -> fn() -> a
 pub fn make_adder(value: Int) -> fn(Int) -> Int
 @external(erlang, "ffi", "wrap")
 pub fn wrap(callback: fn(a) -> b) -> fn(a) -> b
+@external(erlang, "ffi", "make_stop")
+pub fn make_stop() -> fn() -> a
+@external(erlang, "ffi", "produce")
+pub fn produce() -> a
 "#)),
                 },
                 data::program::ExecutionModuleContext {
@@ -21,6 +25,8 @@ pub fn wrap(callback: fn(a) -> b) -> fn(a) -> b
                     source_context: Some(data::source::SourceContext::from_static_block("library.gleam", r#"
 
 import support
+pub type Never
+pub fn call_never(callback: fn() -> Never) { let _ = callback() 42 }
 fn apply(callback, value) { callback(value) }
 pub fn make_native(offset: Int) -> fn(Int) -> Int { support.make_adder(offset) }
 pub fn keep(adjust: fn(Int) -> Int) -> fn(Int) -> Int { adjust }
@@ -31,6 +37,19 @@ pub fn maker() -> fn(Int) -> fn(Int) -> Int { fn(offset) { support.make_adder(of
 pub fn result_function() -> fn(Int) -> Result(Int, Nil) { fn(value) { Ok(value) } }
 pub fn picker() -> fn(List(Result(Int, Nil))) -> Int {
     fn(items) { case items { [Ok(value)] -> value _ -> 0 } }
+}
+pub fn fail() {
+    let stopped = support.make_stop()
+    echo "before callable"
+    let _ = stopped()
+    echo "unreachable"
+    42
+}
+pub fn producer() {
+    echo "before producer"
+    let _ = support.produce()
+    echo "unreachable"
+    42
 }
 pub fn run() {
     let add = support.make_adder(40)
@@ -539,7 +558,17 @@ pub fn check() {
                         ]),
                     },
                 ]),
-                definitions: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[
+                    data::type_::CustomDefinition {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("library"),
+                        name: data::Text::Static("Never"),
+                        publicity: data::type_::CustomTypePublicity::Public,
+                        opaque: false,
+                        parameters: 0,
+                        constructors: data::Storage::Static(&[]),
+                    },
+                ]),
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
@@ -715,6 +744,7 @@ pub fn check() {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: Some(data::host::HostCallableEntry {
                 family: data::function::FunctionTableFamily::Custom,
                 index: 0,
@@ -811,6 +841,7 @@ pub fn check() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: Some(data::host::HostCallableEntry {
                 family: data::function::FunctionTableFamily::Custom,
                 index: 1,

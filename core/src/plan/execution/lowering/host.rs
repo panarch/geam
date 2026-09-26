@@ -13,18 +13,22 @@ use super::{
     LoweredExecution, LoweringCompletion, LoweringContext, ProgramConstantTemplates,
     SpecializationOutcome, SpecializationState, try_resolve_specialization_fixed_point,
 };
-use crate::host::HostProfile;
-use crate::plan::execution::LibraryFunctionEntries;
+use crate::host::{HostFunctionBinding, HostProfile};
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::host::{
-    HostBindingTables, HostFunctionTables, HostSpecializationError, HostedExecutionProfile,
+    CallableRegistration, HostBindingTables, HostFunctionTables, HostSpecializationError,
+    HostedExecutionProfile,
 };
+use crate::plan::execution::storage::Table;
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
+use crate::plan::execution::{LibraryFunctionEntries, LibraryNativeConstruction};
 use crate::plan::{
-    HostedModulePlan, HostedModulePlanParts, HostedPlannedModule, LibraryEntry, ModuleId,
-    ProfiledHostedLibraryModulePlan, ProfiledHostedLibraryModulePlanParts,
+    FunctionTemplateId, FunctionType, HostedModulePlan, HostedModulePlanParts, HostedPlannedModule,
+    LibraryEntry, LibraryNativeCallable, ModuleId, ProfiledHostedLibraryModulePlan,
+    ProfiledHostedLibraryModulePlanParts,
 };
 use std::collections::HashSet;
+use std::sync::Arc;
 use table::HostFunctionRegistry;
 use template::{HostLoweringTemplate, HostTemplateCatalog};
 
@@ -56,11 +60,11 @@ type LoweredHostedLibrary<Value, Never> = (
     ExecutionProgram<HostedExecutionProfile>,
     HostBindingTables<Value, Never>,
     LibraryFunctionEntries,
-    crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
+    Table<LibraryNativeConstruction>,
 );
 
-pub(in crate::plan::execution) fn lower_hosted_library<Value: Clone, Never: Clone>(
-    module_plan: ProfiledHostedLibraryModulePlan<crate::host::HostFunctionBinding<Value, Never>>,
+pub(in crate::plan::execution) fn lower_hosted_library<Value: Clone, Never: Clone + From<Value>>(
+    module_plan: ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never>>,
     first: LibraryEntry,
     remaining: Vec<LibraryEntry>,
 ) -> Result<LoweredHostedLibrary<Value, Never>, HostSpecializationError> {
@@ -127,12 +131,12 @@ struct HostedLoweringInput {
 }
 
 struct MainEntry {
-    template: crate::plan::FunctionTemplateId,
+    template: FunctionTemplateId,
 }
 
 struct LibraryEntries {
     functions: library::Entries,
-    callables: Vec<crate::plan::LibraryNativeCallable>,
+    callables: Vec<LibraryNativeCallable>,
 }
 
 trait HostedEntries {
@@ -144,7 +148,7 @@ trait HostedEntries {
     fn invalid_callback(
         &self,
         _context: &LoweringContext,
-    ) -> Option<(crate::plan::FunctionTemplateId, crate::plan::FunctionType)> {
+    ) -> Option<(FunctionTemplateId, FunctionType)> {
         None
     }
 
@@ -171,7 +175,7 @@ fn lower_hosted_entries<Entries, Value, Never>(
 where
     Entries: HostedEntries,
     Value: Clone,
-    Never: Clone,
+    Never: Clone + From<Value>,
 {
     let HostedLoweringInput { root, modules } = input;
     let mut module_contexts = Vec::with_capacity(modules.len());
@@ -271,7 +275,7 @@ fn assemble_hosted_program(
     main: RuntimeFunctionId,
     lowered: Box<LoweredExecution<HostedExecutionProfile>>,
 ) -> ExecutionProgram<HostedExecutionProfile> {
-    let super::LoweredExecution {
+    let LoweredExecution {
         constants,
         functions,
         function_parameters,
@@ -281,15 +285,15 @@ fn assemble_hosted_program(
         value_shapes,
     } = *lowered;
     ExecutionProgram {
-        common: std::sync::Arc::new(ExecutionProgramCommon {
+        common: Arc::new(ExecutionProgramCommon {
             root,
             modules: modules.into(),
             main,
             constants: Box::new(constants).into(),
-            function_parameters: std::sync::Arc::new(function_parameters),
-            list_types: std::sync::Arc::new(list_types),
-            custom_types: std::sync::Arc::new(custom_types),
-            external_types: std::sync::Arc::new(external_types),
+            function_parameters: Arc::new(function_parameters),
+            list_types: Arc::new(list_types),
+            custom_types: Arc::new(custom_types),
+            external_types: Arc::new(external_types),
             value_shapes: Box::new(value_shapes).into(),
         }),
         functions: Box::new(functions).into(),
@@ -326,14 +330,8 @@ impl HostedEntries for MainEntry {
 }
 
 impl HostedEntries for LibraryEntries {
-    type Reserved = (
-        library::ReservedEntries,
-        Vec<crate::plan::execution::LibraryNativeConstruction>,
-    );
-    type Output = (
-        LibraryFunctionEntries,
-        crate::plan::execution::storage::Table<crate::plan::execution::LibraryNativeConstruction>,
-    );
+    type Reserved = (library::ReservedEntries, Vec<LibraryNativeConstruction>);
+    type Output = (LibraryFunctionEntries, Table<LibraryNativeConstruction>);
 
     fn initial_key(&self) -> SpecializationKey {
         self.functions.initial_key()
@@ -342,7 +340,7 @@ impl HostedEntries for LibraryEntries {
     fn invalid_callback(
         &self,
         context: &LoweringContext,
-    ) -> Option<(crate::plan::FunctionTemplateId, crate::plan::FunctionType)> {
+    ) -> Option<(FunctionTemplateId, FunctionType)> {
         self.functions.invalid_callback(context).or_else(|| {
             let key = self.initial_key();
             self.callables.iter().find_map(|entry| {
@@ -374,11 +372,8 @@ impl HostedEntries for LibraryEntries {
                     key.substitution(),
                     context,
                 )?;
-                Ok(crate::plan::execution::LibraryNativeConstruction {
-                    declaration:
-                        crate::plan::execution::host::CallableRegistration::from_registered(
-                            &entry.declaration,
-                        ),
+                Ok(LibraryNativeConstruction {
+                    declaration: CallableRegistration::from_registered(&entry.declaration),
                     construction,
                     invocation: context.library_callable(&key, &entry.signature.invocation),
                     captures: context.library_input_constructions(
@@ -405,14 +400,20 @@ impl HostedEntries for LibraryEntries {
 mod tests {
     use super::lower_hosted_library;
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
+    use crate::execution_fixture::TestHost;
     use crate::frontend::HostedTypedProgram;
+    use crate::host::native::{NativeCall, NativeRules};
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
         HostCustomConstructorListEnd, HostCustomSchema, HostCustomType, HostFunctionType,
         HostFutureStore, HostProfile, HostProvider, HostProviderModule, HostType, HostTypeList,
-        HostTypeListEnd, HostTypeParameter,
+        HostTypeListEnd, HostTypeParameter, HostWorkProfile,
     };
-    use crate::plan::{LibraryEntry, LibraryValueType};
+    use crate::plan::{
+        ExternalType, ExternalTypeName, FunctionType, LibraryEntry, LibraryValueType,
+        LibraryVariant, TypeParameterId, ValueType,
+    };
+    use crate::planner::plan_host_library_program;
     use crate::work_fixture::WorkComponent;
     use crate::{HostFailure, HostSpecializationErrorReason};
     use crate::{
@@ -424,17 +425,17 @@ mod tests {
 
     #[test]
     fn every_hosted_library_family_can_own_the_first_entry() {
-        use crate::plan::{ExternalType, ExternalTypeName, StandardVariant, ValueType};
+        use crate::plan::StandardVariant;
         struct Profile;
-        impl crate::HostProfile for Profile {
+        impl HostProfile for Profile {
             type RunState = ();
-            type ExternalStores = crate::host::HostFutureStore;
+            type ExternalStores = HostFutureStore;
             type ExecutionState = ();
         }
-        impl crate::host::HostWorkProfile for Profile {
-            type Work = crate::work_fixture::WorkComponent;
+        impl HostWorkProfile for Profile {
+            type Work = WorkComponent;
         }
-        impl crate::host::HostComponentProfile<crate::work_fixture::WorkComponent> for Profile {
+        impl HostComponentProfile<WorkComponent> for Profile {
             fn component_stores(stores: &Self::ExternalStores) -> &Self::ExternalStores {
                 stores
             }
@@ -443,19 +444,13 @@ mod tests {
             }
         }
         let mut state = ();
-        let stores = crate::host::HostFutureStore::default();
-        assert!(
-            std::ptr::eq(
-                <Profile as crate::host::HostComponentProfile<
-                    crate::work_fixture::WorkComponent,
-                >>::component_stores(&stores),
-                &stores,
-            )
-        );
+        let stores = HostFutureStore::default();
+        assert!(std::ptr::eq(
+            <Profile as HostComponentProfile<WorkComponent>>::component_stores(&stores),
+            &stores,
+        ));
         assert_eq!(
-            <crate::work_fixture::WorkComponent as crate::HostProvider<Profile>>::project(
-                &mut state
-            ),
+            <WorkComponent as HostProvider<Profile>>::project(&mut state),
             &()
         );
         let cases = [
@@ -479,7 +474,7 @@ mod tests {
                 LibraryValueType::Custom(
                     StandardVariant::Result.custom_type(vec![ValueType::Int, ValueType::String]),
                 ),
-                vec![crate::plan::LibraryVariant::new(
+                vec![LibraryVariant::new(
                     StandardVariant::Result,
                     vec![ValueType::Int, ValueType::String],
                 )],
@@ -517,7 +512,7 @@ mod tests {
             let source = format!(
                 "import fixture/work as future\npub fn identity(value: {source_type}) -> {source_type} {{ value }}"
             );
-            let program = crate::frontend::compile_typed_host_program(
+            let program = compile_typed_host_program(
                 "application",
                 "library",
                 [
@@ -527,7 +522,7 @@ mod tests {
                         [ModuleSource::new(
                             "fixture/work",
                             "src/fixture/work.gleam",
-                            crate::work_fixture::WorkComponent::SOURCE,
+                            WorkComponent::SOURCE,
                         )],
                     ),
                     PackageSource::new(
@@ -536,14 +531,13 @@ mod tests {
                         [ModuleSource::new("library", "src/library.gleam", source)],
                     ),
                 ],
-                crate::host::HostProviderSet::from_providers(
-                    crate::work_fixture::WorkComponent::providers::<Profile>()
-                        .expect("Future provider"),
+                HostProviderSet::from_providers(
+                    WorkComponent::providers::<Profile>().expect("Future provider"),
                 )
                 .expect("providers"),
             )
             .expect("source identity");
-            let plan = crate::planner::plan_host_library_program(program).expect("typed library");
+            let plan = plan_host_library_program(program).expect("typed library");
             let template = plan
                 .functions()
                 .iter()
@@ -551,7 +545,7 @@ mod tests {
                 .expect("identity")
                 .signature()
                 .id();
-            let (_, _, entries, _) = super::lower_hosted_library(
+            let (_, _, entries, _) = lower_hosted_library(
                 plan,
                 LibraryEntry::new(template, return_type, variants, lists),
                 Vec::new(),
@@ -604,8 +598,7 @@ pub fn second(value: Int) { math.add(value, 2) }
             hosts,
         )
         .expect("hosted library should compile");
-        let plan =
-            crate::planner::plan_host_library_program(program).expect("hosted library should plan");
+        let plan = plan_host_library_program(program).expect("hosted library should plan");
         let entry = |name: &str| {
             let template = plan
                 .functions()
@@ -637,8 +630,8 @@ pub fn second(value: Int) { math.add(value, 2) }
         type ExternalStores = HostFutureStore;
         type ExecutionState = ();
     }
-    impl crate::host::HostWorkProfile for Profile {
-        type Work = crate::work_fixture::WorkComponent;
+    impl HostWorkProfile for Profile {
+        type Work = WorkComponent;
     }
     impl HostComponentProfile<WorkComponent> for Profile {
         fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
@@ -741,7 +734,7 @@ pub fn run() { let _ = accept_never 42 }
             .expect("uninhabited specialization is erased");
         let mut state = ();
         let mut echo = drop;
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
         execution_host
             .block_on(module.with_execution(
                 &execution_host,
@@ -758,29 +751,99 @@ pub fn run() { let _ = accept_never 42 }
     }
 
     #[test]
-    fn rejects_a_value_producer_with_unresolved_return_storage_at_sealing() {
-        let host = HostProviderModule::new("application", "library")
-            .expect("provider")
-            .with_scoped_function::<Provider, (), Generic, _>("produce", produce)
-            .expect("generic producer");
-        let source = r#"
+    fn generic_producers_seal_and_only_execute_when_called() {
+        for (body, invoked) in [
+            ("let _ = produce 42", false),
+            ("let _ = produce() 42", true),
+            ("produce() + 1", true),
+        ] {
+            let host = HostProviderModule::new("application", "library")
+                .expect("provider")
+                .with_scoped_function::<Provider, (), Generic, _>("produce", produce)
+                .expect("generic producer");
+            let source = format!(
+                r#"
 @external(erlang, "native", "produce")
 fn produce() -> value
-pub fn run() { let _ = produce 42 }
-"#;
-        let (bindings, _) = HostedModuleBuilder::new(program(source, host))
-            .expect("valid plan")
-            .function(FunctionDeclaration::<(), BigInt>::new("run"))
-            .expect("binding");
-        let error = bindings
-            .seal()
-            .err()
-            .expect("unresolved producer cannot seal");
-        assert_eq!(error.function(), "produce");
-        assert_eq!(
-            error.reason(),
-            &HostSpecializationErrorReason::UndeterminedReturnStorage
-        );
+pub fn run() {{ {body} }}
+"#
+            );
+            let (bindings, run) = HostedModuleBuilder::new(program(&source, host))
+                .expect("valid plan")
+                .function(FunctionDeclaration::<(), BigInt>::new("run"))
+                .expect("binding");
+            let mut module = bindings.seal().expect("generic producer should seal");
+            let execution_host = TestHost::default();
+            let returned = execution_host
+                .block_on(module.with_execution(
+                    &execution_host,
+                    &mut (),
+                    &mut drop,
+                    async |scope| scope.call(&run, ()).await,
+                ))
+                .unwrap();
+            if invoked {
+                assert_eq!(
+                    returned.unwrap_err().to_string(),
+                    "host function application::library.produce failed: native producer failed"
+                );
+            } else {
+                assert_eq!(returned.unwrap(), BigInt::from(42));
+            }
+        }
+    }
+
+    #[test]
+    fn generic_return_specializations_follow_existing_inhabitation() {
+        use crate::plan::execution::host::HostFunctionCompletion;
+        for (return_type, completion) in [
+            ("a", HostFunctionCompletion::Uninhabited),
+            ("#(a, Int)", HostFunctionCompletion::Uninhabited),
+            ("Required(a)", HostFunctionCompletion::Uninhabited),
+            ("Never", HostFunctionCompletion::Uninhabited),
+            ("List(a)", HostFunctionCompletion::Value),
+            ("Optional(a)", HostFunctionCompletion::Value),
+            ("fn() -> a", HostFunctionCompletion::Value),
+        ] {
+            let source = format!(
+                r#"
+pub type Never
+pub type Required(a) {{ Required(a) }}
+pub type Optional(a) {{ Absent Present(a) }}
+@external(erlang, "native", "produce")
+fn produce() -> value
+fn selected() -> {return_type} {{ produce() }}
+pub fn run() {{ let _ = selected() 42 }}
+"#
+            );
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_scoped_function::<Provider, (), Generic, _>("produce", produce)
+                .unwrap();
+            let plan = plan_host_library_program(program(&source, provider)).unwrap();
+            let selected = plan
+                .functions()
+                .iter()
+                .find(|function| function.name() == "run")
+                .unwrap();
+            let entry = LibraryEntry::new(
+                selected.signature().id(),
+                LibraryValueType::Int,
+                Vec::new(),
+                Vec::new(),
+            );
+            let (_, functions, _, _) = lower_hosted_library(plan, entry, Vec::new()).unwrap();
+            let metadata = if completion == HostFunctionCompletion::Value {
+                assert!(functions.never_functions().is_empty(), "{return_type}");
+                assert_eq!(functions.value_functions().len(), 1, "{return_type}");
+                functions.value_functions()[0].metadata()
+            } else {
+                assert!(functions.value_functions().is_empty(), "{return_type}");
+                assert_eq!(functions.never_functions().len(), 1, "{return_type}");
+                functions.never_functions()[0].metadata()
+            };
+            assert_eq!(metadata.completion, completion, "{return_type}");
+        }
     }
 
     #[test]
@@ -790,7 +853,7 @@ pub fn run() { let _ = produce 42 }
         type FirstArguments = HostTypeList<Generic, HostTypeListEnd>;
         type SecondArguments = HostTypeList<Other, HostTypeListEnd>;
         fn ready<'call>(
-            call: crate::host::native::NativeCall<'call, Profile, Provider, bool, HostTypeListEnd>,
+            call: NativeCall<'call, Profile, Provider, bool, HostTypeListEnd>,
             _: <Generic as HostType>::Value<'call>,
             _: <Other as HostType>::Value<'call>,
         ) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
@@ -818,7 +881,7 @@ pub fn run() { ready(1, "two") }
                 .unwrap()
                 .with_native_function::<Provider, (Generic, Other), bool, HostTypeListEnd, _>(
                     "ready",
-                    crate::host::native::NativeRules::default()
+                    NativeRules::default()
                         .external::<WorkSchema, FirstArguments>(|_, _, _| None)
                         .external::<WorkSchema, SecondArguments>(|_, _, _| None),
                     ready,
@@ -863,19 +926,19 @@ pub fn run() { ready(1, "two") }
                 assert_eq!(
                     error.reason(),
                     &HostSpecializationErrorReason::ConflictingNativeConversions {
-                        type_: crate::ValueType::External(crate::ExternalType::new(
-                            crate::ExternalTypeName::new(
+                        type_: ValueType::External(ExternalType::new(
+                            ExternalTypeName::new(
                                 "work_fixture".into(),
                                 "fixture/work".into(),
                                 "Work".into()
                             ),
-                            vec![crate::ValueType::Int],
+                            vec![ValueType::Int],
                         )),
                     }
                 );
             } else {
                 let mut module = bindings.seal().expect("distinct specialized rules");
-                let execution_host = crate::execution_fixture::TestHost::default();
+                let execution_host = TestHost::default();
                 execution_host
                     .block_on(module.with_execution(
                         &execution_host,
@@ -922,9 +985,9 @@ pub fn run() { accept(generic) }
             assert_eq!(
                 error.reason(),
                 &HostSpecializationErrorReason::UninhabitedCallbackArguments {
-                    callback: crate::FunctionType::new(
-                        vec![crate::ValueType::Parameter(crate::plan::TypeParameterId(0))],
-                        crate::ValueType::Int,
+                    callback: FunctionType::new(
+                        vec![ValueType::Parameter(TypeParameterId(0))],
+                        ValueType::Int,
                     ),
                 }
             );
@@ -933,7 +996,7 @@ pub fn run() { accept(generic) }
 
     #[test]
     fn inhabited_specializations_execute_the_registered_value_and_diverging_callbacks() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         let host = HostProviderModule::new("application", "library")
             .expect("provider")
@@ -1039,7 +1102,7 @@ pub fn run() { let _ = stop() 42 }
             .expect("diverging target has no returned value");
         let mut state = ();
         let mut echo = drop;
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
         execution_host
             .block_on(module.with_execution(
                 &execution_host,

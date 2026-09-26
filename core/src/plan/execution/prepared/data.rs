@@ -15,8 +15,8 @@ pub mod host {
     pub use crate::plan::execution::host::construction::ConstructionIndex;
     pub use crate::plan::execution::host::function::{
         HostCallParameter, HostCallableConstruction, HostCallableEntry, HostConstructionTypes,
-        HostFunctionId, HostNeverFunctionId, HostTypeArgument, HostedFunctionMetadata,
-        HostedFunctionParameters, HostedFunctionTarget,
+        HostFunctionCompletion, HostFunctionId, HostNeverFunctionId, HostTypeArgument,
+        HostedFunctionMetadata, HostedFunctionParameters, HostedFunctionTarget,
     };
     pub use crate::plan::execution::host::native::{
         NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,

@@ -34,6 +34,11 @@ where
     ///
     /// The caller's execution driver polls the returned operation. Neither this
     /// method nor registration creates an executor or starts a source Future.
+    /// An uninhabited result specialization executes this operation through the
+    /// failure-only path. Its owned completion codec still runs; codec errors
+    /// and cancellation retain their original domains, and no successful value
+    /// can escape that specialization. Pending cancellation does not guarantee
+    /// execution of provider-owned cleanup.
     pub fn resume<Constructions: HostTypeSequence>(
         self,
         constructions: HostConstructions<'call, Constructions>,

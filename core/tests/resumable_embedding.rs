@@ -3,15 +3,20 @@
 use futures_channel::{mpsc, oneshot};
 use futures_util::{StreamExt, future};
 use geam_core::embedding::{
-    BigInt, Function, FunctionDeclaration, HostedModule, HostedModuleBuilder,
+    BigInt, CallError, Function, FunctionDeclaration, HostedModule, HostedModuleBuilder,
 };
 use geam_core::execution::TokioHost;
+use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::host::{
-    HostCall, HostCallContinuation, HostCallError, HostCallable, HostConstructions,
-    HostFunctionType, HostOwnedCompletion, HostProfile, HostProvider, HostProviderModule,
-    HostProviderSet, HostTypeList, HostTypeListEnd,
+    HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+    HostConstructions, HostFunctionType, HostOwnedCompletion, HostProfile, HostProvider,
+    HostProviderModule, HostProviderSet, HostTypeList, HostTypeListEnd,
 };
-use geam_core::{HostFailure, ModuleSource, PackageSource};
+use geam_core::provider::advanced::NativeValue;
+use geam_core::{
+    HostExecutionError, HostFailure, HostTypeIndex0, HostTypeIndexNext, HostTypeParameter,
+    HostedTypedProgram, ModuleSource, PackageSource, compile_typed_host_program,
+};
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -124,7 +129,7 @@ fn nested(value: Int, offset: Int) {
 }
 pub fn run(offset: Int) { fold(fn(value) { nested(value, offset) }, 40) }
 "#;
-    let typed = geam_core::compile_typed_host_program(
+    let typed = compile_typed_host_program(
         "application",
         "library",
         [PackageSource::new(
@@ -224,4 +229,277 @@ fn abandoning_an_ordinary_call_releases_its_native_loop_and_waiting_callback() {
     assert_eq!(state.waits.get(), 1);
     assert!(echo.is_empty());
     assert_eq!(destroyed.load(Ordering::SeqCst), 2);
+}
+
+struct GenericProfile;
+#[derive(Default)]
+struct GenericState {
+    calls: usize,
+    destroyed: Arc<AtomicUsize>,
+    gate: Option<oneshot::Receiver<()>>,
+    started: Option<oneshot::Sender<()>>,
+}
+impl HostProfile for GenericProfile {
+    type RunState = GenericState;
+    type ExternalStores = ();
+    type ExecutionState = ();
+}
+impl HostProvider<GenericProfile> for GenericProfile {
+    type State = GenericState;
+    fn project(state: &mut GenericState) -> &mut GenericState {
+        state
+    }
+}
+type Output = HostTypeParameter<0>;
+type Cleanup = HostTypeParameter<1>;
+type Input = HostTypeList<(), HostTypeListEnd>;
+type Targets = HostTypeList<(), HostTypeList<Output, HostTypeListEnd>>;
+
+fn around<'call>(
+    mut call: NativeCall<'call, GenericProfile, GenericProfile, Output, Targets>,
+    cleanup: HostCallable<'call, Input, Cleanup>,
+    body: HostCallable<'call, Input, Output>,
+) -> Result<HostCallContinuation<'call, Output>, HostCallError> {
+    let state = call.call().state();
+    state.calls += 1;
+    let lifetime = NativeLifetime(Arc::clone(&state.destroyed));
+    let cleanup = call.owned_callable::<HostTypeIndex0, _>(cleanup);
+    let body = call.owned_callable::<HostTypeIndex0, _>(body);
+    Ok(
+        call.resume::<HostTypeIndexNext<HostTypeIndex0>>(move |context| {
+            Box::pin(async move {
+                let _lifetime = lifetime;
+                let result = body.invoke(&context, NativeValue::symbol("nil")).await;
+                cleanup.invoke(&context, NativeValue::symbol("nil")).await?;
+                result
+            })
+        }),
+    )
+}
+
+fn generic_wait<'call>(
+    mut call: HostCall<'call, GenericProfile, GenericProfile, ()>,
+    constructions: HostConstructions<'call, HostTypeListEnd>,
+) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
+    let state = call.state();
+    let gate = state.gate.take().unwrap();
+    let started = state.started.take().unwrap();
+    let lifetime = NativeLifetime(Arc::clone(&state.destroyed));
+    Ok(call.resume(constructions, move |_| {
+        Box::pin(async move {
+            let _lifetime = lifetime;
+            started.send(()).unwrap();
+            gate.await.map_err(|_| HostExecutionError::Cancelled)?;
+            Ok(HostOwnedCompletion::new(
+                |call, _| Ok(call.return_value(())),
+            ))
+        })
+    }))
+}
+
+fn nested_failure<'call>(
+    _: HostCall<'call, GenericProfile, GenericProfile, ()>,
+) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+    Err(HostFailure::new("inner stopped").into())
+}
+
+fn generic_program(source: &str) -> HostedTypedProgram<GenericProfile> {
+    let source = format!(
+        "@external(erlang, \"native\", \"wait\")\nfn wait() -> Nil\n@external(erlang, \"native\", \"fail\")\nfn fail() -> Nil\n{source}"
+    );
+    let provider = HostProviderModule::new("application", "library")
+        .unwrap()
+        .with_resumable_native_function::<GenericProfile, (
+            HostFunctionType<Input, Cleanup>,
+            HostFunctionType<Input, Output>,
+        ), Output, Targets, _>("around", NativeRules::default(), around)
+        .unwrap()
+        .with_resumable_function::<GenericProfile, (), (), HostTypeListEnd, _>("wait", generic_wait)
+        .unwrap()
+        .with_scoped_function::<GenericProfile, (), (), _>("fail", nested_failure)
+        .unwrap();
+    compile_typed_host_program(
+        "application",
+        "library",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new("library", "src/library.gleam", source)],
+        )],
+        HostProviderSet::from_providers([provider]).unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_generic_native_wrapper_runs_cleanup_with_and_without_successful_return_storage() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for (source, expected) in [
+        (
+            r#"
+@external(erlang, "native", "around")
+fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+pub fn run() {
+  around(fn(_) { echo "cleanup" }, fn(_) { echo "body" 42 })
+}
+"#,
+            Ok(BigInt::from(42)),
+        ),
+        (
+            r#"
+@external(erlang, "native", "around")
+fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+pub fn run() {
+  let _ = around(fn(_) { echo "cleanup" }, fn(_) {
+    echo "body"
+    panic as "body stopped"
+  })
+  42
+}
+"#,
+            Err("panic: body stopped"),
+        ),
+        (
+            r#"
+@external(erlang, "native", "around")
+fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+pub fn run() {
+  let _ = around(fn(_) { echo "cleanup" panic as "cleanup stopped" }, fn(_) {
+    echo "body"
+    panic as "body stopped"
+  })
+  42
+}
+"#,
+            Err("panic: cleanup stopped"),
+        ),
+        (
+            r#"
+@external(erlang, "native", "around")
+fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+pub fn run() {
+  let _ = around(fn(_) { echo "cleanup" }, fn(_) {
+    echo "body"
+    fail()
+    panic as "unreachable"
+  })
+  42
+}
+"#,
+            Err("host function application::library.fail failed: inner stopped"),
+        ),
+    ] {
+        let typed = generic_program(source);
+        let (bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("run"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let mut state = GenericState::default();
+        let mut echo = Vec::new();
+        let result = runtime
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope.call(&run, ()).await
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            result.map_err(|error| error.to_string()),
+            expected.map_err(str::to_owned)
+        );
+        assert_eq!(state.calls, 1);
+        assert_eq!(state.destroyed.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            echo.iter()
+                .map(|output| output.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["\"body\"", "\"cleanup\""]
+        );
+    }
+}
+
+#[test]
+fn unresolved_native_callbacks_release_pending_work_on_cancellation() {
+    let source = r#"
+@external(erlang, "native", "around")
+fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
+pub fn run(waiting: Bool) {
+  case waiting {
+    True -> {
+      let _ = around(fn(_) { echo "cleanup" }, fn(_) {
+        echo "body"
+        wait()
+        panic as "body stopped"
+      })
+      0
+    }
+    False -> 42
+  }
+}
+"#;
+    let (bindings, run) = HostedModuleBuilder::new(generic_program(source))
+        .unwrap()
+        .function(FunctionDeclaration::<(bool,), BigInt>::new("run"))
+        .unwrap();
+    let mut module = bindings.seal().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for abandon in [false, true] {
+        let (sender, gate) = oneshot::channel();
+        let (started, event) = oneshot::channel();
+        let mut state = GenericState {
+            gate: Some(gate),
+            started: Some(started),
+            ..GenericState::default()
+        };
+        let mut echo = Vec::new();
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    let call = Box::pin(scope.call(&run, (true,)));
+                    let (started, call) = match future::select(event, call).await {
+                        future::Either::Left(result) => result,
+                        future::Either::Right(_) => {
+                            panic!("native callback must wait for its gate")
+                        }
+                    };
+                    started.unwrap();
+                    if abandon {
+                        drop(call);
+                    } else {
+                        drop(sender);
+                        assert_eq!(call.await, Err(CallError::Cancelled));
+                    }
+                }),
+            )
+            .unwrap();
+        assert_eq!(state.calls, 1);
+        assert_eq!(state.destroyed.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            echo.iter()
+                .map(|echo| echo.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            if abandon {
+                vec!["\"body\""]
+            } else {
+                vec!["\"body\"", "\"cleanup\""]
+            }
+        );
+        let result = runtime
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope.call(&run, (false,)).await
+                }),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, BigInt::from(42));
+        assert_eq!(state.calls, 1);
+    }
 }

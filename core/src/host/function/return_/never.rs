@@ -1,4 +1,9 @@
-use super::{HostReturn, OwnedHostCallback, OwnedHostFunctionImplementation};
+#[cfg(test)]
+use super::HostFunctionImplementation;
+use super::{
+    HostCallReturn, HostReturn, HostValueFunction, OwnedHostCallback,
+    OwnedHostFunctionImplementation,
+};
 use crate::host::{
     HostCallArguments, HostCallError, HostCallRuntime, HostFailure, HostProfile, HostTypeDescriptor,
 };
@@ -14,6 +19,7 @@ enum HostNeverFunctionKind<Profile: HostProfile> {
     Scalar(OwnedHostCallback<Profile, Infallible>),
     Scoped(Arc<HostScopedNeverCallback<Profile>>),
     Continuing(Arc<HostContinuingNeverCallback<Profile>>),
+    Uninhabited(HostValueFunction<Profile>),
 }
 
 type HostScopedNeverCallback<Profile> =
@@ -35,6 +41,9 @@ impl<Profile: HostProfile> Clone for HostNeverFunction<Profile> {
                 }
                 HostNeverFunctionKind::Continuing(function) => {
                     HostNeverFunctionKind::Continuing(Arc::clone(function))
+                }
+                HostNeverFunctionKind::Uninhabited(function) => {
+                    HostNeverFunctionKind::Uninhabited(function.clone())
                 }
             },
         }
@@ -58,6 +67,29 @@ impl<Profile: HostProfile> HostNeverFunction<Profile> {
                 function(runtime).map(|never| match never {})
             }
             HostNeverFunctionKind::Continuing(function) => function(runtime),
+            HostNeverFunctionKind::Uninhabited(function) => match function.start(runtime)? {
+                HostCallReturn::Immediate(_) => Err(HostFailure::uninhabited_return().into()),
+                HostCallReturn::Continuing(continuation) => {
+                    let execution = runtime.execution();
+                    let codec = runtime.codec_scope();
+                    let origin = runtime.origin();
+                    Ok(Continuation::new(async move {
+                        match continuation.complete().await? {
+                            Err(error) => Ok(Err(error)),
+                            Ok(value) => {
+                                drop(value);
+                                execution
+                                    .fail_native(
+                                        HostFailure::uninhabited_return().into(),
+                                        codec,
+                                        origin,
+                                    )
+                                    .await
+                            }
+                        }
+                    }))
+                }
+            },
         }
     }
 
@@ -92,6 +124,14 @@ impl<Profile: HostProfile> HostNeverFunction<Profile> {
     }
 }
 
+impl<Profile: HostProfile> From<HostValueFunction<Profile>> for HostNeverFunction<Profile> {
+    fn from(function: HostValueFunction<Profile>) -> Self {
+        Self {
+            implementation: HostNeverFunctionKind::Uninhabited(function),
+        }
+    }
+}
+
 impl HostReturn for Infallible {
     fn descriptor() -> HostTypeDescriptor {
         HostTypeDescriptor::Parameter(0)
@@ -109,9 +149,9 @@ impl HostReturn for Infallible {
 
 #[cfg(test)]
 pub(crate) fn expect_never_implementation<Profile: HostProfile>(
-    implementation: &super::HostFunctionImplementation<Profile>,
+    implementation: &HostFunctionImplementation<Profile>,
 ) -> &HostNeverFunction<Profile> {
-    let super::HostFunctionImplementation::Never(implementation) = implementation else {
+    let HostFunctionImplementation::Never(implementation) = implementation else {
         panic!("Infallible return should create a Never implementation");
     };
     implementation
@@ -119,27 +159,36 @@ pub(crate) fn expect_never_implementation<Profile: HostProfile>(
 
 #[cfg(test)]
 mod tests {
-    use super::{HostReturn, expect_never_implementation};
+    use super::{HostNeverFunction, HostReturn, OwnedHostCallback, expect_never_implementation};
+    use crate::execution_fixture::TestHost;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
-    use crate::host::{HostCallArguments, HostFailure, HostTypeDescriptor};
+    use crate::host::{
+        HostCallArguments, HostFailure, HostFunctionImplementation, HostScopedValue,
+        HostTypeDescriptor, expect_value_implementation,
+    };
+    use crate::runtime::execution::Continuation;
+    use crate::runtime::run_main;
+    use crate::runtime::work::Cancelled;
+    use crate::{ExecutionPlan, compile_typed_module, plan_module};
     use std::convert::Infallible;
+    use std::future::ready;
 
     #[test]
     fn cloned_never_bodies_keep_their_original_state_and_failure() {
         let originals = [
-            super::HostNeverFunction::<TestHostProfile>::owned(super::OwnedHostCallback::new(
+            HostNeverFunction::<TestHostProfile>::owned(OwnedHostCallback::new(
                 |state: &mut TestRunState, _| {
                     state.counter += 1;
                     Err(HostFailure::new("stopped"))
                 },
             )),
-            super::HostNeverFunction::<TestHostProfile>::scoped(|runtime| {
+            HostNeverFunction::<TestHostProfile>::scoped(|runtime| {
                 let (state, _) = runtime.scalar_context();
                 state.counter += 1;
                 Err(HostFailure::new("stopped").into())
             }),
-            super::HostNeverFunction::<TestHostProfile>::continuing(|runtime| {
+            HostNeverFunction::<TestHostProfile>::continuing(|runtime| {
                 let (state, _) = runtime.scalar_context();
                 state.counter += 1;
                 Err(HostFailure::new("stopped").into())
@@ -156,6 +205,84 @@ mod tests {
                 "stopped"
             );
             assert_eq!(state.counter, 1);
+        }
+    }
+
+    #[test]
+    fn adapting_a_value_body_preserves_errors_and_rejects_completed_values() {
+        for succeeds in [false, true] {
+            let implementation =
+                <() as HostReturn>::implementation::<TestHostProfile>(move |state, _| {
+                    state.counter += 1;
+                    if succeeds {
+                        Ok(())
+                    } else {
+                        Err(HostFailure::new("original failure"))
+                    }
+                })
+                .into_immediate();
+            let adapted =
+                HostNeverFunction::from(expect_value_implementation(&implementation).clone());
+            let alias = adapted.clone();
+            drop(adapted);
+            drop(implementation);
+            let mut state = TestRunState::default();
+            let mut runtime =
+                TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+            assert_eq!(
+                alias.start(&mut runtime).err().unwrap().to_string(),
+                if succeeds {
+                    "native call completed with a value for an uninhabited return type"
+                } else {
+                    "original failure"
+                }
+            );
+            assert_eq!(runtime.completed().is_some(), succeeds);
+            assert_eq!(state.counter, 1);
+        }
+    }
+
+    #[test]
+    fn adapted_continuations_preserve_failures_and_cancel_after_scope_shutdown() {
+        let typed = compile_typed_module(
+            "main",
+            "main.gleam",
+            "pub fn main() { panic as \"original\" }",
+        )
+        .unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let original = run_main(&plan, &mut Vec::new()).unwrap_err();
+        #[derive(Clone, Copy)]
+        enum Outcome {
+            SourceFailure,
+            Cancelled,
+            Value,
+        }
+        for outcome in [Outcome::SourceFailure, Outcome::Cancelled, Outcome::Value] {
+            let expected = if matches!(outcome, Outcome::SourceFailure) {
+                Ok(Err(original.clone()))
+            } else {
+                Err(Cancelled)
+            };
+            let original = original.clone();
+            let implementation =
+                HostFunctionImplementation::<TestHostProfile>::continuing(move |runtime| {
+                    let output = match outcome {
+                        Outcome::SourceFailure => Ok(Err(original.clone())),
+                        Outcome::Cancelled => Err(Cancelled),
+                        Outcome::Value => Ok(Ok(runtime.retain_stored(HostScopedValue::Nil))),
+                    };
+                    Ok(Continuation::new(ready(output)))
+                });
+            let adapted =
+                HostNeverFunction::from(expect_value_implementation(&implementation).clone());
+            let mut state = TestRunState::default();
+            let mut runtime =
+                TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+            let continuation = adapted.start(&mut runtime).unwrap();
+            drop(runtime);
+            let host = TestHost::default();
+            assert_eq!(host.block_on(continuation.complete()), expected);
         }
     }
 

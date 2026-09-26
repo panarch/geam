@@ -1272,7 +1272,7 @@ pub fn main() {
         artifact.format = 1;
         assert_eq!(
             plain(&artifact).err().unwrap().to_string(),
-            "prepared format 1 is incompatible with format 4; regenerate the prepared program"
+            "prepared format 1 is incompatible with format 5; regenerate the prepared program"
         );
         artifact.format = FORMAT_VERSION;
 
@@ -1382,7 +1382,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 5; regenerate the prepared program",
                 ),
             ),
             (
@@ -1589,7 +1589,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 4; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 5; regenerate the prepared program",
                 ),
             ),
             (

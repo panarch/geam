@@ -3,7 +3,9 @@ use crate::host::{
     HostFunctionImplementation, HostFunctionSchema, HostNeverFunction, HostProfile,
     HostProviderSet, HostValueFunction, RegisteredHostConstructions,
 };
-use crate::plan::execution::host::{HostFunctionTables, HostedFunction, HostedFunctionMetadata};
+use crate::plan::execution::host::{
+    HostFunctionCompletion, HostFunctionTables, HostedFunction, HostedFunctionMetadata,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -139,6 +141,9 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
         let mut values = Vec::with_capacity(value_functions.len());
         for metadata in value_functions {
             let (slot, implementation) = find(metadata)?;
+            if metadata.completion != HostFunctionCompletion::Value {
+                return Err(return_kind(metadata));
+            }
             let HostFunctionImplementation::Value(implementation) = implementation.as_ref() else {
                 return Err(return_kind(metadata));
             };
@@ -147,10 +152,18 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
         let mut nevers = Vec::with_capacity(never_functions.len());
         for metadata in never_functions {
             let (slot, implementation) = find(metadata)?;
-            let HostFunctionImplementation::Never(implementation) = implementation.as_ref() else {
-                return Err(return_kind(metadata));
+            let implementation = match (metadata.completion, implementation.as_ref()) {
+                (
+                    HostFunctionCompletion::Never,
+                    HostFunctionImplementation::Never(implementation),
+                ) => implementation.clone(),
+                (
+                    HostFunctionCompletion::Uninhabited,
+                    HostFunctionImplementation::Value(implementation),
+                ) => implementation.clone().into(),
+                _ => return Err(return_kind(metadata)),
             };
-            nevers.push((metadata, implementation.clone(), slot));
+            nevers.push((metadata, implementation, slot));
         }
         Ok(Self {
             callable_bindings: RefCell::new(HashMap::new()),
@@ -199,6 +212,123 @@ mod tests {
     use crate::host::{HostModule, HostProviderModule, HostProviderSet};
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn completion_links_require_the_original_registration_kind() {
+        use super::super::tests::lowered;
+        use crate::execution_fixture::TestHost;
+        use crate::host::test::StatelessTestProvider;
+        use crate::host::{
+            HostCall, HostCallCompletion, HostCallError, HostFailure, HostTypeParameter,
+            StatelessHostProfile,
+        };
+        use crate::plan::execution::host::HostFunctionCompletion;
+        use crate::{
+            HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
+            plan_host_program,
+        };
+        type Item = HostTypeParameter<0>;
+        fn value<'call>(
+            _: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Item>,
+        ) -> Result<HostCallCompletion<'call, Item>, HostCallError> {
+            Err(HostFailure::new("stopped").into())
+        }
+        fn never<'call>(
+            _: HostCall<'call, StatelessHostProfile, StatelessTestProvider, Item>,
+        ) -> Result<Infallible, HostCallError> {
+            Err(HostFailure::new("stopped").into())
+        }
+        let hosts = |diverges| {
+            let module = HostProviderModule::new("app", "main").unwrap();
+            let module = if diverges {
+                module
+                    .with_scoped_diverging_function::<StatelessTestProvider, (), Item, _>(
+                        "produce", never,
+                    )
+                    .unwrap()
+            } else {
+                module
+                    .with_scoped_function::<StatelessTestProvider, (), Item, _>("produce", value)
+                    .unwrap()
+            };
+            HostProviderSet::from_providers([module]).unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "produce")
+fn produce() -> a
+pub fn main() { let _ = produce() 42 }
+"#;
+        let (_, values, nevers) = lowered(source, hosts(false));
+        assert!(values.is_empty());
+        assert_eq!(nevers.len(), 1);
+        assert_eq!(nevers[0].completion, HostFunctionCompletion::Uninhabited);
+        let mut candidate = nevers.into_iter().next().unwrap();
+        for completion in [
+            HostFunctionCompletion::Value,
+            HostFunctionCompletion::Never,
+            HostFunctionCompletion::Uninhabited,
+        ] {
+            candidate.completion = completion;
+            for diverges in [false, true] {
+                for value_table in [false, true] {
+                    let values = if value_table {
+                        std::slice::from_ref(&candidate)
+                    } else {
+                        &[]
+                    };
+                    let nevers = if value_table {
+                        &[]
+                    } else {
+                        std::slice::from_ref(&candidate)
+                    };
+                    let accepted = match completion {
+                        HostFunctionCompletion::Value => value_table && !diverges,
+                        HostFunctionCompletion::Never => !value_table && diverges,
+                        HostFunctionCompletion::Uninhabited => !value_table && !diverges,
+                    };
+                    let actual = NativeFunctions::new(values, nevers, hosts(diverges)).err();
+                    assert_eq!(
+                        actual,
+                        if accepted {
+                            None
+                        } else {
+                            Some(NativeError::Registration {
+                                package: "app".into(),
+                                module: "main".into(),
+                                function: "produce".into(),
+                                reason: RegistrationError::ReturnKind,
+                            })
+                        }
+                    );
+                }
+            }
+        }
+        let host = TestHost::default();
+        for diverges in [false, true] {
+            let typed = compile_typed_host_program(
+                "app",
+                "main",
+                [PackageSource::new(
+                    "app",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new("main", "src/main.gleam", source)],
+                )],
+                hosts(diverges),
+            )
+            .unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let mut echo = Vec::new();
+            let error = host
+                .block_on(execution.run_main(&host, &mut (), &mut echo))
+                .unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "host function app::main.produce failed: stopped"
+            );
+            assert!(echo.is_empty());
+        }
+    }
 
     #[test]
     fn prepared_consumers_require_the_selected_producers_exact_sharing_grant() {

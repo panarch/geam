@@ -1,14 +1,20 @@
 use super::construction::ConstructionIndex;
-use crate::host::{HostNeverFunction, HostValueFunction};
-use crate::plan::Text;
-use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
+use super::{NativeConversions, RegistrationContract};
+use crate::host::{HostNeverFunction, HostTypeDescriptor, HostValueFunction};
+use crate::plan::execution::function::{
+    ExecutionFunctionBody, FunctionBodyOwner, FunctionTableFamily, RuntimeFunctionId,
+};
 use crate::plan::execution::graph::{
-    BitArrayLocalId, BoolLocalId, FloatLocalId, IntLocalId, NilLocalId, ParamLocal, StringLocalId,
-    UtfCodepointLocalId,
+    BitArrayLocalId, BoolLocalId, FloatLocalId, IntLocalId, NilLocalId, ParamLocal, ParamSlot,
+    StringLocalId, UtfCodepointLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::{Node, Table};
-use crate::plan::execution::type_::{FunctionMetadata, FunctionType, TypeMetadata};
+use crate::plan::execution::type_::{
+    CustomTypeId, ExternalTypeId, FunctionMetadata, FunctionType, ListTypeId, TypeMetadata,
+    ValueShapeId,
+};
+use crate::plan::{self, HostCallSite, Text, ValueType};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -25,42 +31,63 @@ pub enum HostedFunctionTarget<Body: FunctionBodyOwner> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HostCallableEntry {
-    pub family: crate::plan::execution::function::FunctionTableFamily,
+    pub family: FunctionTableFamily,
     pub index: usize,
 }
 
 pub struct HostedFunctionMetadata {
+    pub completion: HostFunctionCompletion,
     pub callable_entry: Option<HostCallableEntry>,
     pub package: Text,
-    pub site: crate::plan::HostCallSite,
+    pub site: HostCallSite,
     pub signature: FunctionMetadata,
     pub type_arguments: Table<HostTypeArgument>,
     pub parameters: HostedFunctionParameters,
     pub constructions: HostConstructionTypes,
     pub type_: FunctionType,
-    pub registration: Node<super::RegistrationContract>,
+    pub registration: Node<RegistrationContract>,
+}
+
+/// The declared completion and the executable result chosen at specialization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostFunctionCompletion {
+    /// A value-returning registration with inhabited result storage.
+    Value,
+    /// An explicitly non-returning registration.
+    Never,
+    /// A value-returning registration specialized to a failure-only target.
+    Uninhabited,
+}
+
+impl HostFunctionCompletion {
+    pub(in crate::plan::execution) fn declared_value(self) -> bool {
+        match self {
+            Self::Value | Self::Uninhabited => true,
+            Self::Never => false,
+        }
+    }
 }
 
 pub struct HostTypeArgument {
     pub type_: TypeMetadata,
-    pub shape: crate::plan::execution::type_::ValueShapeId,
+    pub shape: ValueShapeId,
 }
 
 #[derive(Clone)]
 pub struct HostConstructionTypes {
-    pub lists: ConstructionIndex<crate::plan::execution::type_::ListTypeId>,
-    pub customs: ConstructionIndex<crate::plan::execution::type_::CustomTypeId>,
-    pub externals: ConstructionIndex<crate::plan::execution::type_::ExternalTypeId>,
-    pub natives: super::NativeConversions,
+    pub lists: ConstructionIndex<ListTypeId>,
+    pub customs: ConstructionIndex<CustomTypeId>,
+    pub externals: ConstructionIndex<ExternalTypeId>,
+    pub natives: NativeConversions,
     pub callables: Table<HostCallableConstruction>,
 }
 
 #[derive(Clone)]
 pub struct HostCallableConstruction {
-    pub target: crate::plan::execution::function::RuntimeFunctionId,
+    pub target: RuntimeFunctionId,
     pub type_: FunctionType,
-    pub parameters: Table<crate::plan::execution::graph::ParamSlot>,
-    pub captures: Table<crate::plan::execution::graph::ParamSlot>,
+    pub parameters: Table<ParamSlot>,
+    pub captures: Table<ParamSlot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,7 +109,7 @@ pub enum HostCallParameter {
 
 pub struct HostedFunctionParameters {
     pub call: Table<HostCallParameter>,
-    pub captures: Table<crate::plan::execution::graph::ParamSlot>,
+    pub captures: Table<ParamSlot>,
 }
 
 #[derive(Debug)]
@@ -246,7 +273,7 @@ impl<Implementation> HostedFunction<Implementation> {
         self.metadata.type_()
     }
 
-    pub(crate) fn capture_parameters(&self) -> &[crate::plan::execution::graph::ParamSlot] {
+    pub(crate) fn capture_parameters(&self) -> &[ParamSlot] {
         &self.metadata.parameters.captures
     }
 
@@ -270,13 +297,10 @@ impl<Implementation> HostedFunction<Implementation> {
 impl HostedFunctionMetadata {
     pub(in crate::plan::execution) fn borrowed(&'static self) -> Self {
         Self {
+            completion: self.completion,
             callable_entry: self.callable_entry,
             package: Text::Static(self.package()),
-            site: crate::plan::HostCallSite::from_static(
-                self.module(),
-                self.name(),
-                self.site.span(),
-            ),
+            site: HostCallSite::from_static(self.module(), self.name(), self.site.span()),
             signature: FunctionMetadata {
                 arguments: Table::Static(&self.signature.arguments),
                 return_: Node::Static(&self.signature.return_),
@@ -297,7 +321,7 @@ impl HostedFunctionMetadata {
                 externals: ConstructionIndex {
                     entries: Table::Static(&self.constructions.externals.entries),
                 },
-                natives: super::NativeConversions {
+                natives: NativeConversions {
                     roots: Table::Static(&self.constructions.natives.roots),
                     nodes: Table::Static(&self.constructions.natives.nodes),
                 },
@@ -322,18 +346,15 @@ impl HostedFunctionMetadata {
         self.site.function()
     }
 
-    pub(crate) fn site(&self) -> &crate::plan::HostCallSite {
+    pub(crate) fn site(&self) -> &HostCallSite {
         &self.site
     }
 
-    pub(crate) fn signature(&self) -> crate::plan::FunctionType {
+    pub(crate) fn signature(&self) -> plan::FunctionType {
         self.signature.materialize()
     }
 
-    pub(crate) fn resolve_type(
-        &self,
-        descriptor: &crate::host::HostTypeDescriptor,
-    ) -> Option<crate::plan::ValueType> {
+    pub(crate) fn resolve_type(&self, descriptor: &HostTypeDescriptor) -> Option<ValueType> {
         descriptor.resolve(&|index| {
             self.type_arguments
                 .get(index)
@@ -341,10 +362,7 @@ impl HostedFunctionMetadata {
         })
     }
 
-    pub(crate) fn resolve_construction(
-        &self,
-        descriptor: &crate::host::HostTypeDescriptor,
-    ) -> crate::plan::ValueType {
+    pub(crate) fn resolve_construction(&self, descriptor: &HostTypeDescriptor) -> ValueType {
         descriptor.resolve_sealed(&|index| self.type_arguments[index].type_.materialize())
     }
 
@@ -363,49 +381,37 @@ impl HostedFunctionMetadata {
 
 impl HostConstructionTypes {
     pub(in crate::plan::execution) fn new(
-        lists: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ListTypeId>,
-        customs: HashMap<crate::plan::ValueType, crate::plan::execution::type_::CustomTypeId>,
-        externals: HashMap<crate::plan::ValueType, crate::plan::execution::type_::ExternalTypeId>,
+        lists: HashMap<ValueType, ListTypeId>,
+        customs: HashMap<ValueType, CustomTypeId>,
+        externals: HashMap<ValueType, ExternalTypeId>,
     ) -> Self {
         Self {
             lists: ConstructionIndex::new(lists),
             customs: ConstructionIndex::new(customs),
             externals: ConstructionIndex::new(externals),
-            natives: super::NativeConversions::default(),
+            natives: NativeConversions::default(),
             callables: Vec::new().into(),
         }
     }
 
-    pub(crate) fn list(
-        &self,
-        type_: &crate::plan::ValueType,
-    ) -> crate::plan::execution::type_::ListTypeId {
+    pub(crate) fn list(&self, type_: &ValueType) -> ListTypeId {
         self.lists.get(type_)
     }
 
-    pub(in crate::plan::execution) fn with_natives(
-        mut self,
-        natives: super::NativeConversions,
-    ) -> Self {
+    pub(in crate::plan::execution) fn with_natives(mut self, natives: NativeConversions) -> Self {
         self.natives = natives;
         self
     }
 
-    pub(crate) fn natives(&self) -> &super::NativeConversions {
+    pub(crate) fn natives(&self) -> &NativeConversions {
         &self.natives
     }
 
-    pub(crate) fn custom(
-        &self,
-        type_: &crate::plan::ValueType,
-    ) -> crate::plan::execution::type_::CustomTypeId {
+    pub(crate) fn custom(&self, type_: &ValueType) -> CustomTypeId {
         self.customs.get(type_)
     }
 
-    pub(crate) fn external(
-        &self,
-        type_: &crate::plan::ValueType,
-    ) -> crate::plan::execution::type_::ExternalTypeId {
+    pub(crate) fn external(&self, type_: &ValueType) -> ExternalTypeId {
         self.externals.get(type_)
     }
 }
@@ -451,6 +457,7 @@ where
 impl Emit for HostedFunctionMetadata {
     fn emit(&self, output: &mut Rust) {
         let Self {
+            completion,
             callable_entry,
             package,
             site,
@@ -464,6 +471,7 @@ impl Emit for HostedFunctionMetadata {
         output.structure(
             "host::HostedFunctionMetadata",
             &[
+                ("completion", completion),
                 ("callable_entry", callable_entry),
                 ("package", package),
                 ("site", site),
@@ -475,6 +483,16 @@ impl Emit for HostedFunctionMetadata {
                 ("registration", registration),
             ],
         );
+    }
+}
+
+impl Emit for HostFunctionCompletion {
+    fn emit(&self, output: &mut Rust) {
+        output.path(match self {
+            Self::Value => "host::HostFunctionCompletion::Value",
+            Self::Never => "host::HostFunctionCompletion::Never",
+            Self::Uninhabited => "host::HostFunctionCompletion::Uninhabited",
+        });
     }
 }
 
@@ -601,16 +619,20 @@ impl Emit for HostNeverFunctionId {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostCallParameter, HostFunctionId, HostNeverFunctionId, HostedFunctionTarget};
+    use super::{
+        HostCallParameter, HostFunctionCompletion, HostFunctionId, HostNeverFunctionId,
+        HostTypeArgument, HostedFunctionTarget,
+    };
     use crate::plan::execution::function::GenericFunctionFunctionBody;
     use crate::plan::execution::graph::{
         BitArrayLocalId, BoolLocalId, CustomLocal, CustomLocalId, FloatLocalId,
         GenericFunctionLocal, GenericFunctionLocalId, IntListLocalId, IntLocalId, ListLocal,
-        NilLocalId, ParamLocal, StringLocalId, TupleLocalId, UtfCodepointLocalId,
+        NilLocalId, ParamLocal, ParamSlot, StringLocalId, TupleLocalId, UtfCodepointLocalId,
     };
+    use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::type_::{
         CustomTypeId, CustomValueShape, CustomValueShapeId, FunctionShape, FunctionType,
-        GenericFunctionType, IntListTypeId, ListTypeId, ValueShapeId, ValueType,
+        GenericFunctionType, IntListTypeId, ListTypeId, TypeMetadata, ValueShapeId, ValueType,
     };
 
     #[test]
@@ -619,8 +641,6 @@ mod tests {
         use crate::plan::execution::function::{
             CoreRuntimeFunctionId, FunctionTableFamily, IntFunctionId, RuntimeFunctionId,
         };
-        use crate::plan::execution::graph::ParamSlot;
-        use crate::plan::execution::prepared::rust::Rust;
 
         let entry = HostCallableEntry {
             family: FunctionTableFamily::Int,
@@ -674,22 +694,45 @@ data::host::HostCallableConstruction {
     }
 
     #[test]
+    fn completion_emission_preserves_declared_and_specialized_returns() {
+        for (completion, declared_value, expected) in [
+            (
+                HostFunctionCompletion::Value,
+                true,
+                "data::host::HostFunctionCompletion::Value",
+            ),
+            (
+                HostFunctionCompletion::Never,
+                false,
+                "data::host::HostFunctionCompletion::Never",
+            ),
+            (
+                HostFunctionCompletion::Uninhabited,
+                true,
+                "data::host::HostFunctionCompletion::Uninhabited",
+            ),
+        ] {
+            assert_eq!(completion.declared_value(), declared_value);
+            assert_eq!(Rust::expression(&completion), expected);
+        }
+    }
+
+    #[test]
     fn emitted_native_metadata_preserves_the_body_entry_in_borrowed_artifacts() {
         use super::{
             HostCallableEntry, HostConstructionTypes, HostedFunctionMetadata,
             HostedFunctionParameters,
         };
         use crate::plan::execution::function::FunctionTableFamily;
-        use crate::plan::execution::graph::ParamSlot;
         use crate::plan::execution::host::NativeConversions;
         use crate::plan::execution::host::construction::ConstructionIndex;
         use crate::plan::execution::host::registration::{RegistrationContract, RegistrationType};
-        use crate::plan::execution::prepared::rust::Rust;
         use crate::plan::execution::storage::{Node, Table};
-        use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
+        use crate::plan::execution::type_::FunctionMetadata;
         use crate::plan::{HostCallSite, SourceSpan, Text};
 
         static METADATA: HostedFunctionMetadata = HostedFunctionMetadata {
+            completion: HostFunctionCompletion::Value,
             callable_entry: Some(HostCallableEntry {
                 family: FunctionTableFamily::Int,
                 index: 4,
@@ -746,6 +789,7 @@ data::host::HostCallableConstruction {
         };
         let expected = r#"
 data::host::HostedFunctionMetadata {
+    completion: data::host::HostFunctionCompletion::Value,
     callable_entry: Some(data::host::HostCallableEntry {
         family: data::function::FunctionTableFamily::Int,
         index: 4,
@@ -811,8 +855,8 @@ data::host::HostedFunctionMetadata {
     #[test]
     fn emitted_host_type_argument_keeps_nominal_and_specialized_shape_together() {
         assert_eq!(
-            crate::plan::execution::prepared::rust::Rust::expression(&super::HostTypeArgument {
-                type_: crate::plan::execution::type_::TypeMetadata::Int,
+            Rust::expression(&HostTypeArgument {
+                type_: TypeMetadata::Int,
                 shape: ValueShapeId(7),
             }),
             r#"
@@ -827,7 +871,6 @@ data::host::HostTypeArgument {
     #[test]
     fn emitted_host_parameters_preserve_every_abi_family() {
         use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId, IntFunctionLocalId};
-        use crate::plan::execution::prepared::rust::Rust;
         use crate::plan::execution::type_::ExternalTypeId;
 
         let cases = [
@@ -948,7 +991,6 @@ data::host::HostCallParameter::Function {
     #[test]
     fn emitted_host_targets_distinguish_value_and_never_slots() {
         use crate::plan::execution::function::IntFunctionBody;
-        use crate::plan::execution::prepared::rust::Rust;
 
         let value =
             HostedFunctionTarget::<IntFunctionBody>::value(HostFunctionId::new(3, IntLocalId(2)));

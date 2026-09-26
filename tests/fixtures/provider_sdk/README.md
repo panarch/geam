@@ -61,6 +61,15 @@ values that outlive execution, and callback failure propagation. Provider-local
 tests cover configuration validation and the domain crate separately verifies
 its persistent value semantics.
 
+The generic registration test uses the same manual `around` wrapper for a
+concrete successful result and an unresolved panic-only result. It checks body
+and cleanup order, cleanup failure, and the original error. The callback-free
+`produce` registration seals without executing its body and fails only when
+called. `late_failure` proves that an owned completion's codec executes and
+preserves its own failure; `native_value` succeeds for a concrete Nil result
+and rejects the same native data for an unresolved result. All of these use the
+public facade and the existing provider-only dependency.
+
 ## Run The Fixture
 
 From the Geam repository root:

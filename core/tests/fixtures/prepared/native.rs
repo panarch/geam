@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 4,
+        format: 5,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2485,6 +2485,7 @@ pub fn bit_tail(value: BitArray) {
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
@@ -2754,6 +2755,7 @@ pub fn bit_tail(value: BitArray) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
@@ -3022,6 +3024,7 @@ pub fn bit_tail(value: BitArray) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "fold", data::source::SourceSpan::new(178, 225)),
@@ -3115,6 +3118,7 @@ pub fn bit_tail(value: BitArray) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
@@ -3383,6 +3387,7 @@ pub fn bit_tail(value: BitArray) {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
             site: data::source::HostCallSite::from_static("main", "keep_bits", data::source::SourceSpan::new(275, 304)),

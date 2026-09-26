@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 4,
+        format: 5,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -14,6 +14,10 @@ pub fn make_constant(value: a) -> fn() -> a
 pub fn make_adder(value: Int) -> fn(Int) -> Int
 @external(erlang, "ffi", "wrap")
 pub fn wrap(callback: fn(a) -> b) -> fn(a) -> b
+@external(erlang, "ffi", "make_stop")
+pub fn make_stop() -> fn() -> a
+@external(erlang, "ffi", "produce")
+pub fn produce() -> a
 "#)),
                 },
                 data::program::ExecutionModuleContext {
@@ -21,6 +25,8 @@ pub fn wrap(callback: fn(a) -> b) -> fn(a) -> b
                     source_context: Some(data::source::SourceContext::from_static_block("library.gleam", r#"
 
 import support
+pub type Never
+pub fn call_never(callback: fn() -> Never) { let _ = callback() 42 }
 fn apply(callback, value) { callback(value) }
 pub fn make_native(offset: Int) -> fn(Int) -> Int { support.make_adder(offset) }
 pub fn keep(adjust: fn(Int) -> Int) -> fn(Int) -> Int { adjust }
@@ -31,6 +37,19 @@ pub fn maker() -> fn(Int) -> fn(Int) -> Int { fn(offset) { support.make_adder(of
 pub fn result_function() -> fn(Int) -> Result(Int, Nil) { fn(value) { Ok(value) } }
 pub fn picker() -> fn(List(Result(Int, Nil))) -> Int {
     fn(items) { case items { [Ok(value)] -> value _ -> 0 } }
+}
+pub fn fail() {
+    let stopped = support.make_stop()
+    echo "before callable"
+    let _ = stopped()
+    echo "unreachable"
+    42
+}
+pub fn producer() {
+    echo "before producer"
+    let _ = support.produce()
+    echo "unreachable"
+    42
 }
 pub fn run() {
     let add = support.make_adder(40)
@@ -65,7 +84,9 @@ pub fn check() {
             }),
             functions: data::function::FunctionTables {
                 value_returns: data::function::ValueFunctionTables {
-                    never_functions: data::Storage::Static(&[]),
+                    never_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Host(data::host::HostNeverFunctionId(0)),
+                    ]),
                     int_functions: data::Storage::Static(&[
                         data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
                             entry: data::function::FunctionEntry {
@@ -110,7 +131,7 @@ pub fn check() {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("library", "calculate", data::source::SourceSpan::new(270, 283)),
+                                                site: data::source::HostCallSite::from_static("library", "calculate", data::source::SourceSpan::new(354, 367)),
                                             }),
                                         },
                                     ]),
@@ -118,6 +139,73 @@ pub fn check() {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 1,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..1,
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::NeverCall(data::graph::NeverCall {
+                                                function: data::graph::NeverCallTarget::Value(data::graph::NeverFunctionLocal {
+                                                    id: data::graph::NeverFunctionLocalId(0),
+                                                    type_: data::type_::GenericFunctionType {
+                                                        type_: data::type_::FunctionType {
+                                                            arguments: data::Storage::Static(&[]),
+                                                            return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                                                        },
+                                                        shape: data::type_::FunctionShape {
+                                                            shape_id: data::type_::ValueShapeId(12),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                                                            },
+                                                        },
+                                                    },
+                                                }),
+                                                args: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::NeverFunction,
+                                                            positions: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                                site: data::source::HostCallSite::from_static("library", "call_never", data::source::SourceSpan::new(84, 94)),
+                                            }),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
+                                                id: data::graph::NeverFunctionLocalId(0),
+                                                type_: data::type_::GenericFunctionType {
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                                                    },
+                                                    shape: data::type_::FunctionShape {
+                                                        shape_id: data::type_::ValueShapeId(12),
+                                                        type_: data::type_::FunctionType {
+                                                            arguments: data::Storage::Static(&[]),
+                                                            return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                                                        },
+                                                    },
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(12),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[]),
+                                },
+                                exits: data::Storage::Static(&[]),
                             },
                         })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
@@ -580,7 +668,7 @@ pub fn check() {
                                         data::function::FunctionExit::TailCall {
                                             function: data::source::FunctionCallTarget {
                                                 function: data::function::IntFunctionFunctionId(3),
-                                                site: data::source::HostCallSite::from_static("library", "make_native", data::source::SourceSpan::new(114, 140)),
+                                                site: data::source::HostCallSite::from_static("library", "make_native", data::source::SourceSpan::new(198, 224)),
                                             },
                                             args: data::Storage::Static(&[
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -694,7 +782,7 @@ pub fn check() {
                                                     },
                                                     family: data::function::FunctionReturnFamily::Int,
                                                     kind: data::graph::FunctionInstructionKind::Closure {
-                                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(3)),
+                                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(4)),
                                                         captures: data::Storage::Static(&[]),
                                                     },
                                                 }),
@@ -748,7 +836,7 @@ pub fn check() {
                                         data::function::FunctionExit::TailCall {
                                             function: data::source::FunctionCallTarget {
                                                 function: data::function::IntFunctionFunctionId(3),
-                                                site: data::source::HostCallSite::from_static("library", "<anonymous:0>", data::source::SourceSpan::new(546, 572)),
+                                                site: data::source::HostCallSite::from_static("library", "<anonymous:0>", data::source::SourceSpan::new(630, 656)),
                                             },
                                             args: data::Storage::Static(&[
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -967,24 +1055,8 @@ pub fn check() {
             },
             function_parameters: data::function::FunctionCatalog {
                 families: [
-                    0..0,
-                    0..4,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    4..5,
-                    0..0,
-                    5..6,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
+                    0..1,
+                    1..6,
                     0..0,
                     0..0,
                     0..0,
@@ -992,7 +1064,23 @@ pub fn check() {
                     0..0,
                     0..0,
                     6..7,
-                    7..12,
+                    0..0,
+                    7..8,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    8..9,
+                    9..14,
                     0..0,
                     0..0,
                     0..0,
@@ -1018,9 +1106,15 @@ pub fn check() {
                     0..0,
                     0..0,
                     0..0,
-                    12..13,
+                    14..15,
                 ],
                 functions: data::Storage::Static(&[
+                    data::function::FunctionContract {
+                        parameters: 0..0,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(11),
+                        captures: data::Storage::Static(&[]),
+                    },
                     data::function::FunctionContract {
                         parameters: 0..2,
                         parameter_shapes: data::Storage::Static(&[
@@ -1033,6 +1127,14 @@ pub fn check() {
                     data::function::FunctionContract {
                         parameters: 2..3,
                         parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(12),
+                        ]),
+                        return_: data::type_::ValueShapeId(0),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 3..4,
+                        parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
                         return_: data::type_::ValueShapeId(0),
@@ -1044,7 +1146,7 @@ pub fn check() {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 3..4,
+                        parameters: 4..5,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -1065,7 +1167,7 @@ pub fn check() {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 4..5,
+                        parameters: 5..6,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(9),
                         ]),
@@ -1073,7 +1175,7 @@ pub fn check() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 5..5,
+                        parameters: 6..6,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(3),
                         captures: data::Storage::Static(&[
@@ -1084,15 +1186,15 @@ pub fn check() {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 5..6,
+                        parameters: 6..7,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
-                        return_: data::type_::ValueShapeId(12),
+                        return_: data::type_::ValueShapeId(14),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 6..7,
+                        parameters: 7..8,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(4),
                         ]),
@@ -1100,7 +1202,7 @@ pub fn check() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 7..8,
+                        parameters: 8..9,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -1108,7 +1210,7 @@ pub fn check() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 8..9,
+                        parameters: 9..10,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
@@ -1116,17 +1218,9 @@ pub fn check() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 9..9,
+                        parameters: 10..10,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(10),
-                        captures: data::Storage::Static(&[]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 9..10,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(0),
-                        ]),
-                        return_: data::type_::ValueShapeId(1),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -1138,7 +1232,15 @@ pub fn check() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 11..11,
+                        parameters: 11..12,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(0),
+                        ]),
+                        return_: data::type_::ValueShapeId(1),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 12..12,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(7),
                         captures: data::Storage::Static(&[]),
@@ -1155,6 +1257,22 @@ pub fn check() {
                             return_: data::Storage::Static(&data::type_::ValueType::Int),
                         },
                     },
+                    data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
+                        id: data::graph::NeverFunctionLocalId(0),
+                        type_: data::type_::GenericFunctionType {
+                            type_: data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[]),
+                                return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                            },
+                            shape: data::type_::FunctionShape {
+                                shape_id: data::type_::ValueShapeId(12),
+                                type_: data::type_::FunctionType {
+                                    arguments: data::Storage::Static(&[]),
+                                    return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                                },
+                            },
+                        },
+                    }),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
@@ -1303,8 +1421,28 @@ pub fn check() {
                             },
                         ]),
                     },
+                    data::type_::CustomTypeDescriptor {
+                        type_: data::type_::NominalTypeMetadata {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("library"),
+                            name: data::Text::Static("Never"),
+                            arguments: data::Storage::Static(&[]),
+                        },
+                        constructor_count: 0,
+                        constructors: data::Storage::Static(&[]),
+                    },
                 ]),
-                definitions: data::Storage::Static(&[]),
+                definitions: data::Storage::Static(&[
+                    data::type_::CustomDefinition {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("library"),
+                        name: data::Text::Static("Never"),
+                        publicity: data::type_::CustomTypePublicity::Public,
+                        opaque: false,
+                        parameters: 0,
+                        constructors: data::Storage::Static(&[]),
+                    },
+                ]),
             },
             external_types: data::type_::ExternalTypeTable {
                 types: data::Storage::Static(&[]),
@@ -1341,9 +1479,14 @@ pub fn check() {
                         return_: data::type_::ValueShapeId(0),
                     },
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(2)),
+                    data::type_::ValueShapeDescriptor::Function {
+                        arguments: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(11),
+                    },
+                    data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(3)),
                     data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
                         data::type_::ValueShapeId(1),
-                        data::type_::ValueShapeId(11),
+                        data::type_::ValueShapeId(13),
                     ])),
                 ]),
                 shape_types: data::Storage::Static(&[
@@ -1386,6 +1529,11 @@ pub fn check() {
                         ]),
                         return_: data::Storage::Static(&data::type_::ValueType::Int),
                     }),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(2)),
+                    data::type_::ValueType::Function(data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[]),
+                        return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                    }),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::Function(data::type_::FunctionType {
@@ -1415,6 +1563,11 @@ pub fn check() {
                         constructor: data::type_::CustomConstructorRefinement::Any,
                     },
                     data::type_::CustomValueShapeDescriptor {
+                        type_id: data::type_::CustomTypeId(2),
+                        arguments: data::Storage::Static(&[]),
+                        constructor: data::type_::CustomConstructorRefinement::Any,
+                    },
+                    data::type_::CustomValueShapeDescriptor {
                         type_id: data::type_::CustomTypeId(0),
                         arguments: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
@@ -1429,6 +1582,27 @@ pub fn check() {
             ints: data::Storage::Static(&[
                 data::program::LibraryFunctionEntry {
                     function: data::function::IntFunctionId(0),
+                    inputs: data::program::LibraryInputConstructions {
+                        variants: data::Storage::Static(&[]),
+                        lists: data::program::LibraryListConstructions {
+                            ints: data::Storage::Static(&[]),
+                            floats: data::Storage::Static(&[]),
+                            strings: data::Storage::Static(&[]),
+                            bit_arrays: data::Storage::Static(&[]),
+                            utf_codepoints: data::Storage::Static(&[]),
+                            customs: data::Storage::Static(&[]),
+                            externals: data::Storage::Static(&[]),
+                            bools: data::Storage::Static(&[]),
+                            nils: data::Storage::Static(&[]),
+                            tuples: data::Storage::Static(&[]),
+                            lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
+                        },
+                    },
+                    callables: data::Storage::Static(&[]),
+                },
+                data::program::LibraryFunctionEntry {
+                    function: data::function::IntFunctionId(1),
                     inputs: data::program::LibraryInputConstructions {
                         variants: data::Storage::Static(&[]),
                         lists: data::program::LibraryListConstructions {
@@ -2048,13 +2222,32 @@ pub fn check() {
                 },
                 slot: 3,
             },
+            data::Export {
+                name: data::Text::Static("call_never"),
+                signature: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                            arguments: data::Storage::Static(&[]),
+                            return_: data::Storage::Static(&data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("application"),
+                                module: data::Text::Static("library"),
+                                name: data::Text::Static("Never"),
+                                arguments: data::Storage::Static(&[]),
+                            })),
+                        }),
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::Int),
+                },
+                slot: 1,
+            },
         ]),
     },
     value_functions: data::Storage::Static(&[
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: Some(data::host::HostCallableEntry {
                 family: data::function::FunctionTableFamily::Int,
-                index: 1,
+                index: 2,
             }),
             package: data::Text::Static("support"),
             site: data::source::HostCallSite::from_static("support/private", "add", data::source::SourceSpan::new(0, 0)),
@@ -2121,6 +2314,7 @@ pub fn check() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: Some(data::host::HostCallableEntry {
                 family: data::function::FunctionTableFamily::Bool,
                 index: 0,
@@ -2185,9 +2379,10 @@ pub fn check() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: Some(data::host::HostCallableEntry {
                 family: data::function::FunctionTableFamily::Int,
-                index: 2,
+                index: 3,
             }),
             package: data::Text::Static("support"),
             site: data::source::HostCallSite::from_static("support/private", "wrap", data::source::SourceSpan::new(0, 0)),
@@ -2276,6 +2471,7 @@ pub fn check() {
             }),
         },
         data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("support"),
             site: data::source::HostCallSite::from_static("support", "make_adder", data::source::SourceSpan::new(126, 155)),
@@ -2313,7 +2509,7 @@ pub fn check() {
                 },
                 callables: data::Storage::Static(&[
                     data::host::HostCallableConstruction {
-                        target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(1))),
+                        target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2))),
                         type_: data::type_::FunctionType {
                             arguments: data::Storage::Static(&[
                                 data::type_::ValueType::Int,
@@ -2393,8 +2589,155 @@ pub fn check() {
             }),
         },
     ]),
-    never_functions: data::Storage::Static(&[]),
+    never_functions: data::Storage::Static(&[
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Uninhabited,
+            callable_entry: Some(data::host::HostCallableEntry {
+                family: data::function::FunctionTableFamily::Never,
+                index: 0,
+            }),
+            package: data::Text::Static("support"),
+            site: data::source::HostCallSite::from_static("support/private", "stop", data::source::SourceSpan::new(0, 0)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                    package: data::Text::Static("application"),
+                    module: data::Text::Static("library"),
+                    name: data::Text::Static("Never"),
+                    arguments: data::Storage::Static(&[]),
+                })),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("library"),
+                        name: data::Text::Static("Never"),
+                        arguments: data::Storage::Static(&[]),
+                    }),
+                    shape: data::type_::ValueShapeId(11),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[]),
+                captures: data::Storage::Static(&[]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[
+                        (data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("library"),
+                            name: data::Text::Static("Never"),
+                            arguments: data::Storage::Static(&[]),
+                        }), data::type_::CustomTypeId(2)),
+                    ]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[]),
+                    nodes: data::Storage::Static(&[]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[]),
+                return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 1,
+                parameters: data::Storage::Static(&[]),
+                captures: data::Storage::Static(&[]),
+                callable: true,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[]),
+                native_rules: None,
+            }),
+        },
+    ]),
     callables: data::Storage::Static(&[
+        data::program::LibraryNativeConstruction {
+            declaration: data::host::CallableRegistration {
+                package: data::Text::Static("support"),
+                module: data::Text::Static("support/private"),
+                name: data::Text::Static("stop"),
+                arguments: data::Storage::Static(&[]),
+                captures: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Custom {
+                    schema: data::host::CustomSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("library"),
+                        name: data::Text::Static("Never"),
+                        parameter_count: 0,
+                        constructors: data::Storage::Static(&[]),
+                        shared: false,
+                    },
+                    arguments: data::Storage::Static(&[]),
+                },
+                returns_value: true,
+            },
+            construction: data::host::HostCallableConstruction {
+                target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Never(data::function::NeverFunctionId(0))),
+                type_: data::type_::FunctionType {
+                    arguments: data::Storage::Static(&[]),
+                    return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                },
+                parameters: data::Storage::Static(&[]),
+                captures: data::Storage::Static(&[]),
+            },
+            invocation: data::program::LibraryCallable {
+                type_: data::type_::FunctionType {
+                    arguments: data::Storage::Static(&[]),
+                    return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(2))),
+                },
+                inputs: data::program::LibraryInputConstructions {
+                    variants: data::Storage::Static(&[]),
+                    lists: data::program::LibraryListConstructions {
+                        ints: data::Storage::Static(&[]),
+                        floats: data::Storage::Static(&[]),
+                        strings: data::Storage::Static(&[]),
+                        bit_arrays: data::Storage::Static(&[]),
+                        utf_codepoints: data::Storage::Static(&[]),
+                        customs: data::Storage::Static(&[]),
+                        externals: data::Storage::Static(&[]),
+                        bools: data::Storage::Static(&[]),
+                        nils: data::Storage::Static(&[]),
+                        tuples: data::Storage::Static(&[]),
+                        lists: data::Storage::Static(&[]),
+                        functions: data::Storage::Static(&[]),
+                    },
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            captures: data::program::LibraryInputConstructions {
+                variants: data::Storage::Static(&[]),
+                lists: data::program::LibraryListConstructions {
+                    ints: data::Storage::Static(&[]),
+                    floats: data::Storage::Static(&[]),
+                    strings: data::Storage::Static(&[]),
+                    bit_arrays: data::Storage::Static(&[]),
+                    utf_codepoints: data::Storage::Static(&[]),
+                    customs: data::Storage::Static(&[]),
+                    externals: data::Storage::Static(&[]),
+                    bools: data::Storage::Static(&[]),
+                    nils: data::Storage::Static(&[]),
+                    tuples: data::Storage::Static(&[]),
+                    lists: data::Storage::Static(&[]),
+                    functions: data::Storage::Static(&[]),
+                },
+            },
+        },
         data::program::LibraryNativeConstruction {
             declaration: data::host::CallableRegistration {
                 package: data::Text::Static("support"),
@@ -2410,7 +2753,7 @@ pub fn check() {
                 returns_value: true,
             },
             construction: data::host::HostCallableConstruction {
-                target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(1))),
+                target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2))),
                 type_: data::type_::FunctionType {
                     arguments: data::Storage::Static(&[
                         data::type_::ValueType::Int,
@@ -2562,7 +2905,7 @@ pub fn check() {
                 returns_value: true,
             },
             construction: data::host::HostCallableConstruction {
-                target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(2))),
+                target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(3))),
                 type_: data::type_::FunctionType {
                     arguments: data::Storage::Static(&[
                         data::type_::ValueType::Int,

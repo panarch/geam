@@ -6,7 +6,9 @@ use super::ContractError;
 use super::link::Registration;
 use crate::host::{HostParameter, HostTypeDescriptor};
 use crate::plan::execution::graph::ParamSlot;
-use crate::plan::execution::host::{HostCallParameter, HostedFunctionMetadata};
+use crate::plan::execution::host::{
+    HostCallParameter, HostFunctionCompletion, HostedFunctionMetadata,
+};
 use crate::plan::execution::prepared::admission::catalog::Function;
 use crate::plan::execution::prepared::admission::local::Locals;
 use crate::plan::execution::prepared::admission::type_::Types;
@@ -68,6 +70,11 @@ pub(super) fn metadata(
         || !types
             .matches(&signature.return_, &type_.return_)
             .map_err(ContractError::Type)?
+    {
+        return Err(ContractError::Signature);
+    }
+    if metadata.completion == HostFunctionCompletion::Uninhabited
+        && types.matched_metadata_inhabited(&signature.return_)
     {
         return Err(ContractError::Signature);
     }
@@ -184,7 +191,7 @@ fn parameter_kind(stored: &HostCallParameter, original: &HostParameter) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use super::{ContractError, HostedFunctionMetadata, Types, metadata};
+    use super::{ContractError, HostFunctionCompletion, HostedFunctionMetadata, Types, metadata};
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
         HostProviderSet, HostTypeParameter, HostValue, StatelessHostProfile,
@@ -567,6 +574,10 @@ pub fn main() { #(identity(42), True) }
         type Change = fn(&mut HostedFunctionMetadata);
         let cases: &[(Change, ContractError)] = &[
             (
+                |value| value.completion = HostFunctionCompletion::Uninhabited,
+                ContractError::Signature,
+            ),
+            (
                 |value| {
                     value.type_arguments = vec![crate::plan::execution::host::HostTypeArgument {
                         type_: TypeMetadata::List(Node::Static(&CYCLIC)),
@@ -675,9 +686,12 @@ pub fn main() { #(identity(42), True) }
             )
             .unwrap();
             assert_eq!(values.len(), 1);
+            let (slot, registrations) = {
+                let linked = NativeFunctions::new(&values, &nevers, hosts()).unwrap();
+                (linked.values[0].2, linked.registrations)
+            };
+            let registration = &registrations[slot];
             change(&mut values[0]);
-            let linked = NativeFunctions::new(&values, &nevers, hosts()).unwrap();
-            let registration = &linked.registrations[linked.values[0].2];
             assert_eq!(
                 metadata(&values[0], registration, &types, true).as_ref(),
                 Err(expected)

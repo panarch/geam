@@ -1,7 +1,10 @@
 use super::function::{ExternalFunctionId, ProfiledRuntimeFunctionId};
 use super::{HostSpecializationError, HostedExecution};
+use crate::execution::{ExecutionHost, RunError};
 use crate::host::{HostExternalSchema, HostWorkProfile, HostWorkSchema};
 use crate::plan::HostedModulePlan;
+use crate::runtime::run_hosted_entry;
+use crate::{EchoSink, ExternalTypeName};
 
 /// A sealed application entry that completes an outer work result, if present.
 ///
@@ -30,11 +33,11 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
     /// Executes main once, then completes only its returned outer work.
     pub async fn run(
         &mut self,
-        host: &dyn crate::execution::ExecutionHost,
+        host: &dyn ExecutionHost,
         state: &mut Profile::RunState,
-        echo: &mut (dyn crate::EchoSink + Send),
-    ) -> Result<(), crate::execution::RunError> {
-        crate::runtime::run_hosted_entry(self, host, state, echo).await
+        echo: &mut (dyn EchoSink + Send),
+    ) -> Result<(), RunError> {
+        run_hosted_entry(self, host, state, echo).await
     }
 
     pub(super) fn from_execution(execution: HostedExecution<Profile>) -> Self {
@@ -42,7 +45,7 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
         let completion = match common.main {
             ProfiledRuntimeFunctionId::External(function) => {
                 let type_ = common.external_types.value_type(function.return_type());
-                let work = crate::ExternalTypeName::new(
+                let work = ExternalTypeName::new(
                     HostWorkSchema::<Profile>::PACKAGE.into(),
                     HostWorkSchema::<Profile>::MODULE.into(),
                     HostWorkSchema::<Profile>::NAME.into(),
@@ -64,20 +67,29 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EntryCompletion, HostedEntry};
+    use super::{EntryCompletion, HostSpecializationError, HostedEntry};
+    use crate::execution::RunError;
+    use crate::execution_fixture::TestHost;
     use crate::host::{
-        HostCall, HostCallCompletion, HostCallError, HostCallable, HostComponentProfile,
-        HostConstructions, HostExecutionError, HostFunctionType, HostFutureStore, HostProfile,
-        HostProviderModule, HostProviderSet, HostTypeListEnd, HostTypeParameter, HostWorkProfile,
+        HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+        HostComponentProfile, HostConstructions, HostExecutionError, HostExternalStore,
+        HostFailure, HostFunctionType, HostFutureStore, HostOwnedCompletion, HostProfile,
+        HostProviderModule, HostProviderSet, HostType, HostTypeListEnd, HostTypeParameter,
+        HostWorkProfile,
     };
+    use crate::provider::{self, ProviderValueContext};
     use crate::work_fixture::{WorkComponent, WorkHostType};
-    use crate::{EchoOutput, EchoSink, ModuleSource, PackageSource};
+    use crate::{
+        EchoOutput, EchoSink, ExecutionError, ModuleSource, PackageSource,
+        compile_typed_host_program, plan_host_program,
+    };
     use num_bigint::BigInt;
+    use std::future::ready;
 
     struct Profile;
     impl HostProfile for Profile {
         type RunState = ();
-        type ExternalStores = (HostFutureStore, crate::HostExternalStore<u64>);
+        type ExternalStores = (HostFutureStore, HostExternalStore<u64>);
         type ExecutionState = ();
     }
     impl HostWorkProfile for Profile {
@@ -102,11 +114,11 @@ mod tests {
 
     fn entry(
         source: &str,
-        additional: Vec<crate::HostProviderModule<Profile>>,
-    ) -> Result<HostedEntry<Profile>, super::HostSpecializationError> {
+        additional: Vec<HostProviderModule<Profile>>,
+    ) -> Result<HostedEntry<Profile>, HostSpecializationError> {
         let mut providers = WorkComponent::providers::<Profile>().expect("work registration");
         providers.extend(additional);
-        let typed = crate::compile_typed_host_program(
+        let typed = compile_typed_host_program(
             "application",
             "main",
             [
@@ -138,13 +150,13 @@ pub fn all(values: List(Work(a))) -> Work(List(a))
             HostProviderSet::from_providers(providers).expect("provider set"),
         )
         .expect("typed source");
-        let plan = crate::plan_host_program(typed).expect("planned source");
+        let plan = plan_host_program(typed).expect("planned source");
         HostedEntry::try_from_module_plan(plan)
     }
 
     #[test]
     fn completes_the_outer_nominal_work_for_every_return_family() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         for value in [
             "42",
@@ -191,7 +203,7 @@ pub fn main() {{
 
     #[test]
     fn ordinary_containers_and_returned_inner_work_are_not_driven() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         for (outer, work) in [
             ("pending", true),
@@ -231,7 +243,7 @@ pub fn main() {{
 
     #[test]
     fn resolved_aliases_use_the_registered_nominal_schema() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         let mut entry = entry(
             r#"import fixture/work
@@ -251,7 +263,7 @@ pub fn main() -> Response { work.ready(42) }
 
     #[test]
     fn a_foreign_nominal_work_return_remains_ordinary_data() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         use crate::host::{
             HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
@@ -317,7 +329,7 @@ pub fn main() -> Response { work.ready(42) }
 
     #[test]
     fn native_cancellation_is_an_entry_lifecycle_outcome() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         fn cancel<'call>(
             mut call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
@@ -345,15 +357,43 @@ pub fn main() -> Response { work.ready(42) }
     }
 
     #[test]
-    fn sealing_rejects_an_unrepresentable_native_return_before_running_main() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+    fn sealing_preserves_uninhabited_callback_argument_errors() {
+        use crate::plan::TypeParameterId;
+        use crate::{FunctionType, HostSpecializationErrorReason, ValueType};
+        let error = entry(
+            "import fixture/work\npub fn main() { let _ = work.map 42 }",
+            Vec::new(),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.package(), "work_fixture");
+        assert_eq!(error.module(), "fixture/work");
+        assert_eq!(error.function(), "map");
+        assert_eq!(
+            error.reason(),
+            &HostSpecializationErrorReason::UninhabitedCallbackArguments {
+                callback: FunctionType::new(
+                    vec![ValueType::Parameter(TypeParameterId(0))],
+                    ValueType::Parameter(TypeParameterId(1)),
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn generic_producers_only_fail_when_main_calls_them() {
+        let execution_host = TestHost::default();
 
         fn produce<'call>(
             _call: HostCall<'call, Profile, WorkComponent, HostTypeParameter<0>>,
         ) -> Result<HostCallCompletion<'call, HostTypeParameter<0>>, HostCallError> {
-            Err(crate::HostFailure::new("native producer failed").into())
+            Err(HostFailure::new("native producer failed").into())
         }
-        for (body, sealed) in [("let _ = produce 42", false), ("produce() + 1", true)] {
+        for (body, invoked) in [
+            ("let _ = produce 42", false),
+            ("let _ = produce() 42", true),
+            ("produce() + 1", true),
+        ] {
             let native = HostProviderModule::new("application", "main")
                 .expect("native module")
                 .with_scoped_function::<WorkComponent, (), HostTypeParameter<0>, _>(
@@ -363,37 +403,28 @@ pub fn main() -> Response { work.ready(42) }
             let source = format!(
                 "@external(erlang, \"native\", \"produce\")\nfn produce() -> value\npub fn main() {{ {body} }}"
             );
-            match entry(&source, vec![native]) {
-                Ok(mut entry) => {
-                    assert!(sealed);
-                    let error = execution_host
-                        .block_on(entry.run(&execution_host, &mut (), &mut Vec::new()))
-                        .expect_err("producer failure");
-                    assert_eq!(
-                        error.to_string(),
-                        "host function application::main.produce failed: native producer failed"
-                    );
-                }
-                Err(error) => {
-                    assert!(!sealed);
-                    assert_eq!(error.function(), "produce");
-                    assert_eq!(
-                        error.reason(),
-                        &crate::HostSpecializationErrorReason::UndeterminedReturnStorage
-                    );
-                }
+            let mut entry = entry(&source, vec![native]).expect("generic producer should seal");
+            let returned =
+                execution_host.block_on(entry.run(&execution_host, &mut (), &mut Vec::new()));
+            if invoked {
+                assert_eq!(
+                    returned.unwrap_err().to_string(),
+                    "host function application::main.produce failed: native producer failed"
+                );
+            } else {
+                returned.expect("function references do not call the native body");
             }
         }
     }
 
     #[test]
     fn a_resumable_native_call_can_cancel_before_main_produces_its_result() {
-        fn cancel<'call, Return: crate::HostType>(
+        fn cancel<'call, Return: HostType>(
             call: HostCall<'call, Profile, WorkComponent, Return>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
-        ) -> Result<crate::HostCallContinuation<'call, Return>, HostCallError> {
+        ) -> Result<HostCallContinuation<'call, Return>, HostCallError> {
             Ok(call.resume(constructions, |_| {
-                Box::pin(std::future::ready(Err(HostExecutionError::Cancelled)))
+                Box::pin(ready(Err(HostExecutionError::Cancelled)))
             }))
         }
         for (return_, provider) in [
@@ -408,7 +439,7 @@ fn cancel() -> {return_}
 pub fn main() {{ echo "before" cancel() }}
 "#);
             let mut entry = entry(&source, vec![provider]).unwrap();
-            let host = crate::execution_fixture::TestHost::default();
+            let host = TestHost::default();
             let mut echo = Echo::default();
             let error = host.block_on(entry.run(&host, &mut (), &mut echo)).unwrap_err();
             assert_eq!(error.to_string(), "the Gleam entry was cancelled");
@@ -424,7 +455,7 @@ pub fn main() {{ echo "before" cancel() }}
             .unwrap();
         let host = crate::execution::TokioHost::new(runtime.handle().clone());
         drop(runtime);
-        let driver = crate::execution_fixture::TestHost::default();
+        let driver = TestHost::default();
         for source in [
             "pub fn main() { echo \"entered\" 42 }",
             "import fixture/work pub fn main() { echo \"entered\" work.ready(42) }",
@@ -451,7 +482,7 @@ pub fn main() {{ echo "before" cancel() }}
 
     #[test]
     fn native_work_failure_keeps_the_host_callback_caller() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         fn fail<'call>(
             call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
@@ -459,8 +490,8 @@ pub fn main() {{ echo "before" cancel() }}
         ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
             Ok(call.return_future(constructions, |_| {
                 Box::pin(async {
-                    Ok(crate::host::HostOwnedCompletion::new(|_, _| {
-                        Err(crate::HostFailure::new("native failed").into())
+                    Ok(HostOwnedCompletion::new(|_, _| {
+                        Err(HostFailure::new("native failed").into())
                     }))
                 })
             }))
@@ -469,12 +500,9 @@ pub fn main() {{ echo "before" cancel() }}
             call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
             constructions: HostConstructions<'call, HostTypeListEnd>,
             callback: HostCallable<'call, HostTypeListEnd, WorkHostType<BigInt>>,
-        ) -> Result<crate::host::HostCallContinuation<'call, WorkHostType<BigInt>>, HostCallError>
-        {
-            type Owned = crate::provider::Value<
-                WorkHostType<BigInt>,
-                crate::provider::ProviderValueContext<WorkHostType<BigInt>>,
-            >;
+        ) -> Result<HostCallContinuation<'call, WorkHostType<BigInt>>, HostCallError> {
+            type Owned =
+                provider::Value<WorkHostType<BigInt>, ProviderValueContext<WorkHostType<BigInt>>>;
             let callback = call.owned_callable(callback, &constructions);
             Ok(call.resume(constructions, move |context| {
                 Box::pin(async move {
@@ -485,7 +513,7 @@ pub fn main() {{ echo "before" cancel() }}
                             |call, _, value| Ok(Owned::from_host(&call, value)),
                         )
                         .await?;
-                    Ok(crate::host::HostOwnedCompletion::new(move |mut call, _| {
+                    Ok(HostOwnedCompletion::new(move |mut call, _| {
                         let value = work.into_host(&mut call);
                         Ok(call.return_value(value))
                     }))
@@ -523,7 +551,7 @@ pub fn main() {{ {body} }}
                 error.to_string(),
                 "host function application::main.fail failed: native failed"
             );
-            assert!(matches!(error, crate::ExecutionError::Host(host)
+            assert!(matches!(error, ExecutionError::Host(host)
                 if host.location().caller().map(|caller| (caller.package().as_str(), caller.module().as_str(), caller.function().as_str()))
                     == Some(("application", "main", "bridge"))));
         }
@@ -531,7 +559,7 @@ pub fn main() {{ {body} }}
 
     #[test]
     fn construction_and_completion_keep_source_failure_origins() {
-        let execution_host = crate::execution_fixture::TestHost::default();
+        let execution_host = TestHost::default();
 
         for (body, label) in [
             ("panic as \"original\"", "panic in main.main"),
@@ -570,10 +598,10 @@ pub fn main() {{ {body} }}
         matches!(entry.completion, EntryCompletion::Work(_))
     }
 
-    fn execution_failure(error: &crate::execution::RunError) -> Option<&crate::ExecutionError> {
+    fn execution_failure(error: &RunError) -> Option<&ExecutionError> {
         match error {
-            crate::execution::RunError::Execution(error) => Some(error),
-            crate::execution::RunError::Cancelled | crate::execution::RunError::Driver(_) => None,
+            RunError::Execution(error) => Some(error),
+            RunError::Cancelled | RunError::Driver(_) => None,
         }
     }
 }

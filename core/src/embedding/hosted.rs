@@ -876,7 +876,7 @@ pub fn around_next() { counter.around(counter.next) }
     }
 
     #[test]
-    fn rejects_a_reachable_unrepresentable_provider_while_sealing() {
+    fn sealing_allows_unresolved_producers_without_calling_them() {
         let execution_host = crate::execution_fixture::TestHost::default();
 
         let before = PRODUCE_CALLS.load(Ordering::SeqCst);
@@ -921,18 +921,25 @@ pub fn selected() {
 }
 "#,
         );
-        let (bindings, _) = unresolved
+        let (bindings, selected) = unresolved
             .function(FunctionDeclaration::<(), BigInt>::new("selected"))
             .expect("concrete root should bind");
-        let error = bindings
-            .seal()
-            .err()
-            .expect("reachable unresolved provider should not seal");
-
-        assert_eq!(error.package(), "application");
-        assert_eq!(error.module(), "library");
-        assert_eq!(error.function(), "produce");
+        let mut module = bindings.seal().expect("unresolved provider should seal");
         assert_eq!(PRODUCE_CALLS.load(Ordering::SeqCst), before + 1);
+        let error = execution_host
+            .block_on(module.with_execution(
+                &execution_host,
+                &mut (),
+                &mut Vec::new(),
+                async |scope| scope.call(&selected, ()).await,
+            ))
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "host function application::library.produce failed: produce stopped"
+        );
+        assert_eq!(PRODUCE_CALLS.load(Ordering::SeqCst), before + 2);
     }
 
     #[test]

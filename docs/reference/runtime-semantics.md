@@ -334,19 +334,38 @@ A generic provider registers one source `TypeScheme`; first-use
 specialization derives concrete parameter locals, return-family storage, and
 host targets. `HostedModulePlan` owns the linked generic program;
 `HostedExecution::try_from_module_plan` seals only entry-reachable
-specializations. A reachable value-producing specialization whose successful
-return storage remains unresolved returns `HostSpecializationError`; an
-unused declaration does not. A function exposed through `HostFunctionType`
-must also have inhabited runtime argument storage. If its argument family
-remains symbolic, sealing rejects that invocation capability. The same
-function value may still cross an opaque `HostTypeParameter` position for
-pass-through or equality because that position does not expose invocation.
+specializations. An inhabited result keeps the ordinary Value target. When the
+existing inhabitation rules determine that no successful result can be stored,
+the same registration seals into a Never target. This applies to generic
+wrappers and callback-free producers, including a bare type parameter or an
+uninhabited tuple/custom result. Inhabited containers, such as `List(a)` or a
+custom type with an empty alternative, keep the Value path. Sealing and taking
+a function reference do not execute its native body; calling it does.
+
+A function exposed through `HostFunctionType` must still have inhabited runtime
+argument storage. If its argument family remains symbolic, sealing rejects
+that invocation capability. The same function value may cross an opaque
+`HostTypeParameter` position for pass-through or equality because that position
+does not expose invocation.
 
 A non-returning provider with a concrete result context enters that concrete
 function family; an unresolved result enters the Never family. Neither path
 fabricates a success value. Runtime performs no `Value` downcast, signature
 lookup, generic type lookup, callback shape validation, symbolic callback
 dispatch, or fallback selection.
+
+The failure-only specialization executes the registered body and permits its
+original source/host error or cancellation, but cannot return a placeholder
+success. An asynchronous `Ok(HostOwnedCompletion)` is a deferred codec, not a
+completed value: the codec still runs and its effects and errors are preserved.
+Any actual value completion at the failure-only adapter is rejected as a host
+failure. Native conversion continues to reject data that cannot inhabit the
+registered result type before it can become such a completion.
+
+Prepared artifacts record the original registration completion separately from
+the specialized target. Admission checks both, together with the existing type,
+layout, callback, and construction permissions, before linking fresh native
+bodies. Created native callables follow the same rule.
 
 `HostFunctionType<Arguments, Return>` exposes an invocation capability as a
 call-scoped `HostCallable`. `HostCall::invoke` routes it through the same typed
@@ -364,8 +383,9 @@ before either error returns to the caller.
 
 A bare type parameter has no successful runtime value representation. A
 generic computation whose result remains bare can only stop through existing
-source-level behavior such as `panic`, `todo`, or non-returning recursion; Geam
-does not fabricate a value or recover one through runtime type checks.
+source-level behavior such as `panic`, `todo`, or non-returning recursion, or a
+failure-only native call. Geam does not fabricate a value or recover one through
+runtime type checks.
 
 Containers may preserve a parameter in their public type metadata when their
 runtime payload does not require a value of that parameter, for example an empty
