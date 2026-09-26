@@ -67,6 +67,9 @@ pub type Summary {
 
 @external(erlang, "provider_sdk", "summarize")
 pub fn summarize(value: String, transform: fn(String) -> String) -> Summary
+
+@external(erlang, "provider_sdk", "non_empty")
+pub fn non_empty(value: String) -> Result(String, Int)
 "#;
 
 #[test]
@@ -88,7 +91,13 @@ pub fn main() {
   assert transform != sdk.make_transform("native:")
   assert alias("x") == "native:x"
   let summary = sdk.summarize(decorated, transform)
-  #(catalog, summary)
+  let rejected = sdk.non_empty("")
+  let assert Error(0) = rejected
+  assert rejected == Error(0)
+  let accepted = sdk.non_empty("한국어\u{0}🙂")
+  let assert Ok("한국어\u{0}🙂") = accepted
+  assert accepted == Ok("한국어\u{0}🙂")
+  #(catalog, summary, accepted, rejected)
 }
 "#;
     let configuration = HostProviderConfiguration::new(BTreeMap::from([(
@@ -128,7 +137,7 @@ pub fn main() {
 
     assert_eq!(
         returned.inspect().to_string(),
-        r#"#(Catalog([#("one", "sdk:item!")]), Summary(count: 1, items: ["native:sdk:item!"]))"#,
+        r#"#(Catalog([#("one", "sdk:item!")]), Summary(count: 1, items: ["native:sdk:item!"]), Ok("한국어\0🙂"), Error(0))"#,
     );
     assert_eq!(state.provider.prefix(), "sdk:");
     assert_eq!(state.provider.calls(), 3);

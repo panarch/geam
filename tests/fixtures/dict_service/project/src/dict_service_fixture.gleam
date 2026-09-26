@@ -9,6 +9,12 @@ fn groups() -> Dict(Int, List(String))
 @external(erlang, "dict_service_fixture", "nested")
 fn nested() -> #(Dict(String, String), List(Dict(String, String)))
 
+@external(erlang, "dict_service_fixture", "lookup")
+fn lookup(key: String) -> Result(String, Nil)
+
+@external(erlang, "dict_service_fixture", "try_entries")
+fn try_entries(available: Bool) -> Result(Dict(String, String), Nil)
+
 pub fn main() {
   let assert 0 = dict.size(entries(True))
   let assert Error(Nil) = dict.get(entries(True), "LANG")
@@ -45,5 +51,31 @@ pub fn main() {
   let assert Ok("nested") = dict.get(inner, "inner")
   let assert 0 = dict.size(empty)
   let assert Error(Nil) = dict.get(empty, "inner")
-  #(values |> dict.delete("EMPTY"), groups, nested)
+
+  let found = lookup("LANG")
+  let missing = lookup("missing")
+  let assert Ok("한국어\u{0}🙂") = found
+  let assert Ok("") = lookup("EMPTY")
+  let assert Ok("ready") = lookup("MESSAGE")
+  let assert Error(Nil) = missing
+  assert found == dict.get(values, "LANG")
+  assert missing == dict.get(values, "missing")
+  assert lookup("EMPTY") == Ok("")
+
+  let loaded = try_entries(True)
+  let unavailable = try_entries(False)
+  let assert Ok(loaded_values) = loaded
+  let assert Ok("ready") = dict.get(loaded_values, "status")
+  assert loaded == Ok(dict.from_list([#("status", "ready")]))
+  let assert Error(Nil) = unavailable
+  assert unavailable == Error(Nil)
+  #(
+    values |> dict.delete("EMPTY"),
+    groups,
+    nested,
+    found,
+    missing,
+    loaded,
+    unavailable,
+  )
 }

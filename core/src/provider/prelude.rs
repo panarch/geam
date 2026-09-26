@@ -5,6 +5,32 @@ use crate::host::{
     HostCustomTypeArgument, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd,
 };
 
+/// The host type of Gleam's prelude `Result(Success, Failure)`.
+///
+/// Both parameters are [`HostType`](crate::HostType) descriptors, such as
+/// [`StringValue`](crate::StringValue) or `()` for Gleam `Nil`. This type needs
+/// no standard-library provider. It shares the canonical Result schema used by
+/// source code and macro-authored Rust `Result` values.
+///
+/// Register it as a manual callback's return type and return [`GleamOk`] or
+/// [`GleamError`] through [`HostCall::return_custom`](crate::HostCall::return_custom).
+/// A Gleam `Error` is an ordinary returned value, distinct from a callback's
+/// outer [`HostCallError`](crate::HostCallError).
+pub type GleamResult<Success, Failure> = ProviderResult<Success, Failure>;
+
+/// The `Ok` constructor of [`GleamResult<Success, Failure>`].
+///
+/// [`HostCall::return_custom`](crate::HostCall::return_custom) takes
+/// `(success, ())`: the success payload followed by the empty field-list tail.
+pub type GleamOk<Success, Failure> = ProviderOk<Success, Failure>;
+
+/// The `Error` constructor of [`GleamResult<Success, Failure>`].
+///
+/// [`HostCall::return_custom`](crate::HostCall::return_custom) takes
+/// `(failure, ())`: the failure payload followed by the empty field-list tail.
+/// Returning it does not stop host execution.
+pub type GleamError<Success, Failure> = ProviderError<Success, Failure>;
+
 #[doc(hidden)]
 pub struct ProviderResultSchema;
 

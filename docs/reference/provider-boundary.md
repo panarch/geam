@@ -682,6 +682,63 @@ projects only this component's state through `HostComponentProfile<Component>`.
 That keeps callback state concrete without making the aggregate runner profile
 part of the provider crate.
 
+## Manual Prelude Results
+
+Manual providers can use `geam::provider::{GleamResult, GleamOk, GleamError}`
+with the `provider` feature. These markers reuse Gleam's canonical prelude
+Result and require no standard-library provider. Macro-authored functions
+continue to use ordinary Rust `Result<Success, Failure>`.
+
+`GleamResult` takes host type descriptors. For example,
+`GleamResult<StringValue, BigInt>` describes `Result(String, Int)`, and
+`GleamResult<StringValue, ()>` describes `Result(String, Nil)`. It is a type
+marker, not a Rust enum holding the returned payload.
+
+The [independent SDK provider](../../tests/fixtures/provider_sdk/provider/src/lib.rs)
+registers a function that returns nonempty input or an Error containing its
+zero length. Within its existing component registration, the function is added
+to the module like this:
+
+```rust
+use geam::provider::{BigInt, GleamError, GleamOk, GleamResult, StringValue};
+use geam::{HostCall, HostCallCompletion, HostCallError, HostComponentProfile};
+
+provider.with_scoped_function::<
+    Provider, (StringValue,), GleamResult<StringValue, BigInt>, _,
+>("non_empty", non_empty::<Profile>)
+```
+
+`Component` and `Provider` are the component and callback markers from the
+manual registration above. The callback uses the same profile bound:
+
+```rust
+fn non_empty<'call, Profile>(
+    call: HostCall<'call, Profile, Provider, GleamResult<StringValue, BigInt>>,
+    value: StringValue,
+) -> Result<HostCallCompletion<'call, GleamResult<StringValue, BigInt>>, HostCallError>
+where
+    Profile: HostComponentProfile<Component>,
+{
+    if value.as_str().is_empty() {
+        Ok(call.return_custom::<GleamError<StringValue, BigInt>>((BigInt::from(0), ())))
+    } else {
+        Ok(call.return_custom::<GleamOk<StringValue, BigInt>>((value, ())))
+    }
+}
+```
+
+Each constructor has one field. `(payload, ())` supplies that field followed
+by the empty field-list tail. For `Error(Nil)`, the field pack is `((), ())`.
+Both branches return an outer Rust `Ok`: source `Error(payload)` is an ordinary
+Gleam value, while an outer `HostCallError` stops host execution.
+
+Compound payloads use their existing exact host type and construction tokens.
+The [Dict consumer](../../tests/fixtures/dict_service) registers Result and
+Dict functions in one component and returns a service-created
+`DictOf<StringValue, StringValue>` inside `GleamOk`. Construction does not add
+a second Result schema, convert the payload to Dynamic, or copy its container.
+The canonical typed host lifetime and retention rules still apply.
+
 ## Advanced Provider Example
 
 [`geam-example-text-pattern`](../../examples/provider/text_pattern/provider)
