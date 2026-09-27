@@ -20,7 +20,8 @@ pub(crate) use never::{NeverCall, NeverCallTarget};
 pub(crate) use pattern::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, MatchIntBindingId,
-    MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail, Signedness,
+    MatchIntPatternBinding, MatchPattern, MatchPatternBinding, MatchPatternList,
+    MatchPatternListTail, Signedness,
 };
 pub(crate) use source_stop::{SourceStop, SourceStopKind};
 pub(crate) use switch::{FloatSwitch, IntSwitch, StringSwitch};

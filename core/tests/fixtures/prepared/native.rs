@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 6,
+        format: 8,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -170,7 +170,7 @@ pub fn bit_tail(value: BitArray) {
                                                             pattern: data::graph::BitArrayBindingPattern::Bind(data::graph::MatchPatternBinding {
                                                                 index: 0,
                                                             }),
-                                                            size: Some(data::graph::BitArrayPatternSize {
+                                                            size: Some(data::graph::BitArrayPatternSize::Dynamic {
                                                                 value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
                                                                 unit: 1,
                                                             }),
@@ -306,7 +306,7 @@ pub fn bit_tail(value: BitArray) {
                                                     segments: data::Storage::Static(&[
                                                         data::graph::BitArrayPatternSegment::Bits {
                                                             pattern: data::graph::BitArrayBindingPattern::Discard,
-                                                            size: Some(data::graph::BitArrayPatternSize {
+                                                            size: Some(data::graph::BitArrayPatternSize::Dynamic {
                                                                 value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(0)),
                                                                 unit: 1,
                                                             }),
@@ -316,7 +316,7 @@ pub fn bit_tail(value: BitArray) {
                                                             pattern: data::graph::BitArrayBindingPattern::Bind(data::graph::MatchPatternBinding {
                                                                 index: 0,
                                                             }),
-                                                            size: Some(data::graph::BitArrayPatternSize {
+                                                            size: Some(data::graph::BitArrayPatternSize::Dynamic {
                                                                 value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
                                                                 unit: 1,
                                                             }),
@@ -610,15 +610,7 @@ pub fn bit_tail(value: BitArray) {
                                                     segments: data::Storage::Static(&[
                                                         data::graph::BitArrayPatternSegment::Int {
                                                             pattern: data::graph::BitArrayPatternValue::Discard,
-                                                            size: data::graph::BitArrayPatternSize {
-                                                                value: data::graph::BitArrayPatternSizeExpr::Value(data::graph::IntegerLiteral {
-                                                                    sign: data::Sign::Plus,
-                                                                    digits: data::Storage::Static(&[
-                                                                        8,
-                                                                    ]),
-                                                                }),
-                                                                unit: 1,
-                                                            },
+                                                            size: data::graph::BitArrayPatternSize::Fixed(8),
                                                             endianness: data::graph::Endianness::Big,
                                                             signedness: data::graph::Signedness::Unsigned,
                                                         },

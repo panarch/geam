@@ -168,7 +168,7 @@ pub mod graph {
         MatchPatternList, MatchPatternListTail,
     };
     pub use crate::plan::execution::graph::block::terminator::pattern::{
-        MatchIntBindingId, MatchPattern, MatchPatternBinding,
+        MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding,
     };
     pub use crate::plan::execution::graph::block::terminator::source_stop::{
         SourceStop, SourceStopKind,

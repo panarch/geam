@@ -194,6 +194,21 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
             FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new("signed_little"),
         )
         .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+            "dependent_fields",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+            "fixed_fields",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+            "fixed_failure",
+        ))
+        .unwrap();
     assert_eq!(
         bindings.prepare().emit_rust(),
         include_str!("fixtures/prepared/bit_array_patterns.rs").trim()
@@ -263,6 +278,119 @@ fn zero_width_bit_array_fields_preserve_dynamic_and_prepared_results() {
                     expected,
                 );
                 assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn dependent_integer_aliases_preserve_dynamic_and_prepared_results_and_misses() {
+    for prepared in [false, true] {
+        let (module, read) = if prepared {
+            let mut bindings = BIT_ARRAY_PATTERNS.load().unwrap();
+            let function = bindings
+                .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+                    "dependent_fields",
+                ))
+                .unwrap();
+            (bindings.seal(), function)
+        } else {
+            let typed = compile_typed_module(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/bit_array_patterns.gleam"),
+            )
+            .unwrap();
+            let (bindings, function) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+                    "dependent_fields",
+                ))
+                .unwrap();
+            (bindings.seal(), function)
+        };
+        for _ in 0..2 {
+            for (bytes, expected) in [
+                (vec![11, 8, 42, 7], 49),
+                (vec![11, 16, 3, 4, 1, 2], 1030),
+                (vec![11, 0], 0),
+                (vec![11, 8, 42], -1),
+                (vec![11, 8, 7, 42], -1),
+                (Vec::new(), -1),
+            ] {
+                let mut echo = Vec::new();
+                assert_eq!(
+                    module
+                        .call(&read, (BitArrayValue::from_bytes(bytes),), &mut echo)
+                        .unwrap(),
+                    BigInt::from(expected)
+                );
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn fixed_bit_counts_preserve_prepared_units_guards_and_failed_prefixes() {
+    for (name, cases) in [
+        (
+            "fixed_fields",
+            vec![
+                (vec![42, 254, 255], 40),
+                (vec![42, 254, 255, 8, 9], 40),
+                (vec![11, 0, 1], 267),
+                (vec![5, 2, 0], -1),
+                (vec![42, 254], -1),
+                (Vec::new(), -1),
+            ],
+        ),
+        (
+            "fixed_failure",
+            vec![
+                (vec![7, 8], 15),
+                (vec![1, 2], 3),
+                (vec![7], -1),
+                (Vec::new(), -1),
+            ],
+        ),
+    ] {
+        for prepared in [false, true] {
+            let (module, read) = if prepared {
+                let mut bindings = BIT_ARRAY_PATTERNS.load().unwrap();
+                let function = bindings
+                    .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(name))
+                    .unwrap();
+                (bindings.seal(), function)
+            } else {
+                let typed = compile_typed_module(
+                    "example",
+                    "src/example.gleam",
+                    include_str!("fixtures/prepared/bit_array_patterns.gleam"),
+                )
+                .unwrap();
+                let (bindings, function) = ModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(name))
+                    .unwrap();
+                (bindings.seal(), function)
+            };
+            for _ in 0..2 {
+                for (bytes, expected) in &cases {
+                    let mut echo = Vec::new();
+                    assert_eq!(
+                        module
+                            .call(
+                                &read,
+                                (BitArrayValue::from_bytes(bytes.clone()),),
+                                &mut echo
+                            )
+                            .unwrap(),
+                        BigInt::from(*expected),
+                        "{name}, prepared {prepared}, input {bytes:?}",
+                    );
+                    assert!(echo.is_empty());
+                }
             }
         }
     }
@@ -421,13 +549,13 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
     static INCOMPATIBLE: data::ModuleArtifact<Infallible> = data::ModuleArtifact {
-        format: 5,
+        format: 6,
         ..include!("fixtures/prepared/arithmetic.rs")
     };
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 5 is incompatible with format 6; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 8; regenerate the prepared program"
     );
 }
 

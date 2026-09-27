@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 pub(super) struct Bindings {
     pub(super) values: Vec<BindingValue>,
-    ints: HashSet<usize>,
+    ints: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -32,6 +32,7 @@ pub(super) enum PatternError {
     FieldCount { expected: usize, found: usize },
     BindingOrder { expected: usize, found: usize },
     IntBinding { index: usize },
+    IntBindingOrder { expected: usize, found: usize },
     RecursivePattern,
     RecursiveSize,
     ZeroUnit,
@@ -53,7 +54,7 @@ impl Bindings {
         types.shape(subject).map_err(PatternError::Type)?;
         let mut bindings = Self {
             values: Vec::new(),
-            ints: HashSet::new(),
+            ints: 0,
         };
         let mut active = HashSet::new();
         let mut pending = vec![Visit::Enter(pattern, subject)];

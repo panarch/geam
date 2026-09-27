@@ -68,6 +68,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     bit_arrays.function(
         FunctionDeclaration::<(BitArrayValue, BigInt, BigInt), BigInt>::new("signed_little"),
     )?;
+    bit_arrays.function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+        "dependent_fields",
+    ))?;
+    bit_arrays.function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+        "fixed_fields",
+    ))?;
+    bit_arrays.function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+        "fixed_failure",
+    ))?;
 
     let native = geam_core::compile_typed_host_program(
         "application",

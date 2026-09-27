@@ -49,13 +49,15 @@ pub struct MatchPatternBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MatchIntBindingId(pub usize);
 
+#[derive(Clone)]
+pub struct MatchIntPatternBinding {
+    pub binding: MatchPatternBinding,
+    pub size: Option<MatchIntBindingId>,
+}
+
 impl MatchPatternBinding {
     pub(in crate::plan::execution) fn new(index: usize) -> Self {
         Self { index }
-    }
-
-    pub(crate) fn int_id(&self) -> MatchIntBindingId {
-        MatchIntBindingId(self.index)
     }
 
     pub(in crate::plan::execution) fn index(&self) -> usize {
@@ -68,8 +70,28 @@ impl MatchIntBindingId {
         Self(index)
     }
 
-    pub(in crate::plan::execution) fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self.0
+    }
+}
+
+impl Explain for MatchIntPatternBinding {
+    fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
+        context.write(&self.binding);
+        if let Some(size) = self.size {
+            context.push_str(":size#");
+            context.push_str(&size.index().to_string());
+        }
+    }
+}
+
+impl Emit for MatchIntPatternBinding {
+    fn emit(&self, output: &mut Rust) {
+        let Self { binding, size } = self;
+        output.structure(
+            "graph::MatchIntPatternBinding",
+            &[("binding", binding), ("size", size)],
+        );
     }
 }
 
@@ -205,10 +227,32 @@ impl Emit for MatchIntBindingId {
 #[cfg(test)]
 mod emission_tests {
     use super::{
-        BitArrayPattern, CustomConstructorId, MatchIntBindingId, MatchPattern, MatchPatternBinding,
-        MatchPatternList, Node, Rust,
+        BitArrayPattern, CustomConstructorId, MatchIntBindingId, MatchIntPatternBinding,
+        MatchPattern, MatchPatternBinding, MatchPatternList, Node, Rust,
     };
     use crate::plan::execution::type_::CustomTypeId;
+
+    #[test]
+    fn emits_integer_result_and_optional_size_slot_separately() {
+        for (size, expected_size) in [
+            (None, "None"),
+            (
+                Some(MatchIntBindingId(1)),
+                "Some(data::graph::MatchIntBindingId(1))",
+            ),
+        ] {
+            let binding = MatchIntPatternBinding {
+                binding: MatchPatternBinding::new(4),
+                size,
+            };
+            assert_eq!(
+                Rust::expression(&binding),
+                format!(
+                    "data::graph::MatchIntPatternBinding {{\n    binding: data::graph::MatchPatternBinding {{\n        index: 4,\n    }},\n    size: {expected_size},\n}}"
+                )
+            );
+        }
+    }
 
     #[test]
     fn emits_every_match_pattern_and_preserves_nested_bindings() {
@@ -342,9 +386,24 @@ data::graph::MatchPattern::Alias {
 #[cfg(test)]
 mod explain_tests {
     use super::super::Terminator;
-    use super::{MatchPattern, MatchPatternBinding};
+    use super::{MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding};
     use crate::plan::execution::explain;
     use crate::plan::execution::function::IntFunctionId;
+
+    #[test]
+    fn writes_integer_result_and_optional_size_slot_separately() {
+        for (size, expected) in [
+            (None, "binding#4"),
+            (Some(MatchIntBindingId(1)), "binding#4:size#1"),
+        ] {
+            explain::assert_rendered("pub fn main() { 1 }", expected, |plan, output| {
+                explain::ExplainContext::new(plan, output).write(&MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(4),
+                    size,
+                });
+            });
+        }
+    }
 
     #[test]
     fn writes_nested_patterns_from_a_lowered_match() {
@@ -391,7 +450,7 @@ pub fn main() {
             ("False", "False", "False"),
             ("1.5", "1.5", "1.5"),
             ("\"text\"", "\"text\"", "\"text\""),
-            ("<<42>>", "<<42>>", "<<int(42, size=8*1, big, unsigned)>>"),
+            ("<<42>>", "<<42>>", "<<int(42, size=8bits, big, unsigned)>>"),
         ] {
             assert_explanation(
                 &format!("pub fn main() {{ let assert #(1, {pattern}) = #(1, {value}) 42 }}"),

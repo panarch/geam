@@ -1,4 +1,4 @@
-use super::{MatchIntBindingId, MatchPatternBinding};
+use super::{MatchIntBindingId, MatchIntPatternBinding, MatchPatternBinding};
 use crate::plan::Text;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::graph::IntegerLiteral;
@@ -21,7 +21,7 @@ pub struct BitArrayPattern {
 #[derive(Clone)]
 pub enum BitArrayPatternSegment {
     Int {
-        pattern: BitArrayPatternValue<IntegerLiteral>,
+        pattern: BitArrayPatternValue<IntegerLiteral, MatchIntPatternBinding>,
         size: BitArrayPatternSize,
         endianness: Endianness,
         signedness: Signedness,
@@ -47,9 +47,12 @@ pub enum BitArrayPatternSegment {
 }
 
 #[derive(Clone)]
-pub struct BitArrayPatternSize {
-    pub value: BitArrayPatternSizeExpr,
-    pub unit: u8,
+pub enum BitArrayPatternSize {
+    Fixed(u64),
+    Dynamic {
+        value: BitArrayPatternSizeExpr,
+        unit: u8,
+    },
 }
 
 #[derive(Clone)]
@@ -65,13 +68,13 @@ pub enum BitArrayPatternSizeExpr {
 }
 
 #[derive(Clone)]
-pub enum BitArrayPatternValue<Value: 'static> {
+pub enum BitArrayPatternValue<Value: 'static, Binding: 'static = MatchPatternBinding> {
     Literal(Value),
-    Bind(MatchPatternBinding),
+    Bind(Binding),
     Discard,
     Alias {
         pattern: Node<Self>,
-        binding: MatchPatternBinding,
+        binding: Binding,
     },
 }
 
@@ -100,20 +103,6 @@ impl BitArrayPattern {
 
     pub(crate) fn segments(&self) -> &[BitArrayPatternSegment] {
         &self.segments
-    }
-}
-
-impl BitArrayPatternSize {
-    pub(in crate::plan::execution) fn new(value: BitArrayPatternSizeExpr, unit: u8) -> Self {
-        Self { value, unit }
-    }
-
-    pub(crate) fn value(&self) -> &BitArrayPatternSizeExpr {
-        &self.value
-    }
-
-    pub(crate) fn unit(&self) -> u8 {
-        self.unit
     }
 }
 
@@ -226,9 +215,17 @@ impl Explain for BitArrayBindingPattern {
 
 impl Explain for BitArrayPatternSize {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        context.write(self.value());
-        context.push('*');
-        context.push_str(&self.unit().to_string());
+        match self {
+            Self::Fixed(bits) => {
+                context.push_str(&bits.to_string());
+                context.push_str("bits");
+            }
+            Self::Dynamic { value, unit } => {
+                context.write(value);
+                context.push('*');
+                context.push_str(&unit.to_string());
+            }
+        }
     }
 }
 
@@ -238,7 +235,7 @@ impl Explain for BitArrayPatternSizeExpr {
             Self::Value(value) => context.push_str(&value.to_string()),
             Self::Local(local) => local.write_local_label(context.output()),
             Self::Binding(binding) => {
-                context.push_str("binding#");
+                context.push_str("size#");
                 context.push_str(&binding.index().to_string());
             }
             Self::Add { left, right } => write_binary(context, "+", left, right),
@@ -265,9 +262,9 @@ fn write_binary(
     context.push(')');
 }
 
-fn write_value<Value>(
+fn write_value<Value, Binding: Explain>(
     context: &mut ExplainContext<'_, '_>,
-    pattern: &BitArrayPatternValue<Value>,
+    pattern: &BitArrayPatternValue<Value, Binding>,
     write_literal: impl Copy + Fn(&mut ExplainContext<'_, '_>, &Value),
 ) {
     match pattern {
@@ -351,11 +348,13 @@ impl Emit for BitArrayPatternSegment {
 
 impl Emit for BitArrayPatternSize {
     fn emit(&self, output: &mut Rust) {
-        let Self { value, unit } = self;
-        output.structure(
-            "graph::BitArrayPatternSize",
-            &[("value", value), ("unit", unit)],
-        );
+        match self {
+            Self::Fixed(bits) => output.call("graph::BitArrayPatternSize::Fixed", &[bits]),
+            Self::Dynamic { value, unit } => output.structure(
+                "graph::BitArrayPatternSize::Dynamic",
+                &[("value", value), ("unit", unit)],
+            ),
+        }
     }
 }
 
@@ -395,9 +394,10 @@ impl Emit for BitArrayPatternSizeExpr {
     }
 }
 
-impl<Value: 'static> Emit for BitArrayPatternValue<Value>
+impl<Value: 'static, Binding: 'static> Emit for BitArrayPatternValue<Value, Binding>
 where
     Value: Emit,
+    Binding: Emit,
 {
     fn emit(&self, output: &mut Rust) {
         match self {
@@ -443,9 +443,33 @@ mod emission_tests {
     use super::{
         BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, Endianness,
-        IntLocalId, IntegerLiteral, MatchIntBindingId, MatchPatternBinding, Node, Rust, Signedness,
-        StringEncoding,
+        IntLocalId, IntegerLiteral, MatchIntBindingId, MatchIntPatternBinding, MatchPatternBinding,
+        Node, Rust, Signedness, StringEncoding,
     };
+
+    #[test]
+    fn emits_fixed_bit_counts_without_host_width_narrowing() {
+        for (bits, expected) in [
+            (0, "data::graph::BitArrayPatternSize::Fixed(0)"),
+            (
+                4_294_967_295,
+                "data::graph::BitArrayPatternSize::Fixed(4294967295)",
+            ),
+            (
+                4_294_967_296,
+                "data::graph::BitArrayPatternSize::Fixed(4294967296)",
+            ),
+            (
+                u64::MAX,
+                "data::graph::BitArrayPatternSize::Fixed(18446744073709551615)",
+            ),
+        ] {
+            assert_eq!(
+                Rust::expression(&BitArrayPatternSize::Fixed(bits)),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn emits_bit_pattern_sizes_and_every_arithmetic_operation() {
@@ -526,11 +550,14 @@ data::graph::BitArrayPatternSizeExpr::Remainder {
         for (value, expected) in cases {
             assert_eq!(Rust::expression(&value), expected);
         }
-        let size = BitArrayPatternSize::new(BitArrayPatternSizeExpr::Local(IntLocalId(1)), 8);
+        let size = BitArrayPatternSize::Dynamic {
+            value: BitArrayPatternSizeExpr::Local(IntLocalId(1)),
+            unit: 8,
+        };
         assert_eq!(
             Rust::expression(&size),
             r#"
-data::graph::BitArrayPatternSize {
+data::graph::BitArrayPatternSize::Dynamic {
     value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
     unit: 8,
 }"#
@@ -553,10 +580,16 @@ data::graph::BitArrayPatternValue::Literal(data::graph::IntegerLiteral {
                 .trim_start_matches('\n'),
             ),
             (
-                BitArrayPatternValue::Bind(MatchPatternBinding::new(2)),
+                BitArrayPatternValue::Bind(MatchIntPatternBinding {
+                    binding: MatchPatternBinding::new(2),
+                    size: Some(MatchIntBindingId(0)),
+                }),
                 r#"
-data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {
-    index: 2,
+data::graph::BitArrayPatternValue::Bind(data::graph::MatchIntPatternBinding {
+    binding: data::graph::MatchPatternBinding {
+        index: 2,
+    },
+    size: Some(data::graph::MatchIntBindingId(0)),
 })"#
                 .trim_start_matches('\n'),
             ),
@@ -565,15 +598,21 @@ data::graph::BitArrayPatternValue::Bind(data::graph::MatchPatternBinding {
                 "data::graph::BitArrayPatternValue::Discard",
             ),
             (
-                BitArrayPatternValue::<IntegerLiteral>::Alias {
+                BitArrayPatternValue::<IntegerLiteral, MatchIntPatternBinding>::Alias {
                     pattern: Node::Static(&BitArrayPatternValue::Discard),
-                    binding: MatchPatternBinding::new(2),
+                    binding: MatchIntPatternBinding {
+                        binding: MatchPatternBinding::new(2),
+                        size: None,
+                    },
                 },
                 r#"
 data::graph::BitArrayPatternValue::Alias {
     pattern: data::Storage::Static(&data::graph::BitArrayPatternValue::Discard),
-    binding: data::graph::MatchPatternBinding {
-        index: 2,
+    binding: data::graph::MatchIntPatternBinding {
+        binding: data::graph::MatchPatternBinding {
+            index: 2,
+        },
+        size: None,
     },
 }"#
                 .trim_start_matches('\n'),
@@ -675,7 +714,10 @@ data::graph::BitArrayBindingPattern::Alias {
             Rust::expression(&Signedness::Unsigned),
             "data::graph::Signedness::Unsigned"
         );
-        let size = BitArrayPatternSize::new(BitArrayPatternSizeExpr::Local(IntLocalId(1)), 8);
+        let size = BitArrayPatternSize::Dynamic {
+            value: BitArrayPatternSizeExpr::Local(IntLocalId(1)),
+            unit: 8,
+        };
         let cases = [
             (
                 BitArrayPatternSegment::Int {
@@ -687,7 +729,7 @@ data::graph::BitArrayBindingPattern::Alias {
                 r#"
 data::graph::BitArrayPatternSegment::Int {
     pattern: data::graph::BitArrayPatternValue::Discard,
-    size: data::graph::BitArrayPatternSize {
+    size: data::graph::BitArrayPatternSize::Dynamic {
         value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
         unit: 8,
     },
@@ -705,7 +747,7 @@ data::graph::BitArrayPatternSegment::Int {
                 r#"
 data::graph::BitArrayPatternSegment::Float {
     pattern: data::graph::BitArrayPatternValue::Discard,
-    size: data::graph::BitArrayPatternSize {
+    size: data::graph::BitArrayPatternSize::Dynamic {
         value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
         unit: 8,
     },
@@ -722,7 +764,7 @@ data::graph::BitArrayPatternSegment::Float {
                 r#"
 data::graph::BitArrayPatternSegment::Bits {
     pattern: data::graph::BitArrayBindingPattern::Discard,
-    size: Some(data::graph::BitArrayPatternSize {
+    size: Some(data::graph::BitArrayPatternSize::Dynamic {
         value: data::graph::BitArrayPatternSizeExpr::Local(data::graph::IntLocalId(1)),
         unit: 8,
     }),
@@ -827,15 +869,12 @@ pub fn main() {
     #[test]
     fn writes_bit_array_pattern_segment() {
         let source = "pub fn main() { 1 }";
-        let expected = "int(1, size=8*1, big, unsigned)";
+        let expected = "int(1, size=8bits, big, unsigned)";
 
         explain::assert_rendered(source, expected, |plan, output| {
             let segment = BitArrayPatternSegment::Int {
                 pattern: BitArrayPatternValue::Literal(BigInt::from(1).into()),
-                size: BitArrayPatternSize::new(
-                    BitArrayPatternSizeExpr::Value(BigInt::from(8).into()),
-                    1,
-                ),
+                size: BitArrayPatternSize::Fixed(8),
                 endianness: Endianness::Big,
                 signedness: Signedness::Unsigned,
             };
@@ -865,16 +904,22 @@ pub fn main() {
         let expected = "%int#2*4";
 
         explain::assert_rendered(source, expected, |plan, output| {
-            let size = BitArrayPatternSize::new(BitArrayPatternSizeExpr::Local(IntLocalId(2)), 4);
+            let size = BitArrayPatternSize::Dynamic {
+                value: BitArrayPatternSizeExpr::Local(IntLocalId(2)),
+                unit: 4,
+            };
             let mut context = explain::ExplainContext::new(plan, output);
             context.write(&size);
+        });
+        explain::assert_rendered(source, "18446744073709551615bits", |plan, output| {
+            explain::ExplainContext::new(plan, output).write(&BitArrayPatternSize::Fixed(u64::MAX));
         });
     }
 
     #[test]
     fn writes_bit_array_pattern_size_expression() {
         let source = "pub fn main() { 1 }";
-        let expected = "(8 + binding#2)";
+        let expected = "(8 + size#2)";
 
         explain::assert_rendered(source, expected, |plan, output| {
             let expression = BitArrayPatternSizeExpr::Add {

@@ -152,6 +152,12 @@ impl Emit for usize {
     }
 }
 
+impl Emit for u64 {
+    fn emit(&self, output: &mut Rust) {
+        output.output.push_str(&self.to_string());
+    }
+}
+
 impl Emit for u32 {
     fn emit(&self, output: &mut Rust) {
         output.output.push_str(&self.to_string());
@@ -292,6 +298,7 @@ data::Storage::Static(&[
             "data::Storage::Static(&7)"
         );
         assert_eq!(Rust::expression(&[1usize, 2]), "[\n    1,\n    2,\n]");
+        assert_eq!(Rust::expression(&u64::MAX), "18446744073709551615");
         assert_eq!(
             Rust::expression(&PhantomData::<str>),
             "::core::marker::PhantomData"

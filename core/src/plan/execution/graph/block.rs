@@ -17,8 +17,9 @@ pub(crate) use terminator::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, BoolBranch, Echo, Edge,
     FloatSwitch, IntSwitch, Jump, LetAssertPanic, Match, MatchEdge, MatchEdgeArgument,
-    MatchIntBindingId, MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
-    NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind, StringSwitch, Terminator,
+    MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding, MatchPatternList,
+    MatchPatternListTail, NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind,
+    StringSwitch, Terminator,
 };
 
 use crate::plan::execution::explain::Explain;
