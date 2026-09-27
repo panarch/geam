@@ -197,6 +197,7 @@ type TypedListInstructionValue<Family> = ListInstructionValue<
     <Family as RuntimeTypedList>::Local,
 >;
 
+#[inline(always)]
 pub(super) fn typed<Family, Plan, State>(
     plan: &Plan,
     state: &mut State,

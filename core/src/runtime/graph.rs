@@ -19,7 +19,9 @@ use crate::plan::execution::type_::ValueType;
 use crate::runtime::error::ExecutionResult;
 use crate::runtime::{CaptureStorage, ExecutableRuntimePlan};
 pub(in crate::runtime) use activation::Returns;
-pub(in crate::runtime) use activation::{Execution as GraphExecution, Progress as GraphProgress};
+pub(in crate::runtime) use activation::{
+    Execution as GraphExecution, Progress as GraphProgress, Storage as GraphStorage,
+};
 pub(in crate::runtime) use instruction::{
     ExternalFunctionInstructionValue, ExternalListInstructionValue,
 };

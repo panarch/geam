@@ -387,7 +387,8 @@ mod tests {
     use crate::runtime::execution::invocation::Waiting;
     use crate::runtime::execution::{Domain, ServiceContext};
     use crate::runtime::graph::{
-        BlockEnvironment, GraphExecution, GraphProgress, GraphValue, Returns, RuntimeGraphState,
+        BlockEnvironment, GraphExecution, GraphProgress, GraphStorage, GraphValue, Returns,
+        RuntimeGraphState,
     };
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListSequence;
@@ -802,12 +803,15 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
             let body = self.int_function(IntFunctionId(0)).body();
             let mut graph =
                 GraphExecution::new(body.block_graph().as_view(), RetainedValues::empty());
-            let mut returns = Returns::new();
+            let mut storage = GraphStorage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            };
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             loop {
                 match graph
-                    .advance(self, &mut state, &mut returns, &mut 32)
+                    .advance(self, &mut state, &mut storage, &mut 32)
                     .unwrap()
                 {
                     GraphProgress::Continue(next) => graph = next,
