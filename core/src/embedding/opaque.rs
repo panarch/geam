@@ -1049,7 +1049,7 @@ pub fn check() {
     }
 
     #[test]
-    fn guarded_callable_lists_release_payloads_after_return_failure_and_cancellation() {
+    fn matched_and_guarded_callable_lists_release_payloads_after_return_failure_and_cancellation() {
         use crate::embedding::CallableType;
         use crate::{
             HostCall, HostCallCompletion, HostCallError, HostExternalType, HostProviderModule,
@@ -1095,9 +1095,13 @@ pub type Resource
 @external(erlang, "native", "make")
 fn make() -> Resource
 pub fn select(mode: Int) {
-  let first = make()
-  let second = make()
-  case [fn() { first }, fn() { second }] {
+  let assert [first, second] = [make(), make()]
+  let first = case #(first, <<mode>>) {
+    #(resource, <<1>>) -> resource
+    _ -> first
+  }
+  let assert [first, second] = [fn() { first }, fn() { second }]
+  case [first, second] {
     [head, ..tail] if mode < 0 -> panic as "guard stopped"
     [head, ..tail] if mode == 0 -> head
     [head, ..tail] if head == head && mode == 1 -> {
@@ -1116,7 +1120,7 @@ fn spin(values: List(fn() -> Resource), count: Int) -> Resource {
   }
 }
 pub fn pending(wait: Bool) {
-  let resource = make()
+  let assert [resource] = [make()]
   case wait {
     True -> spin([fn() { resource }], 1)
     False -> resource

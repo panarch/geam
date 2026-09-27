@@ -123,11 +123,17 @@ fn fold(callback: fn(Int) -> Int, initial: Int) -> Int
 @external(erlang, "native", "wait")
 fn wait(value: Int) -> Int
 fn nested(value: Int, offset: Int) {
-  let value = wait(value + offset)
+  let assert [value, offset] = [value, offset]
+  let assert [value] = [wait(value + offset)]
   echo value
   value
 }
-pub fn run(offset: Int) { fold(fn(value) { nested(value, offset) }, 40) }
+pub fn run(offset: Int) {
+  let assert [callback] = [fn(value) { nested(value, offset) }]
+  let result = fold(callback, 40)
+  let assert [result] = [result]
+  result
+}
 "#;
     let typed = compile_typed_host_program(
         "application",

@@ -1,5 +1,6 @@
 use super::{BlockEnvironment, RetainedValues};
 use crate::plan::execution::graph::{FamilyTransfer, StorageFamily, Transfer, TransferStep};
+use crate::runtime::evaluated::EvaluatedValue;
 use crate::runtime::graph::pattern::MatchBindings;
 
 impl BlockEnvironment {
@@ -17,18 +18,21 @@ impl BlockEnvironment {
         transfer: &Transfer,
         selected: &[usize],
         bindings: MatchBindings,
+        results: &mut Vec<EvaluatedValue>,
     ) -> RetainedValues {
         let mut retained = RetainedValues {
             values: self.values,
             callable_domain: None,
         };
         let mut selected = selected.iter().copied().peekable();
-        for (index, value) in bindings.into_values().into_iter().enumerate() {
+        let mut values = bindings.into_values();
+        for (index, value) in values.drain(..).enumerate() {
             if selected.peek() == Some(&index) {
                 retained.push_evaluated(value);
                 selected.next();
             }
         }
+        *results = values;
         retained.transfer(transfer);
         retained
     }

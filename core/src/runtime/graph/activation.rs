@@ -26,6 +26,11 @@ pub(in crate::runtime) struct Execution<'plan, Plan: ExecutableRuntimePlan> {
     active: Activation<'plan, Plan>,
 }
 
+pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
+    pub(in crate::runtime) returns: Returns<'plan, Plan>,
+    pub(in crate::runtime) match_results: Vec<EvaluatedValue>,
+}
+
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Continue(Execution<'plan, Plan>),
     Host(Plan::HostInvocation<'plan, Execution<'plan, Plan>>),
@@ -152,9 +157,13 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         self,
         plan: &'plan Plan,
         state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-        returns: &mut Returns<'plan, Plan>,
+        storage: &mut Storage<'plan, Plan>,
         remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
+        let Storage {
+            returns,
+            match_results,
+        } = storage;
         returns.domain = Some(state.captures().domain());
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
@@ -170,6 +179,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         state,
                         frame.position.environment,
                         block.terminator(),
+                        match_results,
                     )? {
                         GraphAction::Continue { block, inputs } => {
                             frame.position = GraphPosition::new(block, inputs);
@@ -576,8 +586,8 @@ impl ReturnValue for () {
 #[cfg(test)]
 mod tests {
     use super::{
-        Activation, Execution, Frame, GraphPosition, Progress, Returns, RootExit, enter_function,
-        enter_never,
+        Activation, Execution, Frame, GraphPosition, Progress, Returns, RootExit, Storage,
+        enter_function, enter_never,
     };
     use crate::ExecutionPlan;
     use crate::plan::execution::function::{FunctionExit, IntFunctionId};
@@ -628,12 +638,15 @@ mod tests {
     fn complete_int_graph(plan: &ExecutionPlan) -> CompletedGraph {
         let body = plan.int_function(IntFunctionId(0)).body();
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-        let mut returns = Returns::new();
+        let mut storage = Storage {
+            returns: Returns::new(),
+            match_results: Vec::new(),
+        };
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         loop {
             match execution
-                .advance(plan, &mut state, &mut returns, &mut 0)
+                .advance(plan, &mut state, &mut storage, &mut 0)
                 .unwrap()
             {
                 Progress::Continue(next) => execution = next,
@@ -663,13 +676,16 @@ pub fn main() {
         let instructions = graph.block(graph.entry()).instructions();
         assert!(instructions.len() > 3);
         for budget in 1..=instructions.len() {
-            let mut returns = Returns::new();
+            let mut storage = Storage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            };
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             let mut remaining = budget - 1;
             let execution = continuing(
                 Execution::new(graph, RetainedValues::empty())
-                    .advance(&plan, &mut state, &mut returns, &mut remaining)
+                    .advance(&plan, &mut state, &mut storage, &mut remaining)
                     .unwrap(),
             );
             assert_eq!(remaining, 0);
@@ -685,7 +701,7 @@ pub fn main() {
                         .advance(
                             &plan,
                             &mut state,
-                            &mut returns,
+                            &mut storage,
                             &mut (instructions.len() - budget - 1),
                         )
                         .unwrap(),
@@ -702,12 +718,12 @@ pub fn main() {
             );
             let execution = continuing(
                 execution
-                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .advance(&plan, &mut state, &mut storage, &mut 0)
                     .unwrap(),
             );
             let completed = completed(
                 execution
-                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .advance(&plan, &mut state, &mut storage, &mut 0)
                     .unwrap(),
             );
             assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
@@ -737,13 +753,16 @@ pub fn main() {
                 retained.push_evaluated(value);
             }
             let mut execution = Execution::new(graph, retained);
-            let mut returns = Returns::new();
+            let mut storage = Storage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            };
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             for _ in 0..instruction_count {
                 execution = continuing(
                     execution
-                        .advance(&plan, &mut state, &mut returns, &mut 0)
+                        .advance(&plan, &mut state, &mut storage, &mut 0)
                         .unwrap(),
                 );
                 assert_eq!(
@@ -753,12 +772,12 @@ pub fn main() {
             }
             execution = continuing(
                 execution
-                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .advance(&plan, &mut state, &mut storage, &mut 0)
                     .unwrap(),
             );
             let completed = completed(
                 execution
-                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .advance(&plan, &mut state, &mut storage, &mut 0)
                     .unwrap(),
             );
             assert_eq!(returned_int(&plan, id, completed), 42.into());
@@ -831,7 +850,10 @@ pub fn main() { left(20) + 1 }
                 .as_view();
             let root_instructions = graph.block(graph.entry()).instructions().as_ptr();
             let mut execution = Execution::new(graph, RetainedValues::empty());
-            let mut returns = Returns::new();
+            let mut storage = Storage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            };
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             let mut owner = None;
@@ -847,13 +869,13 @@ pub fn main() { left(20) + 1 }
                     if instructions != root_instructions {
                         let address = ptr::from_ref(frame.exit.as_ref()).cast::<()>();
                         assert_eq!(address, *owner.get_or_insert(address));
-                        assert_eq!(returns.ints.len(), 1);
+                        assert_eq!(storage.returns.ints.len(), 1);
                         bodies.insert(instructions as usize);
                         observations += 1;
                     }
                 }
                 match execution
-                    .advance(&plan, &mut state, &mut returns, &mut 0)
+                    .advance(&plan, &mut state, &mut storage, &mut 0)
                     .unwrap()
                 {
                     Progress::Continue(next) => execution = next,
@@ -864,7 +886,7 @@ pub fn main() { left(20) + 1 }
             assert_eq!(returned_int(&plan, IntFunctionId(0), completed), 42.into());
             assert_eq!(bodies.len(), expected_bodies);
             assert!(observations > 20);
-            assert!(returns.ints.is_empty());
+            assert!(storage.returns.ints.is_empty());
             assert!(echo.is_empty());
         }
     }
@@ -897,8 +919,11 @@ pub fn main() { walk(100) + 1 }
             let drops = Arc::new(AtomicUsize::new(0));
             let lease = MapperLease(drops.clone());
             let observed_calls = calls.clone();
-            let mut returns = Returns::new();
-            let destination = returns.suspend(Frame {
+            let mut storage = Storage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            };
+            let destination = storage.returns.suspend(Frame {
                 graph: caller,
                 position: GraphPosition::new(caller.entry(), RetainedValues::empty()),
                 exit: Box::new(RootExit),
@@ -924,17 +949,17 @@ pub fn main() { walk(100) + 1 }
             for _ in 0..30 {
                 execution = continuing(
                     execution
-                        .advance(&plan, &mut state, &mut returns, &mut 0)
+                        .advance(&plan, &mut state, &mut storage, &mut 0)
                         .unwrap(),
                 );
             }
             assert_eq!(calls.load(Ordering::SeqCst), 0);
             assert_eq!(drops.load(Ordering::SeqCst), 0);
             if complete {
-                while !returns.ints.is_empty() {
+                while !storage.returns.ints.is_empty() {
                     execution = continuing(
                         execution
-                            .advance(&plan, &mut state, &mut returns, &mut 0)
+                            .advance(&plan, &mut state, &mut storage, &mut 0)
                             .unwrap(),
                     );
                 }
@@ -949,7 +974,7 @@ pub fn main() { walk(100) + 1 }
                 assert_eq!(drops.load(Ordering::SeqCst), 1);
             }
             drop(execution);
-            drop(returns);
+            drop(storage);
             assert_eq!(calls.load(Ordering::SeqCst), usize::from(complete));
             assert_eq!(drops.load(Ordering::SeqCst), 1);
             assert!(echo.is_empty());
@@ -977,14 +1002,17 @@ pub fn main() { left(20) }
         };
         let mut owner = None;
         let mut observations = 0;
-        let mut returns = Returns::new();
+        let mut storage = Storage {
+            returns: Returns::new(),
+            match_results: Vec::new(),
+        };
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let error = loop {
             let address = ptr::from_ref(active_frame(&execution).exit.as_ref()).cast::<()>();
             assert_eq!(address, *owner.get_or_insert(address));
             observations += 1;
-            match execution.advance(&plan, &mut state, &mut returns, &mut 0) {
+            match execution.advance(&plan, &mut state, &mut storage, &mut 0) {
                 Ok(progress) => execution = continuing(progress),
                 Err(error) => break error,
             }
@@ -1023,7 +1051,10 @@ pub fn main() {
         );
         let body = plan.int_function(IntFunctionId(0)).body();
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-        let mut returns = Returns::new();
+        let mut storage = Storage {
+            returns: Returns::new(),
+            match_results: Vec::new(),
+        };
         let mut lists = RuntimeListStorage::default();
         let captures = crate::runtime::CaptureStorage::default();
         let mut output = Vec::new();
@@ -1032,23 +1063,23 @@ pub fn main() {
             loop {
                 let plan = &plan;
                 let captures = captures.clone();
-                let (step, retained_returns, retained_lists, retained_output) = scope
+                let (step, retained_storage, retained_lists, retained_output) = scope
                     .spawn(move || {
                         let mut state =
                             RuntimeState::with_host_storage(&mut output, (), lists, captures);
                         let step = execution
-                            .advance(plan, &mut state, &mut returns, &mut 0)
+                            .advance(plan, &mut state, &mut storage, &mut 0)
                             .expect("one actual evaluator step");
                         let lists = state.lists().clone();
                         drop(state);
-                        (step, returns, lists, output)
+                        (step, storage, lists, output)
                     })
                     .join()
                     .expect("owned activation transfers");
                 steps += 1;
                 assert!(steps < 200, "the finite source must make progress");
                 lists = retained_lists;
-                returns = retained_returns;
+                storage = retained_storage;
                 output = retained_output;
                 match step {
                     Progress::Continue(next) => execution = next,
@@ -1104,19 +1135,22 @@ pub fn main() { count(0) + 1 }
                 let body = plan.int_function(IntFunctionId(0)).body();
                 let mut execution =
                     Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-                let mut returns = Returns::new();
+                let mut storage = Storage {
+                    returns: Returns::new(),
+                    match_results: Vec::new(),
+                };
                 let mut echo = Vec::new();
                 let mut state = RuntimeState::new(&mut echo);
                 for _ in 0..50_000 {
                     execution = continuing(
                         execution
-                            .advance(&plan, &mut state, &mut returns, &mut 0)
+                            .advance(&plan, &mut state, &mut storage, &mut 0)
                             .expect("recursive source step"),
                     );
                 }
-                assert!(returns.ints.len() > 5_000);
+                assert!(storage.returns.ints.len() > 5_000);
                 drop(execution);
-                drop(returns);
+                drop(storage);
             })
             .expect("small stack worker")
             .join()

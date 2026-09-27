@@ -5,14 +5,16 @@ use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::execution::{Evaluation, ServiceContext, Yield};
 use crate::runtime::graph::RuntimeGraphState;
-use crate::runtime::graph::{GraphExecution, GraphProgress, GraphValue, RetainedValues, Returns};
+use crate::runtime::graph::{
+    GraphExecution, GraphProgress, GraphStorage, GraphValue, RetainedValues, Returns,
+};
 use crate::runtime::state::RuntimeState;
 use std::num::NonZeroUsize;
 
 pub(in crate::runtime) struct Execution<'plan, Plan: ExecutableRuntimePlan, Id: EntryTarget<Plan>> {
     function: Id,
     position: Position<'plan, Plan, Id>,
-    returns: Box<Returns<'plan, Plan>>,
+    storage: Box<GraphStorage<'plan, Plan>>,
 }
 
 pub(in crate::runtime) enum Progress<
@@ -76,7 +78,10 @@ where
         Self {
             function,
             position: Position::Entry { origin, inputs },
-            returns: Box::new(Returns::new()),
+            storage: Box::new(GraphStorage {
+                returns: Returns::new(),
+                match_results: Vec::new(),
+            }),
         }
     }
 
@@ -141,7 +146,7 @@ where
         let Self {
             function,
             position,
-            mut returns,
+            mut storage,
         } = self;
         match position {
             Position::Entry { origin, inputs } => {
@@ -153,7 +158,7 @@ where
                 match function.entry(plan) {
                     ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
                         function,
-                        returns,
+                        storage,
                         position: Position::Graph {
                             body: entry.body(),
                             execution: GraphExecution::new(
@@ -169,19 +174,19 @@ where
                 }
             }
             Position::Graph { body, execution } => {
-                match execution.advance(plan, state, &mut returns, remaining)? {
+                match execution.advance(plan, state, &mut storage, remaining)? {
                     GraphProgress::Host(invoke) => {
                         Ok(Progress::Host(Plan::map_host(invoke, move |execution| {
                             Ok(Progress::Continue(Self {
                                 function,
                                 position: Position::Graph { body, execution },
-                                returns,
+                                storage,
                             }))
                         })))
                     }
                     GraphProgress::Continue(next) => Ok(Progress::Continue(Self {
                         function,
-                        returns,
+                        storage,
                         position: Position::Graph {
                             body,
                             execution: next,
@@ -204,7 +209,7 @@ where
                                         origin,
                                         inputs: completed.into_retained(transfer),
                                     },
-                                    returns,
+                                    storage,
                                 })
                             }
                         })
@@ -364,8 +369,8 @@ pub fn main() { count(0) }
             HostCallOrigin::Entry,
             RetainedValues::empty(),
         );
-        let left_storage = std::ptr::from_ref(left.returns.as_ref());
-        let right_storage = std::ptr::from_ref(right.returns.as_ref());
+        let left_storage = std::ptr::from_ref(left.storage.as_ref());
+        let right_storage = std::ptr::from_ref(right.storage.as_ref());
         let budget = NonZeroUsize::new(29).unwrap();
         let mut left_echo = Vec::new();
         let mut right_echo = Vec::new();
@@ -379,8 +384,8 @@ pub fn main() { count(0) }
                     .expect("right turn"),
             );
         }
-        assert_eq!(std::ptr::from_ref(left.returns.as_ref()), left_storage);
-        assert_eq!(std::ptr::from_ref(right.returns.as_ref()), right_storage);
+        assert_eq!(std::ptr::from_ref(left.storage.as_ref()), left_storage);
+        assert_eq!(std::ptr::from_ref(right.storage.as_ref()), right_storage);
         assert!(left_echo.len() > 100);
         assert_eq!(left_echo.len(), right_echo.len());
         for (index, output) in left_echo.iter().enumerate() {
@@ -394,6 +399,117 @@ pub fn main() { count(0) }
             .expect("surviving turn");
         drop(continuing(progress));
         assert!(right_echo.len() > previous);
+    }
+
+    #[test]
+    fn match_results_survive_root_tail_calls_nested_calls_and_independent_yields() {
+        let plan = crate::runtime::plan_src(
+            r#"
+fn ordinary(value, depth) {
+  let assert <<first, rest:bits>> = value
+  case depth {
+    0 -> first
+    _ -> ordinary(value, depth - 1) + first
+  }
+}
+fn left(values: List(Int), count: Int) -> Int {
+  let assert [head, ..tail] = values
+  echo ordinary(<<head, 2>>, 8)
+  right([head, ..tail], count + 1)
+}
+fn right(values: List(Int), count: Int) -> Int {
+  let assert [head, ..tail] = values
+  echo count
+  left([head, ..tail], count)
+}
+pub fn main() { left([1, 2, 3], 0) }
+"#,
+        );
+        let mut first = Execution::new(
+            IntFunctionId(0),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        );
+        let mut second = Execution::new(
+            IntFunctionId(0),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        );
+        let mut first_echo = Vec::new();
+        let mut second_echo = Vec::new();
+        // Enter both source executions with a fixed number of one-step turns.
+        for _ in 0..32 {
+            first = continuing(
+                first
+                    .advance(
+                        &plan,
+                        &mut RuntimeState::new(&mut first_echo),
+                        NonZeroUsize::MIN,
+                    )
+                    .unwrap(),
+            );
+            second = continuing(
+                second
+                    .advance(
+                        &plan,
+                        &mut RuntimeState::new(&mut second_echo),
+                        NonZeroUsize::MIN,
+                    )
+                    .unwrap(),
+            );
+        }
+        let first_buffer = first.storage.match_results.as_ptr();
+        let second_buffer = second.storage.match_results.as_ptr();
+        let capacity = first.storage.match_results.capacity();
+        assert!(capacity >= 2);
+        assert_ne!(first_buffer, second_buffer);
+        for _ in 0..4_000 {
+            first = continuing(
+                first
+                    .advance(
+                        &plan,
+                        &mut RuntimeState::new(&mut first_echo),
+                        NonZeroUsize::MIN,
+                    )
+                    .unwrap(),
+            );
+            second = continuing(
+                second
+                    .advance(
+                        &plan,
+                        &mut RuntimeState::new(&mut second_echo),
+                        NonZeroUsize::MIN,
+                    )
+                    .unwrap(),
+            );
+            assert!(first.storage.match_results.is_empty());
+            assert!(second.storage.match_results.is_empty());
+            assert_eq!(first.storage.match_results.as_ptr(), first_buffer);
+            assert_eq!(second.storage.match_results.as_ptr(), second_buffer);
+            assert_eq!(first.storage.match_results.capacity(), capacity);
+            assert_eq!(second.storage.match_results.capacity(), capacity);
+        }
+        assert!(first_echo.len() > 10);
+        assert_eq!(first_echo.len(), second_echo.len());
+        for (index, pair) in first_echo.chunks_exact(2).enumerate() {
+            assert_eq!(pair[0].value().inspect().to_string(), "9");
+            assert_eq!(
+                pair[1].value().inspect().to_string(),
+                (index + 1).to_string()
+            );
+        }
+        drop(first);
+        second = continuing(
+            second
+                .advance(
+                    &plan,
+                    &mut RuntimeState::new(&mut second_echo),
+                    NonZeroUsize::MIN,
+                )
+                .unwrap(),
+        );
+        assert_eq!(second.storage.match_results.as_ptr(), second_buffer);
+        assert!(second.storage.match_results.is_empty());
     }
 
     #[test]

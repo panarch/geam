@@ -7,7 +7,7 @@ use crate::plan::execution::graph::{
 use crate::runtime::ExecutionError;
 
 use crate::runtime::error::PanicKind;
-use crate::runtime::evaluated::EvaluatedNeverFunction;
+use crate::runtime::evaluated::{EvaluatedNeverFunction, EvaluatedValue};
 
 use crate::runtime::state::RuntimeState;
 
@@ -128,6 +128,7 @@ pub(in crate::runtime) fn terminator_action<Plan, State>(
     state: &mut State,
     environment: BlockEnvironment,
     terminator: &Terminator,
+    match_results: &mut Vec<EvaluatedValue>,
 ) -> Result<GraphAction, State::Error>
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
@@ -187,12 +188,15 @@ where
                 &environment,
                 matcher.pattern(),
                 &subject,
+                match_results,
             );
             drop(subject);
             matched
                 .map_err(State::Error::from)
                 .map(|matched| match matched {
-                    Some(bindings) => transition_match(environment, matcher.success(), bindings),
+                    Some(bindings) => {
+                        transition_match(environment, matcher.success(), bindings, match_results)
+                    }
                     None => transition(environment, matcher.failure()),
                 })
         }
@@ -267,8 +271,10 @@ fn transition_match(
     environment: BlockEnvironment,
     edge: &MatchEdge,
     bindings: pattern::MatchBindings,
+    match_results: &mut Vec<EvaluatedValue>,
 ) -> GraphAction {
-    let inputs = environment.into_match_retained(&edge.transfer, &edge.bindings, bindings);
+    let inputs =
+        environment.into_match_retained(&edge.transfer, &edge.bindings, bindings, match_results);
     GraphAction::Continue {
         block: edge.target(),
         inputs,
