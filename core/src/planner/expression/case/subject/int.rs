@@ -545,7 +545,7 @@ pub fn main() {
         let condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
-                vec![bind_other.clone(), bind_alias.clone()],
+                vec![bind_alias.clone()],
                 BoolExpr::equal(local_int(2, "alias").into(), int(2).into()),
             ),
         );

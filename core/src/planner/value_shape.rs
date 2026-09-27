@@ -15,24 +15,33 @@ impl ValueType {
 
 impl ValueShape {
     pub(super) fn from_gleam(type_: &Type) -> Option<Self> {
+        Self::from_gleam_with_external(type_, &|_| false)
+    }
+
+    pub(super) fn from_gleam_with_external(
+        type_: &Type,
+        is_external: &dyn Fn(&ExternalTypeName) -> bool,
+    ) -> Option<Self> {
         match type_ {
             Type::Var { type_ } => match type_.borrow().deref() {
-                TypeVar::Link { type_ } => Self::from_gleam(type_.as_ref()),
+                TypeVar::Link { type_ } => {
+                    Self::from_gleam_with_external(type_.as_ref(), is_external)
+                }
                 TypeVar::Unbound { .. } | TypeVar::Generic { .. } => None,
             },
             Type::Tuple { elements } => Some(Self::Tuple(
                 elements
                     .iter()
-                    .map(|element| Self::from_gleam(element.as_ref()))
+                    .map(|element| Self::from_gleam_with_external(element.as_ref(), is_external))
                     .collect::<Option<Vec<_>>>()?
                     .into_boxed_slice(),
             )),
             Type::Fn { arguments, return_ } => Some(Self::Function(Box::new(FunctionShape::new(
                 arguments
                     .iter()
-                    .map(|argument| Self::from_gleam(argument.as_ref()))
+                    .map(|argument| Self::from_gleam_with_external(argument.as_ref(), is_external))
                     .collect::<Option<Vec<_>>>()?,
-                Self::from_gleam(return_.as_ref())?,
+                Self::from_gleam_with_external(return_.as_ref(), is_external)?,
             )))),
             Type::Named {
                 package,
@@ -56,20 +65,35 @@ impl ValueShape {
                 } else if type_.is_nil() {
                     Some(Self::Nil)
                 } else if let Some(element) = type_.list_type() {
-                    Some(Self::List(Box::new(Self::from_gleam(element.as_ref())?)))
+                    Some(Self::List(Box::new(Self::from_gleam_with_external(
+                        element.as_ref(),
+                        is_external,
+                    )?)))
                 } else {
-                    Some(Self::Custom(CustomValueShape::new(
-                        CustomTypeName::new(package.clone(), module.clone(), name.clone()),
-                        arguments
-                            .iter()
-                            .map(|argument| Self::from_gleam(argument.as_ref()))
-                            .collect::<Option<Vec<_>>>()?,
-                        type_
-                            .custom_type_inferred_variant()
-                            .map_or(CustomConstructorRefinement::Any, |index| {
-                                CustomConstructorRefinement::Exact(usize::from(index))
-                            }),
-                    )))
+                    let name = ExternalTypeName::new(package.clone(), module.clone(), name.clone());
+                    let arguments = arguments
+                        .iter()
+                        .map(|argument| {
+                            Self::from_gleam_with_external(argument.as_ref(), is_external)
+                        })
+                        .collect::<Option<Vec<_>>>()?;
+                    if is_external(&name) {
+                        Some(Self::External(ExternalValueShape::new(name, arguments)))
+                    } else {
+                        Some(Self::Custom(CustomValueShape::new(
+                            CustomTypeName::new(
+                                name.package().clone(),
+                                name.module().clone(),
+                                name.name().clone(),
+                            ),
+                            arguments,
+                            type_
+                                .custom_type_inferred_variant()
+                                .map_or(CustomConstructorRefinement::Any, |index| {
+                                    CustomConstructorRefinement::Exact(usize::from(index))
+                                }),
+                        )))
+                    }
                 }
             }
         }
@@ -237,6 +261,67 @@ mod tests {
                     CustomConstructorRefinement::Exact(1),
                 ))],
                 CustomConstructorRefinement::Exact(0),
+            ))),
+        );
+    }
+
+    #[test]
+    fn monomorphic_conversion_preserves_registered_external_identity_recursively() {
+        use crate::plan::{ExternalTypeName, ExternalValueShape, FunctionShape};
+
+        let name = ExternalTypeName::new("geam".into(), "main".into(), "Resource".into());
+        let registered = |candidate: &ExternalTypeName| candidate == &name;
+        let resource = named("Resource", vec![type_::int()], None);
+        let external =
+            ValueShape::External(ExternalValueShape::new(name.clone(), vec![ValueShape::Int]));
+        let source = type_::tuple(vec![
+            type_::list(resource.clone()),
+            type_::fn_(vec![resource.clone()], resource.clone()),
+            named("Wrapper", vec![resource.clone()], Some(0)),
+            type_::named("other", "main", "Resource", Publicity::Public, Vec::new()),
+            type_::named("geam", "other", "Resource", Publicity::Public, Vec::new()),
+        ]);
+        assert_eq!(
+            ValueShape::from_gleam_with_external(source.as_ref(), &registered),
+            Some(ValueShape::Tuple(
+                vec![
+                    ValueShape::List(Box::new(external.clone())),
+                    ValueShape::Function(Box::new(FunctionShape::new(
+                        vec![external.clone()],
+                        external.clone()
+                    ))),
+                    ValueShape::Custom(CustomValueShape::new(
+                        CustomTypeName::new("geam".into(), "main".into(), "Wrapper".into()),
+                        vec![external],
+                        CustomConstructorRefinement::Exact(0),
+                    )),
+                    ValueShape::Custom(CustomValueShape::new(
+                        CustomTypeName::new("other".into(), "main".into(), "Resource".into()),
+                        Vec::new(),
+                        CustomConstructorRefinement::Any,
+                    )),
+                    ValueShape::Custom(CustomValueShape::new(
+                        CustomTypeName::new("geam".into(), "other".into(), "Resource".into()),
+                        Vec::new(),
+                        CustomConstructorRefinement::Any,
+                    )),
+                ]
+                .into_boxed_slice()
+            )),
+        );
+        assert_eq!(
+            ValueShape::from_gleam_with_external(
+                named("Resource", vec![type_::generic_var(0)], None).as_ref(),
+                &registered,
+            ),
+            None,
+        );
+        assert_eq!(
+            ValueShape::from_gleam(resource.as_ref()),
+            Some(ValueShape::Custom(CustomValueShape::new(
+                CustomTypeName::new("geam".into(), "main".into(), "Resource".into()),
+                vec![ValueShape::Int],
+                CustomConstructorRefinement::Any,
             ))),
         );
     }

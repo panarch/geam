@@ -914,6 +914,304 @@ pub fn inspect(left: Resource, right: Resource) { echo left left == right }
     }
 
     #[test]
+    fn external_types_survive_guard_constants_and_tuple_projections() {
+        use crate::{HostProviderModule, compile_typed_host_program};
+        use std::sync::Arc;
+
+        for (source, expected) in [
+            (
+                r#"
+pub type Resource
+fn empty() -> List(Resource) { [] }
+pub fn check() {
+  case empty() {
+    values if values == [] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> List(fn(Resource) -> Resource) { [] }
+pub fn check() {
+  case empty() {
+    values if values == [] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> #(List(Resource), List(fn() -> Resource)) { #([], []) }
+pub fn check() {
+  case empty() {
+    values if values == #([], []) -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> List(List(Resource)) { [[]] }
+pub fn check() {
+  case empty() {
+    values if values == [[], ..[]] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+pub type Wrapper(a) { Wrapper(a) }
+fn empty() -> Wrapper(List(Resource)) { Wrapper([]) }
+pub fn check() {
+  case empty() {
+    value if value == Wrapper([]) -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> #(List(Resource), Int) { #([], 42) }
+pub fn check() {
+  case empty() {
+    values if values.0 == [] && values.1 == 42 -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+pub type Wrapper { Wrapper(List(Resource)) }
+pub fn check() {
+  let constructor = Wrapper
+  case constructor {
+    value if value == Wrapper -> True
+    _ -> False
+  }
+}
+"#,
+                false,
+            ),
+        ] {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_external_type::<ResourceProvider, Resource>()
+                .unwrap();
+            let program = compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("library", "library.gleam", source)],
+                )],
+                HostProviderSet::<ResourceProfile>::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (bindings, check) = HostedModuleBuilder::new(program)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("check"))
+                .unwrap();
+            let mut module = bindings.seal().unwrap();
+            let host = TestHost::default();
+            let mut state = Arc::default();
+            let mut echo = Vec::new();
+            let result = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&check, ()).await.unwrap()
+                    }),
+                )
+                .unwrap();
+            assert_eq!(result, expected, "{source}");
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn guarded_callable_lists_release_payloads_after_return_failure_and_cancellation() {
+        use crate::embedding::CallableType;
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostExternalType, HostProviderModule,
+            compile_typed_host_program,
+        };
+        use std::cell::Cell;
+        use std::future::Future;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::task::{Context, Waker};
+
+        type ResourceCall<'call> =
+            HostCall<'call, ResourceProfile, ResourceProvider, HostExternalType<Resource>>;
+        type ResourceCompletion<'call> =
+            Result<HostCallCompletion<'call, HostExternalType<Resource>>, HostCallError>;
+
+        fn make(
+            created: Arc<AtomicUsize>,
+        ) -> impl for<'call> Fn(ResourceCall<'call>) -> ResourceCompletion<'call> {
+            move |mut call| {
+                created.fetch_add(1, Ordering::SeqCst);
+                let drops = Arc::clone(call.state());
+                let resource =
+                    call.create_external_with_binding::<ResourceProvider>(ResourcePayload {
+                        value: Cell::new(42),
+                        drops,
+                    });
+                Ok(call.return_value(resource))
+            }
+        }
+        let created = Arc::new(AtomicUsize::new(0));
+        let provider = HostProviderModule::new("application", "library")
+            .unwrap()
+            .with_external_type::<ResourceProvider, Resource>()
+            .unwrap()
+            .with_scoped_function::<ResourceProvider, (), HostExternalType<Resource>, _>(
+                "make",
+                make(Arc::clone(&created)),
+            )
+            .unwrap();
+        let source = r#"
+pub type Resource
+@external(erlang, "native", "make")
+fn make() -> Resource
+pub fn select(mode: Int) {
+  let first = make()
+  let second = make()
+  case [fn() { first }, fn() { second }] {
+    [head, ..tail] if mode < 0 -> panic as "guard stopped"
+    [head, ..tail] if mode == 0 -> head
+    [head, ..tail] if head == head && mode == 1 -> {
+      let assert [next] = tail
+      next
+    }
+    [head, ..tail] if tail == [] || mode == 2 -> head
+    [head, ..tail] -> head
+    _ -> panic as "empty callbacks"
+  }
+}
+fn spin(values: List(fn() -> Resource), count: Int) -> Resource {
+  case values {
+    [head, ..tail] if count > 0 -> spin(values, count + 1)
+    _ -> panic as "unexpected stop"
+  }
+}
+pub fn pending(wait: Bool) {
+  let resource = make()
+  case wait {
+    True -> spin([fn() { resource }], 1)
+    False -> resource
+  }
+}
+"#;
+        let program = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new("library", "library.gleam", source)],
+            )],
+            HostProviderSet::<ResourceProfile>::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        type ResourceType = ExternalType<Resource>;
+        let (mut bindings, select) = HostedModuleBuilder::new(program)
+            .unwrap()
+            .function(FunctionDeclaration::<
+                (BigInt,),
+                CallableType<(), ResourceType>,
+            >::new("select"))
+            .unwrap();
+        let pending = bindings
+            .function(FunctionDeclaration::<(bool,), ResourceType>::new("pending"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut state = Arc::clone(&drops);
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                for mode in 0..4 {
+                    let before = mode * 2;
+                    let callback = scope.call(&select, (BigInt::from(mode),)).await.unwrap();
+                    assert_eq!(created.load(Ordering::SeqCst), before + 2);
+                    assert_eq!(drops.load(Ordering::SeqCst), before + 1);
+                    let value = scope.invoke(&callback, ()).await.unwrap();
+                    let alias = scope.invoke(&callback, ()).await.unwrap();
+                    assert_eq!(value.value, alias.value);
+                    drop(callback);
+                    drop(value);
+                    assert_eq!(drops.load(Ordering::SeqCst), before + 1);
+                    drop(alias);
+                    assert_eq!(drops.load(Ordering::SeqCst), before + 2);
+                }
+                let error = scope
+                    .call(&select, (BigInt::from(-1),))
+                    .await
+                    .err()
+                    .unwrap();
+                assert_eq!(error.to_string(), "panic: guard stopped");
+                assert_eq!(created.load(Ordering::SeqCst), 10);
+                assert_eq!(drops.load(Ordering::SeqCst), 10);
+            }),
+        )
+        .unwrap();
+        for (wait, expected) in [(false, 11), (true, 12)] {
+            let mut execution =
+                Box::pin(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        let value = scope.call(&pending, (wait,)).await.unwrap();
+                        drop(value);
+                    }),
+                );
+            if wait {
+                let mut cx = Context::from_waker(Waker::noop());
+                for _ in 0..32 {
+                    assert!(execution.as_mut().poll(&mut cx).is_pending());
+                    host.step();
+                    if created.load(Ordering::SeqCst) == expected {
+                        break;
+                    }
+                }
+                assert_eq!(created.load(Ordering::SeqCst), expected);
+                for _ in 0..3 {
+                    assert!(execution.as_mut().poll(&mut cx).is_pending());
+                    host.step();
+                    assert_eq!(drops.load(Ordering::SeqCst), expected - 1);
+                }
+                drop(execution);
+                host.step();
+            } else {
+                host.block_on(execution).unwrap();
+            }
+            assert_eq!(created.load(Ordering::SeqCst), expected);
+            assert_eq!(drops.load(Ordering::SeqCst), expected);
+        }
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn resource_fixture_hashes_its_payload_value() {
         use crate::host::{HostExternalHashing, HostExternalStorage, RetainedValueHashing};
         let source_hash = |_: &crate::runtime::RetainedValueRef| 0;

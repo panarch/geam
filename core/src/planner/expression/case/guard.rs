@@ -13,7 +13,32 @@ use crate::planner::expression::conversion::{expect_expression, value_type_from_
 use ecow::EcoString;
 use gleam_compiler_core::ast::{BinOp, ClauseGuard};
 use gleam_compiler_core::type_::Type;
+use std::collections::HashSet;
 use std::sync::Arc;
+
+pub(super) fn referenced_locals(guard: &ClauseGuard<Arc<Type>>) -> HashSet<&EcoString> {
+    let mut names = HashSet::new();
+    let mut pending = vec![guard];
+    while let Some(guard) = pending.pop() {
+        match guard {
+            ClauseGuard::Var { name, .. } => {
+                names.insert(name);
+            }
+            ClauseGuard::Block { value, .. } => pending.push(value),
+            ClauseGuard::Not { expression, .. } => pending.push(expression),
+            ClauseGuard::TupleIndex { tuple, .. } => pending.push(tuple),
+            ClauseGuard::FieldAccess { container, .. } => pending.push(container),
+            ClauseGuard::BinaryOperator { left, right, .. } => {
+                pending.push(left);
+                pending.push(right);
+            }
+            ClauseGuard::Constant(_)
+            | ClauseGuard::ModuleSelect { .. }
+            | ClauseGuard::Invalid { .. } => {}
+        }
+    }
+    names
+}
 
 pub(super) fn plan_bool(
     guard: ClauseGuard<Arc<Type>>,
@@ -221,7 +246,7 @@ fn plan_tuple_index(
 ) -> Result<Expr, PlanError> {
     let index = index as usize;
     let tuple: TupleExpr = expect_expression(plan_expr(tuple, context)?)?;
-    let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple)?;
+    let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple, context)?;
     super::super::tuple_index_expr(tuple, index, expected)
 }
 
@@ -337,7 +362,7 @@ fn function_local_get(
 #[cfg(test)]
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
-    use super::{function_local_get, plan_expr};
+    use super::{function_local_get, plan_expr, referenced_locals};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
         BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
@@ -363,10 +388,96 @@ mod tests {
     use ecow::EcoString;
     use gleam_compiler_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
     use gleam_compiler_core::parse::LiteralFloatValue;
-    use gleam_compiler_core::type_::{self, Type, error::VariableOrigin};
+    use gleam_compiler_core::type_::{self, Type, ValueConstructor, error::VariableOrigin};
     use num_bigint::BigInt;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
+
+    #[test]
+    fn referenced_locals_visits_nested_projections_and_both_short_circuit_operands() {
+        let guard = binary(
+            BinOp::And,
+            ClauseGuard::Block {
+                location: dummy_span(),
+                value: Box::new(ClauseGuard::Not {
+                    location: dummy_span(),
+                    expression: Box::new(var("flag", type_::bool())),
+                }),
+            },
+            binary(
+                BinOp::Or,
+                var("flag", type_::bool()),
+                binary(
+                    BinOp::Eq,
+                    ClauseGuard::TupleIndex {
+                        location: dummy_span(),
+                        index: 0,
+                        type_: type_::int(),
+                        tuple: Box::new(var("pair", type_::tuple(vec![type_::int()]))),
+                    },
+                    ClauseGuard::FieldAccess {
+                        label_location: dummy_span(),
+                        index: Some(0),
+                        label: "value".into(),
+                        type_: type_::int(),
+                        container: Box::new(var(
+                            "holder",
+                            type_::named("geam", "main", "Holder", Publicity::Public, vec![]),
+                        )),
+                    },
+                ),
+            ),
+        );
+
+        assert_eq!(
+            referenced_locals(&guard)
+                .into_iter()
+                .map(EcoString::as_str)
+                .collect::<HashSet<_>>(),
+            HashSet::from(["flag", "pair", "holder"]),
+        );
+    }
+
+    #[test]
+    fn referenced_locals_does_not_treat_constants_or_invalid_nodes_as_locals() {
+        for guard in [
+            int_constant(1),
+            module_select("other", int_constant_literal(2)),
+            ClauseGuard::Invalid {
+                location: dummy_span(),
+                type_: type_::bool(),
+            },
+        ] {
+            assert_eq!(referenced_locals(&guard), HashSet::new());
+        }
+    }
+
+    #[test]
+    fn reject_margin_constant_local_references_after_reference_analysis() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        context.define_bool_local("flag".into());
+        let guard = ClauseGuard::Constant(Constant::Var {
+            location: dummy_span(),
+            module: None,
+            name: "flag".into(),
+            constructor: Some(Box::new(ValueConstructor::local_variable(
+                dummy_span(),
+                VariableOrigin::generated(),
+                type_::bool(),
+            ))),
+            type_: type_::bool(),
+        });
+        assert_eq!(referenced_locals(&guard), HashSet::new());
+        assert_eq!(
+            plan_expr(guard, &mut context),
+            Err(invalid_expression_shape(
+                InvalidExpressionShapeKind::ConstantLocalVariable
+            )),
+        );
+    }
 
     #[test]
     fn plan_expr_handles_non_operator_guard_shapes() {

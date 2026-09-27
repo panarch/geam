@@ -577,7 +577,7 @@ pub fn main() {
         let second_condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
-                vec![second_value_binding.clone(), second_alias_binding.clone()],
+                vec![second_alias_binding.clone()],
                 BoolExpr::equal(
                     Expr::from(local_tuple(3, "alias", tuple_type.clone()).index_int(1)),
                     Expr::from(int(2)),
@@ -876,7 +876,7 @@ pub fn main() {
         let condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
-                vec![left_binding.clone(), right_binding.clone()],
+                vec![left_binding.clone()],
                 BoolExpr::gt_int(local_int(0, "left").into(), int(0).into()),
             ),
         );

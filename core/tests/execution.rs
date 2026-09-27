@@ -354,6 +354,7 @@ mod control_flow {
             guard_operator_surface,
             guard_subject_families,
             guard_closure_capture,
+            guard_binding_selection,
             literal_guard_ordering,
             variable_pattern,
             variable_pattern_ordering,

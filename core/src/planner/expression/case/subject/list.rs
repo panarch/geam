@@ -499,15 +499,16 @@ mod tests {
         BitArrayPatternSizeExpr, BitArrayPatternValue, BitArraySegment, BoolExpr,
         CustomConstructor, CustomConstructorField, CustomExpr, CustomLocalId, CustomPattern,
         CustomType, CustomTypeName, Endianness, Expr, IntExpr, IntListLocalId, IntLocalId,
-        ListExpr, ListLocal, Signedness, Step, StringExpr, TupleExpr, ValueShape, ValueType,
+        IntReturn, ListExpr, ListLocal, ListLocalExpr, Signedness, Step, StringExpr, TupleExpr,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, PlanContext};
     use crate::planner::dsl::{
         bool_, bool_return_block, bool_return_expr, equal, function, int, int_return_block,
-        int_return_expr, let_list_step, list, local_int, local_list, module,
+        int_return_expr, let_list_step, list, local_bool, local_int, local_list, module,
     };
     use crate::planner::plan_module;
-    use crate::planner::support::{dummy_span, expect_plan_error};
+    use crate::planner::support::{compile, dummy_span, expect_plan_error};
     use crate::planner::{
         InvalidCaseShapeReason, InvalidExpressionType, InvalidTypedAstReason, PlanError,
     };
@@ -633,7 +634,7 @@ pub fn main() {
         let second_condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
-                vec![second_value_binding.clone(), second_alias_binding.clone()],
+                vec![second_alias_binding.clone()],
                 BoolExpr::equal(
                     Expr::from(local_list(3, "alias", ValueType::Int)),
                     Expr::from(list([int(1), int(2)], ValueType::Int)),
@@ -667,6 +668,153 @@ pub fn main() {
             [],
         );
 
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn plan_guarded_list_patterns_bind_only_referenced_heads_and_tails_in_definition_order() {
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let enabled = True
+  case [1, 2] {
+    [first, ..rest] if enabled -> first
+    [first, ..rest] if first > 0 -> first
+    [first, ..rest] if rest == [] -> first
+    [first, ..rest] if rest == [] && first > 0 -> first
+    _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let subject: ListExpr = local_list(0, "<case:list:int:0>", ValueType::Int).into();
+        let tail = ListExpr::drop_first(subject.clone(), 1)
+            .into_int()
+            .expect("Int list");
+        let first_head = Step::let_int(
+            IntLocalId(0),
+            "first".into(),
+            IntExpr::list_index(subject.clone(), 0),
+        );
+        let first_tail = Step::let_list_expr(
+            "rest".into(),
+            ListLocalExpr::Int {
+                local: IntListLocalId(1),
+                value: tail.clone(),
+            },
+        );
+        let second_head = Step::let_int(
+            IntLocalId(1),
+            "first".into(),
+            IntExpr::list_index(subject.clone(), 0),
+        );
+        let second_tail = Step::let_list_expr(
+            "rest".into(),
+            ListLocalExpr::Int {
+                local: IntListLocalId(2),
+                value: tail.clone(),
+            },
+        );
+        let third_head = Step::let_int(
+            IntLocalId(2),
+            "first".into(),
+            IntExpr::list_index(subject.clone(), 0),
+        );
+        let third_tail = Step::let_list_expr(
+            "rest".into(),
+            ListLocalExpr::Int {
+                local: IntListLocalId(3),
+                value: tail.clone(),
+            },
+        );
+        let fourth_head = Step::let_int(
+            IntLocalId(3),
+            "first".into(),
+            IntExpr::list_index(subject.clone(), 0),
+        );
+        let fourth_tail = Step::let_list_expr(
+            "rest".into(),
+            ListLocalExpr::Int {
+                local: IntListLocalId(4),
+                value: tail.clone(),
+            },
+        );
+        let length = BoolExpr::list_length_at_least(subject, 1);
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_list_step(
+                        0,
+                        "<case:list:int:0>",
+                        list([int(1), int(2)], ValueType::Int),
+                    )],
+                    IntReturn::bool_case(
+                        BoolExpr::and(length.clone(), local_bool(0, "enabled").into()),
+                        int_return_block(
+                            [first_head, first_tail],
+                            int_return_expr(local_int(0, "first")),
+                        ),
+                        IntReturn::bool_case(
+                            BoolExpr::and(
+                                length.clone(),
+                                BoolExpr::block(
+                                    vec![second_head.clone()],
+                                    BoolExpr::gt_int(local_int(1, "first").into(), int(0).into()),
+                                ),
+                            ),
+                            int_return_block(
+                                [second_head, second_tail],
+                                int_return_expr(local_int(1, "first")),
+                            ),
+                            IntReturn::bool_case(
+                                BoolExpr::and(
+                                    length.clone(),
+                                    BoolExpr::block(
+                                        vec![third_tail.clone()],
+                                        BoolExpr::equal(
+                                            local_list(3, "rest", ValueType::Int).into(),
+                                            list(Vec::<Expr>::new(), ValueType::Int).into(),
+                                        ),
+                                    ),
+                                ),
+                                int_return_block(
+                                    [third_head, third_tail],
+                                    int_return_expr(local_int(2, "first")),
+                                ),
+                                IntReturn::bool_case(
+                                    BoolExpr::and(
+                                        length,
+                                        BoolExpr::block(
+                                            vec![fourth_head.clone(), fourth_tail.clone()],
+                                            BoolExpr::and(
+                                                BoolExpr::equal(
+                                                    local_list(4, "rest", ValueType::Int).into(),
+                                                    list(Vec::<Expr>::new(), ValueType::Int).into(),
+                                                ),
+                                                BoolExpr::gt_int(
+                                                    local_int(3, "first").into(),
+                                                    int(0).into(),
+                                                ),
+                                            ),
+                                        ),
+                                    ),
+                                    int_return_block(
+                                        [fourth_head, fourth_tail],
+                                        int_return_expr(local_int(3, "first")),
+                                    ),
+                                    int_return_expr(int(0)),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            .let_bool(0, "enabled", bool_(true)),
+            [],
+        );
         assert_eq!(actual, expected);
     }
 
