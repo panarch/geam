@@ -6,8 +6,9 @@ use crate::plan::execution::graph::{
 };
 use crate::runtime::ExecutionError;
 
+use crate::runtime::captures::Captures;
 use crate::runtime::error::PanicKind;
-use crate::runtime::evaluated::{EvaluatedNeverFunction, EvaluatedValue};
+use crate::runtime::evaluated::EvaluatedValue;
 
 use crate::runtime::state::RuntimeState;
 
@@ -29,7 +30,10 @@ pub(in crate::runtime) enum GraphAction {
 
 pub(in crate::runtime) enum NeverCall {
     Direct(NeverFunctionId),
-    Value(EvaluatedNeverFunction),
+    Value {
+        function: NeverFunctionId,
+        captures: Captures,
+    },
 }
 
 pub(in crate::runtime) trait RuntimeGraphState {
@@ -247,7 +251,11 @@ where
             let function = match call.function() {
                 NeverCallTarget::Direct(function) => NeverCall::Direct(*function),
                 NeverCallTarget::Value(function) => {
-                    NeverCall::Value(environment.never_function(function))
+                    let function = environment.never_function(function);
+                    NeverCall::Value {
+                        function: function.runtime_id(),
+                        captures: function.capture_frame().clone(),
+                    }
                 }
             };
             let inputs = environment.into_retained(&call.transfer);

@@ -130,6 +130,7 @@ pub fn main() {
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
             execution
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::Int(IntFunctionId(1))),
             [ParamLocal::Int(IntLocalId(0))],
@@ -175,6 +176,7 @@ pub fn main() {
         assert_eq!(
             execution
                 .execution()
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::Int(IntFunctionId(2))),
             [ParamLocal::Int(IntLocalId(0))],
@@ -182,6 +184,7 @@ pub fn main() {
         assert_eq!(
             execution
                 .execution()
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::Int(IntFunctionId(1))),
             [
@@ -219,6 +222,7 @@ pub fn main() {
         let parameter_counts = (0..4)
             .map(|index| {
                 execution
+                    .value_metadata()
                     .function_parameters()
                     .function(&FunctionTarget::Int(IntFunctionId(index)))
                     .len()

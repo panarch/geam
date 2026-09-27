@@ -216,7 +216,6 @@ pub fn main() {
             .int(plan.int_list_function_id(0).type_id(), vec![1.into()]);
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),

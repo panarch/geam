@@ -77,16 +77,12 @@ where
     instruction::evaluate_external_list(plan, state, environment, instruction, expected)
 }
 
-pub(in crate::runtime) fn evaluate_external_function_instruction<Plan>(
-    plan: &Plan,
+pub(in crate::runtime) fn evaluate_external_function_instruction(
     captures: &CaptureStorage,
     environment: &BlockEnvironment,
     instruction: &ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue
-where
-    Plan: ExecutableRuntimePlan<Profile = HostedExecutionProfile>,
-{
-    instruction::evaluate_external_function(plan, captures, environment, instruction)
+) -> ExternalFunctionInstructionValue {
+    instruction::evaluate_external_function(captures, environment, instruction)
 }
 
 #[cfg(test)]

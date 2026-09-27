@@ -391,8 +391,8 @@ mod tests {
     };
     use crate::plan::execution::function::{
         BitArrayListFunctionFunctionId, BoolListFunctionFunctionId, CustomListFunctionFunctionId,
-        FloatListFunctionFunctionId, FunctionListFunctionFunctionId, ListListFunctionFunctionId,
-        NilListFunctionFunctionId, ParameterListFunctionFunctionId,
+        FloatListFunctionFunctionId, FunctionListFunctionFunctionId, IntListFunctionFunctionId,
+        ListListFunctionFunctionId, NilListFunctionFunctionId, ParameterListFunctionFunctionId,
         ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
         TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
@@ -401,7 +401,7 @@ mod tests {
     use crate::plan::execution::type_::ValueShapeId;
     use crate::plan::execution::type_::{
         BitArrayListTypeId, BoolListTypeId, CustomListTypeId, CustomTypeId, FloatListTypeId,
-        FunctionListTypeId, FunctionType, ListListTypeId, ListTypeId, NilListTypeId,
+        FunctionListTypeId, FunctionType, IntListTypeId, ListListTypeId, ListTypeId, NilListTypeId,
         ParameterListListTypeId, ParameterListTypeId, StringListTypeId, TupleListTypeId,
         UtfCodepointListTypeId, ValueType,
     };
@@ -816,6 +816,14 @@ mod tests {
         let list_type = ListTypeId::new(0);
         let function_type = FunctionType::new(Vec::new(), ValueType::List(list_type));
         let cases = [
+            (
+                ProfiledListFunctionFunctionId::<Infallible>::Int {
+                    id: IntListFunctionFunctionId(9),
+                    type_: function_type.clone(),
+                    list_type: IntListTypeId::new(list_type),
+                },
+                (FunctionTableFamily::IntListFunction, 9),
+            ),
             (
                 ProfiledListFunctionFunctionId::<Infallible>::BitArray {
                     id: BitArrayListFunctionFunctionId(13),

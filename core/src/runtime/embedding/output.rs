@@ -219,7 +219,6 @@ pub fn main() {
         assert_eq!(external.lease().inspection(&inspection), "stored");
         let function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             FunctionType::new(Vec::new(), ValueType::Int),
         );

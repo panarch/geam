@@ -45,6 +45,7 @@ pub fn main() {
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         assert_eq!(
             execution
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::String(StringFunctionId(1))),
             [ParamLocal::String(StringLocalId(0))],
@@ -90,6 +91,7 @@ pub fn main() {
         assert_eq!(
             execution
                 .execution()
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::String(StringFunctionId(2))),
             [ParamLocal::String(StringLocalId(0))],
@@ -97,6 +99,7 @@ pub fn main() {
         assert_eq!(
             execution
                 .execution()
+                .value_metadata()
                 .function_parameters()
                 .function(&FunctionTarget::String(StringFunctionId(1))),
             [ParamLocal::String(StringLocalId(0))],

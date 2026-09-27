@@ -54,7 +54,7 @@ impl PreparedHostCall {
                 | HostCallParameter::UtfCodepoint(_)
                 | HostCallParameter::Bool(_)
                 | HostCallParameter::Nil(_) => {
-                    arguments.push_evaluated(environment.value(&parameter.local()));
+                    arguments.push_local(&environment, &parameter.local());
                 }
                 HostCallParameter::Value(_) => {
                     value_arguments.push(scoped.push(environment.value(&parameter.local())));

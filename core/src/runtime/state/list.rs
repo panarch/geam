@@ -1618,7 +1618,6 @@ pub fn main() {
         let storage = RuntimeListStorage::default();
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
@@ -2459,7 +2458,6 @@ pub fn main() { done(10000, []) == [1] }
         let mut state = RuntimeState::new(&mut echo);
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             FunctionType::new(Vec::new(), ValueType::Int),
         );

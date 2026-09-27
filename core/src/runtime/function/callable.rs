@@ -1,4 +1,7 @@
+use crate::plan::execution::function::RuntimeFunctionId;
+use crate::plan::execution::type_::FunctionType;
 use crate::runtime::ExecutableRuntimePlan;
+use crate::runtime::captures::Captures;
 use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::{
     EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
@@ -28,51 +31,38 @@ pub(in crate::runtime) enum InvocableFunctionValue {
 
 impl InvocableFunctionValue {
     pub(in crate::runtime) fn closure(
-        target: crate::plan::execution::function::RuntimeFunctionId,
-        params: Vec<crate::plan::execution::graph::ParamLocal>,
-        captures: crate::runtime::captures::Captures,
-        type_: crate::plan::execution::type_::FunctionType,
+        target: RuntimeFunctionId,
+        captures: Captures,
+        type_: FunctionType,
     ) -> Self {
         use crate::plan::execution::function::{
             CoreRuntimeFunctionId as C, RuntimeFunctionFunctionTarget as F, RuntimeFunctionId as R,
         };
         use crate::runtime::evaluated::EvaluatedFunction;
         match target {
-            R::External(id) => {
-                Self::External(EvaluatedFunction::closure(id, params, captures, type_))
-            }
+            R::External(id) => Self::External(EvaluatedFunction::closure(id, captures, type_)),
             R::Core(id) => match id {
-                C::Never(id) => {
-                    Self::Never(EvaluatedFunction::closure(id, params, captures, type_))
-                }
-                C::Int(id) => Self::Int(EvaluatedFunction::closure(id, params, captures, type_)),
-                C::Float(id) => {
-                    Self::Float(EvaluatedFunction::closure(id, params, captures, type_))
-                }
-                C::String(id) => {
-                    Self::String(EvaluatedFunction::closure(id, params, captures, type_))
-                }
-                C::BitArray(id) => {
-                    Self::BitArray(EvaluatedFunction::closure(id, params, captures, type_))
-                }
+                C::Never(id) => Self::Never(EvaluatedFunction::closure(id, captures, type_)),
+                C::Int(id) => Self::Int(EvaluatedFunction::closure(id, captures, type_)),
+                C::Float(id) => Self::Float(EvaluatedFunction::closure(id, captures, type_)),
+                C::String(id) => Self::String(EvaluatedFunction::closure(id, captures, type_)),
+                C::BitArray(id) => Self::BitArray(EvaluatedFunction::closure(id, captures, type_)),
                 C::UtfCodepoint(id) => {
-                    Self::UtfCodepoint(EvaluatedFunction::closure(id, params, captures, type_))
+                    Self::UtfCodepoint(EvaluatedFunction::closure(id, captures, type_))
                 }
-                C::Bool(id) => Self::Bool(EvaluatedFunction::closure(id, params, captures, type_)),
-                C::Nil(id) => Self::Nil(EvaluatedFunction::closure(id, params, captures, type_)),
-                C::List(id) => Self::List(EvaluatedFunction::closure(id, params, captures, type_)),
+                C::Bool(id) => Self::Bool(EvaluatedFunction::closure(id, captures, type_)),
+                C::Nil(id) => Self::Nil(EvaluatedFunction::closure(id, captures, type_)),
+                C::List(id) => Self::List(EvaluatedFunction::closure(id, captures, type_)),
                 C::Custom(id) => Self::Custom(EvaluatedCustomFunction::Function(
-                    EvaluatedFunction::closure(id, params, captures, type_),
+                    EvaluatedFunction::closure(id, captures, type_),
                 )),
-                C::Tuple { id, .. } => {
-                    Self::Tuple(EvaluatedFunction::closure(id, params, captures, type_))
-                }
+                C::Tuple { id, .. } => Self::Tuple(EvaluatedFunction::closure(id, captures, type_)),
                 C::Function { id, .. } => Self::Function(match id {
                     F::Core(id) => EvaluatedFunctionFunction::Core(EvaluatedFunction::closure(
-                        id, params, captures, type_,
+                        id, captures, type_,
                     )),
                     F::External(id) => EvaluatedFunctionFunction::External(
-                        EvaluatedFunction::closure(id, params, captures, type_),
+                        EvaluatedFunction::closure(id, captures, type_),
                     ),
                 }),
             },

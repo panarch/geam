@@ -234,7 +234,7 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         environment: &graph::BlockEnvironment,
         instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
     ) -> graph::ExternalFunctionInstructionValue {
-        graph::evaluate_external_function_instruction(self, captures, environment, instruction)
+        graph::evaluate_external_function_instruction(captures, environment, instruction)
     }
 }
 

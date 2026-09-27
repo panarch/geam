@@ -58,8 +58,17 @@ impl PartialEq for PanicValue {
 #[cfg(test)]
 mod tests {
     use super::PanicValue;
+    use crate::plan::execution::function::{
+        IntFunctionFunctionId, IntFunctionId, ProfiledFunctionFunctionId,
+    };
+    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
     use crate::plan::{FunctionType, ValueType};
-    use crate::runtime::{EvaluatedValue, RuntimeListStorage, Value};
+    use crate::runtime::function::run_core_function;
+    use crate::runtime::state::RuntimeState;
+    use crate::runtime::{
+        CaptureValue, EvaluatedValue, FunctionValue, HostCallOrigin, IntFunctionValue,
+        RetainedValues, RuntimeListStorage, Value,
+    };
     use crate::{
         BitArraySegmentPanicReason, ExecutionError, HostCallSite, HostError, HostFailure,
         InvariantError, PanicKind, PanicSite, SourceContext, SourceSpan,
@@ -91,6 +100,49 @@ mod tests {
         .join()
         .expect("transferable retained subject");
         assert_eq!(local.into_value(), Value::Int(2.into()));
+    }
+
+    #[test]
+    fn function_subject_materializes_after_plan_drop_and_thread_transfer() {
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { let captured = 40 fn(value: Int) { captured + value } }",
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let function = run_core_function(
+            &plan,
+            &mut state,
+            ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )
+        .expect("closure should evaluate");
+        let subject = PanicValue::new(&plan, state.lists(), EvaluatedValue::Function(function));
+        let alias = subject.clone();
+        drop(state);
+        drop(plan);
+        drop(subject);
+
+        let transferred = std::thread::spawn(move || {
+            let expected =
+                Value::Function(FunctionValue::from(IntFunctionValue::new_with_captures(
+                    IntFunctionId(0),
+                    vec![ParamLocal::Int(IntLocalId(0))],
+                    vec![CaptureValue::int(IntLocalId(1), 40.into())],
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )));
+            assert_eq!(alias.to_value(), expected);
+            assert_eq!(format!("{alias:?}"), format!("{expected:?}"));
+            assert_eq!(alias.to_value().inspect().to_string(), "//fn(a) { ... }");
+            assert_eq!(alias, alias.clone());
+            alias
+        })
+        .join()
+        .expect("retained function subject is transferable");
+        assert_eq!(
+            transferred.into_value().inspect().to_string(),
+            "//fn(a) { ... }"
+        );
     }
 
     #[test]

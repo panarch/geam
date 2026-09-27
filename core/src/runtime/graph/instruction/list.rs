@@ -22,10 +22,11 @@ use crate::plan::execution::type_::{
     ParameterListTypeId, StringListTypeId, TupleListTypeId, UtfCodepointListTypeId, ValueType,
 };
 use crate::runtime::InvariantError;
+use crate::runtime::captures::Captures;
 use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalListFunction, EvaluatedExternalValue,
-    EvaluatedFunctionValue, EvaluatedListFunction, EvaluatedValue,
+    EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
+    EvaluatedValue,
 };
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state::list::{
@@ -107,10 +108,10 @@ where
             args,
             site,
         } => {
-            let function = environment.list_function(function);
+            let (function, captures) = environment.list_function_call(function);
             let mut inputs = environment.retain(args);
-            inputs.append_captures(function.capture_frame());
-            match function.runtime_id() {
+            inputs.append_captures(captures);
+            match function {
                 RuntimeListFunctionId::Core(ListFunctionId::Parameter(function)) => Ok(V::Call {
                     function,
                     origin: HostCallOrigin::source(site.clone()),
@@ -162,15 +163,16 @@ pub(super) trait RuntimeTypedList {
         + GraphValue<Evaluated = Self::Handle>;
     type Function: Clone;
     type FunctionLocal;
-    type FunctionValue: Clone;
+    type FunctionTarget;
     type Handle: Clone;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements;
     fn local(environment: &BlockEnvironment, local: Self::Local) -> Self::Handle;
-    fn function(environment: &BlockEnvironment, local: &Self::FunctionLocal)
-    -> Self::FunctionValue;
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures;
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError>;
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
+        local: &Self::FunctionLocal,
+    ) -> (Self::FunctionTarget, &'environment Captures);
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError>;
     fn allocate<State: RuntimeGraphState>(
         state: &mut State,
         type_id: Self::TypeId,
@@ -246,10 +248,10 @@ where
             args,
             site,
         } => {
-            let function = Family::function(environment, function);
+            let (function, captures) = Family::function(environment, function);
             let mut inputs = environment.retain(args);
-            inputs.append_captures(Family::captures(&function));
-            Family::function_id(&function)
+            inputs.append_captures(captures);
+            Family::function_id(function)
                 .map(|function| V::Call {
                     function,
                     origin: HostCallOrigin::source(site.clone()),
@@ -335,7 +337,7 @@ macro_rules! vector_family {
             type Local = $local;
             type Function = $function;
             type FunctionLocal = ListFunctionLocal;
-            type FunctionValue = EvaluatedListFunction;
+            type FunctionTarget = RuntimeListFunctionId;
             type Handle = $handle;
 
             fn elements(
@@ -352,21 +354,17 @@ macro_rules! vector_family {
                 environment.$local_method(local)
             }
 
-            fn function(
-                environment: &BlockEnvironment,
+            fn function<'environment>(
+                environment: &'environment BlockEnvironment,
                 local: &Self::FunctionLocal,
-            ) -> Self::FunctionValue {
-                environment.list_function(local)
-            }
-
-            fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-                function.capture_frame()
+            ) -> (Self::FunctionTarget, &'environment Captures) {
+                environment.list_function_call(local)
             }
 
             fn function_id(
-                function: &Self::FunctionValue,
+                function: Self::FunctionTarget,
             ) -> Result<Self::Function, InvariantError> {
-                match function.runtime_id() {
+                match function {
                     RuntimeListFunctionId::Core(ListFunctionId::$function_variant(function)) => {
                         Ok(function)
                     }
@@ -507,7 +505,7 @@ impl RuntimeTypedList for TupleFamily {
     type Local = TupleListLocalId;
     type Function = TupleListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = TupleListValueId;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -521,19 +519,15 @@ impl RuntimeTypedList for TupleFamily {
         environment.tuple_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::Tuple(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -579,7 +573,7 @@ impl RuntimeTypedList for CustomFamily {
     type Local = CustomListLocalId;
     type Function = CustomListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = CustomListValueId;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -593,19 +587,15 @@ impl RuntimeTypedList for CustomFamily {
         environment.custom_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::Custom(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -653,7 +643,7 @@ impl RuntimeTypedList for ExternalFamily {
     type Local = ExternalListLocalId;
     type Function = ExternalListFunctionId;
     type FunctionLocal = ExternalListFunctionLocalId;
-    type FunctionValue = EvaluatedExternalListFunction;
+    type FunctionTarget = ExternalListFunctionId;
     type Handle = ExternalListValueId;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -667,19 +657,16 @@ impl RuntimeTypedList for ExternalFamily {
         environment.external_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.external_list_function(*local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        let function = environment.external_list_function(*local);
+        (function.runtime_id(), function.capture_frame())
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        Ok(function.runtime_id())
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        Ok(function)
     }
 
     fn allocate<State: RuntimeGraphState>(
@@ -724,7 +711,7 @@ impl RuntimeTypedList for NilFamily {
     type Local = NilListLocalId;
     type Function = NilListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = NilListValueId;
 
     fn elements(_environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -735,19 +722,15 @@ impl RuntimeTypedList for NilFamily {
         environment.nil_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::Nil(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -793,7 +776,7 @@ impl RuntimeTypedList for ParameterListFamily {
     type Local = ParameterListListLocalId;
     type Function = ParameterListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = ParameterListListValueId;
 
     fn elements(_environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -804,19 +787,15 @@ impl RuntimeTypedList for ParameterListFamily {
         environment.parameter_list_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::ParameterList(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -866,7 +845,7 @@ impl RuntimeTypedList for ListFamily {
     type Local = ListListLocalId;
     type Function = ListListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = ListListValueId;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -880,19 +859,15 @@ impl RuntimeTypedList for ListFamily {
         environment.list_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::List(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -938,7 +913,7 @@ impl RuntimeTypedList for FunctionFamily {
     type Local = FunctionListLocalId;
     type Function = FunctionListFunctionId;
     type FunctionLocal = ListFunctionLocal;
-    type FunctionValue = EvaluatedListFunction;
+    type FunctionTarget = RuntimeListFunctionId;
     type Handle = FunctionListValueId;
 
     fn elements(environment: &BlockEnvironment, locals: &[Self::ElementLocal]) -> Self::Elements {
@@ -952,19 +927,15 @@ impl RuntimeTypedList for FunctionFamily {
         environment.function_list(local)
     }
 
-    fn function(
-        environment: &BlockEnvironment,
+    fn function<'environment>(
+        environment: &'environment BlockEnvironment,
         local: &Self::FunctionLocal,
-    ) -> Self::FunctionValue {
-        environment.list_function(local)
+    ) -> (Self::FunctionTarget, &'environment Captures) {
+        environment.list_function_call(local)
     }
 
-    fn captures(function: &Self::FunctionValue) -> &crate::runtime::captures::Captures {
-        function.capture_frame()
-    }
-
-    fn function_id(function: &Self::FunctionValue) -> Result<Self::Function, InvariantError> {
-        match function.runtime_id() {
+    fn function_id(function: Self::FunctionTarget) -> Result<Self::Function, InvariantError> {
+        match function {
             RuntimeListFunctionId::Core(ListFunctionId::Function(function)) => Ok(function),
             _ => Err(list_function_mismatch()),
         }
@@ -1064,7 +1035,6 @@ pub fn main() {
         let function = plan.int_list_function_id(0);
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Int(function)),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1077,7 +1047,6 @@ pub fn main() {
         let function = plan.nil_list_function_id(0);
         EvaluatedListFunction::reference(
             RuntimeListFunctionId::Core(ListFunctionId::Nil(function)),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1088,12 +1057,12 @@ pub fn main() {
 
     fn assert_list_function_mismatch<Family>(function: EvaluatedListFunction)
     where
-        Family: RuntimeTypedList<FunctionValue = EvaluatedListFunction>,
+        Family: RuntimeTypedList<FunctionTarget = RuntimeListFunctionId>,
         Family::Handle: std::fmt::Debug + PartialEq,
     {
         assert_eq!(
             execution_error(
-                Family::function_id(&function),
+                Family::function_id(function.runtime_id()),
                 "a list function must reject a different item family",
             ),
             list_function_mismatch(),

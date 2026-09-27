@@ -3968,7 +3968,6 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
     fn int_callback_rejects_a_nil_callback_fixture() {
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),

@@ -444,11 +444,6 @@ where
         };
         let value = crate::runtime::evaluated::EvaluatedFunctionValue::closure(
             construction.target.clone(),
-            construction
-                .parameters
-                .iter()
-                .map(|slot| slot.local().clone())
-                .collect(),
             captures,
             construction.type_.clone(),
         );
