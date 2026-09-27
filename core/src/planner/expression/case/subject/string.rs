@@ -669,7 +669,7 @@ pub fn main() {
         let condition = BoolExpr::and(
             BoolExpr::value(true),
             BoolExpr::block(
-                vec![bind_other.clone(), bind_alias.clone()],
+                vec![bind_alias.clone()],
                 BoolExpr::equal(local_string(2, "alias").into(), string("geam").into()),
             ),
         );
@@ -846,7 +846,7 @@ pub fn main() {
                 "Hello, ".into(),
             ),
             BoolExpr::block(
-                vec![bind_prefix.clone(), bind_name.clone()],
+                vec![bind_name.clone()],
                 BoolExpr::equal(local_string(2, "name").into(), string("Geam").into()),
             ),
         );

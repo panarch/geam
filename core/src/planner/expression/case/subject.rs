@@ -460,16 +460,32 @@ fn plan_ordered_case_candidate(
         } = plan_pattern(context)?;
         let is_guarded = guard.is_some();
         let is_total = !is_guarded && (is_total || exhaustive_remainder);
-        let branch_binding_steps = plan_branch_binding_steps(branch_bindings, context);
+        let guard_locals = if branch_bindings.is_empty() {
+            None
+        } else {
+            guard.as_ref().map(super::guard::referenced_locals)
+        };
+        let mut branch_binding_steps = Vec::with_capacity(branch_bindings.len());
+        let mut guard_binding_steps = Vec::new();
+        for (name, value) in branch_bindings {
+            let used_in_guard = guard_locals
+                .as_ref()
+                .is_some_and(|names| names.contains(&name));
+            let step = plan_variable_runtime_step(name, value, context);
+            if used_in_guard {
+                guard_binding_steps.push(step.clone());
+            }
+            branch_binding_steps.push(step);
+        }
         let guard_condition = guard
             .map(|guard| super::guard::plan_bool(guard, context))
             .transpose()?;
         let condition = match guard_condition {
             Some(guard_condition) => {
-                let guard_condition = if branch_binding_steps.is_empty() {
+                let guard_condition = if guard_binding_steps.is_empty() {
                     guard_condition
                 } else {
-                    BoolExpr::block(branch_binding_steps.clone(), guard_condition)
+                    BoolExpr::block(guard_binding_steps, guard_condition)
                 };
                 BoolExpr::and(match_condition, guard_condition)
             }
@@ -624,11 +640,43 @@ mod tests {
     };
     use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span, expect_plan_error};
-    use crate::planner::{InvalidCaseShapeReason, InvalidTypedAstReason, PlanError};
+    use crate::planner::{
+        InvalidCaseShapeReason, InvalidTypedAstReason, PlanError, UnsupportedBitArraySegmentReason,
+    };
     use ecow::EcoString;
     use gleam_compiler_core::ast::TypedExpr;
     use gleam_compiler_core::type_;
     use std::collections::HashMap;
+
+    #[test]
+    fn reject_profile_unused_guard_bindings_preserve_pattern_and_unreachable_body_validation() {
+        for source in [
+            r#"
+pub fn main() {
+  case [<<1>>] {
+    [<<unused:native>>, ..] if True -> 1
+    _ -> 0
+  }
+}
+"#,
+            r#"
+pub fn main() {
+  case [1] {
+    _ -> 1
+    [unused, ..rest] if True -> { <<1:native>> 2 }
+    _ -> 0
+  }
+}
+"#,
+        ] {
+            assert_eq!(
+                expect_plan_error(source),
+                PlanError::UnsupportedBitArraySegment {
+                    reason: UnsupportedBitArraySegmentReason::NativeEndianness,
+                },
+            );
+        }
+    }
 
     #[test]
     fn reject_profile_unreachable_subject_clause_body() {

@@ -537,6 +537,50 @@ pub fn main() { choose(True, 10) }
     }
 
     #[test]
+    fn guarded_list_projection_is_emitted_only_in_the_body_that_uses_it() {
+        let plan = execution_plan(
+            r#"
+pub fn main() {
+  let enabled = True
+  case [42, 43] {
+    [head, ..tail] if enabled -> head
+    _ -> 0
+  }
+}
+"#,
+        );
+        // The guard block b1 has no projections; b2 retains both original body bindings.
+        let expected = concat!(
+            "module main\n",
+            "main int#0\n",
+            "\n",
+            "function int#0\n",
+            "  entry b0 params=[] captures=[]\n",
+            "  block b0 params=[]\n",
+            "    %bool#0:shape#0(Bool) = bool.value True\n",
+            "    %int#0:shape#1(Int) = int.value 42\n",
+            "    %int#1:shape#1(Int) = int.value 43\n",
+            "    %list.int#0:shape#2(list_type#0) = list.int[type#0] value elements=[%int#0, %int#1]\n",
+            "    %bool#1:shape#0(Bool) = bool.list_length_at_least %list.int#0 length=1\n",
+            "    branch %bool#1 true=b1(%bool#0, %list.int#0) false=b5()\n",
+            "  block b1 params=[%bool#0:shape#0(Bool), %list.int#0:shape#2(list_type#0)]\n",
+            "    branch %bool#0 true=b2(%list.int#0) false=b3()\n",
+            "  block b2 params=[%list.int#0:shape#2(list_type#0)]\n",
+            "    %int#0:shape#1(Int) = int.list_index %list.int#0 index=0\n",
+            "    %list.int#1:shape#2(list_type#0) = list.int[type#0] drop_first %list.int#0 count=1\n",
+            "    return %int#0\n",
+            "  block b3 params=[]\n",
+            "    jump b4()\n",
+            "  block b4 params=[]\n",
+            "    %int#0:shape#1(Int) = int.value 0\n",
+            "    return %int#0\n",
+            "  block b5 params=[]\n",
+            "    jump b4()\n",
+        );
+        assert_eq!(plan.explain().to_string(), expected);
+    }
+
+    #[test]
     fn freezes_explicit_parameters_before_inherited_values_and_packs_jump_arguments() {
         let (mut draft, mut entry) =
             DraftGraphBuilder::<DraftInt, usize>::new(Vec::new(), Vec::new());
