@@ -4,20 +4,23 @@ use super::value::{
     InstructionValue, InstructionValueWithoutConstant, custom_projection, list_element,
     tuple_projection,
 };
-use crate::plan::execution::function::{ProfiledFunctionFunctionId, RuntimeListFunctionId};
+use crate::plan::execution::function::{
+    FunctionReturnFamily, ProfiledFunctionFunctionId, RuntimeListFunctionId,
+};
 use crate::plan::execution::graph::{
-    ExternalFunctionCallTarget, ExternalFunctionInstructionKind, ExternalFunctionInstructionView,
-    ExternalFunctionTarget, FunctionCapture, FunctionInstruction, FunctionInstructionKind,
-    FunctionLocal, FunctionTarget, ParamLocal,
+    ExternalFunctionCallTarget, ExternalFunctionInstruction, ExternalFunctionInstructionKind,
+    ExternalFunctionInstructionView, ExternalFunctionTarget, FunctionCapture, FunctionInstruction,
+    FunctionInstructionKind, FunctionLocal, FunctionTarget,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::plan::execution::type_::ValueType;
-use crate::runtime::InvariantError;
+use crate::plan::execution::type_::{FunctionType, ValueType};
 use crate::runtime::captures::Captures;
+use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue, FunctionReferenceId,
 };
+use crate::runtime::{CaptureStorage, InvariantError};
 use std::convert::Infallible;
 
 #[derive(Clone, Copy)]
@@ -32,14 +35,6 @@ pub(in crate::runtime) type CoreFunctionInstructionValue =
 pub(in crate::runtime) type ExternalFunctionInstructionValue =
     InstructionValueWithoutConstant<EvaluatedFunctionValue, ExternalFunctionCallTarget>;
 
-pub(in crate::runtime) trait FunctionParameterPlan:
-    RuntimeExecutionPlan
-{
-    fn function_target_params(&self, target: &FunctionTarget) -> Vec<ParamLocal>;
-
-    fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal>;
-}
-
 // Keep this evaluator's temporaries and branches out of the shared instruction loop.
 #[inline(never)]
 pub(in crate::runtime) fn evaluate_action<Plan, State>(
@@ -50,7 +45,7 @@ pub(in crate::runtime) fn evaluate_action<Plan, State>(
     expected: &ValueType,
 ) -> Result<CoreFunctionInstructionValue, State::Error>
 where
-    Plan: FunctionParameterPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use FunctionInstructionKind as I;
@@ -59,14 +54,12 @@ where
     let value: Result<_, State::Error> = match instruction.kind() {
         I::Constant(id) => Ok(V::Constant(*id)),
         I::Reference(target) => Ok(V::Ready(target_value(
-            plan,
             target,
             state.captures().capture(Vec::new()),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         ))),
         I::Closure { target, captures } => Ok(V::Ready(target_value(
-            plan,
             target,
             state
                 .captures()
@@ -83,7 +76,7 @@ where
             site,
         } => Ok(V::Call {
             function: function.clone(),
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
+            origin: HostCallOrigin::source(site.clone()),
             inputs: environment.retain(args),
         }),
         I::FunctionCall {
@@ -96,7 +89,7 @@ where
             inputs.append_captures(function.capture_frame());
             Ok(V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
+                origin: HostCallOrigin::source(site.clone()),
                 inputs,
             })
         }
@@ -143,29 +136,23 @@ where
     }
 }
 
-pub(in crate::runtime) fn evaluate_external_action<Plan>(
-    plan: &Plan,
-    storage: &crate::runtime::CaptureStorage,
+pub(in crate::runtime) fn evaluate_external_action(
+    storage: &CaptureStorage,
     environment: &BlockEnvironment,
-    instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue
-where
-    Plan: FunctionParameterPlan,
-{
+    instruction: &ExternalFunctionInstruction,
+) -> ExternalFunctionInstructionValue {
     use ExternalFunctionInstructionKind as I;
     use InstructionValueWithoutConstant as V;
 
     let instruction = instruction.instruction();
     match instruction.kind() {
         I::Reference(target) => V::Ready(external_target_value(
-            plan,
             target,
             storage.capture(Vec::new()),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
         )),
         I::Closure { target, captures } => V::Ready(external_target_value(
-            plan,
             target,
             storage.capture(capture_values(environment, captures)),
             instruction.type_().clone(),
@@ -177,7 +164,7 @@ where
             site,
         } => V::Call {
             function: function.clone(),
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
+            origin: HostCallOrigin::source(site.clone()),
             inputs: environment.retain(args),
         },
         I::FunctionCall {
@@ -190,62 +177,56 @@ where
             inputs.append_captures(function.capture_frame());
             V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
+                origin: HostCallOrigin::source(site.clone()),
                 inputs,
             }
         }
     }
 }
 
-fn target_value<Plan>(
-    plan: &Plan,
+fn target_value(
     target: &FunctionTarget,
     captures: Captures,
-    type_: crate::plan::execution::type_::FunctionType,
+    type_: FunctionType,
     identity: FunctionIdentity,
-) -> EvaluatedFunctionValue
-where
-    Plan: FunctionParameterPlan,
-{
-    let params = plan.function_target_params(target);
+) -> EvaluatedFunctionValue {
     match target {
         FunctionTarget::Generic(function) => {
-            evaluated_function(function.clone(), params, captures, type_, identity).into()
+            evaluated_function(function.clone(), captures, type_, identity).into()
         }
         FunctionTarget::Never(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::Int(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::Float(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::String(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::BitArray(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::UtfCodepoint(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::Custom(function) => EvaluatedCustomFunction::Function(evaluated_function(
-            *function, params, captures, type_, identity,
+            *function, captures, type_, identity,
         ))
         .into(),
         FunctionTarget::Bool(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::Nil(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::Tuple(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         FunctionTarget::List(function) => evaluated_function(
             RuntimeListFunctionId::Core(function.clone()),
-            params,
             captures,
             type_,
             identity,
@@ -253,7 +234,6 @@ where
         .into(),
         FunctionTarget::Function(function) => EvaluatedFunctionFunction::Core(evaluated_function(
             function.clone(),
-            params,
             captures,
             type_,
             identity,
@@ -262,24 +242,18 @@ where
     }
 }
 
-fn external_target_value<Plan>(
-    plan: &Plan,
+fn external_target_value(
     target: &ExternalFunctionTarget,
     captures: Captures,
-    type_: crate::plan::execution::type_::FunctionType,
+    type_: FunctionType,
     identity: FunctionIdentity,
-) -> EvaluatedFunctionValue
-where
-    Plan: FunctionParameterPlan,
-{
-    let params = plan.external_function_target_params(target);
+) -> EvaluatedFunctionValue {
     match target {
         ExternalFunctionTarget::Value(function) => {
-            evaluated_function(*function, params, captures, type_, identity).into()
+            evaluated_function(*function, captures, type_, identity).into()
         }
         ExternalFunctionTarget::List(function) => evaluated_function(
             RuntimeListFunctionId::External(*function),
-            params,
             captures,
             type_,
             identity,
@@ -288,7 +262,6 @@ where
         ExternalFunctionTarget::Function(function) => {
             EvaluatedFunctionFunction::External(evaluated_function(
                 ExternalFunctionCallTarget::Function(function.clone()),
-                params,
                 captures,
                 type_,
                 identity,
@@ -305,7 +278,6 @@ where
                 type_: function_type.clone(),
                 list_type: *list_type,
             },
-            params,
             captures,
             type_,
             identity,
@@ -316,26 +288,23 @@ where
 
 fn evaluated_function<Id>(
     function: Id,
-    params: Vec<ParamLocal>,
     captures: Captures,
-    type_: crate::plan::execution::type_::FunctionType,
+    type_: FunctionType,
     identity: FunctionIdentity,
 ) -> EvaluatedFunction<Id>
 where
     Id: Clone + FunctionReferenceId,
 {
     match identity {
-        FunctionIdentity::Reference => {
-            EvaluatedFunction::reference(function, params, captures, type_)
-        }
-        FunctionIdentity::Instance => EvaluatedFunction::closure(function, params, captures, type_),
+        FunctionIdentity::Reference => EvaluatedFunction::reference(function, captures, type_),
+        FunctionIdentity::Instance => EvaluatedFunction::closure(function, captures, type_),
     }
 }
 
 pub(in crate::runtime) fn validate_return_family<Error>(
     value: EvaluatedFunctionValue,
-    expected: crate::plan::execution::function::FunctionReturnFamily,
-    type_: crate::plan::execution::type_::FunctionType,
+    expected: FunctionReturnFamily,
+    type_: FunctionType,
 ) -> Result<EvaluatedFunctionValue, Error>
 where
     Error: From<InvariantError>,
@@ -345,18 +314,6 @@ where
         Ok(value.with_type(type_))
     } else {
         Err(InvariantError::FunctionReturnFamilyMismatch { expected, actual }.into())
-    }
-}
-
-impl<Plan: RuntimeExecutionPlan> FunctionParameterPlan for Plan {
-    fn function_target_params(&self, target: &FunctionTarget) -> Vec<ParamLocal> {
-        self.function_parameters().function(target).to_vec()
-    }
-
-    fn external_function_target_params(&self, target: &ExternalFunctionTarget) -> Vec<ParamLocal> {
-        self.function_parameters()
-            .external_function(target)
-            .to_vec()
     }
 }
 
@@ -483,24 +440,28 @@ fn capture_values(
                 })
             }
             FunctionCapture::IntFunction { target, source } => {
-                EvaluatedCapture::int_function(*target, environment.int_function(*source))
+                EvaluatedCapture::int_function(*target, environment.int_function(*source).clone())
             }
-            FunctionCapture::FloatFunction { target, source } => {
-                EvaluatedCapture::float_function(*target, environment.float_function(*source))
-            }
+            FunctionCapture::FloatFunction { target, source } => EvaluatedCapture::float_function(
+                *target,
+                environment.float_function(*source).clone(),
+            ),
             FunctionCapture::StringFunction { target, source } => {
-                EvaluatedCapture::string_function(*target, environment.string_function(*source))
+                EvaluatedCapture::string_function(
+                    *target,
+                    environment.string_function(*source).clone(),
+                )
             }
             FunctionCapture::BitArrayFunction { target, source } => {
                 EvaluatedCapture::bit_array_function(
                     *target,
-                    environment.bit_array_function(*source),
+                    environment.bit_array_function(*source).clone(),
                 )
             }
             FunctionCapture::UtfCodepointFunction { target, source } => {
                 EvaluatedCapture::utf_codepoint_function(
                     *target,
-                    environment.utf_codepoint_function(*source),
+                    environment.utf_codepoint_function(*source).clone(),
                 )
             }
             FunctionCapture::GenericFunction { target, source } => {
@@ -509,30 +470,32 @@ fn capture_values(
                     environment.generic_function(source),
                 )
             }
-            FunctionCapture::NeverFunction { target, source } => {
-                EvaluatedCapture::never_function(target.clone(), environment.never_function(source))
-            }
+            FunctionCapture::NeverFunction { target, source } => EvaluatedCapture::never_function(
+                target.clone(),
+                environment.never_function(source).clone(),
+            ),
             FunctionCapture::CustomFunction { target, source } => {
                 EvaluatedCapture::custom_function(
                     target.clone(),
-                    environment.custom_function(source),
+                    environment.custom_function(source).clone(),
                 )
             }
             FunctionCapture::ExternalFunction { target, source } => {
                 EvaluatedCapture::external_function(
                     target.clone(),
-                    environment.external_function(source),
+                    environment.external_function(source).clone(),
                 )
             }
             FunctionCapture::BoolFunction { target, source } => {
-                EvaluatedCapture::bool_function(*target, environment.bool_function(*source))
+                EvaluatedCapture::bool_function(*target, environment.bool_function(*source).clone())
             }
             FunctionCapture::NilFunction { target, source } => {
-                EvaluatedCapture::nil_function(*target, environment.nil_function(*source))
+                EvaluatedCapture::nil_function(*target, environment.nil_function(*source).clone())
             }
-            FunctionCapture::TupleFunction { target, source } => {
-                EvaluatedCapture::tuple_function(*target, environment.tuple_function(*source))
-            }
+            FunctionCapture::TupleFunction { target, source } => EvaluatedCapture::tuple_function(
+                *target,
+                environment.tuple_function(*source).clone(),
+            ),
             FunctionCapture::ListFunction { target, source } => {
                 EvaluatedCapture::list_function(target.clone(), environment.list_function(source))
             }

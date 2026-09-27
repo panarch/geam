@@ -356,13 +356,12 @@ pub(super) fn evaluate_external_list<Plan: ExecutableRuntimePlan>(
     list::evaluate_external(plan, state, environment, instruction, expected)
 }
 
-pub(super) fn evaluate_external_function<Plan: ExecutableRuntimePlan>(
-    plan: &Plan,
+pub(super) fn evaluate_external_function(
     captures: &CaptureStorage,
     environment: &BlockEnvironment,
     instruction: &ExternalFunctionInstruction,
 ) -> ExternalFunctionInstructionValue {
-    function::evaluate_external_action(plan, captures, environment, instruction)
+    function::evaluate_external_action(captures, environment, instruction)
 }
 
 #[cfg(test)]

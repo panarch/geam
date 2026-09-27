@@ -200,9 +200,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                             drop(frame.exit);
                             let function = match function {
                                 NeverCall::Direct(function) => function,
-                                NeverCall::Value(function) => {
-                                    inputs.append_captures(function.capture_frame());
-                                    function.runtime_id()
+                                NeverCall::Value { function, captures } => {
+                                    inputs.append_captures(&captures);
+                                    function
                                 }
                             };
                             if let Some(cancelled) = plan

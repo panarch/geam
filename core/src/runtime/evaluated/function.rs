@@ -8,7 +8,6 @@ use crate::plan::execution::function::{
     ProfiledFunctionFunctionId, RuntimeListFunctionId, StringFunctionId, TupleFunctionId,
     UtfCodepointFunctionId,
 };
-use crate::plan::execution::graph::ParamLocal;
 use crate::plan::execution::type_::{CustomConstructorId, FunctionType};
 use crate::runtime::captures::Captures;
 
@@ -18,7 +17,6 @@ static NEXT_FUNCTION_INSTANCE_ID: AtomicU64 = AtomicU64::new(0);
 pub(crate) struct EvaluatedFunction<Id> {
     pub(super) identity: EvaluatedFunctionIdentity,
     runtime_id: Id,
-    params: Vec<ParamLocal>,
     captures: Captures,
     type_: FunctionType,
 }
@@ -431,7 +429,6 @@ pub(in crate::runtime) enum EvaluatedFunctionValueKind {
 impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn reference(
         runtime_id: Id,
-        params: Vec<ParamLocal>,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
@@ -439,7 +436,6 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
         Self {
             identity,
             runtime_id,
-            params,
             captures,
             type_,
         }
@@ -449,7 +445,6 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
 impl<Id: Clone> EvaluatedFunction<Id> {
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
-        params: Vec<ParamLocal>,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
@@ -458,7 +453,6 @@ impl<Id: Clone> EvaluatedFunction<Id> {
                 NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
             )),
             runtime_id,
-            params,
             captures,
             type_,
         }
@@ -466,10 +460,6 @@ impl<Id: Clone> EvaluatedFunction<Id> {
 
     pub(in crate::runtime) fn runtime_id(&self) -> Id {
         self.runtime_id.clone()
-    }
-
-    pub(in crate::runtime) fn params(&self) -> &[ParamLocal] {
-        &self.params
     }
 
     pub(in crate::runtime) fn capture_frame(&self) -> &Captures {
@@ -496,7 +486,6 @@ impl<Id: Clone> EvaluatedFunction<Id> {
         EvaluatedFunction {
             identity: self.identity,
             runtime_id: map(self.runtime_id),
-            params: self.params,
             captures: self.captures,
             type_: self.type_,
         }
@@ -507,13 +496,10 @@ impl EvaluatedCustomFunction {
     #[cfg(test)]
     pub(in crate::runtime) fn reference(
         runtime_id: CustomFunctionId,
-        params: Vec<ParamLocal>,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
-        Self::Function(EvaluatedFunction::reference(
-            runtime_id, params, captures, type_,
-        ))
+        Self::Function(EvaluatedFunction::reference(runtime_id, captures, type_))
     }
 
     pub(in crate::runtime) fn constructor(
@@ -522,17 +508,9 @@ impl EvaluatedCustomFunction {
     ) -> Self {
         Self::Constructor(EvaluatedFunction::closure(
             constructor,
-            Vec::new(),
             Captures::default(),
             type_,
         ))
-    }
-
-    pub(in crate::runtime) fn params(&self) -> &[ParamLocal] {
-        match self {
-            Self::Function(value) => value.params(),
-            Self::Constructor(value) => value.params(),
-        }
     }
 
     pub(in crate::runtime) fn captures(&self) -> &[EvaluatedCapture] {
@@ -562,13 +540,6 @@ impl EvaluatedFunctionFunction {
         match self {
             Self::Core(value) => value.type_(),
             Self::External(value) => value.type_(),
-        }
-    }
-
-    pub(in crate::runtime) fn params(&self) -> &[ParamLocal] {
-        match self {
-            Self::Core(value) => value.params(),
-            Self::External(value) => value.params(),
         }
     }
 
@@ -622,11 +593,10 @@ evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 impl EvaluatedFunctionValue {
     pub(in crate::runtime) fn closure(
         target: crate::plan::execution::function::RuntimeFunctionId,
-        params: Vec<ParamLocal>,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
-        crate::runtime::function::InvocableFunctionValue::closure(target, params, captures, type_)
+        crate::runtime::function::InvocableFunctionValue::closure(target, captures, type_)
             .into_evaluated()
     }
 
@@ -747,7 +717,7 @@ mod tests {
         ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
         TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
-    use crate::plan::execution::graph::{IntLocalId, ParamLocal};
+    use crate::plan::execution::graph::IntLocalId;
     use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::runtime::state::RuntimeState;
 
@@ -797,31 +767,21 @@ pub fn main() {
             Vec::new(),
             crate::plan::execution::type_::ValueType::Int,
         );
-        let reference: EvaluatedIntFunction = EvaluatedIntFunction::reference(
-            IntFunctionId(0),
-            Vec::new(),
-            Default::default(),
-            int_type.clone(),
-        );
+        let reference: EvaluatedIntFunction =
+            EvaluatedIntFunction::reference(IntFunctionId(0), Default::default(), int_type.clone());
         let same_target_with_different_metadata = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            vec![ParamLocal::Int(IntLocalId(0))],
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 vec![crate::plan::execution::type_::ValueType::Int],
                 crate::plan::execution::type_::ValueType::Int,
             ),
         );
-        let different_target = EvaluatedIntFunction::reference(
-            IntFunctionId(1),
-            Vec::new(),
-            Default::default(),
-            int_type.clone(),
-        );
+        let different_target =
+            EvaluatedIntFunction::reference(IntFunctionId(1), Default::default(), int_type.clone());
         let reference_for_instance_comparison = reference.clone();
         let closure = EvaluatedIntFunction::closure(
             IntFunctionId(0),
-            Vec::new(),
             state
                 .captures()
                 .capture(vec![EvaluatedCapture::int(IntLocalId(0), 1.into())]),
@@ -830,7 +790,6 @@ pub fn main() {
         let same_closure = closure.clone();
         let separate_closure = EvaluatedIntFunction::closure(
             IntFunctionId(0),
-            Vec::new(),
             state
                 .captures()
                 .capture(vec![EvaluatedCapture::int(IntLocalId(0), 1.into())]),

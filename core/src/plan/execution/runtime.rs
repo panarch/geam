@@ -5,10 +5,10 @@ use super::function::{
     CustomListFunctionId, ExecutionFunction, ExecutionNeverFunction, ExecutionProfile,
     ExternalFunctionFunctionId, ExternalFunctionId, ExternalListFunctionFunctionId,
     ExternalListFunctionId, FloatFunctionFunctionId, FloatFunctionId, FloatListFunctionId,
-    FunctionFunctionFunctionId, FunctionListFunctionId, GenericFunctionFunctionId,
-    IntFunctionFunctionId, IntFunctionId, IntListFunctionId, ListListFunctionId,
-    NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId, NilFunctionId,
-    NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
+    FunctionCatalog, FunctionFunctionFunctionId, FunctionListFunctionId, FunctionParameterView,
+    GenericFunctionFunctionId, IntFunctionFunctionId, IntFunctionId, IntListFunctionId,
+    ListListFunctionId, NeverFunctionFunctionId, NeverFunctionId, NilFunctionFunctionId,
+    NilFunctionId, NilListFunctionId, ParameterListFunctionId, ParameterListListFunctionId,
     ProfiledListFunctionFunctionId, ProfiledRuntimeFunctionId, StringFunctionFunctionId,
     StringFunctionId, StringListFunctionId, TupleFunctionFunctionId, TupleFunctionId,
     TupleListFunctionId, UtfCodepointFunctionFunctionId, UtfCodepointFunctionId,
@@ -35,23 +35,21 @@ use super::function::{
     ExecutionUtfCodepointListFunctionBody,
 };
 use super::type_::{
-    CustomConstructorId, CustomTypeId, FunctionListTypeId, FunctionType, ListListTypeId,
-    ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
+    CustomConstructorId, CustomTypeId, CustomTypeTable, ExternalTypeTable, FunctionListTypeId,
+    FunctionType, ListListTypeId, ListTypeId, ListTypeTable, TupleListTypeId, ValueShapeId,
+    ValueType,
 };
 use super::{ExecutionPlan, ExecutionProgram, HostedProgram};
 use crate::host::HostProfile;
 use crate::plan::SourceContext;
 use std::convert::Infallible;
+use std::sync::Arc;
 
 pub(crate) trait RuntimeExecutionPlan: Sized {
     type Profile: ExecutionProfile;
     type RunState;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
-
-    fn function_parameters(&self) -> super::function::FunctionParameterView<'_> {
-        self.program().common.function_parameters.as_view()
-    }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
         RuntimeValueMetadata::new(&self.program().common)
@@ -401,16 +399,18 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
 #[derive(Clone, Copy)]
 pub(crate) struct RuntimeValueMetadata<'plan> {
-    list_types: &'plan std::sync::Arc<super::type_::ListTypeTable>,
-    custom_types: &'plan std::sync::Arc<super::type_::CustomTypeTable>,
-    external_types: &'plan std::sync::Arc<super::type_::ExternalTypeTable>,
+    list_types: &'plan Arc<ListTypeTable>,
+    custom_types: &'plan Arc<CustomTypeTable>,
+    external_types: &'plan Arc<ExternalTypeTable>,
+    function_parameters: &'plan Arc<FunctionCatalog>,
 }
 
 #[derive(Clone)]
 pub(crate) struct OwnedRuntimeValueMetadata {
-    list_types: std::sync::Arc<super::type_::ListTypeTable>,
-    custom_types: std::sync::Arc<super::type_::CustomTypeTable>,
-    external_types: std::sync::Arc<super::type_::ExternalTypeTable>,
+    list_types: Arc<ListTypeTable>,
+    custom_types: Arc<CustomTypeTable>,
+    external_types: Arc<ExternalTypeTable>,
+    function_parameters: Arc<FunctionCatalog>,
 }
 
 impl<'plan> RuntimeValueMetadata<'plan> {
@@ -425,7 +425,12 @@ impl<'plan> RuntimeValueMetadata<'plan> {
             list_types: &common.list_types,
             custom_types: &common.custom_types,
             external_types: &common.external_types,
+            function_parameters: &common.function_parameters,
         }
+    }
+
+    pub(crate) fn function_parameters(self) -> FunctionParameterView<'plan> {
+        self.function_parameters.as_view()
     }
 
     pub(crate) fn tuple_list_item_type(&self, id: TupleListTypeId) -> Vec<crate::plan::ValueType> {
@@ -476,16 +481,18 @@ impl<'plan> RuntimeValueMetadata<'plan> {
 
     pub(crate) fn to_owned(self) -> OwnedRuntimeValueMetadata {
         OwnedRuntimeValueMetadata {
-            list_types: std::sync::Arc::clone(self.list_types),
-            custom_types: std::sync::Arc::clone(self.custom_types),
-            external_types: std::sync::Arc::clone(self.external_types),
+            list_types: Arc::clone(self.list_types),
+            custom_types: Arc::clone(self.custom_types),
+            external_types: Arc::clone(self.external_types),
+            function_parameters: Arc::clone(self.function_parameters),
         }
     }
 
     pub(crate) fn shares_owner(self, other: Self) -> bool {
-        std::sync::Arc::ptr_eq(self.list_types, other.list_types)
-            && std::sync::Arc::ptr_eq(self.custom_types, other.custom_types)
-            && std::sync::Arc::ptr_eq(self.external_types, other.external_types)
+        Arc::ptr_eq(self.list_types, other.list_types)
+            && Arc::ptr_eq(self.custom_types, other.custom_types)
+            && Arc::ptr_eq(self.external_types, other.external_types)
+            && Arc::ptr_eq(self.function_parameters, other.function_parameters)
     }
 }
 
@@ -495,6 +502,7 @@ impl OwnedRuntimeValueMetadata {
             list_types: &self.list_types,
             custom_types: &self.custom_types,
             external_types: &self.external_types,
+            function_parameters: &self.function_parameters,
         }
     }
 }
@@ -549,7 +557,9 @@ impl<Profile: HostProfile> RuntimeExecutionPlan for HostedProgram<Profile> {
 mod tests {
     use super::RuntimeExecutionPlan;
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
+    use crate::plan::execution::graph::{FunctionTarget, IntLocalId, ParamLocal, StringLocalId};
     use crate::{compile_typed_module, plan_module};
+    use std::sync::Arc;
 
     #[test]
     fn retained_metadata_shares_frozen_tables_without_retaining_the_program() {
@@ -558,7 +568,8 @@ mod tests {
             "main.gleam",
             r#"
 pub type Packet(a) { Packet(value: a) }
-pub fn main() { [Packet(42)] }
+fn number(left: Int, _label: String, right: Int) { left + right }
+pub fn main() { [Packet(number(20, "answer", 22))] }
 "#,
         )
         .expect("source should compile");
@@ -566,30 +577,49 @@ pub fn main() { [Packet(42)] }
         let execution = crate::ExecutionPlan::from_module_plan(plan);
         let first = execution.value_metadata().to_owned();
         let second = execution.value_metadata().to_owned();
-        assert!(std::sync::Arc::ptr_eq(
-            &first.list_types,
-            &second.list_types
+        assert!(Arc::ptr_eq(&first.list_types, &second.list_types));
+        assert!(Arc::ptr_eq(&first.custom_types, &second.custom_types));
+        assert!(Arc::ptr_eq(&first.external_types, &second.external_types));
+        assert!(Arc::ptr_eq(
+            &first.function_parameters,
+            &second.function_parameters
         ));
-        assert!(std::sync::Arc::ptr_eq(
-            &first.custom_types,
-            &second.custom_types
+        assert!(Arc::ptr_eq(
+            &first.function_parameters,
+            &execution.program.common.function_parameters
         ));
-        assert!(std::sync::Arc::ptr_eq(
-            &first.external_types,
-            &second.external_types
+        let target = FunctionTarget::Int(IntFunctionId(0));
+        assert!(std::ptr::eq(
+            first.as_borrowed().function_parameters().function(&target),
+            execution
+                .value_metadata()
+                .function_parameters()
+                .function(&target),
         ));
-        let program = std::sync::Arc::downgrade(&execution.program.common);
-        let tables = std::sync::Arc::downgrade(&first.custom_types);
+        let program = Arc::downgrade(&execution.program.common);
+        let tables = Arc::downgrade(&first.custom_types);
+        let catalog = Arc::downgrade(&first.function_parameters);
         drop(execution);
         assert!(program.upgrade().is_none());
+        assert!(first.as_borrowed().shares_owner(second.as_borrowed()));
+        assert_eq!(
+            first.as_borrowed().function_parameters().function(&target),
+            &[
+                ParamLocal::Int(IntLocalId(0)),
+                ParamLocal::String(StringLocalId(0)),
+                ParamLocal::Int(IntLocalId(1)),
+            ],
+        );
         assert!(std::ptr::eq(
             first.as_borrowed().custom_types.as_ref(),
             second.as_borrowed().custom_types.as_ref(),
         ));
         drop(first);
         assert!(tables.upgrade().is_some());
+        assert!(catalog.upgrade().is_some());
         drop(second);
         assert!(tables.upgrade().is_none());
+        assert!(catalog.upgrade().is_none());
     }
 
     #[test]

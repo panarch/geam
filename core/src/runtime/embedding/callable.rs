@@ -82,11 +82,6 @@ impl EmbeddingCallable {
         }));
         Self(RetainedCallable::new(InvocableFunctionValue::closure(
             construction.target.clone(),
-            construction
-                .parameters
-                .iter()
-                .map(|slot| slot.local().clone())
-                .collect(),
             captures,
             construction.type_.clone(),
         )))

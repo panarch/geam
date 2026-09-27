@@ -85,7 +85,6 @@ impl<'state> TestHostCallRuntime<'state> {
         scoped.push(crate::runtime::evaluated::EvaluatedValue::Function(
             crate::runtime::evaluated::EvaluatedIntFunction::reference(
                 crate::plan::execution::function::IntFunctionId(0),
-                Vec::new(),
                 Default::default(),
                 crate::plan::execution::type_::FunctionType::new(
                     Vec::new(),

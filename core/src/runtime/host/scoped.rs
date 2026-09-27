@@ -1061,7 +1061,6 @@ mod tests {
         let storage = crate::runtime::CaptureStorage::default();
         let function = EvaluatedIntFunction::closure(
             IntFunctionId(0),
-            Vec::new(),
             storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())]),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
@@ -1137,6 +1136,64 @@ mod tests {
             stored.value()
         ));
         assert_eq!(scoped.int(restored), BigInt::from(7));
+    }
+
+    #[test]
+    fn stored_function_materializes_after_its_plan_and_original_owner_are_dropped() {
+        use crate::plan::execution::function::{
+            IntFunctionFunctionId, IntFunctionId, ProfiledFunctionFunctionId,
+        };
+        use crate::plan::execution::graph::{IntLocalId, ParamLocal};
+        use crate::plan::{FunctionType, ValueType};
+        use crate::runtime::function::run_core_function;
+        use crate::runtime::state::RuntimeState;
+        use crate::runtime::{
+            CaptureValue, FunctionValue, HostCallOrigin, IntFunctionValue, RetainedValues,
+        };
+
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { let captured = 41 fn(value: Int) { captured + value } }",
+        );
+        let mut echo = Vec::new();
+        let mut state = RuntimeState::new(&mut echo);
+        let function = run_core_function(
+            &plan,
+            &mut state,
+            ProfiledFunctionFunctionId::Int(IntFunctionFunctionId(0)),
+            HostCallOrigin::Entry,
+            RetainedValues::empty(),
+        )
+        .expect("closure should evaluate");
+        let stored =
+            StoredRuntimeValue::new(EvaluatedValue::Function(function), plan.value_metadata());
+        let alias = stored.clone_retained();
+        let lists = state.lists().clone();
+        drop(state);
+        drop(plan);
+        drop(stored);
+
+        std::thread::spawn(move || {
+            let expected =
+                Value::Function(FunctionValue::from(IntFunctionValue::new_with_captures(
+                    IntFunctionId(0),
+                    vec![ParamLocal::Int(IntLocalId(0))],
+                    vec![CaptureValue::int(IntLocalId(1), 41.into())],
+                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
+                )));
+            assert_eq!(
+                alias.type_(),
+                &ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::Int
+                )))
+            );
+            let value =
+                crate::runtime::materialize::value(alias.metadata(), &lists, alias.value().clone());
+            assert_eq!(value, expected);
+            assert_eq!(format!("{value:?}"), format!("{expected:?}"));
+        })
+        .join()
+        .expect("stored function is transferable");
     }
 
     #[test]
@@ -1437,7 +1494,6 @@ pub fn main() {
     fn int_target_rejects_a_nil_callback_fixture() {
         let function = crate::runtime::evaluated::EvaluatedNilFunction::reference(
             crate::plan::execution::function::NilFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),

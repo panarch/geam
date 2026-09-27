@@ -15,7 +15,12 @@ use super::{
     GenericFunctionValue, IntFunctionValue, ListFunctionValue, ListValue, NeverFunctionValue,
     NilFunctionValue, StringFunctionValue, TupleFunctionValue, UtfCodepointFunctionValue, Value,
 };
+use crate::plan::execution::function::{ExecutionGraphProfile, RuntimeListFunctionId};
+use crate::plan::execution::graph::{
+    ExternalFunctionCallTarget, ExternalFunctionTarget, FunctionTarget,
+};
 use crate::plan::execution::runtime::RuntimeValueMetadata;
+use std::convert::Infallible;
 
 pub(super) fn value(
     plan: RuntimeValueMetadata<'_>,
@@ -238,7 +243,7 @@ fn generic_function(
 ) -> GenericFunctionValue {
     GenericFunctionValue::from_evaluated(
         value.runtime_id().clone(),
-        value.params().to_vec(),
+        Vec::new(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -251,7 +256,9 @@ fn never_function(
 ) -> NeverFunctionValue {
     NeverFunctionValue::from_evaluated(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Never(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -264,7 +271,9 @@ fn int_function(
 ) -> IntFunctionValue {
     IntFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Int(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -277,7 +286,9 @@ fn float_function(
 ) -> FloatFunctionValue {
     FloatFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Float(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -290,7 +301,9 @@ fn string_function(
 ) -> StringFunctionValue {
     StringFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::String(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -303,7 +316,9 @@ fn bit_array_function(
 ) -> BitArrayFunctionValue {
     BitArrayFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::BitArray(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -316,7 +331,9 @@ fn utf_codepoint_function(
 ) -> UtfCodepointFunctionValue {
     UtfCodepointFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::UtfCodepoint(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -327,17 +344,24 @@ fn custom_function(
     state: &crate::runtime::RuntimeListStorage,
     value: &EvaluatedCustomFunction,
 ) -> CustomFunctionValue {
-    let target = match value {
+    let (target, params) = match value {
         EvaluatedCustomFunction::Function(value) => {
-            CustomFunctionValueTarget::Function(value.runtime_id())
+            let id = value.runtime_id();
+            (
+                CustomFunctionValueTarget::Function(id),
+                plan.function_parameters()
+                    .function(&FunctionTarget::Custom(id))
+                    .to_vec(),
+            )
         }
-        EvaluatedCustomFunction::Constructor(value) => {
-            CustomFunctionValueTarget::Constructor(value.runtime_id())
-        }
+        EvaluatedCustomFunction::Constructor(value) => (
+            CustomFunctionValueTarget::Constructor(value.runtime_id()),
+            Vec::new(),
+        ),
     };
     CustomFunctionValue::new_with_captures(
         target,
-        value.params().to_vec(),
+        params,
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -350,7 +374,9 @@ fn external_function(
 ) -> ExternalFunctionValue {
     ExternalFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .external_function(&ExternalFunctionTarget::Value(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -363,7 +389,9 @@ fn bool_function(
 ) -> BoolFunctionValue {
     BoolFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Bool(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -376,7 +404,9 @@ fn nil_function(
 ) -> NilFunctionValue {
     NilFunctionValue::new_with_captures(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Nil(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -389,7 +419,9 @@ fn tuple_function(
 ) -> TupleFunctionValue {
     TupleFunctionValue::from_evaluated(
         value.runtime_id(),
-        value.params().to_vec(),
+        plan.function_parameters()
+            .function(&FunctionTarget::Tuple(value.runtime_id()))
+            .to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -400,9 +432,18 @@ fn list_function(
     state: &crate::runtime::RuntimeListStorage,
     value: &EvaluatedListFunction,
 ) -> ListFunctionValue {
+    let runtime_id = value.runtime_id();
+    let params = match &runtime_id {
+        RuntimeListFunctionId::Core(id) => plan
+            .function_parameters()
+            .function(&FunctionTarget::List(id.clone())),
+        RuntimeListFunctionId::External(id) => plan
+            .function_parameters()
+            .external_function(&ExternalFunctionTarget::List(*id)),
+    };
     ListFunctionValue::new_with_captures(
-        value.runtime_id(),
-        value.params().to_vec(),
+        runtime_id,
+        params.to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -413,17 +454,39 @@ fn function_function(
     state: &crate::runtime::RuntimeListStorage,
     value: &EvaluatedFunctionFunction,
 ) -> FunctionFunctionValue {
-    let runtime_id = match value {
+    let (runtime_id, params) = match value {
         EvaluatedFunctionFunction::Core(value) => {
-            <std::convert::Infallible as crate::plan::execution::function::ExecutionGraphProfile>::function_function(
-                &value.runtime_id(),
+            let id = value.runtime_id();
+            (
+                <Infallible as ExecutionGraphProfile>::function_function(&id),
+                plan.function_parameters()
+                    .function(&FunctionTarget::Function(id)),
             )
         }
-        EvaluatedFunctionFunction::External(value) => value.runtime_id().runtime_id(),
+        EvaluatedFunctionFunction::External(value) => {
+            let target = value.runtime_id();
+            let runtime_id = target.runtime_id();
+            let target = match target {
+                ExternalFunctionCallTarget::Function(id) => ExternalFunctionTarget::Function(id),
+                ExternalFunctionCallTarget::ListFunction {
+                    id,
+                    type_,
+                    list_type,
+                } => ExternalFunctionTarget::ListFunction {
+                    id,
+                    type_,
+                    list_type,
+                },
+            };
+            (
+                runtime_id,
+                plan.function_parameters().external_function(&target),
+            )
+        }
     };
     FunctionFunctionValue::from_evaluated(
         runtime_id,
-        value.params().to_vec(),
+        params.to_vec(),
         captures(plan, state, value.captures()),
         plan.function_type(value.type_()),
     )
@@ -665,8 +728,8 @@ mod tests {
     use crate::runtime::state::list::{CustomListAllocation, ExternalListAllocation, ListValueId};
     use crate::runtime::{
         BitArrayValue, CaptureListValue, CaptureValue, CustomFieldValue, CustomFunctionValue,
-        CustomFunctionValueTarget, CustomValue, EvaluatedExternalValue, FunctionValue, ListValue,
-        RuntimeListStorage, Value,
+        CustomFunctionValueTarget, CustomValue, EvaluatedExternalValue, FunctionValue,
+        IntFunctionValue, ListValue, RuntimeListStorage, Value,
     };
     use crate::{
         HostModule, HostProviderModule, HostProviderSet, HostedExecution, ModuleSource,
@@ -760,6 +823,17 @@ fn nested_customs() -> List(List(Boxed)) { [] }
 fn functions() -> List(fn() -> Int) { [] }
 fn take_custom_function(value: fn() -> Boxed) { 0 }
 fn take_function_function(value: fn() -> fn() -> Int) { 0 }
+fn float_value() { 1.5 }
+fn string_value() { "one" }
+fn bit_array_value() { <<1>> }
+fn utf_codepoint_value() {
+  let assert <<value:utf8_codepoint>> = <<65>>
+  value
+}
+fn bool_value() { True }
+fn nil_value() { Nil }
+fn tuple_value() { #(1) }
+fn int_function() { main }
 pub fn main() {
   let _ = #(
     ints,
@@ -778,6 +852,14 @@ pub fn main() {
     functions,
     take_custom_function,
     take_function_function,
+    float_value,
+    string_value,
+    bit_array_value,
+    utf_codepoint_value,
+    bool_value,
+    nil_value,
+    tuple_value,
+    int_function,
   )
   0
 }
@@ -890,6 +972,122 @@ pub fn main() -> List(Counter) {
     }
 
     #[test]
+    fn hosted_functions_materialize_their_external_parameter_layouts() {
+        use crate::host::{ExternalTestProfile, ExternalTestRunState};
+        use crate::plan::execution::function::{
+            ExternalFunctionId, ExternalListFunctionFunctionId, ListFunctionFunctionId,
+        };
+        use crate::plan::execution::graph::{ExternalLocal, ExternalLocalId, StringLocalId};
+        use crate::plan::execution::type_::{
+            FunctionType as ExecutionFunctionType, ValueType as ExecutionValueType,
+        };
+        use crate::runtime::{ExternalFunctionValue, FunctionFunctionValue, ListFunctionValue};
+
+        let provider = HostProviderModule::<ExternalTestProfile>::new("application", "main")
+            .expect("provider module should be valid")
+            .with_external_type::<RuntimeCounterProvider, RuntimeCounterSchema>()
+            .expect("external type should be valid");
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "host", "Counter")
+pub type Counter
+
+fn identity(_argument: Int, value: Counter) { value }
+fn values(_argument: Int) -> List(Counter) { [] }
+fn factory(_label: String) { values }
+pub fn main() { #(identity, values, factory) }
+"#,
+                )],
+            )],
+            HostProviderSet::with_providers(
+                Vec::<HostModule<ExternalTestProfile>>::new(),
+                [provider],
+            )
+            .expect("provider module should be unique"),
+        )
+        .expect("external function references should compile");
+        let plan = plan_host_program(typed).expect("external function references should plan");
+        let mut execution = HostedExecution::try_from_module_plan(plan)
+            .expect("external function references should seal");
+        let list_id = execution.external_list_function_id(0);
+        let type_id = list_id.type_id().item_type();
+        let external_type = execution
+            .execution()
+            .value_metadata()
+            .external_value_type(type_id);
+        let expected = Value::Tuple(vec![
+            Value::Function(FunctionValue::from(
+                ExternalFunctionValue::new_with_captures(
+                    ExternalFunctionId {
+                        index: 0,
+                        return_type: type_id,
+                    },
+                    vec![
+                        ParamLocal::Int(IntLocalId(0)),
+                        ParamLocal::External(ExternalLocal {
+                            id: ExternalLocalId(0),
+                            type_id,
+                        }),
+                    ],
+                    Vec::new(),
+                    FunctionType::new(
+                        vec![ValueType::Int, ValueType::External(external_type.clone())],
+                        ValueType::External(external_type.clone()),
+                    ),
+                ),
+            )),
+            Value::Function(FunctionValue::from(ListFunctionValue::new_with_captures(
+                RuntimeListFunctionId::External(list_id),
+                vec![ParamLocal::Int(IntLocalId(0))],
+                Vec::new(),
+                FunctionType::new(
+                    vec![ValueType::Int],
+                    ValueType::List(Box::new(ValueType::External(external_type.clone()))),
+                ),
+            ))),
+            Value::Function(FunctionValue::from(FunctionFunctionValue::from_evaluated(
+                FunctionFunctionId::List(ListFunctionFunctionId::External {
+                    id: ExternalListFunctionFunctionId(0),
+                    type_: ExecutionFunctionType::new(
+                        vec![ExecutionValueType::Int],
+                        ExecutionValueType::List(list_id.type_id().list_type()),
+                    ),
+                    list_type: list_id.type_id(),
+                }),
+                vec![ParamLocal::String(StringLocalId(0))],
+                Vec::new(),
+                FunctionType::new(
+                    vec![ValueType::String],
+                    ValueType::Function(Box::new(FunctionType::new(
+                        vec![ValueType::Int],
+                        ValueType::List(Box::new(ValueType::External(external_type))),
+                    ))),
+                ),
+            ))),
+        ]);
+        let actual = crate::execution_fixture::run(
+            &mut execution,
+            &mut ExternalTestRunState::default(),
+            &mut Vec::new(),
+        )
+        .expect("external function references should evaluate");
+        assert_eq!(actual, expected);
+        assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+        assert_eq!(
+            actual.inspect().to_string(),
+            "#(//fn(a, b) { ... }, //fn(a) { ... }, //fn(a) { ... })"
+        );
+    }
+
+    #[test]
     fn materializes_every_runtime_value_and_list_storage_family() {
         let plan = crate::runtime::plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();
@@ -907,7 +1105,6 @@ pub fn main() -> List(Counter) {
         );
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1079,13 +1276,11 @@ pub fn main() -> List(Counter) {
         let module_int_type = FunctionType::new(Vec::new(), ValueType::Int);
         let int_function = EvaluatedIntFunction::reference(
             IntFunctionId(0),
-            Vec::new(),
             Default::default(),
             execution_int_type.clone(),
         );
         let float_function = EvaluatedFloatFunction::reference(
             FloatFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1094,7 +1289,6 @@ pub fn main() -> List(Counter) {
         );
         let string_function = EvaluatedStringFunction::reference(
             StringFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1103,7 +1297,6 @@ pub fn main() -> List(Counter) {
         );
         let bit_array_function = EvaluatedBitArrayFunction::reference(
             BitArrayFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1112,7 +1305,6 @@ pub fn main() -> List(Counter) {
         );
         let utf_codepoint_function = EvaluatedUtfCodepointFunction::reference(
             UtfCodepointFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1121,7 +1313,6 @@ pub fn main() -> List(Counter) {
         );
         let custom_function = EvaluatedCustomFunction::reference(
             plan.custom_function_id(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1130,7 +1321,6 @@ pub fn main() -> List(Counter) {
         );
         let bool_function = EvaluatedBoolFunction::reference(
             BoolFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1139,7 +1329,6 @@ pub fn main() -> List(Counter) {
         );
         let nil_function = EvaluatedNilFunction::reference(
             NilFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1148,7 +1337,6 @@ pub fn main() -> List(Counter) {
         );
         let tuple_function = EvaluatedTupleFunction::reference(
             TupleFunctionId(0),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1161,7 +1349,6 @@ pub fn main() -> List(Counter) {
             RuntimeListFunctionId::Core(ListFunctionId::Int(plan.int_list_function_id(0)));
         let list_function = EvaluatedListFunction::reference(
             list_function_id.clone(),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1172,7 +1359,6 @@ pub fn main() -> List(Counter) {
         );
         let function_function = EvaluatedFunctionFunction::Core(EvaluatedFunction::reference(
             ProfiledFunctionFunctionId::<std::convert::Infallible>::Int(IntFunctionFunctionId(0)),
-            Vec::new(),
             Default::default(),
             crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1524,42 +1710,27 @@ pub fn main() -> List(Counter) {
 
     #[test]
     fn materializes_function_captures_through_the_function_owner() {
-        let plan =
-            crate::runtime::plan_src("fn identity(value: Int) { value } pub fn main() { 0 }");
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { let captured = 40 fn(a: Int, _b: String, c: Int) { captured + a + c } }",
+        );
         let mut echo = Vec::new();
-        let state = RuntimeState::new(&mut echo);
-        let function_type = crate::plan::execution::type_::FunctionType::new(
-            vec![crate::plan::execution::type_::ValueType::Int],
-            crate::plan::execution::type_::ValueType::Int,
-        );
-        let function: EvaluatedIntFunction = EvaluatedIntFunction::reference(
+        let actual = crate::runtime::run_main(&plan, &mut echo).expect("closure should evaluate");
+        let expected = Value::Function(FunctionValue::from(IntFunctionValue::new_with_captures(
             IntFunctionId(0),
-            vec![crate::plan::execution::graph::ParamLocal::Int(IntLocalId(
-                0,
-            ))],
-            state
-                .captures()
-                .capture(vec![EvaluatedCapture::int(IntLocalId(1), 42.into())]),
-            function_type,
-        );
-
-        assert_eq!(
-            value(
-                plan.value_metadata(),
-                state.lists(),
-                EvaluatedValue::Function(EvaluatedFunctionValue::from(function)),
+            vec![
+                ParamLocal::Int(IntLocalId(0)),
+                ParamLocal::String(StringLocalId(0)),
+                ParamLocal::Int(IntLocalId(1)),
+            ],
+            vec![CaptureValue::int(IntLocalId(2), 40.into())],
+            FunctionType::new(
+                vec![ValueType::Int, ValueType::String, ValueType::Int],
+                ValueType::Int,
             ),
-            Value::Function(crate::runtime::FunctionValue::from(
-                crate::runtime::IntFunctionValue::new_with_captures(
-                    IntFunctionId(0),
-                    vec![crate::plan::execution::graph::ParamLocal::Int(IntLocalId(
-                        0
-                    ))],
-                    vec![CaptureValue::int(IntLocalId(1), 42.into())],
-                    FunctionType::new(vec![ValueType::Int], ValueType::Int),
-                ),
-            )),
-        );
+        )));
+        assert_eq!(actual, expected);
+        assert_eq!(format!("{actual:?}"), format!("{expected:?}"));
+        assert_eq!(actual.inspect().to_string(), "//fn(a, b, c) { ... }");
     }
 
     #[test]
