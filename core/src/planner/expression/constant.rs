@@ -88,7 +88,9 @@ fn plan_tuple(
         .iter()
         .map(Expr::value_type)
         .collect::<Vec<_>>();
-    let actual = ValueType::from_gleam(type_.as_ref());
+    let actual = context
+        .monomorphic_value_shape(type_.as_ref())
+        .map(|shape| shape.value_type());
     let expected_type = match actual {
         Some(ValueType::Tuple(type_)) => type_,
         actual => {
@@ -131,7 +133,9 @@ fn plan_list(
     let list_element_type = match type_.list_type() {
         Some(list_element_type) => list_element_type,
         None => {
-            let actual = ValueType::from_gleam(type_.as_ref());
+            let actual = context
+                .monomorphic_value_shape(type_.as_ref())
+                .map(|shape| shape.value_type());
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantListType { actual },
@@ -139,7 +143,10 @@ fn plan_list(
             });
         }
     };
-    let expected_element_type = match ValueType::from_gleam(list_element_type.as_ref()) {
+    let expected_element_type = match context
+        .monomorphic_value_shape(list_element_type.as_ref())
+        .map(|shape| shape.value_type())
+    {
         Some(type_) => type_,
         None => {
             return Err(PlanError::InvalidTypedAst {
@@ -321,7 +328,9 @@ fn plan_record_constructor(
                     kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
                         name: name.clone(),
                         arity: usize::from(*arity),
-                        actual: ValueType::from_gleam(constructor.type_.as_ref()),
+                        actual: context
+                            .monomorphic_value_shape(constructor.type_.as_ref())
+                            .map(|shape| shape.value_type()),
                     },
                 },
             }),
@@ -330,12 +339,10 @@ fn plan_record_constructor(
     if module != PRELUDE_MODULE_NAME {
         let _linked_module = context.resolve_module_reference(module, name)?;
     }
-    let Some(shape) = crate::plan::ValueShape::from_gleam(constructor.type_.as_ref()) else {
+    let Some(shape) = context.monomorphic_value_shape(constructor.type_.as_ref()) else {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
-                    actual: ValueType::from_gleam(constructor.type_.as_ref()),
-                },
+                kind: InvalidExpressionShapeKind::ConstantRecordConstructorType { actual: None },
             },
         });
     };
@@ -376,6 +383,51 @@ mod tests {
         self, Deprecation, ValueConstructor, ValueConstructorVariant,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn plan_constant_containers_preserve_registered_external_types() {
+        use crate::plan::{
+            ExternalType, ExternalTypeDefinition, ExternalTypeName, FunctionType, ListExpr,
+            ModuleId,
+        };
+        use crate::planner::module::registry::{ModuleRegistry, ProgramRegistry};
+
+        let source = compile(
+            r#"
+pub type Resource
+const resources: List(Resource) = []
+const callbacks: List(fn(Resource) -> Resource) = []
+const nested: #(List(Resource), List(fn(Resource) -> Resource)) = #([], [])
+pub fn main() { Nil }
+"#,
+        );
+        let name = ExternalTypeName::new("geam".into(), "main".into(), "Resource".into());
+        let registry = ProgramRegistry::new(vec![ModuleRegistry::new(
+            "main".into(),
+            Vec::new(),
+            vec![ExternalTypeDefinition::new(name.clone(), 0)],
+            HashMap::new(),
+            Default::default(),
+        )]);
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new_in_program(ModuleId::new(0), &registry, &mut anonymous);
+        let resource = ValueType::External(ExternalType::new(name, Vec::new()));
+        let callback = ValueType::Function(Box::new(FunctionType::new(
+            vec![resource.clone()],
+            resource.clone(),
+        )));
+        let resources = Expr::list(ListExpr::try_value(Vec::new(), resource).unwrap());
+        let callbacks = Expr::list(ListExpr::try_value(Vec::new(), callback).unwrap());
+        let expected = [
+            resources.clone(),
+            callbacks.clone(),
+            tuple([resources, callbacks]).into(),
+        ];
+        assert_eq!(source.definitions.constants.len(), expected.len());
+        for (constant, expected) in source.definitions.constants.into_iter().zip(expected) {
+            assert_eq!(plan(*constant.value, &context), Ok(expected));
+        }
+    }
 
     #[test]
     fn plan_constant_value_families() {

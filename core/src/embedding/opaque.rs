@@ -914,6 +914,141 @@ pub fn inspect(left: Resource, right: Resource) { echo left left == right }
     }
 
     #[test]
+    fn external_types_survive_guard_constants_and_tuple_projections() {
+        use crate::{HostProviderModule, compile_typed_host_program};
+        use std::sync::Arc;
+
+        for (source, expected) in [
+            (
+                r#"
+pub type Resource
+fn empty() -> List(Resource) { [] }
+pub fn check() {
+  case empty() {
+    values if values == [] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> List(fn(Resource) -> Resource) { [] }
+pub fn check() {
+  case empty() {
+    values if values == [] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> #(List(Resource), List(fn() -> Resource)) { #([], []) }
+pub fn check() {
+  case empty() {
+    values if values == #([], []) -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> List(List(Resource)) { [[]] }
+pub fn check() {
+  case empty() {
+    values if values == [[], ..[]] -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+pub type Wrapper(a) { Wrapper(a) }
+fn empty() -> Wrapper(List(Resource)) { Wrapper([]) }
+pub fn check() {
+  case empty() {
+    value if value == Wrapper([]) -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+fn empty() -> #(List(Resource), Int) { #([], 42) }
+pub fn check() {
+  case empty() {
+    values if values.0 == [] && values.1 == 42 -> True
+    _ -> False
+  }
+}
+"#,
+                true,
+            ),
+            (
+                r#"
+pub type Resource
+pub type Wrapper { Wrapper(List(Resource)) }
+pub fn check() {
+  let constructor = Wrapper
+  case constructor {
+    value if value == Wrapper -> True
+    _ -> False
+  }
+}
+"#,
+                false,
+            ),
+        ] {
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_external_type::<ResourceProvider, Resource>()
+                .unwrap();
+            let program = compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("library", "library.gleam", source)],
+                )],
+                HostProviderSet::<ResourceProfile>::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (bindings, check) = HostedModuleBuilder::new(program)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("check"))
+                .unwrap();
+            let mut module = bindings.seal().unwrap();
+            let host = TestHost::default();
+            let mut state = Arc::default();
+            let mut echo = Vec::new();
+            let result = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&check, ()).await.unwrap()
+                    }),
+                )
+                .unwrap();
+            assert_eq!(result, expected, "{source}");
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
     fn resource_fixture_hashes_its_payload_value() {
         use crate::host::{HostExternalHashing, HostExternalStorage, RetainedValueHashing};
         let source_hash = |_: &crate::runtime::RetainedValueRef| 0;

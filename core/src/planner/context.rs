@@ -503,6 +503,10 @@ impl<'a> PlanContext<'a> {
         })
     }
 
+    pub(super) fn monomorphic_value_shape(&self, type_: &Type) -> Option<ValueShape> {
+        ValueShape::from_gleam_with_external(type_, &|name| self.registry.is_external_type(name))
+    }
+
     pub(super) fn value_shape_in_scope(&self, type_: &Type) -> ValueShape {
         let mut type_parameters = self.scope.type_parameters.clone();
         self.value_shape_with_parameters(type_, &mut type_parameters)

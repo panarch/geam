@@ -221,7 +221,7 @@ fn plan_tuple_index(
 ) -> Result<Expr, PlanError> {
     let index = index as usize;
     let tuple: TupleExpr = expect_expression(plan_expr(tuple, context)?)?;
-    let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple)?;
+    let expected = value_type_from_gleam(type_.as_ref(), InvalidExpressionType::Tuple, context)?;
     super::super::tuple_index_expr(tuple, index, expected)
 }
 

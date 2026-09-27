@@ -3,6 +3,7 @@ use crate::plan::{
     GenericExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr, UtfCodepointExpr, ValueShape,
     ValueType,
 };
+use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidExpressionType, InvalidTypedAstReason, PlanError};
 use gleam_compiler_core::type_::Type;
 
@@ -59,10 +60,14 @@ pub(in crate::planner) fn validate_expression_shape_flow(
 pub(in crate::planner) fn value_type_from_gleam(
     type_: &Type,
     expected: InvalidExpressionType,
+    context: &PlanContext<'_>,
 ) -> Result<ValueType, PlanError> {
-    ValueType::from_gleam(type_).ok_or(PlanError::InvalidTypedAst {
-        reason: InvalidTypedAstReason::UnsupportedExpressionType { expected },
-    })
+    context
+        .monomorphic_value_shape(type_)
+        .map(|shape| shape.value_type())
+        .ok_or(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::UnsupportedExpressionType { expected },
+        })
 }
 
 pub(in crate::planner) fn expect_list_spread(
