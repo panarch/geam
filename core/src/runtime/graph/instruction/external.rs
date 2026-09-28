@@ -1,8 +1,9 @@
 use super::super::environment::BlockEnvironment;
-use super::InstructionValueWithoutConstant;
-use super::value::{custom_projection, inputs_with_captures, list_element, tuple_projection};
-use crate::plan::execution::function::ExecutionGraphProfile;
+use super::value::{custom_projection, list_element, tuple_projection};
+use super::{CallInputs, InstructionOutcomeWithoutConstant};
+use crate::plan::execution::function::{ExecutionGraphProfile, ExternalFunctionId};
 use crate::plan::execution::graph::{ExternalInstructionRef, ExternalInstructionView};
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::ValueType;
 use crate::runtime::RuntimeGraph;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
@@ -10,59 +11,64 @@ use crate::runtime::graph::RuntimeGraphState;
 
 // Keep this evaluator's temporaries and branches out of the shared instruction loop.
 #[inline(never)]
-pub(in crate::runtime) fn evaluate_action<Plan, State>(
+pub(in crate::runtime) fn evaluate_action<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &<RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call <RuntimeGraph<Plan> as ExecutionGraphProfile>::ExternalInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValueWithoutConstant<
-        EvaluatedExternalValue,
-        crate::plan::execution::function::ExternalFunctionId,
-    >,
+) -> InstructionOutcomeWithoutConstant<
+    'call,
+    EvaluatedExternalValue,
+    ExternalFunctionId,
     State::Error,
 >
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValueWithoutConstant as V;
+    use InstructionOutcomeWithoutConstant as V;
 
     match instruction.instruction_ref() {
         ExternalInstructionRef::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: RuntimeGraph::<Plan>::external_function(function),
-            origin: crate::runtime::error::HostCallOrigin::source(site.to_owned()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         ExternalInstructionRef::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.external_function(function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.to_owned()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         ExternalInstructionRef::TupleIndex { tuple, index } => {
             tuple_projection(plan, environment, tuple, index, expected, external_value)
-                .map(V::Ready)
+                .map_or_else(V::Error, V::Ready)
         }
         ExternalInstructionRef::CustomField { source, index } => {
             custom_projection(plan, environment, source, index, expected, external_value)
-                .map(V::Ready)
+                .map_or_else(V::Error, V::Ready)
         }
         ExternalInstructionRef::ListIndex { list, index } => {
             let list = environment.external_list(list);
             let values = state.lists().external_values(&list);
-            list_element(plan, expected, index, values).map(V::Ready)
+            list_element(plan, expected, index, values).map_or_else(V::Error, V::Ready)
         }
     }
 }

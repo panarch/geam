@@ -39,8 +39,12 @@ where
     }
 
     pub(in crate::runtime) fn iter(&self) -> RetainedListIter<'_> {
+        self.iter_prefix(self.len())
+    }
+
+    pub(in crate::runtime) fn iter_prefix(&self, limit: usize) -> RetainedListIter<'_> {
         RetainedListIter {
-            inner: self.read.iter(),
+            inner: self.read.iter_prefix(limit),
             #[cfg(test)]
             reads: &self.item_reads,
         }
@@ -175,22 +179,24 @@ impl ListRead {
         }
     }
 
-    fn iter(&self) -> ListReadIter<'_> {
+    fn iter_prefix(&self, limit: usize) -> ListReadIter<'_> {
         match self {
             Self::Empty => ListReadIter::Empty,
-            Self::Nil(len) => ListReadIter::Nil(0..*len),
-            Self::ParameterList(value, len) => ListReadIter::ParameterList(*value, 0..*len),
-            Self::Int(values) => ListReadIter::Int(values.iter()),
-            Self::String(values) => ListReadIter::String(values.iter()),
-            Self::BitArray(values) => ListReadIter::BitArray(values.iter()),
-            Self::UtfCodepoint(values) => ListReadIter::UtfCodepoint(values.iter()),
-            Self::Custom(values) => ListReadIter::Custom(values.iter()),
-            Self::External(values) => ListReadIter::External(values.iter()),
-            Self::Float(values) => ListReadIter::Float(values.iter()),
-            Self::Bool(values) => ListReadIter::Bool(values.iter()),
-            Self::Tuple(values) => ListReadIter::Tuple(values.iter()),
-            Self::List(values) => ListReadIter::List(values.iter()),
-            Self::Function(values) => ListReadIter::Function(values.iter()),
+            Self::Nil(len) => ListReadIter::Nil(0..limit.min(*len)),
+            Self::ParameterList(value, len) => {
+                ListReadIter::ParameterList(*value, 0..limit.min(*len))
+            }
+            Self::Int(values) => ListReadIter::Int(values.iter_prefix(limit)),
+            Self::String(values) => ListReadIter::String(values.iter_prefix(limit)),
+            Self::BitArray(values) => ListReadIter::BitArray(values.iter_prefix(limit)),
+            Self::UtfCodepoint(values) => ListReadIter::UtfCodepoint(values.iter_prefix(limit)),
+            Self::Custom(values) => ListReadIter::Custom(values.iter_prefix(limit)),
+            Self::External(values) => ListReadIter::External(values.iter_prefix(limit)),
+            Self::Float(values) => ListReadIter::Float(values.iter_prefix(limit)),
+            Self::Bool(values) => ListReadIter::Bool(values.iter_prefix(limit)),
+            Self::Tuple(values) => ListReadIter::Tuple(values.iter_prefix(limit)),
+            Self::List(values) => ListReadIter::List(values.iter_prefix(limit)),
+            Self::Function(values) => ListReadIter::Function(values.iter_prefix(limit)),
         }
     }
 }
@@ -281,35 +287,35 @@ fn check(values: List(a), expected: a) -> Nil
 fn check_empty(values: List(a)) -> Nil
 
 pub fn run() {
-  check([1], 1)
+  check([1, 1, 1], 1)
   check([], 1)
-  check([1.5], 1.5)
+  check([1.5, 1.5, 1.5], 1.5)
   check([], 1.5)
-  check(["hello"], "hello")
+  check(["hello", "hello", "hello"], "hello")
   check([], "hello")
-  check([<<1:3>>], <<1:3>>)
+  check([<<1:3>>, <<1:3>>, <<1:3>>], <<1:3>>)
   check([], <<1:3>>)
   let assert <<codepoint:utf8_codepoint>> = <<"x":utf8>>
-  check([codepoint], codepoint)
+  check([codepoint, codepoint, codepoint], codepoint)
   check([], codepoint)
-  check([True], True)
+  check([True, True, True], True)
   check([], True)
-  check([Nil], Nil)
+  check([Nil, Nil, Nil], Nil)
   check([], Nil)
-  check([#(1, "hello")], #(1, "hello"))
+  check([#(1, "hello"), #(1, "hello"), #(1, "hello")], #(1, "hello"))
   check([], #(1, "hello"))
-  check([Ok(1)], Ok(1))
+  check([Ok(1), Ok(1), Ok(1)], Ok(1))
   check([], Ok(1))
   let operation = work.ready(1)
-  check([operation], operation)
+  check([operation, operation, operation], operation)
   check([], operation)
   let child = [1]
-  check([child], child)
+  check([child, child, child], child)
   check([], child)
   let callback = fn(value: Int) { value + 1 }
-  check([callback], callback)
+  check([callback, callback, callback], callback)
   check([], callback)
-  check([[]], [])
+  check([[], [], []], [])
   check([], [])
   check_empty([])
 }
@@ -359,13 +365,25 @@ pub fn run() {
             Some(expected.value().clone())
         };
         assert_eq!(retained.item(0), expected);
-        assert_eq!(retained.item(1), None);
+        assert_eq!(retained.item(len), None);
         let mut cursor = retained.iter();
         assert_eq!(retained.item_reads(), 2);
-        assert_eq!(cursor.next(), expected);
+        for _ in 0..len {
+            assert_eq!(cursor.next(), expected);
+        }
         assert_eq!(cursor.next(), None);
         assert_eq!(cursor.next(), None);
         assert_eq!(retained.item_reads(), 2 + len);
+        for limit in [0, 1, 2, len, len + 1, usize::MAX] {
+            let before = retained.item_reads();
+            let mut prefix = retained.iter_prefix(limit);
+            for _ in 0..limit.min(len) {
+                assert_eq!(prefix.next(), expected);
+            }
+            assert_eq!(prefix.next(), None);
+            assert_eq!(prefix.next(), None);
+            assert_eq!(retained.item_reads(), before + limit.min(len));
+        }
         Ok(call.return_value(()))
     }
 
@@ -377,6 +395,8 @@ pub fn run() {
         assert_eq!(retained.len(), 0);
         assert_eq!(retained.item(0), None);
         assert_eq!(retained.iter().next(), None);
+        assert_eq!(retained.iter_prefix(0).next(), None);
+        assert_eq!(retained.iter_prefix(1).next(), None);
         Ok(call.return_value(()))
     }
 

@@ -2,12 +2,21 @@ mod integer;
 
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
+use super::CallInputs;
 use crate::StringValue;
+use crate::plan::HostCallSite;
 use crate::plan::execution::constant::ConstantId;
-use crate::plan::execution::graph::{
-    BitArrayInstruction, BoolInstruction, CustomInstruction, FloatInstruction, IntInstruction,
-    NilInstruction, ParamLocal, StringInstruction, TupleInstruction, UtfCodepointInstruction,
+use crate::plan::execution::function::{
+    BitArrayFunctionId, BoolFunctionId, CustomFunctionId, FloatFunctionId, IntFunctionId,
+    NilFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
 };
+use crate::plan::execution::graph::{
+    BitArrayInstruction, BitArrayLocalId, BoolInstruction, BoolLocalId, CustomInstruction,
+    CustomLocal, FloatInstruction, FloatLocalId, IntInstruction, IntLocalId, NilInstruction,
+    NilLocalId, StringInstruction, StringLocalId, TupleInstruction, TupleLocalId,
+    UtfCodepointInstruction,
+};
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::ValueType;
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
@@ -16,69 +25,70 @@ use crate::runtime::evaluated::{
 use crate::runtime::state::list::ListSequence;
 use num_bigint::BigInt;
 
-pub(in crate::runtime) enum InstructionValue<Value, Function, Constant> {
+pub(in crate::runtime) enum InstructionOutcome<'call, Value, Function, Constant, Error> {
     Ready(Value),
+    Error(Error),
     Constant(ConstantId<Constant>),
     Call {
         function: Function,
-        origin: crate::runtime::error::HostCallOrigin,
-        inputs: super::super::environment::RetainedValues,
+        site: &'call HostCallSite,
+        inputs: CallInputs<'call>,
     },
 }
 
-pub(in crate::runtime) enum InstructionValueWithoutConstant<Value, Function> {
+pub(in crate::runtime) enum InstructionOutcomeWithoutConstant<'call, Value, Function, Error> {
     Ready(Value),
+    Error(Error),
     Call {
         function: Function,
-        origin: crate::runtime::error::HostCallOrigin,
-        inputs: super::super::environment::RetainedValues,
+        site: &'call HostCallSite,
+        inputs: CallInputs<'call>,
     },
 }
 
-pub(in crate::runtime) fn int<Plan, State>(
+pub(in crate::runtime) fn int<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &IntInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call IntInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        BigInt,
-        crate::plan::execution::function::IntFunctionId,
-        crate::plan::execution::graph::IntLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, BigInt, IntFunctionId, IntLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValue as V;
+    use InstructionOutcome as V;
     use IntInstruction as I;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(value.materialize())),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(value) => V::Ready(value.materialize()),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.int_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -91,7 +101,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -103,69 +113,66 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().int_values(&environment.int_list(*list)),
         )
-        .map(V::Ready),
-        I::Add { left, right } => Ok(V::Ready(integer::add(environment, *left, *right))),
-        I::Sub { left, right } => Ok(V::Ready(integer::subtract(environment, *left, *right))),
-        I::Mult { left, right } => Ok(V::Ready(integer::multiply(environment, *left, *right))),
-        I::Div { left, right } => Ok(V::Ready(integer::divide(environment, *left, *right))),
-        I::Remainder { left, right } => {
-            Ok(V::Ready(integer::remainder(environment, *left, *right)))
-        }
-        I::Negate(value) => Ok(V::Ready(-environment.int(*value))),
+        .map_or_else(V::Error, V::Ready),
+        I::Add { left, right } => V::Ready(integer::add(environment, *left, *right)),
+        I::Sub { left, right } => V::Ready(integer::subtract(environment, *left, *right)),
+        I::Mult { left, right } => V::Ready(integer::multiply(environment, *left, *right)),
+        I::Div { left, right } => V::Ready(integer::divide(environment, *left, *right)),
+        I::Remainder { left, right } => V::Ready(integer::remainder(environment, *left, *right)),
+        I::Negate(value) => V::Ready(-environment.int(*value)),
     }
 }
 
-pub(in crate::runtime) fn float<Plan, State>(
+pub(in crate::runtime) fn float<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &FloatInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call FloatInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        f64,
-        crate::plan::execution::function::FloatFunctionId,
-        crate::plan::execution::graph::FloatLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, f64, FloatFunctionId, FloatLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use FloatInstruction as I;
-    use InstructionValue as V;
+    use InstructionOutcome as V;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(*value)),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(value) => V::Ready(*value),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.float_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -178,7 +185,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -190,78 +197,71 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().float_values(&environment.float_list(*list)),
         )
-        .map(V::Ready),
-        I::Add { left, right } => Ok(V::Ready(
-            environment.float(*left) + environment.float(*right),
-        )),
-        I::Sub { left, right } => Ok(V::Ready(
-            environment.float(*left) - environment.float(*right),
-        )),
-        I::Mult { left, right } => Ok(V::Ready(
-            environment.float(*left) * environment.float(*right),
-        )),
+        .map_or_else(V::Error, V::Ready),
+        I::Add { left, right } => V::Ready(environment.float(*left) + environment.float(*right)),
+        I::Sub { left, right } => V::Ready(environment.float(*left) - environment.float(*right)),
+        I::Mult { left, right } => V::Ready(environment.float(*left) * environment.float(*right)),
         I::Div { left, right } => {
             let right = environment.float(*right);
             if right == 0.0 {
-                Ok(V::Ready(0.0))
+                V::Ready(0.0)
             } else {
-                Ok(V::Ready(environment.float(*left) / right))
+                V::Ready(environment.float(*left) / right)
             }
         }
     }
 }
 
-pub(in crate::runtime) fn string<Plan, State>(
+pub(in crate::runtime) fn string<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &StringInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call StringInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        StringValue,
-        crate::plan::execution::function::StringFunctionId,
-        crate::plan::execution::graph::StringLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, StringValue, StringFunctionId, StringLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValue as V;
+    use InstructionOutcome as V;
     use StringInstruction as I;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(value.materialize().into())),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(value) => V::Ready(value.materialize().into()),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.string_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -274,7 +274,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -286,75 +286,73 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().string_values(&environment.string_list(*list)),
         )
-        .map(V::Ready),
-        I::Concatenate { left, right } => Ok(V::Ready(
+        .map_or_else(V::Error, V::Ready),
+        I::Concatenate { left, right } => V::Ready(
             format!(
                 "{}{}",
                 environment.string(*left),
                 environment.string(*right),
             )
             .into(),
-        )),
+        ),
         I::DropPrefix { value, prefix } => {
             let value = environment.string(*value);
-            Ok(V::Ready(value.slice(prefix.len()..value.len())))
+            V::Ready(value.slice(prefix.len()..value.len()))
         }
     }
 }
 
-pub(in crate::runtime) fn bit_array<Plan, State>(
+pub(in crate::runtime) fn bit_array<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &BitArrayInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call BitArrayInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        EvaluatedBitArray,
-        crate::plan::execution::function::BitArrayFunctionId,
-        crate::plan::execution::graph::BitArrayLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, EvaluatedBitArray, BitArrayFunctionId, BitArrayLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use BitArrayInstruction as I;
-    use InstructionValue as V;
+    use InstructionOutcome as V;
 
     match instruction {
-        I::Value(segments) => {
-            super::super::bit_array::evaluate(plan, state, environment, segments).map(V::Ready)
-        }
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(segments) => super::super::bit_array::evaluate(plan, state, environment, segments)
+            .map_or_else(V::Error, V::Ready),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.bit_array_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -367,7 +365,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -379,7 +377,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
@@ -388,25 +386,22 @@ where
                 .lists()
                 .bit_array_values(&environment.bit_array_list(*list)),
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
     }
 }
 
-pub(in crate::runtime) fn utf_codepoint<Plan, State>(
+pub(in crate::runtime) fn utf_codepoint<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &UtfCodepointInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call UtfCodepointInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValueWithoutConstant<char, crate::plan::execution::function::UtfCodepointFunctionId>,
-    State::Error,
->
+) -> InstructionOutcomeWithoutConstant<'call, char, UtfCodepointFunctionId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValueWithoutConstant as V;
+    use InstructionOutcomeWithoutConstant as V;
     use UtfCodepointInstruction as I;
 
     match instruction {
@@ -414,22 +409,28 @@ where
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.utf_codepoint_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -442,7 +443,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -454,7 +455,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
@@ -463,49 +464,45 @@ where
                 .lists()
                 .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
     }
 }
 
-pub(in crate::runtime) fn custom<Plan, State>(
+pub(in crate::runtime) fn custom<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &CustomInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call CustomInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        EvaluatedCustomValue,
-        crate::plan::execution::function::CustomFunctionId,
-        crate::plan::execution::graph::CustomLocal,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, EvaluatedCustomValue, CustomFunctionId, CustomLocal, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use CustomInstruction as I;
-    use InstructionValue as V;
+    use InstructionOutcome as V;
 
     match instruction {
         I::Construct {
             constructor,
             fields,
-        } => Ok(V::Ready(EvaluatedCustomValue::from_fields(
+        } => V::Ready(EvaluatedCustomValue::from_fields(
             *constructor,
             environment.values(fields),
-        ))),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        )),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
@@ -513,16 +510,19 @@ where
         } => {
             let function = environment.custom_function(function);
             match function {
-                EvaluatedCustomFunction::Function(function) => Ok(V::Call {
+                EvaluatedCustomFunction::Function(function) => V::Call {
                     function: function.runtime_id(),
-                    origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                    inputs: inputs_with_captures(environment, args, function.capture_frame()),
-                }),
+                    site,
+                    inputs: CallInputs {
+                        args,
+                        captures: Some(function.capture_frame()),
+                    },
+                },
                 EvaluatedCustomFunction::Constructor(function) => {
-                    Ok(V::Ready(EvaluatedCustomValue::from_fields(
+                    V::Ready(EvaluatedCustomValue::from_fields(
                         function.runtime_id(),
                         environment.values(args),
-                    )))
+                    ))
                 }
             }
         }
@@ -537,7 +537,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -549,61 +549,60 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().custom_values(&environment.custom_list(*list)),
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
     }
 }
 
-pub(in crate::runtime) fn bool<Plan, State>(
+pub(in crate::runtime) fn bool<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &BoolInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call BoolInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        bool,
-        crate::plan::execution::function::BoolFunctionId,
-        crate::plan::execution::graph::BoolLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, bool, BoolFunctionId, BoolLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use BoolInstruction as I;
-    use InstructionValue as V;
+    use InstructionOutcome as V;
 
     match instruction {
-        I::Value(value) => Ok(V::Ready(*value)),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(value) => V::Ready(*value),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.bool_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -616,7 +615,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -628,170 +627,168 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().bool_values(&environment.bool_list(*list)),
         )
-        .map(V::Ready),
-        I::Not(value) => Ok(V::Ready(!environment.bool(*value))),
-        I::EqualInt { left, right } => Ok(V::Ready(integer::equal(environment, *left, *right))),
-        I::NotEqualInt { left, right } => Ok(V::Ready(!integer::equal(environment, *left, *right))),
-        I::LtInt { left, right } => Ok(V::Ready(
-            integer::compare(environment, *left, *right).is_lt(),
-        )),
-        I::LtEqInt { left, right } => Ok(V::Ready(
-            integer::compare(environment, *left, *right).is_le(),
-        )),
-        I::GtInt { left, right } => Ok(V::Ready(
-            integer::compare(environment, *left, *right).is_gt(),
-        )),
-        I::GtEqInt { left, right } => Ok(V::Ready(
-            integer::compare(environment, *left, *right).is_ge(),
-        )),
-        I::LtFloat { left, right } => Ok(V::Ready(
-            environment.float(*left) < environment.float(*right),
-        )),
-        I::LtEqFloat { left, right } => Ok(V::Ready(
-            environment.float(*left) <= environment.float(*right),
-        )),
-        I::GtFloat { left, right } => Ok(V::Ready(
-            environment.float(*left) > environment.float(*right),
-        )),
-        I::GtEqFloat { left, right } => Ok(V::Ready(
-            environment.float(*left) >= environment.float(*right),
-        )),
-        I::Equal { left, right } => Ok(V::Ready(values_equal(
+        .map_or_else(V::Error, V::Ready),
+        I::Not(value) => V::Ready(!environment.bool(*value)),
+        I::EqualInt { left, right } => V::Ready(integer::equal(environment, *left, *right)),
+        I::NotEqualInt { left, right } => V::Ready(!integer::equal(environment, *left, *right)),
+        I::LtInt { left, right } => V::Ready(integer::compare(environment, *left, *right).is_lt()),
+        I::LtEqInt { left, right } => {
+            V::Ready(integer::compare(environment, *left, *right).is_le())
+        }
+        I::GtInt { left, right } => V::Ready(integer::compare(environment, *left, *right).is_gt()),
+        I::GtEqInt { left, right } => {
+            V::Ready(integer::compare(environment, *left, *right).is_ge())
+        }
+        I::LtFloat { left, right } => {
+            V::Ready(environment.float(*left) < environment.float(*right))
+        }
+        I::LtEqFloat { left, right } => {
+            V::Ready(environment.float(*left) <= environment.float(*right))
+        }
+        I::GtFloat { left, right } => {
+            V::Ready(environment.float(*left) > environment.float(*right))
+        }
+        I::GtEqFloat { left, right } => {
+            V::Ready(environment.float(*left) >= environment.float(*right))
+        }
+        I::Equal { left, right } => V::Ready(values_equal(
             state.lists(),
             &environment.value(left),
             &environment.value(right),
-        ))),
-        I::NotEqual { left, right } => Ok(V::Ready(!values_equal(
+        )),
+        I::NotEqual { left, right } => V::Ready(!values_equal(
             state.lists(),
             &environment.value(left),
             &environment.value(right),
-        ))),
-        I::StringStartsWith { value, prefix } => Ok(V::Ready(
-            environment.string(*value).starts_with(prefix.as_str()),
         )),
-        I::ListLengthEquals { value, length } => Ok(V::Ready(
-            state.lists().list_len(&environment.list(value)) == *length,
-        )),
-        I::ListLengthAtLeast { value, length } => Ok(V::Ready(
-            state.lists().list_len(&environment.list(value)) >= *length,
-        )),
+        I::StringStartsWith { value, prefix } => {
+            V::Ready(environment.string(*value).starts_with(prefix.as_str()))
+        }
+        I::ListLengthEquals { value, length } => {
+            V::Ready(state.lists().list_len(&environment.list(value)) == *length)
+        }
+        I::ListLengthAtLeast { value, length } => {
+            V::Ready(state.lists().list_len(&environment.list(value)) >= *length)
+        }
     }
 }
 
-pub(in crate::runtime) fn nil<Plan, State>(
+pub(in crate::runtime) fn nil<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &NilInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call NilInstruction,
     expected: &ValueType,
-) -> Result<
-    InstructionValue<
-        (),
-        crate::plan::execution::function::NilFunctionId,
-        crate::plan::execution::graph::NilLocalId,
-    >,
-    State::Error,
->
+) -> InstructionOutcome<'call, (), NilFunctionId, NilLocalId, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValue as V;
+    use InstructionOutcome as V;
     use NilInstruction as I;
 
     match instruction {
-        I::Value => Ok(V::Ready(())),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value => V::Ready(()),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.nil_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => {
             tuple_projection(plan, environment, *tuple, *index, expected, |value| {
                 matches!(value, EvaluatedValue::Nil).then_some(())
             })
-            .map(V::Ready)
+            .map_or_else(V::Error, V::Ready)
         }
         I::CustomField { source, index } => {
             custom_projection(plan, environment, source, *index, expected, |value| {
                 matches!(value, EvaluatedValue::Nil).then_some(())
             })
-            .map(V::Ready)
+            .map_or_else(V::Error, V::Ready)
         }
         I::ListIndex { list, index } => {
             let length = state.lists().nil_len(&environment.nil_list(*list));
-            ensure_list_index(plan, expected, *index, length).map(V::Ready)
+            ensure_list_index(plan, expected, *index, length).map_or_else(V::Error, V::Ready)
         }
     }
 }
 
-type TupleInstructionValue = InstructionValue<
-    Vec<EvaluatedValue>,
-    crate::plan::execution::function::TupleFunctionId,
-    crate::plan::execution::graph::TupleLocalId,
->;
+type TupleInstructionOutcome<'call, Error> =
+    InstructionOutcome<'call, Vec<EvaluatedValue>, TupleFunctionId, TupleLocalId, Error>;
 
-pub(in crate::runtime) fn tuple<Plan, State>(
+pub(in crate::runtime) fn tuple<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &TupleInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call TupleInstruction,
     expected: &ValueType,
-) -> Result<TupleInstructionValue, State::Error>
+) -> TupleInstructionOutcome<'call, State::Error>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
-    use InstructionValue as V;
+    use InstructionOutcome as V;
     use TupleInstruction as I;
 
     match instruction {
-        I::Value(values) => Ok(V::Ready(environment.values(values).into_vec())),
-        I::Constant(id) => Ok(V::Constant(*id)),
+        I::Value(values) => V::Ready(environment.values(values).into_vec()),
+        I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: *function,
-            origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.tuple_function(*function);
-            Ok(V::Call {
+            V::Call {
                 function: function.runtime_id(),
-                origin: crate::runtime::error::HostCallOrigin::source(site.clone()),
-                inputs: inputs_with_captures(environment, args, function.capture_frame()),
-            })
+                site,
+                inputs: CallInputs {
+                    args,
+                    captures: Some(function.capture_frame()),
+                },
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -804,7 +801,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -816,21 +813,21 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
             *index,
             state.lists().tuple_values(&environment.tuple_list(*list)),
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
     }
 }
 
 pub(in crate::runtime) fn tuple_projection<Value, Error>(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     environment: &BlockEnvironment,
-    tuple: crate::plan::execution::graph::TupleLocalId,
+    tuple: TupleLocalId,
     index: usize,
     expected: &ValueType,
     project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
@@ -864,9 +861,9 @@ where
 }
 
 pub(in crate::runtime) fn custom_projection<Value, Error>(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     environment: &BlockEnvironment,
-    source: &crate::plan::execution::graph::CustomLocal,
+    source: &CustomLocal,
     index: usize,
     expected: &ValueType,
     project: impl FnOnce(&EvaluatedValue) -> Option<Value>,
@@ -897,7 +894,7 @@ where
 }
 
 pub(in crate::runtime) fn list_element<Value: Clone, Error>(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
     values: &ListSequence<Value>,
@@ -917,7 +914,7 @@ where
 }
 
 pub(super) fn ensure_list_index<Error>(
-    plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
+    plan: &impl RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
     length: usize,
@@ -935,16 +932,6 @@ where
         }
         .into())
     }
-}
-
-pub(in crate::runtime) fn inputs_with_captures(
-    environment: &BlockEnvironment,
-    args: &[ParamLocal],
-    captures: &crate::runtime::captures::Captures,
-) -> super::super::environment::RetainedValues {
-    let mut inputs = environment.retain(args);
-    inputs.append_captures(captures);
-    inputs
 }
 
 #[cfg(test)]
