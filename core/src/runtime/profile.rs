@@ -66,20 +66,20 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         budget: NonZeroUsize,
     ) -> Waiting<'plan, Output>;
 
-    fn evaluate_external_list_instruction(
+    fn evaluate_external_list_instruction<'call>(
         &self,
         state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
-        environment: &graph::BlockEnvironment,
-        instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalListInstruction,
+        environment: &'call graph::BlockEnvironment,
+        instruction: &'call <RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalListInstruction,
         expected: &crate::plan::execution::type_::ValueType,
-    ) -> ExecutionResult<graph::ExternalListInstructionValue>;
+    ) -> graph::ExternalListInstructionOutcome<'call, crate::ExecutionError>;
 
-    fn evaluate_external_function_instruction(
+    fn evaluate_external_function_instruction<'call>(
         &self,
         captures: &crate::runtime::CaptureStorage,
-        environment: &graph::BlockEnvironment,
-        instruction: &<RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
-    ) -> graph::ExternalFunctionInstructionValue;
+        environment: &'call graph::BlockEnvironment,
+        instruction: &'call <RuntimeGraph<Self> as ExecutionGraphProfile>::ExternalFunctionInstruction,
+    ) -> graph::ExternalFunctionInstructionOutcome<'call>;
 }
 
 impl ExecutableRuntimePlan for ExecutionPlan {
@@ -132,22 +132,22 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         match invocation {}
     }
 
-    fn evaluate_external_list_instruction(
+    fn evaluate_external_list_instruction<'call>(
         &self,
         _state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
-        _environment: &graph::BlockEnvironment,
-        instruction: &Infallible,
+        _environment: &'call graph::BlockEnvironment,
+        instruction: &'call Infallible,
         _expected: &crate::plan::execution::type_::ValueType,
-    ) -> ExecutionResult<graph::ExternalListInstructionValue> {
+    ) -> graph::ExternalListInstructionOutcome<'call, crate::ExecutionError> {
         match *instruction {}
     }
 
-    fn evaluate_external_function_instruction(
+    fn evaluate_external_function_instruction<'call>(
         &self,
         _captures: &crate::runtime::CaptureStorage,
-        _environment: &graph::BlockEnvironment,
-        instruction: &Infallible,
-    ) -> graph::ExternalFunctionInstructionValue {
+        _environment: &'call graph::BlockEnvironment,
+        instruction: &'call Infallible,
+    ) -> graph::ExternalFunctionInstructionOutcome<'call> {
         match *instruction {}
     }
 }
@@ -218,22 +218,22 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         invocation.submit(context, budget)
     }
 
-    fn evaluate_external_list_instruction(
+    fn evaluate_external_list_instruction<'call>(
         &self,
         state: &mut impl graph::RuntimeGraphState<Error = crate::ExecutionError>,
-        environment: &graph::BlockEnvironment,
-        instruction: &crate::plan::execution::graph::ExternalListInstruction,
+        environment: &'call graph::BlockEnvironment,
+        instruction: &'call crate::plan::execution::graph::ExternalListInstruction,
         expected: &crate::plan::execution::type_::ValueType,
-    ) -> ExecutionResult<graph::ExternalListInstructionValue> {
+    ) -> graph::ExternalListInstructionOutcome<'call, crate::ExecutionError> {
         graph::evaluate_external_list_instruction(self, state, environment, instruction, expected)
     }
 
-    fn evaluate_external_function_instruction(
+    fn evaluate_external_function_instruction<'call>(
         &self,
         captures: &crate::runtime::CaptureStorage,
-        environment: &graph::BlockEnvironment,
-        instruction: &crate::plan::execution::graph::ExternalFunctionInstruction,
-    ) -> graph::ExternalFunctionInstructionValue {
+        environment: &'call graph::BlockEnvironment,
+        instruction: &'call crate::plan::execution::graph::ExternalFunctionInstruction,
+    ) -> graph::ExternalFunctionInstructionOutcome<'call> {
         graph::evaluate_external_function_instruction(captures, environment, instruction)
     }
 }

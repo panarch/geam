@@ -1,7 +1,9 @@
 mod capture;
+mod pool;
 mod transfer;
 mod value;
 
+pub(super) use pool::StoragePool;
 pub(in crate::runtime) use value::GraphValue;
 
 use crate::StringValue;
@@ -109,14 +111,6 @@ impl BlockEnvironment {
         Self {
             values: values.values,
         }
-    }
-
-    pub(super) fn retain(&self, locals: &[ParamLocal]) -> RetainedValues {
-        let mut retained = RetainedValues::empty();
-        for local in locals {
-            retained.push_local(self, local);
-        }
-        retained
     }
 
     pub(in crate::runtime) fn value(&self, local: &ParamLocal) -> EvaluatedValue {
@@ -743,6 +737,12 @@ impl RetainedValues {
         Self {
             values: Box::default(),
             callable_domain: None,
+        }
+    }
+
+    pub(super) fn append_locals(&mut self, environment: &BlockEnvironment, locals: &[ParamLocal]) {
+        for local in locals {
+            self.push_local(environment, local);
         }
     }
 
@@ -1390,10 +1390,14 @@ pub fn main() -> List(Counter) { [] }
         inputs.push_evaluated(EvaluatedValue::Int(20.into()));
         let environment = BlockEnvironment::from_retained(inputs);
 
-        let retained = environment.retain(&[
-            ParamLocal::Int(IntLocalId(1)),
-            ParamLocal::Int(IntLocalId(0)),
-        ]);
+        let mut retained = RetainedValues::empty();
+        retained.append_locals(
+            &environment,
+            &[
+                ParamLocal::Int(IntLocalId(1)),
+                ParamLocal::Int(IntLocalId(0)),
+            ],
+        );
         assert_eq!(retained.values.ints, vec![20.into(), 10.into()]);
         assert!(retained.values.strings.is_empty());
 

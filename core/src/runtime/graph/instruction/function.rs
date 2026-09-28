@@ -1,7 +1,8 @@
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
+use super::CallInputs;
 use super::value::{
-    InstructionValue, InstructionValueWithoutConstant, custom_projection, list_element,
+    InstructionOutcome, InstructionOutcomeWithoutConstant, custom_projection, list_element,
     tuple_projection,
 };
 use crate::plan::execution::function::{
@@ -15,7 +16,6 @@ use crate::plan::execution::graph::{
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::{FunctionType, ValueType};
 use crate::runtime::captures::Captures;
-use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::{
     EvaluatedCapture, EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
     EvaluatedFunctionValue, EvaluatedListCapture, EvaluatedValue, FunctionReferenceId,
@@ -29,69 +29,84 @@ enum FunctionIdentity {
     Instance,
 }
 
-pub(in crate::runtime) type CoreFunctionInstructionValue =
-    InstructionValue<EvaluatedFunctionValue, ProfiledFunctionFunctionId<Infallible>, FunctionLocal>;
+pub(in crate::runtime) type CoreFunctionInstructionOutcome<'call, Error> = InstructionOutcome<
+    'call,
+    EvaluatedFunctionValue,
+    ProfiledFunctionFunctionId<Infallible>,
+    FunctionLocal,
+    Error,
+>;
 
-pub(in crate::runtime) type ExternalFunctionInstructionValue =
-    InstructionValueWithoutConstant<EvaluatedFunctionValue, ExternalFunctionCallTarget>;
+pub(in crate::runtime) type ExternalFunctionInstructionOutcome<'call> =
+    InstructionOutcomeWithoutConstant<
+        'call,
+        EvaluatedFunctionValue,
+        ExternalFunctionCallTarget,
+        Infallible,
+    >;
 
 // Keep this evaluator's temporaries and branches out of the shared instruction loop.
 #[inline(never)]
-pub(in crate::runtime) fn evaluate_action<Plan, State>(
+pub(in crate::runtime) fn evaluate_action<'call, Plan, State>(
     plan: &Plan,
     state: &State,
-    environment: &BlockEnvironment,
-    instruction: &FunctionInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call FunctionInstruction,
     expected: &ValueType,
-) -> Result<CoreFunctionInstructionValue, State::Error>
+) -> CoreFunctionInstructionOutcome<'call, State::Error>
 where
     Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
 {
     use FunctionInstructionKind as I;
-    use InstructionValue as V;
+    use InstructionOutcome as V;
 
-    let value: Result<_, State::Error> = match instruction.kind() {
-        I::Constant(id) => Ok(V::Constant(*id)),
-        I::Reference(target) => Ok(V::Ready(target_value(
+    let value: CoreFunctionInstructionOutcome<'call, State::Error> = match instruction.kind() {
+        I::Constant(id) => V::Constant(*id),
+        I::Reference(target) => V::Ready(target_value(
             target,
             state.captures().capture(Vec::new()),
             instruction.type_().clone(),
             FunctionIdentity::Reference,
-        ))),
-        I::Closure { target, captures } => Ok(V::Ready(target_value(
+        )),
+        I::Closure { target, captures } => V::Ready(target_value(
             target,
             state
                 .captures()
                 .capture(capture_values(environment, captures)),
             instruction.type_().clone(),
             FunctionIdentity::Instance,
-        ))),
-        I::Constructor(constructor) => Ok(V::Ready(
-            EvaluatedCustomFunction::constructor(*constructor, instruction.type_().clone()).into(),
         )),
+        I::Constructor(constructor) => V::Ready(
+            EvaluatedCustomFunction::constructor(*constructor, instruction.type_().clone()).into(),
+        ),
         I::Call {
             function,
             args,
             site,
-        } => Ok(V::Call {
+        } => V::Call {
             function: function.clone(),
-            origin: HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
-        }),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
+        },
         I::FunctionCall {
             function,
             args,
             site,
         } => {
             let function = environment.core_function_function(function);
-            let mut inputs = environment.retain(args);
-            inputs.append_captures(function.capture_frame());
-            Ok(V::Call {
+            let inputs = CallInputs {
+                args,
+                captures: Some(function.capture_frame()),
+            };
+            V::Call {
                 function: function.runtime_id(),
-                origin: HostCallOrigin::source(site.clone()),
+                site,
                 inputs,
-            })
+            }
         }
         I::TupleIndex { tuple, index } => tuple_projection(
             plan,
@@ -104,7 +119,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::CustomField { source, index } => custom_projection(
             plan,
             environment,
@@ -116,7 +131,7 @@ where
                 _ => None,
             },
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => list_element(
             plan,
             expected,
@@ -125,24 +140,24 @@ where
                 .lists()
                 .function_values(&environment.function_list(*list)),
         )
-        .map(V::Ready),
+        .map_or_else(V::Error, V::Ready),
     };
-    match value? {
+    match value {
         V::Ready(value) => {
             validate_return_family(value, instruction.family(), instruction.type_().clone())
-                .map(V::Ready)
+                .map_or_else(V::Error, V::Ready)
         }
-        value => Ok(value),
+        value => value,
     }
 }
 
-pub(in crate::runtime) fn evaluate_external_action(
+pub(in crate::runtime) fn evaluate_external_action<'call>(
     storage: &CaptureStorage,
-    environment: &BlockEnvironment,
-    instruction: &ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue {
+    environment: &'call BlockEnvironment,
+    instruction: &'call ExternalFunctionInstruction,
+) -> ExternalFunctionInstructionOutcome<'call> {
     use ExternalFunctionInstructionKind as I;
-    use InstructionValueWithoutConstant as V;
+    use InstructionOutcomeWithoutConstant as V;
 
     let instruction = instruction.instruction();
     match instruction.kind() {
@@ -164,8 +179,11 @@ pub(in crate::runtime) fn evaluate_external_action(
             site,
         } => V::Call {
             function: function.clone(),
-            origin: HostCallOrigin::source(site.clone()),
-            inputs: environment.retain(args),
+            site,
+            inputs: CallInputs {
+                args,
+                captures: None,
+            },
         },
         I::FunctionCall {
             function,
@@ -173,11 +191,13 @@ pub(in crate::runtime) fn evaluate_external_action(
             site,
         } => {
             let function = environment.external_function_function(function);
-            let mut inputs = environment.retain(args);
-            inputs.append_captures(function.capture_frame());
+            let inputs = CallInputs {
+                args,
+                captures: Some(function.capture_frame()),
+            };
             V::Call {
                 function: function.runtime_id(),
-                origin: HostCallOrigin::source(site.clone()),
+                site,
                 inputs,
             }
         }
@@ -512,7 +532,7 @@ fn capture_values(
 #[cfg(test)]
 mod tests {
     use super::super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::{CoreFunctionInstructionValue, InstructionValue, evaluate_action};
+    use super::{CoreFunctionInstructionOutcome, InstructionOutcome, evaluate_action};
     use crate::plan::ValueType;
     use crate::plan::execution::function::{
         CoreRuntimeFunctionId, FunctionReturnFamily, RuntimeFunctionId, TupleFunctionId,
@@ -529,9 +549,11 @@ mod tests {
 
     type InstructionKind = ProfiledInstructionKind<Infallible>;
 
-    fn reference_function(value: CoreFunctionInstructionValue) -> EvaluatedFunctionValue {
+    fn reference_function(
+        value: CoreFunctionInstructionOutcome<'_, ExecutionError>,
+    ) -> EvaluatedFunctionValue {
         match value {
-            InstructionValue::Ready(value) => value,
+            InstructionOutcome::Ready(value) => value,
             _ => panic!("the source reference is immediate"),
         }
     }
@@ -565,9 +587,22 @@ pub fn main() { #(42, fn(value: Int) { value }, make()) }
         let mut echo = Vec::new();
         let state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-        reference_function(
-            evaluate_action(&plan, &state, &environment, function, &expected).unwrap(),
-        );
+        reference_function(evaluate_action(
+            &plan,
+            &state,
+            &environment,
+            function,
+            &expected,
+        ));
+    }
+
+    fn instruction_error(
+        value: CoreFunctionInstructionOutcome<'_, ExecutionError>,
+    ) -> Option<ExecutionError> {
+        match value {
+            InstructionOutcome::Error(error) => Some(error),
+            _ => None,
+        }
     }
 
     #[test]
@@ -621,9 +656,18 @@ pub fn main() {
         let state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         let expected = ExecutionValueType::Function(float_reference.type_().clone());
+        assert_eq!(
+            instruction_error(evaluate_action(
+                &plan,
+                &state,
+                &environment,
+                float_reference,
+                &expected,
+            )),
+            None,
+        );
         let float_function =
-            evaluate_action(&plan, &state, &environment, float_reference, &expected)
-                .expect("a typed function reference should evaluate");
+            evaluate_action(&plan, &state, &environment, float_reference, &expected);
         let float_function = reference_function(float_function);
 
         assert_eq!(float_function.kind().family(), FunctionReturnFamily::Float,);
@@ -648,9 +692,14 @@ pub fn main() {
                         let mut echo = Vec::new();
                         let state = RuntimeState::new(&mut echo);
                         assert_eq!(
-                            evaluate_action(&plan, &state, &environment, function, &planned,)
-                                .map(|_| ()),
-                            Err(ExecutionError::Invariant(
+                            instruction_error(evaluate_action(
+                                &plan,
+                                &state,
+                                &environment,
+                                function,
+                                &planned
+                            )),
+                            Some(ExecutionError::Invariant(
                                 InvariantError::TupleIndexFamilyMismatch {
                                     expected: expected.clone(),
                                     actual: ValueType::Int,
@@ -666,9 +715,14 @@ pub fn main() {
                         ]));
                         let environment = BlockEnvironment::from_retained(wrong_family);
                         assert_eq!(
-                            evaluate_action(&plan, &state, &environment, function, &planned,)
-                                .map(|_| ()),
-                            Err(ExecutionError::Invariant(
+                            instruction_error(evaluate_action(
+                                &plan,
+                                &state,
+                                &environment,
+                                function,
+                                &planned
+                            )),
+                            Some(ExecutionError::Invariant(
                                 InvariantError::FunctionReturnFamilyMismatch {
                                     expected: FunctionReturnFamily::Int,
                                     actual: FunctionReturnFamily::Float,
@@ -691,9 +745,14 @@ pub fn main() {
                         let state = RuntimeState::new(&mut echo);
 
                         assert_eq!(
-                            evaluate_action(&plan, &state, &environment, function, &planned,)
-                                .map(|_| ()),
-                            Err(ExecutionError::Invariant(
+                            instruction_error(evaluate_action(
+                                &plan,
+                                &state,
+                                &environment,
+                                function,
+                                &planned
+                            )),
+                            Some(ExecutionError::Invariant(
                                 InvariantError::CustomFieldFamilyMismatch {
                                     custom_type: plan.custom_value_type(constructor.type_id()),
                                     constructor: descriptor.name().into(),
@@ -716,9 +775,14 @@ pub fn main() {
                         let environment = BlockEnvironment::from_retained(values);
 
                         assert_eq!(
-                            evaluate_action(&plan, &state, &environment, function, &planned,)
-                                .map(|_| ()),
-                            Err(ExecutionError::Invariant(
+                            instruction_error(evaluate_action(
+                                &plan,
+                                &state,
+                                &environment,
+                                function,
+                                &planned
+                            )),
+                            Some(ExecutionError::Invariant(
                                 InvariantError::ListIndexOutOfBounds {
                                     item_type: expected,
                                     index: *index,

@@ -6,7 +6,7 @@ use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::execution::{Evaluation, ServiceContext, Yield};
 use crate::runtime::graph::RuntimeGraphState;
 use crate::runtime::graph::{
-    GraphExecution, GraphProgress, GraphStorage, GraphValue, RetainedValues, Returns,
+    GraphExecution, GraphProgress, GraphStorage, GraphValue, RetainedValues,
 };
 use crate::runtime::state::RuntimeState;
 use std::num::NonZeroUsize;
@@ -78,10 +78,7 @@ where
         Self {
             function,
             position: Position::Entry { origin, inputs },
-            storage: Box::new(GraphStorage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            }),
+            storage: Box::new(GraphStorage::new()),
         }
     }
 

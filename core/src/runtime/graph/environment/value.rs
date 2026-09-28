@@ -33,13 +33,13 @@ use std::convert::Infallible;
 pub(in crate::runtime) trait GraphValue: Sync {
     type Evaluated: Send + 'static;
 
-    fn take(&self, environment: BlockEnvironment) -> Self::Evaluated;
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated;
 }
 
 impl GraphValue for Infallible {
     type Evaluated = Infallible;
 
-    fn take(&self, _environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, _environment: &mut BlockEnvironment) -> Self::Evaluated {
         match *self {}
     }
 }
@@ -47,7 +47,7 @@ impl GraphValue for Infallible {
 impl GraphValue for NilLocalId {
     type Evaluated = ();
 
-    fn take(&self, _environment: BlockEnvironment) {}
+    fn take(&self, _environment: &mut BlockEnvironment) {}
 }
 
 macro_rules! local_value {
@@ -55,7 +55,7 @@ macro_rules! local_value {
         impl GraphValue for $local {
             type Evaluated = $value;
 
-            fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+            fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
                 environment.values.$field.swap_remove(self.0)
             }
         }
@@ -123,7 +123,7 @@ local_value!(
 impl GraphValue for CustomLocal {
     type Evaluated = EvaluatedCustomValue;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment.values.customs.swap_remove(self.id().0)
     }
 }
@@ -131,7 +131,7 @@ impl GraphValue for CustomLocal {
 impl GraphValue for ExternalLocal {
     type Evaluated = EvaluatedExternalValue;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment.values.externals.swap_remove(self.id().0)
     }
 }
@@ -139,7 +139,7 @@ impl GraphValue for ExternalLocal {
 impl GraphValue for CustomFunctionLocal {
     type Evaluated = EvaluatedCustomFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment.values.custom_functions.swap_remove(self.id().0)
     }
 }
@@ -147,7 +147,7 @@ impl GraphValue for CustomFunctionLocal {
 impl GraphValue for ExternalFunctionLocal {
     type Evaluated = EvaluatedExternalFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment
             .values
             .external_functions
@@ -158,7 +158,7 @@ impl GraphValue for ExternalFunctionLocal {
 impl GraphValue for GenericFunctionLocal {
     type Evaluated = EvaluatedGenericFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment
             .values
             .generic_functions
@@ -169,7 +169,7 @@ impl GraphValue for GenericFunctionLocal {
 impl GraphValue for NeverFunctionLocal {
     type Evaluated = EvaluatedNeverFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         environment.values.never_functions.swap_remove(self.id().0)
     }
 }
@@ -177,7 +177,7 @@ impl GraphValue for NeverFunctionLocal {
 impl GraphValue for ListFunctionLocal {
     type Evaluated = EvaluatedListFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         match self {
             Self::Parameter { local, .. } => environment
                 .values
@@ -229,7 +229,7 @@ impl GraphValue for ListFunctionLocal {
 impl GraphValue for FunctionFunctionLocal {
     type Evaluated = EvaluatedFunctionFunction;
 
-    fn take(&self, mut environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         match self {
             Self::Core(local) => EvaluatedFunctionFunction::Core(
                 environment
@@ -250,7 +250,7 @@ impl GraphValue for FunctionFunctionLocal {
 impl GraphValue for FunctionLocal {
     type Evaluated = EvaluatedFunctionValue;
 
-    fn take(&self, environment: BlockEnvironment) -> Self::Evaluated {
+    fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
         match self {
             Self::Generic(local) => local.take(environment).into(),
             Self::Never(local) => local.take(environment).into(),
@@ -272,7 +272,39 @@ impl GraphValue for FunctionLocal {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{BlockEnvironment, RetainedValues};
+    use super::GraphValue;
     use crate::Value;
+    use crate::plan::execution::graph::{IntLocalId, NilLocalId, TupleLocalId};
+    use crate::runtime::EvaluatedValue;
+
+    #[test]
+    fn typed_extraction_moves_the_result_and_leaves_environment_cleanup_to_its_owner() {
+        let tuple = vec![EvaluatedValue::Int(42.into())];
+        let tuple_buffer = tuple.as_ptr();
+        let mut retained = RetainedValues::empty();
+        retained.push_tuple(tuple);
+        retained.push_tuple(vec![EvaluatedValue::Bool(true)]);
+        retained.push_int(7.into());
+        let mut environment = BlockEnvironment::from_retained(retained);
+        let tuple_capacity = environment.values.tuples.capacity();
+        let returned = TupleLocalId(0).take(&mut environment);
+        assert_eq!(returned, vec![EvaluatedValue::Int(42.into())]);
+        assert_eq!(returned.as_ptr(), tuple_buffer);
+        assert_eq!(environment.values.tuples.capacity(), tuple_capacity);
+        assert_eq!(
+            environment.values.tuples,
+            vec![vec![EvaluatedValue::Bool(true)]]
+        );
+        assert_eq!(environment.int(IntLocalId(0)), 7.into());
+        NilLocalId(0).take(&mut environment);
+        assert_eq!(
+            environment.values.tuples,
+            vec![vec![EvaluatedValue::Bool(true)]]
+        );
+        drop(environment);
+        assert_eq!(returned, vec![EvaluatedValue::Int(42.into())]);
+    }
 
     #[test]
     fn owned_returns_preserve_every_plain_value_and_callable_family() {

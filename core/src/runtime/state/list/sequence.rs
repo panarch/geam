@@ -80,10 +80,19 @@ impl<Item> ListSequence<Item> {
     }
 
     pub(in crate::runtime) fn iter(&self) -> ListSequenceIter<'_, Item> {
+        self.iter_prefix(self.len)
+    }
+
+    pub(in crate::runtime) fn iter_prefix(&self, limit: usize) -> ListSequenceIter<'_, Item> {
+        let remaining = limit.min(self.len);
         ListSequenceIter {
-            next: &self.first,
+            next: if remaining == 0 {
+                &Spine::Empty
+            } else {
+                &self.first
+            },
             pending: Vec::new(),
-            remaining: self.len,
+            remaining,
         }
     }
 
@@ -265,6 +274,15 @@ impl<'a, Item> Iterator for ListSequenceIter<'a, Item> {
             },
         };
         self.remaining -= 1;
+        if self.remaining == 0 {
+            // The caller will not read beyond this item. In particular, a
+            // one-item prefix must not allocate a stack for its descendants.
+            self.next = &Spine::Empty;
+            self.pending.clear();
+            return Some(match tree {
+                Tree::Leaf(item) | Tree::Branch(item, _, _) => item,
+            });
+        }
         match tree {
             Tree::Leaf(item) => Some(item),
             Tree::Branch(item, left, right) => {
@@ -336,6 +354,45 @@ mod tests {
     }
 
     #[test]
+    fn prefix_cursors_stop_without_preparing_unread_descendants() {
+        for len in [0, 1, 2, 3, 4, 7, 8, 31, 32, 127] {
+            let expected: Vec<_> = (0..len).collect();
+            let original = ListSequence::from(expected.clone());
+            for skipped in 0..=len {
+                let suffix = original.suffix(skipped);
+                for limit in [0, 1, 2, 3, len / 2, len, len + 1, usize::MAX] {
+                    let count = limit.min(len - skipped);
+                    let mut cursor = suffix.iter_prefix(limit);
+                    assert_eq!(cursor.size_hint(), (count, Some(count)));
+                    for (index, expected) in expected[skipped..skipped + count].iter().enumerate() {
+                        let item = cursor.next().expect("requested prefix item");
+                        assert_eq!(item, expected);
+                        assert!(ptr::eq(
+                            item,
+                            original.get(skipped + index).expect("source item")
+                        ));
+                        let remaining = count - index - 1;
+                        assert_eq!(cursor.size_hint(), (remaining, Some(remaining)));
+                    }
+                    assert_eq!(cursor.next(), None);
+                    assert_eq!(cursor.next(), None);
+                    assert_eq!(cursor.size_hint(), (0, Some(0)));
+                    assert!(cursor.pending.is_empty());
+                    if count <= 1 {
+                        assert_eq!(cursor.pending.capacity(), 0);
+                    }
+                }
+            }
+            let prepended = original.prepend(vec![len + 1, len + 2, len + 3]);
+            assert_eq!(
+                prepended.iter_prefix(3).copied().collect::<Vec<_>>(),
+                [len + 1, len + 2, len + 3],
+            );
+            assert_eq!(original.iter().copied().collect::<Vec<_>>(), expected);
+        }
+    }
+
+    #[test]
     fn suffix_shares_non_clone_items_without_retaining_removed_payloads() {
         struct Item {
             id: usize,
@@ -367,6 +424,14 @@ mod tests {
                         original.get(count + index).expect("retained source item")
                     ));
                 }
+                let mut prefix = suffix.iter_prefix(1);
+                assert_eq!(
+                    prefix.next().map(|item| item.id),
+                    (count < len).then_some(count)
+                );
+                assert_eq!(prefix.next().map(|item| item.id), None);
+                assert_eq!(prefix.pending.capacity(), 0);
+                drop(prefix);
                 drop(original);
                 assert!(drops.iter().all(|count| count.load(Ordering::Relaxed) == 0));
                 drop(alias);

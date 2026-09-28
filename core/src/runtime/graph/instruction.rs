@@ -3,21 +3,28 @@ mod function;
 mod list;
 mod value;
 
-pub(in crate::runtime) use function::ExternalFunctionInstructionValue;
-pub(in crate::runtime) use list::ExternalListInstructionValue;
+pub(in crate::runtime) use function::ExternalFunctionInstructionOutcome;
+pub(in crate::runtime) use list::ExternalListInstructionOutcome;
 
-use self::list::ListInstructionValue;
-use self::value::{InstructionValue, InstructionValueWithoutConstant};
-use super::activation::{Activation, Frame, ReturnValue, Returns, enter_constant, enter_function};
+use self::list::ListInstructionOutcome;
+use self::value::{InstructionOutcome, InstructionOutcomeWithoutConstant};
+use super::activation::{Activation, Frame, ReturnValue, Storage, enter_constant, enter_function};
+use super::environment::{RetainedValues, StoragePool};
 use super::{BlockEnvironment, RuntimeGraphState};
 use crate::plan::execution::function::ProfiledFunctionFunctionId;
 use crate::plan::execution::graph::{
     ExternalFunctionCallTarget, ExternalFunctionInstruction, ExternalFunctionInstructionView,
-    ExternalListInstruction, ListInstruction, ProfiledInstructionKind,
+    ExternalListInstruction, ListInstruction, ParamLocal, ProfiledInstructionKind,
 };
 use crate::plan::execution::type_::ValueType;
-use crate::runtime::error::ExecutionResult;
+use crate::runtime::captures::Captures;
+use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::{CaptureStorage, ExecutableRuntimePlan};
+
+pub(in crate::runtime) struct CallInputs<'call> {
+    args: &'call [ParamLocal],
+    captures: Option<&'call Captures>,
+}
 
 // Keep evaluator temporaries out of the graph/terminator loop. A run owns its
 // frame across consecutive instructions; only calls, block ends and exhausted
@@ -27,7 +34,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
     plan: &'plan Plan,
     state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
     mut frame: Frame<'plan, Plan>,
-    returns: &mut Returns<'plan, Plan>,
+    storage: &mut Storage<'plan, Plan>,
     remaining: &mut usize,
 ) -> ExecutionResult<Activation<'plan, Plan>> {
     let block = frame.graph.block(frame.position.block);
@@ -38,22 +45,26 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
         macro_rules! store_value {
             ($value:expr) => {
                 match $value {
-                    InstructionValue::Ready(value) => value.push(&mut frame.position.environment),
-                    InstructionValue::Constant(id) => {
-                        let destination = returns.suspend(frame);
+                    InstructionOutcome::Error(error) => return Err(error),
+                    InstructionOutcome::Ready(value) => value.push(&mut frame.position.environment),
+                    InstructionOutcome::Constant(id) => {
+                        let destination = storage.returns.suspend(frame);
                         return Ok(enter_constant(
                             plan,
                             id,
                             destination,
+                            &mut storage.pool,
                             std::convert::identity,
                         ));
                     }
-                    InstructionValue::Call {
+                    InstructionOutcome::Call {
                         function,
-                        origin,
+                        site,
                         inputs,
                     } => {
-                        let destination = returns.suspend(frame);
+                        let origin = HostCallOrigin::source(site.clone());
+                        let inputs = inputs.retain(environment, &mut storage.pool);
+                        let destination = storage.returns.suspend(frame);
                         return Ok(enter_function(
                             plan,
                             function,
@@ -69,27 +80,31 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
         macro_rules! store_list {
             ($value:expr) => {
                 match $value {
-                    ListInstructionValue::Ready(value) => {
+                    ListInstructionOutcome::Error(error) => return Err(error),
+                    ListInstructionOutcome::Ready(value) => {
                         value.push(&mut frame.position.environment)
                     }
-                    ListInstructionValue::Projected(value) => {
+                    ListInstructionOutcome::Projected(value) => {
                         frame.position.environment.push_stored_list(value)
                     }
-                    ListInstructionValue::Constant(id) => {
-                        let destination = returns.suspend(frame);
+                    ListInstructionOutcome::Constant(id) => {
+                        let destination = storage.returns.suspend(frame);
                         return Ok(enter_constant(
                             plan,
                             id,
                             destination,
+                            &mut storage.pool,
                             std::convert::identity,
                         ));
                     }
-                    ListInstructionValue::Call {
+                    ListInstructionOutcome::Call {
                         function,
-                        origin,
+                        site,
                         inputs,
                     } => {
-                        let destination = returns.suspend(frame);
+                        let origin = HostCallOrigin::source(site.clone());
+                        let inputs = inputs.retain(environment, &mut storage.pool);
+                        let destination = storage.returns.suspend(frame);
                         return Ok(enter_function(
                             plan,
                             function,
@@ -105,15 +120,18 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
         macro_rules! store_without_constant {
             ($value:expr) => {
                 match $value {
-                    InstructionValueWithoutConstant::Ready(value) => {
+                    InstructionOutcomeWithoutConstant::Error(error) => return Err(error),
+                    InstructionOutcomeWithoutConstant::Ready(value) => {
                         value.push(&mut frame.position.environment)
                     }
-                    InstructionValueWithoutConstant::Call {
+                    InstructionOutcomeWithoutConstant::Call {
                         function,
-                        origin,
+                        site,
                         inputs,
                     } => {
-                        let destination = returns.suspend(frame);
+                        let origin = HostCallOrigin::source(site.clone());
+                        let inputs = inputs.retain(environment, &mut storage.pool);
+                        let destination = storage.returns.suspend(frame);
                         return Ok(enter_function(
                             plan,
                             function,
@@ -134,7 +152,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     environment,
                     $instruction,
                     expected
-                )?)
+                ))
             };
         }
         match instruction.kind() {
@@ -151,7 +169,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     environment,
                     instruction,
                     expected
-                )?);
+                ));
             }
             ProfiledInstructionKind::Custom(instruction) => evaluate_value!(custom, instruction),
             ProfiledInstructionKind::Bool(instruction) => evaluate_value!(bool, instruction),
@@ -164,7 +182,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     environment,
                     instruction,
                     expected
-                )?);
+                ));
             }
             ProfiledInstructionKind::ExternalList(instruction) => {
                 store_list!(plan.evaluate_external_list_instruction(
@@ -172,7 +190,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     environment,
                     instruction,
                     expected
-                )?);
+                ));
             }
             ProfiledInstructionKind::ExternalFunction(instruction) => {
                 match plan.evaluate_external_function_instruction(
@@ -180,18 +198,21 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                     environment,
                     instruction,
                 ) {
-                    InstructionValueWithoutConstant::Ready(value) => {
+                    InstructionOutcomeWithoutConstant::Error(never) => match never {},
+                    InstructionOutcomeWithoutConstant::Ready(value) => {
                         value.push(&mut frame.position.environment)
                     }
-                    InstructionValueWithoutConstant::Call {
+                    InstructionOutcomeWithoutConstant::Call {
                         function,
-                        origin,
+                        site,
                         inputs,
                     } => {
+                        let origin = HostCallOrigin::source(site.clone());
+                        let inputs = inputs.retain(environment, &mut storage.pool);
                         let metadata = instruction.instruction();
                         let family = metadata.family();
                         let type_ = metadata.type_().clone();
-                        let destination = returns.suspend(frame);
+                        let destination = storage.returns.suspend(frame);
                         macro_rules! enter {
                             ($id:expr) => {
                                 enter_function(
@@ -227,7 +248,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                             *$type_id,
                             $instruction,
                             expected
-                        )?)
+                        ))
                     };
                 }
                 match instruction {
@@ -239,7 +260,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                             *type_id,
                             instruction,
                             expected
-                        )?);
+                        ));
                     }
                     ListInstruction::ParameterList(type_id, instruction) => {
                         evaluate_list!(ParameterListFamily, type_id, instruction)
@@ -280,23 +301,30 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
                 }
             }
             ProfiledInstructionKind::Function(instruction) => {
-                match function::evaluate_action(plan, state, environment, instruction, expected)? {
-                    InstructionValue::Ready(value) => value.push(&mut frame.position.environment),
-                    InstructionValue::Constant(id) => {
+                match function::evaluate_action(plan, state, environment, instruction, expected) {
+                    InstructionOutcome::Error(error) => return Err(error),
+                    InstructionOutcome::Ready(value) => value.push(&mut frame.position.environment),
+                    InstructionOutcome::Constant(id) => {
                         let type_ = instruction.type_().clone();
-                        let destination = returns.suspend(frame);
-                        return Ok(enter_constant(plan, id, destination, move |value| {
-                            value.with_type(type_)
-                        }));
+                        let destination = storage.returns.suspend(frame);
+                        return Ok(enter_constant(
+                            plan,
+                            id,
+                            destination,
+                            &mut storage.pool,
+                            move |value| value.with_type(type_),
+                        ));
                     }
-                    InstructionValue::Call {
+                    InstructionOutcome::Call {
                         function,
-                        origin,
+                        site,
                         inputs,
                     } => {
+                        let origin = HostCallOrigin::source(site.clone());
+                        let inputs = inputs.retain(environment, &mut storage.pool);
                         let family = instruction.family();
                         let type_ = instruction.type_().clone();
-                        let destination = returns.suspend(frame);
+                        let destination = storage.returns.suspend(frame);
                         macro_rules! enter {
                             ($id:expr) => {
                                 enter_function(
@@ -346,27 +374,39 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
     Ok(Activation::Graph(frame))
 }
 
-pub(super) fn evaluate_external_list<Plan: ExecutableRuntimePlan>(
+impl CallInputs<'_> {
+    fn retain(self, environment: &BlockEnvironment, pool: &mut StoragePool) -> RetainedValues {
+        let mut inputs = pool.acquire();
+        inputs.append_locals(environment, self.args);
+        if let Some(captures) = self.captures {
+            inputs.append_captures(captures);
+        }
+        inputs
+    }
+}
+
+pub(super) fn evaluate_external_list<'call, Plan: ExecutableRuntimePlan>(
     plan: &Plan,
     state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
-    environment: &BlockEnvironment,
-    instruction: &ExternalListInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call ExternalListInstruction,
     expected: &ValueType,
-) -> ExecutionResult<ExternalListInstructionValue> {
+) -> ExternalListInstructionOutcome<'call, crate::ExecutionError> {
     list::evaluate_external(plan, state, environment, instruction, expected)
 }
 
-pub(super) fn evaluate_external_function(
+pub(super) fn evaluate_external_function<'call>(
     captures: &CaptureStorage,
-    environment: &BlockEnvironment,
-    instruction: &ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue {
+    environment: &'call BlockEnvironment,
+    instruction: &'call ExternalFunctionInstruction,
+) -> ExternalFunctionInstructionOutcome<'call> {
     function::evaluate_external_action(captures, environment, instruction)
 }
 
 #[cfg(test)]
 mod tests {
     use super::value::{ensure_list_index, list_element};
+    use super::{CallInputs, StoragePool};
     use crate::ExecutionPlan;
     use crate::execution_fixture::TestHost;
     use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostWorkProfile};
@@ -376,6 +416,7 @@ mod tests {
         ExecutionHostTarget, ExecutionIntFunctionBody, ExecutionNeverHostTarget, IntFunctionId,
         TupleFunctionId,
     };
+    use crate::plan::execution::graph::{IntLocalId, ParamLocal, StringLocalId};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::ValueType as ExecutionValueType;
     use crate::plan::{
@@ -386,14 +427,14 @@ mod tests {
     use crate::runtime::execution::invocation::Waiting;
     use crate::runtime::execution::{Domain, ServiceContext};
     use crate::runtime::graph::{
-        BlockEnvironment, GraphExecution, GraphProgress, GraphStorage, GraphValue, Returns,
+        BlockEnvironment, GraphExecution, GraphProgress, GraphStorage, GraphValue,
         RuntimeGraphState,
     };
     use crate::runtime::state::RuntimeState;
     use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
-        CaptureStorage, EvaluatedValue, ExecutableRuntimePlan, ExecutionError, HostCallOrigin,
-        InvariantError, RetainedValues,
+        CaptureStorage, EvaluatedCapture, EvaluatedValue, ExecutableRuntimePlan, ExecutionError,
+        HostCallOrigin, InvariantError, RetainedValues,
     };
     use crate::work_fixture::WorkComponent;
     use crate::{HostProviderSet, HostedExecution, ModuleSource, PackageSource};
@@ -402,6 +443,67 @@ mod tests {
     use std::ptr;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn call_inputs_preserve_argument_order_duplicates_and_captures_without_consuming_the_caller() {
+        let mut caller = RetainedValues::empty();
+        caller.push_int(10.into());
+        caller.push_int(20.into());
+        caller.push_string("argument".into());
+        let caller = BlockEnvironment::from_retained(caller);
+        let args = [
+            ParamLocal::Int(IntLocalId(1)),
+            ParamLocal::String(StringLocalId(0)),
+            ParamLocal::Int(IntLocalId(0)),
+            ParamLocal::Int(IntLocalId(1)),
+        ];
+        let storage = CaptureStorage::default();
+        let captures = storage.capture(vec![
+            EvaluatedCapture::int(IntLocalId(3), 30.into()),
+            EvaluatedCapture::string(StringLocalId(1), "capture".into()),
+        ]);
+        let inputs = CallInputs {
+            args: &args,
+            captures: Some(&captures),
+        }
+        .retain(&caller, &mut StoragePool::default());
+        assert!(inputs.belongs_to(Some(storage.domain())));
+        assert!(!inputs.belongs_to(None));
+        assert_eq!(caller.int(IntLocalId(0)), 10.into());
+        assert_eq!(caller.int(IntLocalId(1)), 20.into());
+        assert_eq!(caller.string(StringLocalId(0)), "argument");
+        drop(caller);
+        drop(captures);
+        let inputs = BlockEnvironment::from_retained(inputs);
+        assert_eq!(inputs.int(IntLocalId(0)), 20.into());
+        assert_eq!(inputs.int(IntLocalId(1)), 10.into());
+        assert_eq!(inputs.int(IntLocalId(2)), 20.into());
+        assert_eq!(inputs.int(IntLocalId(3)), 30.into());
+        assert_eq!(inputs.string(StringLocalId(0)), "argument");
+        assert_eq!(inputs.string(StringLocalId(1)), "capture");
+    }
+
+    #[test]
+    fn empty_call_inputs_preserve_the_presence_of_a_callable_domain() {
+        let caller = BlockEnvironment::from_retained(RetainedValues::empty());
+        let storage = CaptureStorage::default();
+        let captures = storage.capture(Vec::new());
+        let captured = CallInputs {
+            args: &[],
+            captures: Some(&captures),
+        }
+        .retain(&caller, &mut StoragePool::default());
+        let direct = CallInputs {
+            args: &[],
+            captures: None,
+        }
+        .retain(&caller, &mut StoragePool::default());
+        assert!(captured.belongs_to(Some(storage.domain())));
+        assert!(!captured.belongs_to(None));
+        assert!(!captured.belongs_to(Some(CaptureStorage::default().domain())));
+        assert!(direct.belongs_to(None));
+        assert!(direct.belongs_to(Some(storage.domain())));
+    }
 
     struct Profile;
     impl HostProfile for Profile {
@@ -802,10 +904,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
             let body = self.int_function(IntFunctionId(0)).body();
             let mut graph =
                 GraphExecution::new(body.block_graph().as_view(), RetainedValues::empty());
-            let mut storage = GraphStorage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            };
+            let mut storage = GraphStorage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             loop {
@@ -902,22 +1001,22 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
             match invocation {}
         }
 
-        fn evaluate_external_list_instruction(
+        fn evaluate_external_list_instruction<'call>(
             &self,
             _state: &mut impl RuntimeGraphState<Error = ExecutionError>,
-            _environment: &BlockEnvironment,
-            instruction: &Infallible,
+            _environment: &'call BlockEnvironment,
+            instruction: &'call Infallible,
             _expected: &ExecutionValueType,
-        ) -> ExecutionResult<super::ExternalListInstructionValue> {
+        ) -> super::ExternalListInstructionOutcome<'call, ExecutionError> {
             match *instruction {}
         }
 
-        fn evaluate_external_function_instruction(
+        fn evaluate_external_function_instruction<'call>(
             &self,
             _captures: &CaptureStorage,
-            _environment: &BlockEnvironment,
-            instruction: &Infallible,
-        ) -> super::ExternalFunctionInstructionValue {
+            _environment: &'call BlockEnvironment,
+            instruction: &'call Infallible,
+        ) -> super::ExternalFunctionInstructionOutcome<'call> {
             match *instruction {}
         }
     }

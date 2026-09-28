@@ -127,6 +127,8 @@ impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
     }
 }
 
+// Keep block dispatch in the graph loop rather than passing a GraphAction at every transition.
+#[inline]
 pub(in crate::runtime) fn terminator_action<Plan, State>(
     plan: &Plan,
     state: &mut State,

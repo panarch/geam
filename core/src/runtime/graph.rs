@@ -16,14 +16,13 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::host::HostedExecutionProfile;
 use crate::plan::execution::type_::ValueType;
-use crate::runtime::error::ExecutionResult;
 use crate::runtime::{CaptureStorage, ExecutableRuntimePlan};
-pub(in crate::runtime) use activation::Returns;
 pub(in crate::runtime) use activation::{
     Execution as GraphExecution, Progress as GraphProgress, Storage as GraphStorage,
 };
+use environment::StoragePool;
 pub(in crate::runtime) use instruction::{
-    ExternalFunctionInstructionValue, ExternalListInstructionValue,
+    ExternalFunctionInstructionOutcome, ExternalListInstructionOutcome,
 };
 
 struct GraphPosition {
@@ -52,36 +51,49 @@ impl CompletedGraph {
         self.exit
     }
 
-    pub(in crate::runtime) fn into_value<Value>(self, value: &Value) -> Value::Evaluated
+    pub(in crate::runtime) fn into_value<Value>(mut self, value: &Value) -> Value::Evaluated
     where
         Value: GraphValue,
     {
-        value.take(self.environment)
+        value.take(&mut self.environment)
     }
 
     pub(in crate::runtime) fn into_retained(self, transfer: &Transfer) -> RetainedValues {
         self.environment.into_retained(transfer)
     }
+
+    fn into_value_and_recycle<Value>(
+        mut self,
+        value: &Value,
+        pool: &mut StoragePool,
+    ) -> Value::Evaluated
+    where
+        Value: GraphValue,
+    {
+        let returned = value.take(&mut self.environment);
+        pool.recycle(self.environment);
+        returned
+    }
 }
 
-pub(in crate::runtime) fn evaluate_external_list_instruction<Plan>(
+pub(in crate::runtime) fn evaluate_external_list_instruction<'call, Plan>(
     plan: &Plan,
     state: &mut impl RuntimeGraphState<Error = ExecutionError>,
-    environment: &BlockEnvironment,
-    instruction: &ExternalListInstruction,
+    environment: &'call BlockEnvironment,
+    instruction: &'call ExternalListInstruction,
     expected: &ValueType,
-) -> ExecutionResult<ExternalListInstructionValue>
+) -> ExternalListInstructionOutcome<'call, ExecutionError>
 where
     Plan: ExecutableRuntimePlan<Profile = HostedExecutionProfile>,
 {
     instruction::evaluate_external_list(plan, state, environment, instruction, expected)
 }
 
-pub(in crate::runtime) fn evaluate_external_function_instruction(
+pub(in crate::runtime) fn evaluate_external_function_instruction<'call>(
     captures: &CaptureStorage,
-    environment: &BlockEnvironment,
-    instruction: &ExternalFunctionInstruction,
-) -> ExternalFunctionInstructionValue {
+    environment: &'call BlockEnvironment,
+    instruction: &'call ExternalFunctionInstruction,
+) -> ExternalFunctionInstructionOutcome<'call> {
     instruction::evaluate_external_function(captures, environment, instruction)
 }
 

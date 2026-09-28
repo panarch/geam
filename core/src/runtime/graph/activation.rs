@@ -1,4 +1,5 @@
 use super::RuntimeGraphState;
+use super::environment::StoragePool;
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
@@ -27,7 +28,8 @@ pub(in crate::runtime) struct Execution<'plan, Plan: ExecutableRuntimePlan> {
 }
 
 pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
-    pub(in crate::runtime) returns: Returns<'plan, Plan>,
+    pub(super) returns: Returns<'plan, Plan>,
+    pub(super) pool: StoragePool,
     pub(in crate::runtime) match_results: Vec<EvaluatedValue>,
 }
 
@@ -54,7 +56,7 @@ trait GraphExit<'plan, Plan: ExecutableRuntimePlan>: Send {
     fn exit(
         self: Box<Self>,
         completed: CompletedGraph,
-        returns: &mut Returns<'plan, Plan>,
+        storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>>;
 }
 
@@ -64,7 +66,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> GraphExit<'plan, Plan> for RootExit {
     fn exit(
         self: Box<Self>,
         completed: CompletedGraph,
-        _returns: &mut Returns<'plan, Plan>,
+        _storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
         Ok(Activation::Complete(completed))
     }
@@ -102,7 +104,7 @@ pub(super) struct Destination<Value> {
     value: PhantomData<fn(Value)>,
 }
 
-pub(in crate::runtime) struct Returns<'plan, Plan: ExecutableRuntimePlan> {
+pub(super) struct Returns<'plan, Plan: ExecutableRuntimePlan> {
     domain: Option<crate::runtime::captures::ExecutionDomain>,
     ints: Vec<Frame<'plan, Plan>>,
     floats: Vec<Frame<'plan, Plan>>,
@@ -160,17 +162,13 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         storage: &mut Storage<'plan, Plan>,
         remaining: &mut usize,
     ) -> ExecutionResult<Progress<'plan, Plan>> {
-        let Storage {
-            returns,
-            match_results,
-        } = storage;
-        returns.domain = Some(state.captures().domain());
+        storage.returns.domain = Some(state.captures().domain());
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(mut frame) => loop {
                 let block = frame.graph.block(frame.position.block);
                 let active = if frame.position.instruction < block.instructions().len() {
-                    super::instruction::advance(plan, state, frame, returns, remaining)?
+                    super::instruction::advance(plan, state, frame, storage, remaining)?
                 } else {
                     use super::terminator::{GraphAction, NeverCall, terminator_action};
 
@@ -179,7 +177,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         state,
                         frame.position.environment,
                         block.terminator(),
-                        match_results,
+                        &mut storage.match_results,
                     )? {
                         GraphAction::Continue { block, inputs } => {
                             frame.position = GraphPosition::new(block, inputs);
@@ -191,7 +189,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         }
                         GraphAction::Exit { exit, environment } => frame
                             .exit
-                            .exit(CompletedGraph { exit, environment }, returns)?,
+                            .exit(CompletedGraph { exit, environment }, storage)?,
                         GraphAction::NeverCall {
                             function,
                             mut inputs,
@@ -228,10 +226,20 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                     Ok(Self { active })
                 })));
             }
-            Activation::Return(resume) => resume(returns),
+            Activation::Return(resume) => resume(&mut storage.returns),
             Activation::Complete(completed) => return Ok(Progress::Complete(completed)),
         };
         Ok(Progress::Continue(Self { active }))
+    }
+}
+
+impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
+    pub(in crate::runtime) fn new() -> Self {
+        Self {
+            returns: Returns::new(),
+            pool: StoragePool::default(),
+            match_results: Vec::new(),
+        }
     }
 }
 
@@ -243,7 +251,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Returns<'plan, Plan> {
-    pub(in crate::runtime) fn new() -> Self {
+    fn new() -> Self {
         Self {
             domain: None,
             ints: Vec::new(),
@@ -378,12 +386,12 @@ where
     fn exit(
         mut self: Box<Self>,
         completed: CompletedGraph,
-        returns: &mut Returns<'plan, Plan>,
+        storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
         match self.body.function_body().exit(completed.exit()) {
             FunctionExit::Return(value) => {
-                let value = (self.map)(completed.into_value(value))?;
-                Ok(self.destination.resume(returns, value))
+                let value = (self.map)(completed.into_value_and_recycle(value, &mut storage.pool))?;
+                Ok(self.destination.resume(&mut storage.returns, value))
             }
             FunctionExit::TailCall {
                 function, transfer, ..
@@ -425,6 +433,7 @@ pub(super) fn enter_constant<'plan, Plan, Local, Value>(
     plan: &'plan Plan,
     id: ConstantId<Local>,
     destination: Destination<Value>,
+    pool: &mut StoragePool,
     map: impl FnOnce(Local::Evaluated) -> Value + Send + 'plan,
 ) -> Activation<'plan, Plan>
 where
@@ -436,7 +445,7 @@ where
     let graph = constant.block_graph().as_view();
     Activation::Graph(Frame {
         graph,
-        position: GraphPosition::new(graph.entry(), RetainedValues::empty()),
+        position: GraphPosition::new(graph.entry(), pool.acquire()),
         exit: Box::new(ConstantContinuation::<Plan, _, _, _> {
             constant,
             destination,
@@ -456,11 +465,11 @@ where
     fn exit(
         self: Box<Self>,
         completed: CompletedGraph,
-        returns: &mut Returns<'plan, Plan>,
+        storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
         let local = self.constant.return_(completed.exit());
-        let value = (self.map)(completed.into_value(local));
-        Ok(self.destination.resume(returns, value))
+        let value = (self.map)(completed.into_value_and_recycle(local, &mut storage.pool));
+        Ok(self.destination.resume(&mut storage.returns, value))
     }
 }
 
@@ -498,7 +507,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> GraphExit<'plan, Plan> for NeverContinu
     fn exit(
         mut self: Box<Self>,
         completed: CompletedGraph,
-        _returns: &mut Returns<'plan, Plan>,
+        _storage: &mut Storage<'plan, Plan>,
     ) -> ExecutionResult<Activation<'plan, Plan>> {
         match self.body.function_body().exit(completed.exit()) {
             FunctionExit::Return(never) => match *never {},
@@ -586,8 +595,8 @@ impl ReturnValue for () {
 #[cfg(test)]
 mod tests {
     use super::{
-        Activation, Execution, Frame, GraphPosition, Progress, Returns, RootExit, Storage,
-        enter_function, enter_never,
+        Activation, Execution, Frame, GraphPosition, Progress, RootExit, Storage, enter_function,
+        enter_never,
     };
     use crate::ExecutionPlan;
     use crate::plan::execution::function::{FunctionExit, IntFunctionId};
@@ -638,10 +647,7 @@ mod tests {
     fn complete_int_graph(plan: &ExecutionPlan) -> CompletedGraph {
         let body = plan.int_function(IntFunctionId(0)).body();
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-        let mut storage = Storage {
-            returns: Returns::new(),
-            match_results: Vec::new(),
-        };
+        let mut storage = Storage::new();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         loop {
@@ -676,10 +682,7 @@ pub fn main() {
         let instructions = graph.block(graph.entry()).instructions();
         assert!(instructions.len() > 3);
         for budget in 1..=instructions.len() {
-            let mut storage = Storage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            };
+            let mut storage = Storage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             let mut remaining = budget - 1;
@@ -753,10 +756,7 @@ pub fn main() {
                 retained.push_evaluated(value);
             }
             let mut execution = Execution::new(graph, retained);
-            let mut storage = Storage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            };
+            let mut storage = Storage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             for _ in 0..instruction_count {
@@ -850,10 +850,7 @@ pub fn main() { left(20) + 1 }
                 .as_view();
             let root_instructions = graph.block(graph.entry()).instructions().as_ptr();
             let mut execution = Execution::new(graph, RetainedValues::empty());
-            let mut storage = Storage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            };
+            let mut storage = Storage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
             let mut owner = None;
@@ -919,10 +916,7 @@ pub fn main() { walk(100) + 1 }
             let drops = Arc::new(AtomicUsize::new(0));
             let lease = MapperLease(drops.clone());
             let observed_calls = calls.clone();
-            let mut storage = Storage {
-                returns: Returns::new(),
-                match_results: Vec::new(),
-            };
+            let mut storage = Storage::new();
             let destination = storage.returns.suspend(Frame {
                 graph: caller,
                 position: GraphPosition::new(caller.entry(), RetainedValues::empty()),
@@ -1002,10 +996,7 @@ pub fn main() { left(20) }
         };
         let mut owner = None;
         let mut observations = 0;
-        let mut storage = Storage {
-            returns: Returns::new(),
-            match_results: Vec::new(),
-        };
+        let mut storage = Storage::new();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let error = loop {
@@ -1051,10 +1042,7 @@ pub fn main() {
         );
         let body = plan.int_function(IntFunctionId(0)).body();
         let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-        let mut storage = Storage {
-            returns: Returns::new(),
-            match_results: Vec::new(),
-        };
+        let mut storage = Storage::new();
         let mut lists = RuntimeListStorage::default();
         let captures = crate::runtime::CaptureStorage::default();
         let mut output = Vec::new();
@@ -1135,10 +1123,7 @@ pub fn main() { count(0) + 1 }
                 let body = plan.int_function(IntFunctionId(0)).body();
                 let mut execution =
                     Execution::new(body.block_graph().as_view(), RetainedValues::empty());
-                let mut storage = Storage {
-                    returns: Returns::new(),
-                    match_results: Vec::new(),
-                };
+                let mut storage = Storage::new();
                 let mut echo = Vec::new();
                 let mut state = RuntimeState::new(&mut echo);
                 for _ in 0..50_000 {

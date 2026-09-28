@@ -222,7 +222,11 @@ where
     } else if values.len() != element_count {
         return Ok(false);
     }
-    for (pattern, value) in pattern.elements().iter().zip(values.iter()) {
+    for (pattern, value) in pattern
+        .elements()
+        .iter()
+        .zip(values.iter_prefix(element_count))
+    {
         if !matches(plan, lists, environment, pattern, &value, bindings)? {
             return Ok(false);
         }
@@ -482,6 +486,7 @@ fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &
 
 #[cfg(test)]
 mod tests {
+    use super::super::GraphValue;
     use super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{MatchBindings, MatchPattern, match_pattern, matches_list};
     use crate::BitArrayValue;
@@ -703,7 +708,7 @@ pub fn main() {
         assert!(results.is_empty());
         assert_eq!(results.as_ptr(), binding_buffer);
         assert_eq!(results.capacity(), binding_capacity);
-        let environment = BlockEnvironment::from_retained(retained);
+        let mut environment = BlockEnvironment::from_retained(retained);
         assert_eq!(
             environment.tuple(TupleLocalId(0)),
             vec![EvaluatedValue::Int(20.into())]
@@ -716,8 +721,8 @@ pub fn main() {
             environment.tuple(TupleLocalId(2)),
             vec![EvaluatedValue::Int(20.into())]
         );
-        // Consuming extraction observes the inserted buffers without another copy.
-        let value = super::super::GraphValue::take(&TupleLocalId(1), environment);
+        // Moving extraction observes the inserted buffers without another copy.
+        let value = TupleLocalId(1).take(&mut environment);
         assert_eq!(value.as_ptr(), first_buffer);
         assert_ne!(value.as_ptr(), second_buffer);
     }
@@ -890,7 +895,9 @@ pub fn main() {
             ("[1, 2]", vec![1], false, 0),
             ("[1]", vec![1, 2], false, 0),
             ("[1, 2, ..]", vec![1], false, 0),
+            ("[1, ..]", vec![1, 2, 3], true, 1),
             ("[1, 2]", vec![1, 2], true, 2),
+            ("[1, 2, 3, 4, ..]", vec![1, 2, 3, 4, 5, 6, 7], true, 4),
             ("[1, 2, ..]", vec![1, 2, 3, 4], true, 2),
             ("[1, 2, ..]", vec![9, 2, 3, 4], false, 1),
             ("[1, 2, ..]", vec![1, 9, 3, 4], false, 2),
