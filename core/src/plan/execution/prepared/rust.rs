@@ -158,6 +158,12 @@ impl Emit for u64 {
     }
 }
 
+impl Emit for i64 {
+    fn emit(&self, output: &mut Rust) {
+        output.output.push_str(&self.to_string());
+    }
+}
+
 impl Emit for u32 {
     fn emit(&self, output: &mut Rust) {
         output.output.push_str(&self.to_string());
@@ -403,6 +409,14 @@ data::Record {
 
     #[test]
     fn preserves_float_bits_and_integer_signs() {
+        for (value, expected) in [
+            (0i64, "0"),
+            (-42, "-42"),
+            (i64::MIN, "-9223372036854775808"),
+            (i64::MAX, "9223372036854775807"),
+        ] {
+            assert_eq!(Rust::expression(&value), expected);
+        }
         assert_eq!(
             Rust::expression(&-0.0f64),
             "f64::from_bits(9223372036854775808)"

@@ -22,7 +22,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 8;
+const FORMAT_VERSION: u32 = 9;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -389,30 +389,13 @@ pub fn main() { #(number_box(), text_box(), fn() { Box(True) }) }
             source.contains(
                 r#"
 graph::IntInstruction::Mult {
-                                        left: data::graph::IntLocalId(0),
-                                        right: data::graph::IntLocalId(1),
+                                        left: data::graph::IntegerOperand::Immediate(21),
+                                        right: data::graph::IntegerOperand::Immediate(2),
                                     }"#
                 .trim_start_matches('\n')
             )
         );
-        assert!(
-            source.contains(
-                r#"
-data::Storage::Static(&[
-                                            21,
-                                        ])"#
-                .trim_start_matches('\n')
-            )
-        );
-        assert!(
-            source.contains(
-                r#"
-data::Storage::Static(&[
-                                            2,
-                                        ])"#
-                .trim_start_matches('\n')
-            )
-        );
+        assert!(!source.contains("graph::IntInstruction::Value"));
         assert_eq!(
             crate::run_main(&plan, &mut Vec::new()).unwrap(),
             crate::Value::Int(42.into())

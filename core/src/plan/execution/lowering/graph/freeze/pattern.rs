@@ -1227,7 +1227,10 @@ pub fn main() {
 
     fn int_add_operands(instruction: &Instruction) -> (IntLocalId, IntLocalId) {
         match instruction.kind() {
-            InstructionKind::Int(IntInstruction::Add { left, right }) => (*left, *right),
+            InstructionKind::Int(IntInstruction::Add {
+                left: execution_graph::IntegerOperand::Local(left),
+                right: execution_graph::IntegerOperand::Local(right),
+            }) => (*left, *right),
             _ => panic!("fixture should contain an Int add instruction"),
         }
     }

@@ -499,7 +499,7 @@ fn loop(value: Int) {
 
 pub fn main() { loop(2) }
 "#;
-        let expected = "return %int#0 | tail int#1 args=[%int#2]";
+        let expected = "return %int#0 | tail int#1 args=[%int#1]";
 
         assert_explanation(source, expected);
     }

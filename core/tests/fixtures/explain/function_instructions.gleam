@@ -57,9 +57,8 @@ pub fn main() {
 // function int#0
 //   entry b0 params=[%int#0:shape#0(Int)] captures=[]
 //   block b0 params=[%int#0:shape#0(Int)]
-//     %int#1:shape#0(Int) = int.value 1
-//     %int#2:shape#0(Int) = int.add %int#0 %int#1
-//     return %int#2
+//     %int#1:shape#0(Int) = int.add %int#0 1
+//     return %int#1
 //
 // function int#1
 //   entry b0 params=[%int#0:shape#0(Int), %string#0:shape#11(String)] captures=[]
@@ -70,9 +69,8 @@ pub fn main() {
 // function int#2
 //   entry b0 params=[%int#0:shape#0(Int)] captures=[]
 //   block b0 params=[%int#0:shape#0(Int)]
-//     %int#1:shape#0(Int) = int.value 2
-//     %int#2:shape#0(Int) = int.add %int#0 %int#1
-//     return %int#2
+//     %int#1:shape#0(Int) = int.add %int#0 2
+//     return %int#1
 //
 // function tuple#0
 //   entry b0 params=[] captures=[]

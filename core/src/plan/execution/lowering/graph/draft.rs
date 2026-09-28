@@ -190,7 +190,46 @@ pub(in crate::plan::execution::lowering) type DraftFunctionFunction =
 pub(in crate::plan::execution::lowering) enum DraftNeverReturn {}
 
 pub(in crate::plan::execution::lowering) trait DraftGraphValue {
+    fn key(&self) -> DraftValueKey;
     fn erase(&self) -> DraftValueRef;
+}
+
+pub(in crate::plan::execution::lowering::graph) trait DraftUse {
+    fn from_value(value: &impl DraftGraphValue) -> Self;
+}
+
+impl DraftUse for DraftValueKey {
+    fn from_value(value: &impl DraftGraphValue) -> Self {
+        value.key()
+    }
+}
+
+impl DraftUse for DraftValueRef {
+    fn from_value(value: &impl DraftGraphValue) -> Self {
+        value.erase()
+    }
+}
+
+pub(in crate::plan::execution::lowering::graph) trait DraftOperand {
+    fn push_operand<Use: DraftUse>(&self, values: &mut Vec<Use>);
+}
+
+impl<Family> DraftOperand for DraftValue<Family> {
+    fn push_operand<Use: DraftUse>(&self, values: &mut Vec<Use>) {
+        values.push(Use::from_value(self));
+    }
+}
+
+impl DraftOperand for DraftValueRef {
+    fn push_operand<Use: DraftUse>(&self, values: &mut Vec<Use>) {
+        values.push(Use::from_value(self));
+    }
+}
+
+impl DraftOperand for DraftStoredList {
+    fn push_operand<Use: DraftUse>(&self, values: &mut Vec<Use>) {
+        values.push(Use::from_value(self));
+    }
 }
 
 pub(in crate::plan::execution::lowering) struct DraftCursor {
@@ -480,36 +519,74 @@ impl<Family> DraftFunctionValue for DraftTypedFunction<Family> {
 }
 
 impl<Family> DraftGraphValue for DraftValue<Family> {
+    fn key(&self) -> DraftValueKey {
+        self.key
+    }
+
     fn erase(&self) -> DraftValueRef {
         self.erase()
     }
 }
 
 impl<Family> DraftGraphValue for DraftTypedList<Family> {
+    fn key(&self) -> DraftValueKey {
+        self.value.key
+    }
+
     fn erase(&self) -> DraftValueRef {
         self.value.erase()
     }
 }
 
 impl<Family> DraftGraphValue for DraftTypedFunction<Family> {
+    fn key(&self) -> DraftValueKey {
+        self.value.key
+    }
+
     fn erase(&self) -> DraftValueRef {
         self.value.erase()
     }
 }
 
 impl DraftGraphValue for DraftNeverReturn {
+    fn key(&self) -> DraftValueKey {
+        match *self {}
+    }
+
     fn erase(&self) -> DraftValueRef {
         match *self {}
     }
 }
 
 impl DraftGraphValue for DraftValueRef {
+    fn key(&self) -> DraftValueKey {
+        self.key
+    }
+
     fn erase(&self) -> DraftValueRef {
         self.clone()
     }
 }
 
 impl DraftGraphValue for DraftStoredList {
+    fn key(&self) -> DraftValueKey {
+        match self {
+            Self::ParameterList(value)
+            | Self::Int(value)
+            | Self::String(value)
+            | Self::BitArray(value)
+            | Self::UtfCodepoint(value)
+            | Self::Custom(value)
+            | Self::External(value)
+            | Self::Float(value)
+            | Self::Bool(value)
+            | Self::Nil(value)
+            | Self::Tuple(value)
+            | Self::List(value)
+            | Self::Function(value) => value.key,
+        }
+    }
+
     fn erase(&self) -> DraftValueRef {
         match self {
             Self::ParameterList(value)
@@ -1285,7 +1362,7 @@ impl DraftInstruction {
 
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Int { kind, .. } => kind.uses(values),
@@ -1344,7 +1421,7 @@ impl DraftTerminator {
 
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Jump(edge) => edge.uses(values),
@@ -1353,7 +1430,7 @@ impl DraftTerminator {
                 true_,
                 false_,
             } => {
-                values.push(subject.erase());
+                subject.push_operand(values);
                 true_.uses(values);
                 false_.uses(values);
             }
@@ -1362,7 +1439,7 @@ impl DraftTerminator {
                 clauses,
                 fallback,
             } => {
-                values.push(subject.erase());
+                subject.push_operand(values);
                 for (_, edge) in clauses {
                     edge.uses(values);
                 }
@@ -1373,7 +1450,7 @@ impl DraftTerminator {
                 clauses,
                 fallback,
             } => {
-                values.push(subject.erase());
+                subject.push_operand(values);
                 for (_, edge) in clauses {
                     edge.uses(values);
                 }
@@ -1384,7 +1461,7 @@ impl DraftTerminator {
                 clauses,
                 fallback,
             } => {
-                values.push(subject.erase());
+                subject.push_operand(values);
                 for (_, edge) in clauses {
                     edge.uses(values);
                 }
@@ -1396,7 +1473,7 @@ impl DraftTerminator {
                 success,
                 failure,
             } => {
-                values.push(subject.clone());
+                subject.push_operand(values);
                 pattern.uses(values);
                 success.uses(values);
                 failure.uses(values);
@@ -1407,34 +1484,36 @@ impl DraftTerminator {
                 next,
                 ..
             } => {
-                values.push(subject.clone());
+                subject.push_operand(values);
                 if let Some(message) = message {
-                    values.push(message.erase());
+                    message.push_operand(values);
                 }
                 next.uses(values);
             }
-            Self::Return { value, index: _ } => values.push(value.clone()),
+            Self::Return { value, index: _ } => value.push_operand(values),
             Self::TailCall { args, .. } | Self::NeverCall { args, .. } => {
-                values.extend(args.iter().cloned());
+                for arg in args {
+                    arg.push_operand(values);
+                }
                 if let Self::NeverCall {
                     function: DraftNeverCallTarget::Value(function),
                     ..
                 } = self
                 {
-                    values.push(function.erase());
+                    function.push_operand(values);
                 }
             }
             Self::SourceStop { message, .. } => {
                 if let Some(message) = message {
-                    values.push(message.erase());
+                    message.push_operand(values);
                 }
             }
             Self::LetAssertPanic {
                 subject, message, ..
             } => {
-                values.push(subject.clone());
+                subject.push_operand(values);
                 if let Some(message) = message {
-                    values.push(message.erase());
+                    message.push_operand(values);
                 }
             }
         }
@@ -1444,16 +1523,18 @@ impl DraftTerminator {
 impl DraftEdge {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
-        values.extend(self.explicit_args.iter().cloned());
+        for arg in &self.explicit_args {
+            arg.push_operand(values);
+        }
     }
 }
 
 impl DraftMatchEdge {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        _values: &mut Vec<DraftValueRef>,
+        _values: &mut Vec<impl DraftUse>,
     ) {
     }
 }
@@ -1522,14 +1603,15 @@ impl<T> DraftFlow<T> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DraftFlow, DraftFunction, DraftGraphBuilder, DraftIntFunction, DraftIntList, DraftList,
-        DraftStoredList, DraftValueKey, DraftValueRef,
+        DraftFlow, DraftFunction, DraftGraphBuilder, DraftGraphValue, DraftIntFunction,
+        DraftIntList, DraftList, DraftOperand, DraftStoredList, DraftValueKey, DraftValueRef,
     };
     use crate::plan::execution::lowering::specialization::{
         SpecializedValueShape, StoredValueShape,
     };
     use crate::plan::{FunctionShape, ValueShape};
     use std::marker::PhantomData;
+    use std::slice;
 
     #[test]
     fn draft_flow_cursor_mapping_updates_values_and_preserves_divergence() {
@@ -1651,6 +1733,13 @@ mod tests {
             DraftStoredList::List(list.clone()),
             DraftStoredList::Function(list),
         ] {
+            assert_eq!(stored.key(), expected.key);
+            let mut keys = Vec::<DraftValueKey>::new();
+            stored.push_operand(&mut keys);
+            assert_eq!(keys, [expected.key]);
+            let mut references = Vec::<DraftValueRef>::new();
+            stored.push_operand(&mut references);
+            assert_eq!(references.as_slice(), slice::from_ref(&expected));
             assert_eq!(stored.into_list().erase(), expected);
         }
     }

@@ -618,12 +618,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::super::instruction::DraftIntInstruction;
-    use super::super::{
-        DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftInt, DraftNeverReturn,
-    };
+    use super::super::{DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftNeverReturn};
     use crate::plan::execution::function::IntFunctionId as ExecutionIntFunctionId;
     use crate::plan::execution::graph::ParamLocal;
     use crate::plan::execution::graph::{BlockId, SourceStopKind, Terminator};
+    use crate::plan::execution::lowering::graph::draft::DraftInt;
     use crate::plan::execution::lowering::specialization::Representability;
     use crate::plan::{
         BoolExpr, Expr, FloatExpr, FunctionInstantiation, FunctionTemplate, FunctionTemplateId,

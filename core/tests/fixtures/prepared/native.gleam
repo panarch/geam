@@ -10,6 +10,7 @@ fn fold(callback: fn(Int) -> Int, initial: Int) -> Int
 fn keep_bits(value: BitArray) -> BitArray
 
 pub fn run() {
+  let assert True = integer_comparisons()
   let source = Branch([Leaf(<<"one":utf8>>), Branch([Leaf(<<"two":utf8>>)])])
   let expected = Branch([Leaf("one"), Branch([Leaf("two")])])
   #(
@@ -39,4 +40,39 @@ pub fn bit_range(value: BitArray, start: Int, size: Int) {
 pub fn bit_tail(value: BitArray) {
   let assert <<_:8, rest:bits>> = value
   keep_bits(rest)
+}
+
+fn compare(left, right) {
+  #(left == right, left != right)
+}
+
+fn integer_comparisons() {
+  let minimum = -9223372036854775808
+  let maximum = 9223372036854775807
+  let assert 9223372036854775808 = maximum + 1
+  let assert -9223372036854775809 = minimum - 1
+  let assert 9223372036854775808 = -9223372036854775808 / -1
+  let assert 0 = minimum % -1
+  let assert -2 = -7 / 3
+  let assert -1 = -7 % 3
+  let assert 0 = minimum / 0
+  let assert 0 = maximum % 0
+  let assert 85070591730234615865843651857942052864 = minimum * minimum
+  let assert True = -9223372036854775809 < minimum
+  let assert True = maximum < 9223372036854775808
+  let wide = 340282366920938463463374607431768211456
+  let negative = -340282366920938463463374607431768211456
+  let assert #(True, False) = compare(wide, wide)
+  let assert #(False, True) = compare(negative, wide)
+  let assert #(False, True) = compare("left", "right")
+  let assert True = negative < wide
+  let assert True = negative <= negative
+  let assert False = wide < negative
+  let assert False = wide <= negative
+  let assert True = wide > negative
+  let assert True = wide >= wide
+  let assert False = negative > wide
+  let assert False = negative >= wide
+  let assert True = wide == 340282366920938463463374607431768211456
+  True
 }

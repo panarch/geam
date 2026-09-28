@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 8,
+    format: 9,
     program: data::ProgramTables {
         root: data::source::module_id(2),
         modules: data::Storage::Static(&[

@@ -555,7 +555,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = INCOMPATIBLE.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 8; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 9; regenerate the prepared program"
     );
 }
 
@@ -1037,7 +1037,7 @@ fn selected_program_covers_all_plain_function_storage_families() {
 }
 
 #[test]
-fn value_data_matches_complete_selected_preparation_output() {
+fn value_data_matches_complete_selected_preparation_and_dynamic_results() {
     let module = compile_typed_program(
         "example",
         [ModuleSource::new(
@@ -1061,6 +1061,28 @@ fn value_data_matches_complete_selected_preparation_output() {
         bindings.prepare().emit_rust(),
         include_str!("fixtures/prepared/values.rs").trim()
     );
+    let module = compile_typed_program(
+        "example",
+        [ModuleSource::new(
+            "example",
+            "src/example.gleam",
+            include_str!("fixtures/prepared/values.gleam"),
+        )],
+    )
+    .unwrap();
+    let (bindings, run) = ModuleBuilder::from_program(module)
+        .unwrap()
+        .function(FunctionDeclaration::<(), BigInt>::new("run"))
+        .unwrap();
+    let mut echoes = Vec::new();
+    assert_eq!(
+        bindings
+            .seal()
+            .call(&run, (), &mut |output: EchoOutput| echoes
+                .push(output.to_string())),
+        Ok(BigInt::from(42))
+    );
+    assert_eq!(echoes, ["src/example.gleam:150\n42"]);
 }
 
 #[test]
@@ -1391,26 +1413,51 @@ fn dynamic_and_prepared_bit_ranges_preserve_storage_and_canonical_bytes_through_
 #[cfg(feature = "tokio")]
 #[test]
 fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
-    let mut bindings = NATIVE.load(native_provider::hosts()).unwrap();
-    let run = bindings
-        .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
-        .unwrap();
-    let mut module = bindings.seal();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
     let host = TokioHost::new(runtime.handle().clone());
-    let mut echo = Vec::new();
-    let value = runtime
-        .block_on(
-            module.with_execution(&host, &mut (), &mut echo, async |scope| {
-                scope.call(&run, ()).await.unwrap()
-            }),
-        )
-        .unwrap();
-    assert_eq!(value, (true, true, BigInt::from(43)));
-    assert!(echo.is_empty());
+    for prepared in [false, true] {
+        let (mut module, run) = if prepared {
+            let mut bindings = NATIVE.load(native_provider::hosts()).unwrap();
+            let run = bindings
+                .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
+                .unwrap();
+            (bindings.seal(), run)
+        } else {
+            let program = compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "src/main.gleam",
+                        include_str!("fixtures/prepared/native.gleam"),
+                    )],
+                )],
+                native_provider::hosts(),
+            )
+            .unwrap();
+            let (bindings, run) = HostedModuleBuilder::new(program)
+                .unwrap()
+                .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
+                .unwrap();
+            (bindings.seal().unwrap(), run)
+        };
+        let mut echo = Vec::new();
+        let value = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    scope.call(&run, ()).await.unwrap()
+                }),
+            )
+            .unwrap();
+        assert_eq!(value, (true, true, BigInt::from(43)));
+        assert!(echo.is_empty());
+    }
 }
 
 #[path = "fixtures/prepared/callable_declarations.rs"]

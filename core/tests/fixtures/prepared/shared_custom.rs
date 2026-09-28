@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 8,
+        format: 9,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -101,7 +101,7 @@ pub fn main() {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..1,
-                                            instructions: 0..2,
+                                            instructions: 0..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -117,27 +117,15 @@ pub fn main() {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    2,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                shape: data::type_::ValueShapeId(0),
-                                            },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                                left: data::graph::IntLocalId(0),
-                                                right: data::graph::IntLocalId(1),
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(2),
                                             }),
                                         },
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
-                                    data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
                             },
                         })),

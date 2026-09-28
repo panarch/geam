@@ -37,8 +37,9 @@ pub(crate) use utf_codepoint::UtfCodepointInstruction;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{ExecutionGraphProfile, HostedExecutionGraph};
-use crate::plan::execution::graph::ParamSlot;
-use crate::plan::execution::graph::{LocalLabel, ParamLocal, write_local_labels};
+use crate::plan::execution::graph::{
+    IntegerOperand, LocalLabel, ParamLocal, ParamSlot, write_local_labels,
+};
 
 #[derive(Clone)]
 pub struct ProfiledInstruction<Graph: ExecutionGraphProfile> {
@@ -142,6 +143,19 @@ pub(super) fn write_binary<Value: LocalLabel>(
     left.write_local_label(output);
     output.push(' ');
     right.write_local_label(output);
+}
+
+pub(super) fn write_integer_binary(
+    output: &mut String,
+    opcode: &str,
+    left: &IntegerOperand,
+    right: &IntegerOperand,
+) {
+    output.push_str(opcode);
+    output.push(' ');
+    left.write_operand(output);
+    output.push(' ');
+    right.write_operand(output);
 }
 
 pub(super) fn write_call<Function: FunctionLabelSource>(

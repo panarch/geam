@@ -295,7 +295,9 @@ mod tests {
     use super::{Origin, Transitions, inherited_first, select};
     use crate::plan::FunctionTemplateId;
     use crate::plan::execution::graph::{BlockId, MatchEdgeArgument, Terminator};
-    use crate::plan::execution::lowering::graph::draft::instruction::DraftIntInstruction;
+    use crate::plan::execution::lowering::graph::draft::instruction::{
+        DraftIntInstruction, DraftIntegerOperand,
+    };
     use crate::plan::execution::lowering::graph::draft::pattern::{
         DraftMatchPattern, DraftMatchPatternBinding,
     };
@@ -467,8 +469,8 @@ pub fn main() {
                     let sum = draft.int_instruction(
                         &mut success,
                         DraftIntInstruction::Add {
-                            left: DraftInt::from_ref(&binding),
-                            right: inherited.clone(),
+                            left: DraftIntegerOperand::Local(DraftInt::from_ref(&binding)),
+                            right: DraftIntegerOperand::Local(inherited.clone()),
                         },
                     );
                     vec![sum.erase()]

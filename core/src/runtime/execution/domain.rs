@@ -1083,7 +1083,7 @@ pub fn main() {{
   let captured = 2
   let answer = invoke(fn(value) {{
     echo value
-    value + bump({}) + captured
+    value + bump({}) + captured + 1 - 1
   }}, {})
   echo answer
   answer

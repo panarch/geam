@@ -1,6 +1,6 @@
 use super::{
-    DraftBitArray, DraftBool, DraftCustom, DraftExternal, DraftFloat, DraftFunction,
-    DraftGraphValue, DraftInt, DraftList, DraftNil, DraftStoredList, DraftString, DraftTuple,
+    DraftBitArray, DraftBool, DraftCustom, DraftExternal, DraftFloat, DraftFunction, DraftInt,
+    DraftList, DraftNil, DraftOperand, DraftStoredList, DraftString, DraftTuple, DraftUse,
     DraftUtfCodepoint, DraftValueRef,
 };
 use crate::plan::execution::constant::ConstantId;
@@ -36,6 +36,11 @@ pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
     },
 }
 
+pub(in crate::plan::execution::lowering) enum DraftIntegerOperand {
+    Local(DraftInt),
+    Immediate(i64),
+}
+
 pub(in crate::plan::execution::lowering) enum DraftIntInstruction {
     Value(num_bigint::BigInt),
     Constant(ConstantId<crate::plan::execution::graph::IntLocalId>),
@@ -62,24 +67,24 @@ pub(in crate::plan::execution::lowering) enum DraftIntInstruction {
         index: usize,
     },
     Add {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     Sub {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     Mult {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     Div {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     Remainder {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     Negate(DraftInt),
 }
@@ -344,21 +349,29 @@ pub(in crate::plan::execution::lowering) enum DraftBoolInstruction {
         index: usize,
     },
     Not(DraftBool),
+    EqualInt {
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
+    },
+    NotEqualInt {
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
+    },
     LtInt {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     LtEqInt {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     GtInt {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     GtEqInt {
-        left: DraftInt,
-        right: DraftInt,
+        left: DraftIntegerOperand,
+        right: DraftIntegerOperand,
     },
     LtFloat {
         left: DraftFloat,
@@ -678,38 +691,25 @@ pub(in crate::plan::execution::lowering) struct DraftFunctionCapture {
     pub(in crate::plan::execution::lowering::graph) source: DraftValueRef,
 }
 
-pub(in crate::plan::execution::lowering) trait DraftOperand {
-    fn push_operand(&self, values: &mut Vec<DraftValueRef>);
-}
-
-impl<Family> DraftOperand for super::DraftValue<Family> {
-    fn push_operand(&self, values: &mut Vec<DraftValueRef>) {
-        values.push(self.erase());
-    }
-}
-
-impl DraftOperand for DraftValueRef {
-    fn push_operand(&self, values: &mut Vec<DraftValueRef>) {
-        values.push(self.clone());
-    }
-}
-
-impl DraftOperand for super::DraftStoredList {
-    fn push_operand(&self, values: &mut Vec<DraftValueRef>) {
-        values.push(self.erase());
-    }
-}
-
-fn push_operands<Value: DraftOperand>(operands: &[Value], values: &mut Vec<DraftValueRef>) {
+fn push_operands<Value: DraftOperand>(operands: &[Value], values: &mut Vec<impl DraftUse>) {
     for operand in operands {
         operand.push_operand(values);
+    }
+}
+
+impl DraftOperand for DraftIntegerOperand {
+    fn push_operand<Use: DraftUse>(&self, values: &mut Vec<Use>) {
+        match self {
+            Self::Local(value) => value.push_operand(values),
+            Self::Immediate(_) => {}
+        }
     }
 }
 
 impl DraftIntInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
@@ -737,7 +737,7 @@ impl DraftIntInstruction {
 impl DraftFloatInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
@@ -763,7 +763,7 @@ impl DraftFloatInstruction {
 impl DraftStringInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
@@ -787,7 +787,7 @@ impl DraftStringInstruction {
 impl DraftBitArrayEvaluatedSize {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         self.value.push_operand(values);
     }
@@ -796,7 +796,7 @@ impl DraftBitArrayEvaluatedSize {
 impl DraftBitArrayBitsSize {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Fixed(_) => {}
@@ -808,7 +808,7 @@ impl DraftBitArrayBitsSize {
 impl DraftBitArraySegment {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Int { value, .. } => value.push_operand(values),
@@ -835,7 +835,7 @@ impl DraftBitArraySegment {
 impl DraftBitArrayInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(segments) => {
@@ -859,7 +859,7 @@ impl DraftBitArrayInstruction {
 impl DraftUtfCodepointInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Call { args, .. } => push_operands(args, values),
@@ -877,7 +877,7 @@ impl DraftUtfCodepointInstruction {
 impl DraftCustomInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Construct { fields, .. } => push_operands(fields, values),
@@ -897,7 +897,7 @@ impl DraftCustomInstruction {
 impl DraftExternalInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Call { args, .. } => push_operands(args, values),
@@ -915,7 +915,7 @@ impl DraftExternalInstruction {
 impl DraftBoolInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(_) | Self::Constant(_) => {}
@@ -928,7 +928,9 @@ impl DraftBoolInstruction {
             Self::CustomField { source, .. } => source.push_operand(values),
             Self::ListIndex { list, .. } => list.push_operand(values),
             Self::Not(value) => value.push_operand(values),
-            Self::LtInt { left, right }
+            Self::EqualInt { left, right }
+            | Self::NotEqualInt { left, right }
+            | Self::LtInt { left, right }
             | Self::LtEqInt { left, right }
             | Self::GtInt { left, right }
             | Self::GtEqInt { left, right } => {
@@ -957,7 +959,7 @@ impl DraftBoolInstruction {
 impl DraftNilInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value | Self::Constant(_) => {}
@@ -976,7 +978,7 @@ impl DraftNilInstruction {
 impl DraftTupleInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Value(elements) => push_operands(elements, values),
@@ -996,7 +998,7 @@ impl DraftTupleInstruction {
 impl DraftParameterListInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Empty | Self::Constant(_) => {}
@@ -1012,11 +1014,11 @@ impl DraftParameterListInstruction {
     }
 }
 
-impl<Element: DraftOperand, Local, Function> DraftTypedListInstruction<Element, Local, Function> {
-    pub(in crate::plan::execution::lowering::graph) fn uses(
-        &self,
-        values: &mut Vec<DraftValueRef>,
-    ) {
+impl<Element, Local, Function> DraftTypedListInstruction<Element, Local, Function> {
+    pub(in crate::plan::execution::lowering::graph) fn uses(&self, values: &mut Vec<impl DraftUse>)
+    where
+        Element: DraftOperand,
+    {
         match self {
             Self::Value(elements) => push_operands(elements, values),
             Self::Constant(_) => {}
@@ -1040,7 +1042,7 @@ impl<Element: DraftOperand, Local, Function> DraftTypedListInstruction<Element, 
 impl DraftListInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Parameter(_, instruction) => instruction.uses(values),
@@ -1064,7 +1066,7 @@ impl DraftListInstruction {
 impl DraftFunctionInstruction {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Constant(_) | Self::Reference(_) | Self::Constructor(_) => {}

@@ -1,6 +1,31 @@
+use super::{IntLocalId, LocalLabel};
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
 use num_bigint::{BigInt, Sign};
+
+#[derive(Clone, Copy)]
+pub enum IntegerOperand {
+    Local(IntLocalId),
+    Immediate(i64),
+}
+
+impl IntegerOperand {
+    pub(super) fn write_operand(&self, output: &mut String) {
+        match self {
+            Self::Local(local) => local.write_local_label(output),
+            Self::Immediate(value) => output.push_str(&value.to_string()),
+        }
+    }
+}
+
+impl Emit for IntegerOperand {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Local(local) => output.call("graph::IntegerOperand::Local", &[local]),
+            Self::Immediate(value) => output.call("graph::IntegerOperand::Immediate", &[value]),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegerLiteral {
@@ -52,8 +77,44 @@ impl Emit for IntegerLiteral {
 
 #[cfg(test)]
 mod tests {
-    use super::{IntegerLiteral, Table};
+    use super::{IntLocalId, IntegerLiteral, IntegerOperand, Rust, Table};
     use num_bigint::{BigInt, Sign};
+
+    #[test]
+    fn emits_and_labels_local_and_immediate_operands_exactly() {
+        for (operand, label, emitted) in [
+            (
+                IntegerOperand::Local(IntLocalId(23)),
+                "%int#23",
+                "data::graph::IntegerOperand::Local(data::graph::IntLocalId(23))",
+            ),
+            (
+                IntegerOperand::Immediate(0),
+                "0",
+                "data::graph::IntegerOperand::Immediate(0)",
+            ),
+            (
+                IntegerOperand::Immediate(-42),
+                "-42",
+                "data::graph::IntegerOperand::Immediate(-42)",
+            ),
+            (
+                IntegerOperand::Immediate(i64::MIN),
+                "-9223372036854775808",
+                "data::graph::IntegerOperand::Immediate(-9223372036854775808)",
+            ),
+            (
+                IntegerOperand::Immediate(i64::MAX),
+                "9223372036854775807",
+                "data::graph::IntegerOperand::Immediate(9223372036854775807)",
+            ),
+        ] {
+            let mut output = String::new();
+            operand.write_operand(&mut output);
+            assert_eq!(output, label);
+            assert_eq!(Rust::expression(&operand), emitted);
+        }
+    }
 
     #[test]
     fn owns_canonical_digits_without_changing_integer_values() {
