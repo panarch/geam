@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 8,
+    format: 9,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -376,8 +376,8 @@ data::ModuleArtifact {
                                             shape: data::type_::ValueShapeId(4),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -386,8 +386,8 @@ data::ModuleArtifact {
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -504,7 +504,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..4,
-                                        instructions: 0..2,
+                                        instructions: 0..1,
                                         terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
                                             subject: data::graph::BoolLocalId(0),
                                             true_: data::graph::Edge {
@@ -516,11 +516,6 @@ data::ModuleArtifact {
                                                 ]),
                                                 transfer: data::graph::Transfer {
                                                     families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Int,
-                                                            length: 3,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::Bool,
                                                             length: 0,
@@ -551,12 +546,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 4..7,
-                                        instructions: 2..4,
+                                        instructions: 1..3,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 4..4,
+                                        instructions: 3..3,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -569,12 +564,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 4..5,
+                                        instructions: 3..4,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 5..5,
+                                        instructions: 4..4,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -619,24 +614,12 @@ data::ModuleArtifact {
                                 instructions: data::Storage::Static(&[
                                     data::graph::ProfiledInstruction {
                                         output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
-                                            shape: data::type_::ValueShapeId(1),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                            sign: data::Sign::Plus,
-                                            digits: data::Storage::Static(&[
-                                                10,
-                                            ]),
-                                        })),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(4),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(3),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(10),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -645,8 +628,8 @@ data::ModuleArtifact {
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -655,8 +638,8 @@ data::ModuleArtifact {
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(3),
-                                            right: data::graph::IntLocalId(2),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(3)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -744,12 +727,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..2,
-                                        instructions: 0..2,
+                                        instructions: 0..1,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 2..3,
-                                        instructions: 2..2,
+                                        instructions: 1..1,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             pattern: data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {
@@ -813,12 +796,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 3..4,
-                                        instructions: 2..4,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 4..5,
-                                        instructions: 4..4,
+                                        instructions: 2..2,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             pattern: data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {
@@ -884,12 +867,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 5..7,
-                                        instructions: 4..5,
+                                        instructions: 2..3,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 5..6,
+                                        instructions: 3..4,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(3)),
                                     },
                                 ]),
@@ -929,21 +912,9 @@ data::ModuleArtifact {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                            sign: data::Sign::Plus,
-                                            digits: data::Storage::Static(&[
-                                                100,
-                                            ]),
-                                        })),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                            shape: data::type_::ValueShapeId(1),
-                                        },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(100),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -951,21 +922,9 @@ data::ModuleArtifact {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                            sign: data::Sign::Plus,
-                                            digits: data::Storage::Static(&[
-                                                200,
-                                            ]),
-                                        })),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                            shape: data::type_::ValueShapeId(1),
-                                        },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(200),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -974,8 +933,8 @@ data::ModuleArtifact {
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntLocalId(0),
-                                            right: data::graph::IntLocalId(1),
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
                                     },
                                     data::graph::ProfiledInstruction {
@@ -993,8 +952,8 @@ data::ModuleArtifact {
                                 ]),
                             },
                             exits: data::Storage::Static(&[
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
                                 data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
                             ]),

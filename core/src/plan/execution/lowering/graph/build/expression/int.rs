@@ -1,3 +1,4 @@
+use super::super::instruction::DraftIntegerOperand;
 use super::{call_args, custom, function, list, panic_expr, tuple};
 use crate::plan::execution::lowering::graph::{DraftCursor, DraftFlow, DraftGraph, DraftInt};
 use crate::plan::execution::lowering::specialization::{Representability, StoredValueShape};
@@ -227,7 +228,10 @@ fn binary(
     cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
-    kind: impl FnOnce(DraftInt, DraftInt) -> super::super::instruction::DraftIntInstruction,
+    kind: impl FnOnce(
+        DraftIntegerOperand,
+        DraftIntegerOperand,
+    ) -> super::super::instruction::DraftIntInstruction,
 ) -> Representability<DraftFlow<DraftInt>> {
     int_expr(left, cursor, graph, context).and_then(|flow| match flow {
         DraftFlow::Diverged => Representability::Inhabited(DraftFlow::Diverged),
@@ -240,7 +244,13 @@ fn binary(
                 mut cursor,
                 value: right,
             } => {
-                let value = graph.int_instruction(&mut cursor, kind(left, right));
+                let value = graph.int_instruction(
+                    &mut cursor,
+                    kind(
+                        DraftIntegerOperand::Local(left),
+                        DraftIntegerOperand::Local(right),
+                    ),
+                );
                 DraftFlow::value(cursor, value)
             }
         }),
@@ -263,6 +273,24 @@ mod tests {
             ("-{ panic as \"operand\" }", "panic: operand"),
         ] {
             assert_eq!(run(expression), expected);
+        }
+    }
+
+    #[test]
+    fn immediate_results_do_not_skip_operand_effects_or_source_stops() {
+        for operator in ["+", "-", "*", "/", "%"] {
+            assert_eq!(
+                run(&format!("failed(\"left\") {operator} 0")),
+                "panic: left"
+            );
+            assert_eq!(
+                run(&format!("0 {operator} failed(\"right\")")),
+                "panic: right"
+            );
+            assert_eq!(
+                run(&format!("failed(\"left\") {operator} failed(\"right\")")),
+                "panic: left"
+            );
         }
     }
 

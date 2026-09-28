@@ -198,6 +198,10 @@ impl BlockEnvironment {
         self.values.ints[local.0].clone()
     }
 
+    pub(super) fn int_ref(&self, local: IntLocalId) -> &BigInt {
+        &self.values.ints[local.0]
+    }
+
     pub(super) fn push_float(&mut self, value: f64) {
         self.values.floats.push(value);
     }

@@ -1,3 +1,5 @@
+mod integer;
+
 use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
 use crate::StringValue;
@@ -109,24 +111,12 @@ where
             state.lists().int_values(&environment.int_list(*list)),
         )
         .map(V::Ready),
-        I::Add { left, right } => Ok(V::Ready(environment.int(*left) + environment.int(*right))),
-        I::Sub { left, right } => Ok(V::Ready(environment.int(*left) - environment.int(*right))),
-        I::Mult { left, right } => Ok(V::Ready(environment.int(*left) * environment.int(*right))),
-        I::Div { left, right } => {
-            let right = environment.int(*right);
-            if right == BigInt::from(0) {
-                Ok(V::Ready(BigInt::from(0)))
-            } else {
-                Ok(V::Ready(environment.int(*left) / right))
-            }
-        }
+        I::Add { left, right } => Ok(V::Ready(integer::add(environment, *left, *right))),
+        I::Sub { left, right } => Ok(V::Ready(integer::subtract(environment, *left, *right))),
+        I::Mult { left, right } => Ok(V::Ready(integer::multiply(environment, *left, *right))),
+        I::Div { left, right } => Ok(V::Ready(integer::divide(environment, *left, *right))),
         I::Remainder { left, right } => {
-            let right = environment.int(*right);
-            if right == BigInt::from(0) {
-                Ok(V::Ready(BigInt::from(0)))
-            } else {
-                Ok(V::Ready(environment.int(*left) % right))
-            }
+            Ok(V::Ready(integer::remainder(environment, *left, *right)))
         }
         I::Negate(value) => Ok(V::Ready(-environment.int(*value))),
     }
@@ -647,14 +637,20 @@ where
         )
         .map(V::Ready),
         I::Not(value) => Ok(V::Ready(!environment.bool(*value))),
-        I::LtInt { left, right } => Ok(V::Ready(environment.int(*left) < environment.int(*right))),
-        I::LtEqInt { left, right } => {
-            Ok(V::Ready(environment.int(*left) <= environment.int(*right)))
-        }
-        I::GtInt { left, right } => Ok(V::Ready(environment.int(*left) > environment.int(*right))),
-        I::GtEqInt { left, right } => {
-            Ok(V::Ready(environment.int(*left) >= environment.int(*right)))
-        }
+        I::EqualInt { left, right } => Ok(V::Ready(integer::equal(environment, *left, *right))),
+        I::NotEqualInt { left, right } => Ok(V::Ready(!integer::equal(environment, *left, *right))),
+        I::LtInt { left, right } => Ok(V::Ready(
+            integer::compare(environment, *left, *right).is_lt(),
+        )),
+        I::LtEqInt { left, right } => Ok(V::Ready(
+            integer::compare(environment, *left, *right).is_le(),
+        )),
+        I::GtInt { left, right } => Ok(V::Ready(
+            integer::compare(environment, *left, *right).is_gt(),
+        )),
+        I::GtEqInt { left, right } => Ok(V::Ready(
+            integer::compare(environment, *left, *right).is_ge(),
+        )),
         I::LtFloat { left, right } => Ok(V::Ready(
             environment.float(*left) < environment.float(*right),
         )),
@@ -969,7 +965,7 @@ mod tests {
     use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
-        ExecutionError, InvariantError, Value,
+        ExecutionError, InvariantError, Value, run_src,
     };
     use num_bigint::BigInt;
 
@@ -1154,7 +1150,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple(
                 vec![
                     1_i64, 2, 2, 3, 4, 3, 3, 6, 3, 0, 1, 0, -1, 1, 0, 2, 3, 1, 2, 1, 2, 4,
@@ -1201,7 +1197,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple(
                 vec![
                     1.0, 1.5, 1.5, 2.0, 3.0, 3.0, 3.0, 6.0, 3.5, 0.0, 1.0, 0.0, 2.0, 3.0, 1.0, 2.0,
@@ -1246,7 +1242,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple(
                 [
                     "local",
@@ -1271,6 +1267,53 @@ pub fn main() {
                 .collect(),
             ),
         );
+    }
+
+    #[test]
+    fn integer_comparisons_preserve_wide_values_and_reused_operands() {
+        for (left, right, comparisons) in [
+            ("0", "0", [true, false, false, true, false, true]),
+            ("-1", "0", [false, true, true, true, false, false]),
+            ("1", "-1", [false, true, false, false, true, true]),
+            (
+                "-9223372036854775809",
+                "-9223372036854775808",
+                [false, true, true, true, false, false],
+            ),
+            (
+                "9223372036854775808",
+                "9223372036854775807",
+                [false, true, false, false, true, true],
+            ),
+            (
+                "340282366920938463463374607431768211456",
+                "340282366920938463463374607431768211456",
+                [true, false, false, true, false, true],
+            ),
+            (
+                "-340282366920938463463374607431768211456",
+                "-340282366920938463463374607431768211457",
+                [false, true, false, false, true, true],
+            ),
+        ] {
+            let source = format!(
+                r#"
+fn compare(left: Int, right: Int) {{
+  #(left == right, left != right, left < right, left <= right,
+    left > right, left >= right, left == left, right != right, left, right)
+}}
+pub fn main() {{ compare({left}, {right}) }}
+"#,
+            );
+            let mut expected = comparisons.into_iter().map(Value::Bool).collect::<Vec<_>>();
+            expected.extend([
+                Value::Bool(true),
+                Value::Bool(false),
+                Value::Int(left.parse().unwrap()),
+                Value::Int(right.parse().unwrap()),
+            ]);
+            assert_eq!(run_src(&source), Value::Tuple(expected));
+        }
     }
 
     #[test]
@@ -1319,7 +1362,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple(
                 vec![
                     true, false, true, true, true, true, true, true, true, true, true, true, true,
@@ -1362,10 +1405,7 @@ pub fn main() {
 }
 "#;
 
-        assert_eq!(
-            crate::runtime::run_src(source),
-            Value::Tuple(vec![Value::Nil; 14]),
-        );
+        assert_eq!(run_src(source), Value::Tuple(vec![Value::Nil; 14]),);
     }
 
     #[test]
@@ -1399,7 +1439,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple(
                 (0_i64..=14)
                     .map(|value| Value::Tuple(vec![Value::Int(value.into())]))
@@ -1446,7 +1486,7 @@ pub fn main() {
 "#;
 
         assert_eq!(
-            crate::runtime::run_src(source),
+            run_src(source),
             Value::Tuple((1_i64..=14).map(|value| Value::Int(value.into())).collect(),),
         );
     }
@@ -1458,7 +1498,7 @@ pub fn main() {
         ];
 
         assert_eq!(
-            crate::runtime::run_src(
+            run_src(
                 r#"fn codepoint(value: Int) -> UtfCodepoint {
   case <<value>> {
     <<value:utf8_codepoint>> -> value

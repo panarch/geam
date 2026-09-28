@@ -178,7 +178,7 @@ pub mod graph {
     pub use crate::plan::execution::graph::block::terminator::switch::string::StringSwitch;
     pub use crate::plan::execution::graph::block::{BlockHeader, BlockId};
     pub use crate::plan::execution::graph::exit::BlockGraphExitId;
-    pub use crate::plan::execution::graph::integer::IntegerLiteral;
+    pub use crate::plan::execution::graph::integer::{IntegerLiteral, IntegerOperand};
     pub use crate::plan::execution::graph::transfer::{
         FamilyTransfer, StorageFamily, Transfer, TransferStep,
     };

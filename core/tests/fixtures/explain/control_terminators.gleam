@@ -119,9 +119,8 @@ pub fn main() {
 //     %int#0:shape#0(Int) = int.value 1
 //     jump b2(%int#0)
 //   block b2 params=[%int#0:shape#0(Int)]
-//     %int#1:shape#0(Int) = int.value 3
-//     %int#2:shape#0(Int) = int.add %int#0 %int#1
-//     return %int#2
+//     %int#1:shape#0(Int) = int.add %int#0 3
+//     return %int#1
 //   block b3 params=[]
 //     %int#0:shape#0(Int) = int.value 2
 //     jump b2(%int#0)

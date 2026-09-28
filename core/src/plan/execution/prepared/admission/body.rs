@@ -760,7 +760,7 @@ mod tests {
         let typed = crate::compile_typed_module(
             "example",
             "src/example.gleam",
-            "fn done(n) { n } pub fn main() { done(40 + 2) }",
+            "fn done(a, b) { a + b } pub fn main() { let a = 40 let b = 2 done(b, a) }",
         )
         .unwrap();
         let mut plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());

@@ -3,7 +3,7 @@ use super::local_flow;
 use super::{InstructionError, Instructions, pair, read, same_type};
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
-    BoolInstruction, FloatInstruction, IntInstruction, NilInstruction, ParamSlot,
+    BoolInstruction, FloatInstruction, IntInstruction, IntegerOperand, NilInstruction, ParamSlot,
     StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
 use crate::plan::execution::type_::{ValueShapeDescriptor, ValueType};
@@ -42,7 +42,7 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
             | IntInstruction::Sub { left, right }
             | IntInstruction::Mult { left, right }
             | IntInstruction::Div { left, right }
-            | IntInstruction::Remainder { left, right } => pair(left, right, locals),
+            | IntInstruction::Remainder { left, right } => integer_pair(left, right, locals),
             IntInstruction::Negate(value) => read(value, locals).map(|_| ()),
         }
     }
@@ -143,10 +143,12 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
             }
             BoolInstruction::ListIndex { list, index: _ } => self.list_index(list, output, locals),
             BoolInstruction::Not(value) => read(value, locals).map(|_| ()),
-            BoolInstruction::LtInt { left, right }
+            BoolInstruction::EqualInt { left, right }
+            | BoolInstruction::NotEqualInt { left, right }
+            | BoolInstruction::LtInt { left, right }
             | BoolInstruction::LtEqInt { left, right }
             | BoolInstruction::GtInt { left, right }
-            | BoolInstruction::GtEqInt { left, right } => pair(left, right, locals),
+            | BoolInstruction::GtEqInt { left, right } => integer_pair(left, right, locals),
             BoolInstruction::LtFloat { left, right }
             | BoolInstruction::LtEqFloat { left, right }
             | BoolInstruction::GtFloat { left, right }
@@ -269,12 +271,31 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
     }
 }
 
+fn integer_pair(
+    left: &IntegerOperand,
+    right: &IntegerOperand,
+    locals: &Locals<'_>,
+) -> Result<(), InstructionError> {
+    for operand in [left, right] {
+        match operand {
+            IntegerOperand::Local(local) => {
+                read(local, locals)?;
+            }
+            IntegerOperand::Immediate(_) => {}
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::super::{catalog::Catalog, source::Sources, type_::Types};
+    use super::super::super::{catalog::Catalog, local::LocalError, source::Sources, type_::Types};
     use super::{InstructionError, Instructions, IntInstruction, Locals};
     use crate::plan::execution::function::FunctionBodyOwner;
-    use crate::plan::execution::graph::{IntLocalId, ParamLocal, ProfiledInstructionKind};
+    use crate::plan::execution::graph::{
+        BoolInstruction, IntLocalId, IntegerOperand, ParamLocal, ProfiledInstructionKind,
+    };
+    use crate::{ExecutionPlan, compile_typed_module, plan_module};
     use std::convert::Infallible;
 
     #[test]
@@ -314,7 +335,8 @@ pub fn main() {
   let _ = #(point_tuple.0, from_points, from_tuples.0, from_floats, from_bools, from_nils, suffix)
   let _ = #(first_float([c]), first_bool([d]), first_nil([e]), first_point([point]),
     first_tuple([#(a, d)]), strip_prefix("pre-text"))
-  let _ = #(a < 2, a <= 2, a >= 2, a != 20, c <=. 10.0, c >. 10.0, c >=. 10.0)
+  let _ = #(a < 2, a <= 2, a >= 2, a != 20, c <=. 10.0, c >. 10.0, c >=. 10.0,
+    b == "text", b != "other")
   let _ = #(decimal_value, text_value, boolean_value, nil_value,
     apply(fn() { 1.5 }), apply(fn() { "text" }), apply(fn() { True }),
     apply(fn() { Nil }), apply(codepoint), apply(fn() { #(42, True) }))
@@ -322,8 +344,8 @@ pub fn main() {
     nothing(), tuple.4, a > 2, c <. 10.0, a == 20)
 }
 "#;
-        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
-        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
         let common = &plan.program.common;
         let types = Types::admit(
             &common.list_types,
@@ -422,14 +444,132 @@ pub fn main() {
     }
 
     #[test]
+    fn integer_operands_require_locals_only_when_the_operand_refers_to_storage() {
+        let typed = compile_typed_module(
+            "example",
+            "src/example.gleam",
+            "fn compare(a: Int, b: Int) { a == b } pub fn main() { compare(1, 2) }",
+        )
+        .unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &plan.program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &sources,
+            constants: &common.constants,
+        };
+        let graph = plan.program.functions.value_returns.bool_functions[1]
+            .body()
+            .block_graph();
+        let block = graph.block(graph.entry);
+        let mut locals = Locals::default();
+        for slot in block.params() {
+            locals.define(slot, &types).unwrap();
+        }
+        let output = block.instructions()[0].output();
+        use IntegerOperand::{Immediate, Local};
+        for (left, right, expected) in [
+            (Local(IntLocalId(0)), Local(IntLocalId(1)), Ok(())),
+            (Local(IntLocalId(0)), Local(IntLocalId(0)), Ok(())),
+            (Immediate(i64::MIN), Immediate(i64::MAX), Ok(())),
+            (Immediate(-1), Local(IntLocalId(0)), Ok(())),
+            (Local(IntLocalId(0)), Immediate(0), Ok(())),
+            (
+                Local(IntLocalId(2)),
+                Local(IntLocalId(0)),
+                Err(InstructionError::Local(LocalError::Missing(
+                    IntLocalId(2).into(),
+                ))),
+            ),
+            (
+                Local(IntLocalId(0)),
+                Local(IntLocalId(2)),
+                Err(InstructionError::Local(LocalError::Missing(
+                    IntLocalId(2).into(),
+                ))),
+            ),
+            (
+                Local(IntLocalId(2)),
+                Immediate(0),
+                Err(InstructionError::Local(LocalError::Missing(
+                    IntLocalId(2).into(),
+                ))),
+            ),
+            (
+                Immediate(0),
+                Local(IntLocalId(2)),
+                Err(InstructionError::Local(LocalError::Missing(
+                    IntLocalId(2).into(),
+                ))),
+            ),
+        ] {
+            for instruction in [
+                BoolInstruction::EqualInt { left, right },
+                BoolInstruction::NotEqualInt { left, right },
+                BoolInstruction::LtInt { left, right },
+                BoolInstruction::LtEqInt { left, right },
+                BoolInstruction::GtInt { left, right },
+                BoolInstruction::GtEqInt { left, right },
+            ] {
+                assert_eq!(context.bool(&instruction, output, &locals), expected);
+            }
+            for instruction in [
+                IntInstruction::Add { left, right },
+                IntInstruction::Sub { left, right },
+                IntInstruction::Mult { left, right },
+                IntInstruction::Div { left, right },
+                IntInstruction::Remainder { left, right },
+            ] {
+                assert_eq!(
+                    context.int(&instruction, &block.params()[0], &locals),
+                    expected
+                );
+            }
+        }
+        assert_eq!(
+            context.bool(
+                &BoolInstruction::EqualInt {
+                    left: Immediate(i64::MIN),
+                    right: Immediate(i64::MAX)
+                },
+                output,
+                &Locals::default()
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            context.int(
+                &IntInstruction::Div {
+                    left: Immediate(1),
+                    right: Immediate(0)
+                },
+                &block.params()[0],
+                &Locals::default()
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn rejects_wrong_opcode_family_and_tuple_index_before_running_instructions() {
-        let typed = crate::compile_typed_module(
+        let typed = compile_typed_module(
             "example",
             "src/example.gleam",
             "pub fn main() { let value = #(42, True) value.0 }",
         )
         .unwrap();
-        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
         let common = &plan.program.common;
         let types = Types::admit(
             &common.list_types,

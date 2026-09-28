@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 8,
+        format: 9,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -130,8 +130,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 shape: data::type_::ValueShapeId(0),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                                left: data::graph::IntLocalId(0),
-                                                right: data::graph::IntLocalId(1),
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             }),
                                         },
                                     ]),
@@ -352,7 +352,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..2,
-                                            instructions: 0..3,
+                                            instructions: 0..2,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -393,27 +393,15 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 shape: data::type_::ValueShapeId(0),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    1,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
-                                                shape: data::type_::ValueShapeId(0),
-                                            },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                                left: data::graph::IntLocalId(1),
-                                                right: data::graph::IntLocalId(2),
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
                                             }),
                                         },
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
-                                    data::function::FunctionExit::Return(data::graph::IntLocalId(3)),
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
                                 ]),
                             },
                         })),
@@ -2308,7 +2296,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                             data::graph::BlockHeader {
                                                 params: 3..5,
-                                                instructions: 0..3,
+                                                instructions: 0..2,
                                                 terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                             },
                                         ]),
@@ -2364,21 +2352,9 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     shape: data::type_::ValueShapeId(0),
                                                 },
-                                                kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                    sign: data::Sign::Plus,
-                                                    digits: data::Storage::Static(&[
-                                                        1,
-                                                    ]),
-                                                })),
-                                            },
-                                            data::graph::ProfiledInstruction {
-                                                output: data::graph::ParamSlot {
-                                                    local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                    shape: data::type_::ValueShapeId(0),
-                                                },
                                                 kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
-                                                    left: data::graph::IntLocalId(0),
-                                                    right: data::graph::IntLocalId(1),
+                                                    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                    right: data::graph::IntegerOperand::Immediate(1),
                                                 }),
                                             },
                                             data::graph::ProfiledInstruction {
@@ -2423,7 +2399,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 site: data::source::HostCallSite::from_static("app", "chain", data::source::SourceSpan::new(863, 914)),
                                             },
                                             args: data::Storage::Static(&[
-                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(1),
                                                     type_: data::type_::FunctionType {
@@ -2441,7 +2417,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         length: 1,
                                                         steps: data::Storage::Static(&[
                                                             data::graph::TransferStep {
-                                                                source: 2,
+                                                                source: 1,
                                                                 destination: 0,
                                                             },
                                                         ]),

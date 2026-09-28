@@ -169,6 +169,8 @@ fn bool(value: &BoolInstruction) -> Option<(Address, Projection)> {
         | BoolInstruction::Call { .. }
         | BoolInstruction::FunctionCall { .. }
         | BoolInstruction::Not(..)
+        | BoolInstruction::EqualInt { .. }
+        | BoolInstruction::NotEqualInt { .. }
         | BoolInstruction::LtInt { .. }
         | BoolInstruction::LtEqInt { .. }
         | BoolInstruction::GtInt { .. }

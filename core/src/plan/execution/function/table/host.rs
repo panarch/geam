@@ -741,9 +741,8 @@ pub fn main() {
 function int#0
   entry b0 params=[%int#0:shape#0(Int)] captures=[]
   block b0 params=[%int#0:shape#0(Int)]
-    %int#1:shape#0(Int) = int.value 1
-    %int#2:shape#0(Int) = int.add %int#0 %int#1
-    return %int#2
+    %int#1:shape#0(Int) = int.add %int#0 1
+    return %int#1
 
 function custom#0
   host host_support::host/generic.identity signature=fn(custom_type#0) -> custom_type#0

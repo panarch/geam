@@ -37,6 +37,6 @@ use super::draft::instruction;
 use super::draft::pattern;
 use super::draft::{
     DraftBlockId, DraftCursor, DraftCustom, DraftFloat, DraftFlow, DraftFunction, DraftGraph,
-    DraftGraphBuilder, DraftGraphValue, DraftInt, DraftList, DraftNeverReturn, DraftScope,
-    DraftString, DraftTuple, DraftValueRef,
+    DraftGraphBuilder, DraftGraphValue, DraftList, DraftNeverReturn, DraftScope, DraftString,
+    DraftTuple, DraftValueRef,
 };

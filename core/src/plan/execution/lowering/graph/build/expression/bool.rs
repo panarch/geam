@@ -1,5 +1,8 @@
+use super::super::instruction::DraftIntegerOperand;
 use super::{call_args, custom, expr, function, list, panic_expr, tuple};
-use crate::plan::execution::lowering::graph::{DraftBool, DraftCursor, DraftFlow, DraftGraph};
+use crate::plan::execution::lowering::graph::{
+    DraftBool, DraftCursor, DraftFlow, DraftGraph, DraftInt,
+};
 use crate::plan::execution::lowering::specialization::{
     Representability, SpecializedValueShape, StoredValueShape,
 };
@@ -305,12 +308,26 @@ fn bool_value_instruction(
         }
         E::Equal { left, right } => {
             compare_values(left, right, cursor, graph, context, |left, right| {
-                I::Equal { left, right }
+                if matches!(left.shape(), StoredValueShape::Int) {
+                    I::EqualInt {
+                        left: DraftIntegerOperand::Local(DraftInt::from_ref(&left)),
+                        right: DraftIntegerOperand::Local(DraftInt::from_ref(&right)),
+                    }
+                } else {
+                    I::Equal { left, right }
+                }
             })
         }
         E::NotEqual { left, right } => {
             compare_values(left, right, cursor, graph, context, |left, right| {
-                I::NotEqual { left, right }
+                if matches!(left.shape(), StoredValueShape::Int) {
+                    I::NotEqualInt {
+                        left: DraftIntegerOperand::Local(DraftInt::from_ref(&left)),
+                        right: DraftIntegerOperand::Local(DraftInt::from_ref(&right)),
+                    }
+                } else {
+                    I::NotEqual { left, right }
+                }
             })
         }
         E::StringStartsWith { value, prefix } => super::string_expr(value, cursor, graph, context)
@@ -396,8 +413,8 @@ fn compare_int(
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
     kind: impl FnOnce(
-        super::super::DraftInt,
-        super::super::DraftInt,
+        DraftIntegerOperand,
+        DraftIntegerOperand,
     ) -> super::super::instruction::DraftBoolInstruction,
 ) -> Representability<DraftFlow<DraftBool>> {
     super::int_expr(left, cursor, graph, context).and_then(|flow| match flow {
@@ -411,7 +428,13 @@ fn compare_int(
                 mut cursor,
                 value: right,
             } => {
-                let value = graph.bool_instruction(&mut cursor, kind(left, right));
+                let value = graph.bool_instruction(
+                    &mut cursor,
+                    kind(
+                        DraftIntegerOperand::Local(left),
+                        DraftIntegerOperand::Local(right),
+                    ),
+                );
                 DraftFlow::value(cursor, value)
             }
         }),
@@ -569,6 +592,8 @@ fn merge_cursors(left: DraftCursor, right: DraftCursor, graph: &mut DraftGraph) 
 #[cfg(test)]
 mod tests {
     use super::bool_expr;
+    use crate::plan::execution::explain::{self, ExplainContext};
+    use crate::plan::execution::function::BoolFunctionId;
     use crate::plan::execution::lowering::graph::draft::{DraftGraphBuilder, DraftNeverReturn};
     use crate::plan::execution::lowering::graph::{DraftCursor, DraftFlow, DraftValueRef};
     use crate::plan::execution::lowering::specialization::Representability;
@@ -597,6 +622,36 @@ mod tests {
             Representability::Inhabited(super::BoolPaths::True(cursor)) => (true, cursor),
             Representability::Inhabited(super::BoolPaths::False(cursor)) => (false, cursor),
             _ => panic!("fixture should produce a static Bool path"),
+        }
+    }
+
+    #[test]
+    fn generic_equality_uses_the_specialized_integer_storage_family() {
+        for (source, expected) in [
+            (
+                "fn compare(a, b) { a == b } pub fn main() { compare(1, 2) }",
+                "bool.equal_int %int#0 %int#1",
+            ),
+            (
+                "fn compare(a, b) { a != b } pub fn main() { compare(1, 2) }",
+                "bool.not_equal_int %int#0 %int#1",
+            ),
+            (
+                r#"fn compare(a, b) { a == b } pub fn main() { compare("a", "b") }"#,
+                "bool.equal %string#0 %string#1",
+            ),
+            (
+                r#"fn compare(a, b) { a != b } pub fn main() { compare("a", "b") }"#,
+                "bool.not_equal %string#0 %string#1",
+            ),
+        ] {
+            explain::assert_rendered(source, expected, |plan, output| {
+                let graph = plan.bool_function(BoolFunctionId(1)).body().block_graph();
+                let instructions = graph.blocks().flat_map(|block| block.instructions());
+                for instruction in instructions {
+                    ExplainContext::new(plan, output).write(instruction.kind());
+                }
+            });
         }
     }
 
@@ -786,6 +841,11 @@ mod tests {
                 "panic: left",
             ),
             ("1 == failed_int(\"right\")", "panic: right"),
+            (
+                "failed_int(\"left\") != failed_int(\"right\")",
+                "panic: left",
+            ),
+            ("1 != failed_int(\"right\")", "panic: right"),
             ("failed_callable()()", "panic: callable"),
         ] {
             assert_eq!(run(expression), expected);

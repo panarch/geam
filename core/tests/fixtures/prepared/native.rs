@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 8,
+        format: 9,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -19,6 +19,7 @@ fn fold(callback: fn(Int) -> Int, initial: Int) -> Int
 fn keep_bits(value: BitArray) -> BitArray
 
 pub fn run() {
+  let assert True = integer_comparisons()
   let source = Branch([Leaf(<<"one":utf8>>), Branch([Leaf(<<"two":utf8>>)])])
   let expected = Branch([Leaf("one"), Branch([Leaf("two")])])
   #(
@@ -49,6 +50,41 @@ pub fn bit_tail(value: BitArray) {
   let assert <<_:8, rest:bits>> = value
   keep_bits(rest)
 }
+
+fn compare(left, right) {
+  #(left == right, left != right)
+}
+
+fn integer_comparisons() {
+  let minimum = -9223372036854775808
+  let maximum = 9223372036854775807
+  let assert 9223372036854775808 = maximum + 1
+  let assert -9223372036854775809 = minimum - 1
+  let assert 9223372036854775808 = -9223372036854775808 / -1
+  let assert 0 = minimum % -1
+  let assert -2 = -7 / 3
+  let assert -1 = -7 % 3
+  let assert 0 = minimum / 0
+  let assert 0 = maximum % 0
+  let assert 85070591730234615865843651857942052864 = minimum * minimum
+  let assert True = -9223372036854775809 < minimum
+  let assert True = maximum < 9223372036854775808
+  let wide = 340282366920938463463374607431768211456
+  let negative = -340282366920938463463374607431768211456
+  let assert #(True, False) = compare(wide, wide)
+  let assert #(False, True) = compare(negative, wide)
+  let assert #(False, True) = compare("left", "right")
+  let assert True = negative < wide
+  let assert True = negative <= negative
+  let assert False = wide < negative
+  let assert False = wide <= negative
+  let assert True = wide > negative
+  let assert True = wide >= wide
+  let assert False = negative > wide
+  let assert False = negative >= wide
+  let assert True = wide == 340282366920938463463374607431768211456
+  True
+}
 "#)),
                 },
             ]),
@@ -74,7 +110,7 @@ pub fn bit_tail(value: BitArray) {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..1,
-                                            instructions: 0..2,
+                                            instructions: 0..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -90,27 +126,15 @@ pub fn bit_tail(value: BitArray) {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(17),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    1,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                shape: data::type_::ValueShapeId(17),
-                                            },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                                left: data::graph::IntLocalId(0),
-                                                right: data::graph::IntLocalId(1),
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
                                             }),
                                         },
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
-                                    data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
                             },
                         })),
@@ -213,7 +237,7 @@ pub fn bit_tail(value: BitArray) {
                                         },
                                         data::graph::BlockHeader {
                                             params: 3..7,
-                                            instructions: 0..2,
+                                            instructions: 0..1,
                                             terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
                                                 subject: data::graph::BoolLocalId(0),
                                                 true_: data::graph::Edge {
@@ -256,11 +280,6 @@ pub fn bit_tail(value: BitArray) {
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                length: 2,
-                                                                steps: data::Storage::Static(&[]),
-                                                            },
-                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::BitArray,
                                                                 length: 1,
                                                                 steps: data::Storage::Static(&[]),
@@ -277,12 +296,12 @@ pub fn bit_tail(value: BitArray) {
                                         },
                                         data::graph::BlockHeader {
                                             params: 7..8,
-                                            instructions: 2..2,
+                                            instructions: 1..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 8..11,
-                                            instructions: 2..2,
+                                            instructions: 1..1,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(4),
@@ -299,7 +318,7 @@ pub fn bit_tail(value: BitArray) {
                                         },
                                         data::graph::BlockHeader {
                                             params: 11..14,
-                                            instructions: 2..2,
+                                            instructions: 1..1,
                                             terminator: data::graph::Terminator::Match(data::graph::Match {
                                                 subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 pattern: data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {
@@ -379,17 +398,17 @@ pub fn bit_tail(value: BitArray) {
                                         },
                                         data::graph::BlockHeader {
                                             params: 14..15,
-                                            instructions: 2..4,
+                                            instructions: 1..3,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 15..15,
-                                            instructions: 4..5,
+                                            instructions: 3..4,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 15..18,
-                                            instructions: 5..5,
+                                            instructions: 4..4,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(4),
@@ -482,22 +501,12 @@ pub fn bit_tail(value: BitArray) {
                                     instructions: data::Storage::Static(&[
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                shape: data::type_::ValueShapeId(17),
-                                            },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::NoSign,
-                                                digits: data::Storage::Static(&[]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(12),
+                                                shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
-                                                left: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                                right: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(0),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -536,7 +545,7 @@ pub fn bit_tail(value: BitArray) {
                                             kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
                                                 function: data::graph::BitArrayFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1070, 1076)),
+                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1112, 1118)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -552,7 +561,7 @@ pub fn bit_tail(value: BitArray) {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(933, 952)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(975, 994)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -564,7 +573,7 @@ pub fn bit_tail(value: BitArray) {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1060, 1077)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1102, 1119)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
@@ -668,8 +677,8 @@ pub fn bit_tail(value: BitArray) {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1142, 1152)),
-                                                pattern_span: data::source::SourceSpan::new(1153, 1171),
+                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1184, 1194)),
+                                                pattern_span: data::source::SourceSpan::new(1195, 1213),
                                             }),
                                         },
                                     ]),
@@ -693,7 +702,7 @@ pub fn bit_tail(value: BitArray) {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1182, 1197)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1224, 1239)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -742,6 +751,2011 @@ pub fn bit_tail(value: BitArray) {
                     custom_functions: data::Storage::Static(&[]),
                     external_functions: data::Storage::Static(&[]),
                     bool_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 0,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..0,
+                                            instructions: 0..3,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Plus,
+                                                    digits: data::Storage::Static(&[
+                                                        0,
+                                                        2147483648,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(1),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(46),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 3..4,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Minus,
+                                                    digits: data::Storage::Static(&[
+                                                        1,
+                                                        2147483648,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(2),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(45),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 2..4,
+                                            instructions: 4..5,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Plus,
+                                                    digits: data::Storage::Static(&[
+                                                        0,
+                                                        2147483648,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(3),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(44),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 4..6,
+                                            instructions: 5..6,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::NoSign,
+                                                    digits: data::Storage::Static(&[]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(4),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(43),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 6..8,
+                                            instructions: 6..7,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Minus,
+                                                    digits: data::Storage::Static(&[
+                                                        2,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(5),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(42),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 8..10,
+                                            instructions: 7..8,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Minus,
+                                                    digits: data::Storage::Static(&[
+                                                        1,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(6),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(41),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 10..12,
+                                            instructions: 8..9,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::NoSign,
+                                                    digits: data::Storage::Static(&[]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(7),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(40),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 12..14,
+                                            instructions: 9..10,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::NoSign,
+                                                    digits: data::Storage::Static(&[]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(8),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(39),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 14..16,
+                                            instructions: 10..11,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                    sign: data::Sign::Plus,
+                                                    digits: data::Storage::Static(&[
+                                                        0,
+                                                        0,
+                                                        0,
+                                                        1073741824,
+                                                    ]),
+                                                }),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(9),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(38),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 16..18,
+                                            instructions: 11..13,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(10),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(37),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 18..19,
+                                            instructions: 13..15,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(11),
+                                                    args: data::Storage::Static(&[]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(36),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 19..19,
+                                            instructions: 15..18,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                pattern: data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bool(true),
+                                                    data::graph::MatchPattern::Bool(false),
+                                                ])),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(12),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Tuple,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(35),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Tuple {
+                                                            local: data::graph::TupleLocalId(0),
+                                                            type_: data::Storage::Static(&[
+                                                                data::type_::ValueType::Bool,
+                                                                data::type_::ValueType::Bool,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 19..21,
+                                            instructions: 18..19,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                pattern: data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bool(false),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ])),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(13),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Tuple,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(34),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Tuple {
+                                                            local: data::graph::TupleLocalId(0),
+                                                            type_: data::Storage::Static(&[
+                                                                data::type_::ValueType::Bool,
+                                                                data::type_::ValueType::Bool,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 21..23,
+                                            instructions: 19..22,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                pattern: data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bool(false),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ])),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(14),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Tuple,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(33),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Tuple {
+                                                            local: data::graph::TupleLocalId(0),
+                                                            type_: data::Storage::Static(&[
+                                                                data::type_::ValueType::Bool,
+                                                                data::type_::ValueType::Bool,
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 23..25,
+                                            instructions: 22..23,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(15),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(32),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 25..27,
+                                            instructions: 23..24,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(16),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(31),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 27..29,
+                                            instructions: 24..25,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(false),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(17),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(30),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 29..31,
+                                            instructions: 25..26,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(false),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(18),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(29),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 31..33,
+                                            instructions: 26..27,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(19),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(28),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 33..35,
+                                            instructions: 27..28,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(20),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(27),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 35..37,
+                                            instructions: 28..29,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(false),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(21),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(26),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 37..39,
+                                            instructions: 29..30,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(false),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(22),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(25),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 39..40,
+                                            instructions: 30..32,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(23),
+                                                    args: data::Storage::Static(&[]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(24),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 40..40,
+                                            instructions: 32..33,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 40..41,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2441, 2451)),
+                                                pattern_span: data::source::SourceSpan::new(2452, 2456),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 41..42,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2403, 2413)),
+                                                pattern_span: data::source::SourceSpan::new(2414, 2419),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 42..43,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2366, 2376)),
+                                                pattern_span: data::source::SourceSpan::new(2377, 2382),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 43..44,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2333, 2343)),
+                                                pattern_span: data::source::SourceSpan::new(2344, 2348),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 44..45,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2297, 2307)),
+                                                pattern_span: data::source::SourceSpan::new(2308, 2312),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 45..46,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2259, 2269)),
+                                                pattern_span: data::source::SourceSpan::new(2270, 2275),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 46..47,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2222, 2232)),
+                                                pattern_span: data::source::SourceSpan::new(2233, 2238),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 47..48,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2181, 2191)),
+                                                pattern_span: data::source::SourceSpan::new(2192, 2196),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 48..49,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2145, 2155)),
+                                                pattern_span: data::source::SourceSpan::new(2156, 2160),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 49..50,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2090, 2100)),
+                                                pattern_span: data::source::SourceSpan::new(2101, 2115),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..51,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2036, 2046)),
+                                                pattern_span: data::source::SourceSpan::new(2047, 2061),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 51..52,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1986, 1996)),
+                                                pattern_span: data::source::SourceSpan::new(1997, 2011),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 52..53,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1825, 1835)),
+                                                pattern_span: data::source::SourceSpan::new(1836, 1840),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 53..54,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1774, 1784)),
+                                                pattern_span: data::source::SourceSpan::new(1785, 1789),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 54..55,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1702, 1712)),
+                                                pattern_span: data::source::SourceSpan::new(1713, 1751),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 55..56,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1673, 1683)),
+                                                pattern_span: data::source::SourceSpan::new(1684, 1685),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 56..57,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1644, 1654)),
+                                                pattern_span: data::source::SourceSpan::new(1655, 1656),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 57..58,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1619, 1629)),
+                                                pattern_span: data::source::SourceSpan::new(1630, 1632),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 58..59,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1594, 1604)),
+                                                pattern_span: data::source::SourceSpan::new(1605, 1607),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 59..60,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1564, 1574)),
+                                                pattern_span: data::source::SourceSpan::new(1575, 1576),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 60..61,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1503, 1513)),
+                                                pattern_span: data::source::SourceSpan::new(1514, 1533),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 61..62,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1455, 1465)),
+                                                pattern_span: data::source::SourceSpan::new(1466, 1486),
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 62..63,
+                                            instructions: 33..33,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(1408, 1418)),
+                                                pattern_span: data::source::SourceSpan::new(1419, 1438),
+                                            }),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::Bool,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(23),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::Bool,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(23),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::Bool,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(23),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Minus,
+                                                digits: data::Storage::Static(&[
+                                                    0,
+                                                    2147483648,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    4294967295,
+                                                    2147483647,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                                left: data::graph::IntegerOperand::Immediate(9223372036854775807),
+                                                right: data::graph::IntegerOperand::Immediate(1),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Div {
+                                                left: data::graph::IntegerOperand::Immediate(-9223372036854775808),
+                                                right: data::graph::IntegerOperand::Immediate(-1),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Remainder {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(-1),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Div {
+                                                left: data::graph::IntegerOperand::Immediate(-7),
+                                                right: data::graph::IntegerOperand::Immediate(3),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Remainder {
+                                                left: data::graph::IntegerOperand::Immediate(-7),
+                                                right: data::graph::IntegerOperand::Immediate(3),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Div {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(0),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Remainder {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Immediate(0),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Mult {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Minus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                    2147483648,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    0,
+                                                    2147483648,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    1,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Minus,
+                                                digits: data::Storage::Static(&[
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    1,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                shape: data::type_::ValueShapeId(23),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
+                                                function: data::function::TupleFunctionId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2014, 2033)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                shape: data::type_::ValueShapeId(23),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
+                                                function: data::function::TupleFunctionId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2064, 2087)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                shape: data::type_::ValueShapeId(3),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("left"))),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                                shape: data::type_::ValueShapeId(3),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("right"))),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                shape: data::type_::ValueShapeId(23),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
+                                                function: data::function::TupleFunctionId(3),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                    data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2118, 2142)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtEqInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtEqInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    0,
+                                                    1,
+                                                ]),
+                                            })),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                        },
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::BoolLocalId(0)),
+                                ]),
+                            },
+                        })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
                             index: 0,
                             return_: data::graph::BoolLocalId(0),
@@ -770,12 +2784,69 @@ pub fn bit_tail(value: BitArray) {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..0,
-                                            instructions: 0..34,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                pattern: data::graph::MatchPattern::Bool(true),
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(1),
+                                                    args: data::Storage::Static(&[]),
+                                                    bindings: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Bool,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(2),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 0..0,
+                                            instructions: 1..35,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
+                                        data::graph::BlockHeader {
+                                            params: 0..1,
+                                            instructions: 35..35,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(335, 345)),
+                                                pattern_span: data::source::SourceSpan::new(346, 350),
+                                            }),
+                                        },
                                     ]),
-                                    params: data::Storage::Static(&[]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                    ]),
                                     instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
+                                                function: data::function::BoolFunctionId(0),
+                                                args: data::Storage::Static(&[]),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(353, 374)),
+                                            }),
+                                        },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
@@ -804,7 +2875,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(2),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(6),
+                                                shape: data::type_::ValueShapeId(7),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -844,7 +2915,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(2),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(6),
+                                                shape: data::type_::ValueShapeId(7),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -865,7 +2936,7 @@ pub fn bit_tail(value: BitArray) {
                                                         item_type: data::type_::CustomTypeId(0),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(7),
+                                                shape: data::type_::ValueShapeId(8),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
                                                 list_type: data::type_::ListTypeId(0),
@@ -889,7 +2960,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(3),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(8),
+                                                shape: data::type_::ValueShapeId(9),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -947,7 +3018,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(3),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(8),
+                                                shape: data::type_::ValueShapeId(9),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -981,7 +3052,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(4),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(9),
+                                                shape: data::type_::ValueShapeId(10),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -1009,7 +3080,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(4),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(9),
+                                                shape: data::type_::ValueShapeId(10),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -1030,7 +3101,7 @@ pub fn bit_tail(value: BitArray) {
                                                         item_type: data::type_::CustomTypeId(1),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(10),
+                                                shape: data::type_::ValueShapeId(11),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
                                                 list_type: data::type_::ListTypeId(1),
@@ -1054,7 +3125,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(5),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(11),
+                                                shape: data::type_::ValueShapeId(12),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -1112,7 +3183,7 @@ pub fn bit_tail(value: BitArray) {
                                                         shape_id: data::type_::CustomValueShapeId(5),
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(11),
+                                                shape: data::type_::ValueShapeId(12),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
                                                 constructor: data::type_::CustomConstructorId {
@@ -1133,10 +3204,10 @@ pub fn bit_tail(value: BitArray) {
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(12),
+                                                shape: data::type_::ValueShapeId(6),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
-                                                function: data::function::BoolFunctionId(0),
+                                                function: data::function::BoolFunctionId(1),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(3),
@@ -1153,7 +3224,7 @@ pub fn bit_tail(value: BitArray) {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(482, 512)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(524, 554)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1285,10 +3356,10 @@ pub fn bit_tail(value: BitArray) {
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
-                                                shape: data::type_::ValueShapeId(12),
+                                                shape: data::type_::ValueShapeId(6),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
-                                                function: data::function::BoolFunctionId(1),
+                                                function: data::function::BoolFunctionId(2),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Tuple {
                                                         local: data::graph::TupleLocalId(0),
@@ -1305,7 +3376,7 @@ pub fn bit_tail(value: BitArray) {
                                                         ]),
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(518, 586)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(560, 628)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1366,7 +3437,7 @@ pub fn bit_tail(value: BitArray) {
                                                     },
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(592, 625)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(634, 667)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1459,8 +3530,8 @@ pub fn bit_tail(value: BitArray) {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(670, 680)),
-                                                pattern_span: data::source::SourceSpan::new(681, 698),
+                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(712, 722)),
+                                                pattern_span: data::source::SourceSpan::new(723, 740),
                                             }),
                                         },
                                     ]),
@@ -1552,7 +3623,7 @@ pub fn bit_tail(value: BitArray) {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(770, 776)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(812, 818)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1563,7 +3634,7 @@ pub fn bit_tail(value: BitArray) {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(779, 785)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(821, 827)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1606,10 +3677,10 @@ pub fn bit_tail(value: BitArray) {
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(12),
+                                                shape: data::type_::ValueShapeId(6),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
-                                                function: data::function::BoolFunctionId(2),
+                                                function: data::function::BoolFunctionId(3),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Tuple {
                                                         local: data::graph::TupleLocalId(0),
@@ -1626,7 +3697,7 @@ pub fn bit_tail(value: BitArray) {
                                                         ]),
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(738, 788)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(780, 830)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1637,7 +3708,7 @@ pub fn bit_tail(value: BitArray) {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(790, 796)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(832, 838)),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -1660,6 +3731,142 @@ pub fn bit_tail(value: BitArray) {
                                 },
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::Return(data::graph::TupleLocalId(2)),
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 2,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..3,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::NotEqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                shape: data::type_::ValueShapeId(23),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            ]))),
+                                        },
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::TupleLocalId(0)),
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 2,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..3,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
+                                                left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                                shape: data::type_::ValueShapeId(6),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::NotEqual {
+                                                left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                            }),
+                                        },
+                                        data::graph::ProfiledInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                                shape: data::type_::ValueShapeId(23),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            ]))),
+                                        },
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::TupleLocalId(0)),
                                 ]),
                             },
                         })),
@@ -1746,9 +3953,9 @@ pub fn bit_tail(value: BitArray) {
                     0..0,
                     0..0,
                     0..0,
-                    7..10,
+                    7..11,
                     0..0,
-                    10..12,
+                    11..15,
                     0..0,
                     0..0,
                     0..0,
@@ -1858,12 +4065,18 @@ pub fn bit_tail(value: BitArray) {
                         ]),
                     },
                     data::function::FunctionContract {
+                        parameters: 8..8,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(6),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
                         parameters: 8..10,
                         parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(8),
-                            data::type_::ValueShapeId(11),
+                            data::type_::ValueShapeId(9),
+                            data::type_::ValueShapeId(12),
                         ]),
-                        return_: data::type_::ValueShapeId(12),
+                        return_: data::type_::ValueShapeId(6),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -1872,7 +4085,7 @@ pub fn bit_tail(value: BitArray) {
                             data::type_::ValueShapeId(14),
                             data::type_::ValueShapeId(16),
                         ]),
-                        return_: data::type_::ValueShapeId(12),
+                        return_: data::type_::ValueShapeId(6),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -1881,7 +4094,7 @@ pub fn bit_tail(value: BitArray) {
                             data::type_::ValueShapeId(16),
                             data::type_::ValueShapeId(16),
                         ]),
-                        return_: data::type_::ValueShapeId(12),
+                        return_: data::type_::ValueShapeId(6),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -1896,6 +4109,24 @@ pub fn bit_tail(value: BitArray) {
                             data::type_::ValueShapeId(3),
                         ]),
                         return_: data::type_::ValueShapeId(21),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 15..17,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(17),
+                            data::type_::ValueShapeId(17),
+                        ]),
+                        return_: data::type_::ValueShapeId(23),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 17..19,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(3),
+                            data::type_::ValueShapeId(3),
+                        ]),
+                        return_: data::type_::ValueShapeId(23),
                         captures: data::Storage::Static(&[]),
                     },
                 ]),
@@ -1959,6 +4190,10 @@ pub fn bit_tail(value: BitArray) {
                         ]),
                     },
                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                    data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                 ]),
             },
             list_types: data::type_::ListTypeTable {
@@ -2127,13 +4362,13 @@ pub fn bit_tail(value: BitArray) {
                     data::type_::ValueShapeDescriptor::String,
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(1)),
                     data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(4)),
+                    data::type_::ValueShapeDescriptor::Bool,
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(2)),
-                    data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(6)),
+                    data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(7)),
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(3)),
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(4)),
-                    data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(9)),
+                    data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(10)),
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(5)),
-                    data::type_::ValueShapeDescriptor::Bool,
                     data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(0)),
                     data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
                         data::type_::ValueShapeId(0),
@@ -2152,8 +4387,8 @@ pub fn bit_tail(value: BitArray) {
                         return_: data::type_::ValueShapeId(17),
                     },
                     data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
-                        data::type_::ValueShapeId(12),
-                        data::type_::ValueShapeId(12),
+                        data::type_::ValueShapeId(6),
+                        data::type_::ValueShapeId(6),
                         data::type_::ValueShapeId(17),
                     ])),
                     data::type_::ValueShapeDescriptor::Function {
@@ -2161,13 +4396,17 @@ pub fn bit_tail(value: BitArray) {
                         return_: data::type_::ValueShapeId(3),
                     },
                     data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
-                        data::type_::ValueShapeId(12),
+                        data::type_::ValueShapeId(6),
                         data::type_::ValueShapeId(3),
                     ])),
                     data::type_::ValueShapeDescriptor::Function {
                         arguments: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(0),
                     },
+                    data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                        data::type_::ValueShapeId(6),
+                    ])),
                 ]),
                 shape_types: data::Storage::Static(&[
                     data::type_::ValueType::BitArray,
@@ -2176,13 +4415,13 @@ pub fn bit_tail(value: BitArray) {
                     data::type_::ValueType::String,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
                     data::type_::ValueType::List(data::type_::ListTypeId(1)),
+                    data::type_::ValueType::Bool,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
                     data::type_::ValueType::List(data::type_::ListTypeId(0)),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
                     data::type_::ValueType::List(data::type_::ListTypeId(1)),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
-                    data::type_::ValueType::Bool,
                     data::type_::ValueType::List(data::type_::ListTypeId(2)),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::BitArray,
@@ -2217,6 +4456,10 @@ pub fn bit_tail(value: BitArray) {
                         arguments: data::Storage::Static(&[]),
                         return_: data::Storage::Static(&data::type_::ValueType::BitArray),
                     }),
+                    data::type_::ValueType::Tuple(data::Storage::Static(&[
+                        data::type_::ValueType::Bool,
+                        data::type_::ValueType::Bool,
+                    ])),
                 ]),
                 custom_shapes: data::Storage::Static(&[
                     data::type_::CustomValueShapeDescriptor {
@@ -2451,7 +4694,7 @@ pub fn bit_tail(value: BitArray) {
                             data::type_::TypeMetadata::BitArray,
                         ]),
                     }),
-                    shape: data::type_::ValueShapeId(8),
+                    shape: data::type_::ValueShapeId(9),
                 },
                 data::host::HostTypeArgument {
                     type_: data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
@@ -2462,7 +4705,7 @@ pub fn bit_tail(value: BitArray) {
                             data::type_::TypeMetadata::String,
                         ]),
                     }),
-                    shape: data::type_::ValueShapeId(11),
+                    shape: data::type_::ValueShapeId(12),
                 },
             ]),
             parameters: data::host::HostedFunctionParameters {

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 8,
+        format: 9,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -514,7 +514,7 @@ pub fn check() {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..1,
-                                            instructions: 0..2,
+                                            instructions: 0..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -530,27 +530,15 @@ pub fn check() {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    1,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                shape: data::type_::ValueShapeId(0),
-                                            },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                                left: data::graph::IntLocalId(0),
-                                                right: data::graph::IntLocalId(1),
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
                                             }),
                                         },
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
-                                    data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
                             },
                         })),
@@ -1207,7 +1195,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 19..20,
-                                            instructions: 24..29,
+                                            instructions: 24..28,
                                             terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
                                                 subject: data::graph::BoolLocalId(0),
                                                 true_: data::graph::Edge {
@@ -1270,7 +1258,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 20..20,
-                                            instructions: 29..30,
+                                            instructions: 28..29,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(7),
@@ -1285,12 +1273,12 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 20..21,
-                                            instructions: 30..30,
+                                            instructions: 29..29,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 30..30,
+                                            instructions: 29..29,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(9),
@@ -1303,7 +1291,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 30..31,
+                                            instructions: 29..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(7),
@@ -1318,7 +1306,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(11),
@@ -1331,7 +1319,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(9),
@@ -1344,7 +1332,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(13),
@@ -1357,7 +1345,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(11),
@@ -1370,7 +1358,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(15),
@@ -1383,7 +1371,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(13),
@@ -1396,7 +1384,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(17),
@@ -1409,7 +1397,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(15),
@@ -1422,7 +1410,7 @@ pub fn check() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 21..21,
-                                            instructions: 31..31,
+                                            instructions: 30..30,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(17),
@@ -2437,24 +2425,12 @@ pub fn check() {
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                                shape: data::type_::ValueShapeId(0),
-                                            },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    42,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
-                                                left: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                                right: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Immediate(42),
                                             }),
                                         },
                                         data::graph::ProfiledInstruction {
@@ -2488,7 +2464,7 @@ pub fn check() {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..1,
-                                            instructions: 0..2,
+                                            instructions: 0..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -2501,24 +2477,12 @@ pub fn check() {
                                     instructions: data::Storage::Static(&[
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                                shape: data::type_::ValueShapeId(0),
-                                            },
-                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
-                                                sign: data::Sign::Plus,
-                                                digits: data::Storage::Static(&[
-                                                    42,
-                                                ]),
-                                            })),
-                                        },
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
-                                                left: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                                right: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(42),
                                             }),
                                         },
                                     ]),

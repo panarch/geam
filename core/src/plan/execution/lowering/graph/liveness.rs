@@ -50,7 +50,7 @@ impl GraphLiveness {
                     return (0..block.explicit_params.len()).collect();
                 }
 
-                let mut uses = Vec::new();
+                let mut uses = Vec::<DraftValueRef>::new();
                 for instruction in &block.instructions {
                     instruction.uses(&mut uses);
                 }
@@ -96,12 +96,12 @@ fn collect_block(
         definitions.insert(parameter.key);
     }
     for instruction in &block.instructions {
-        let mut uses = Vec::new();
+        let mut uses = Vec::<DraftValueRef>::new();
         instruction.uses(&mut uses);
         collect_uses(uses, direct, definitions);
         definitions.insert(instruction.output().key);
     }
-    let mut uses = Vec::new();
+    let mut uses = Vec::<DraftValueRef>::new();
     block.terminator.uses(&mut uses);
     collect_uses(uses, direct, definitions);
     direct.sort_by_key(|value| value.key);

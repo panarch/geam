@@ -220,7 +220,7 @@ pub fn main() { swap(10, 20) }
                             destination: 0
                         },
                         TransferStep {
-                            source: 3,
+                            source: 2,
                             destination: 1
                         },
                         TransferStep {

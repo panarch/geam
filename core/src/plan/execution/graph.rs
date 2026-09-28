@@ -25,7 +25,7 @@ pub(crate) use block::{
     StringSwitch, Terminator, TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
 };
 pub(crate) use exit::BlockGraphExitId;
-pub(crate) use integer::IntegerLiteral;
+pub(crate) use integer::{IntegerLiteral, IntegerOperand};
 pub(in crate::plan::execution) use transfer::StorageSlot;
 pub(crate) use transfer::{FamilyTransfer, StorageFamily, Transfer, TransferStep};
 pub(crate) use value::{

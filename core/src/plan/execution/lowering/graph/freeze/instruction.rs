@@ -130,24 +130,24 @@ fn freeze_int(
             index: *index,
         },
         DraftIntInstruction::Add { left, right } => E::Add {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftIntInstruction::Sub { left, right } => E::Sub {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftIntInstruction::Mult { left, right } => E::Mult {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftIntInstruction::Div { left, right } => E::Div {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftIntInstruction::Remainder { left, right } => E::Remainder {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftIntInstruction::Negate(value) => E::Negate(values.int(value)),
     }
@@ -557,21 +557,29 @@ fn freeze_bool(
             index: *index,
         },
         DraftBoolInstruction::Not(value) => E::Not(values.bool(value)),
+        DraftBoolInstruction::EqualInt { left, right } => E::EqualInt {
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
+        },
+        DraftBoolInstruction::NotEqualInt { left, right } => E::NotEqualInt {
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
+        },
         DraftBoolInstruction::LtInt { left, right } => E::LtInt {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftBoolInstruction::LtEqInt { left, right } => E::LtEqInt {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftBoolInstruction::GtInt { left, right } => E::GtInt {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftBoolInstruction::GtEqInt { left, right } => E::GtEqInt {
-            left: values.int(left),
-            right: values.int(right),
+            left: values.integer_operand(left),
+            right: values.integer_operand(right),
         },
         DraftBoolInstruction::LtFloat { left, right } => E::LtFloat {
             left: values.float(left),

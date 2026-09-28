@@ -1,3 +1,4 @@
+use super::super::draft::instruction::DraftIntegerOperand;
 use super::super::draft::{
     BitArrayFunctionFamily, BitArrayListFamily, BoolFunctionFamily, BoolListFamily,
     CustomFunctionFamily, CustomListFamily, DraftBitArray, DraftBool, DraftCustom, DraftExternal,
@@ -11,6 +12,7 @@ use super::super::draft::{
     TupleListFamily, UtfCodepointFunctionFamily, UtfCodepointListFamily,
 };
 use crate::plan::execution;
+use crate::plan::execution::graph::IntegerOperand;
 use std::collections::HashMap;
 
 pub(in crate::plan::execution::lowering) trait FreezeGraphValue:
@@ -82,6 +84,13 @@ pub(in crate::plan::execution::lowering) struct BlockValues {
 }
 
 impl BlockValues {
+    pub(super) fn integer_operand(&self, operand: &DraftIntegerOperand) -> IntegerOperand {
+        match operand {
+            DraftIntegerOperand::Local(value) => IntegerOperand::Local(self.int(value)),
+            DraftIntegerOperand::Immediate(value) => IntegerOperand::Immediate(*value),
+        }
+    }
+
     pub(super) fn locals(&self) -> impl Iterator<Item = &execution::graph::ParamLocal> {
         self.all.values()
     }

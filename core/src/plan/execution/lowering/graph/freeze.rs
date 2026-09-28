@@ -1,5 +1,6 @@
 mod alignment;
 mod instruction;
+mod integer;
 mod pattern;
 mod transfer;
 mod value;
@@ -103,13 +104,14 @@ where
 }
 
 fn freeze_graph<Return, TailCall>(
-    graph: DraftGraphBuilder<Return, TailCall>,
+    mut graph: DraftGraphBuilder<Return, TailCall>,
     context: &mut super::super::LoweringContext,
 ) -> LoweredFunctionGraph<FrozenGraph<Return::Frozen, TailCall>>
 where
     Return: DraftGraphValue + FreezeGraphValue,
     TailCall: Clone,
 {
+    integer::use_immediates(&mut graph);
     let liveness = GraphLiveness::analyze(graph.graph());
     let order = reachable_blocks(graph.graph());
     let block_ids = order
@@ -439,7 +441,9 @@ fn match_arguments(
 
 #[cfg(test)]
 mod tests {
-    use super::super::draft::instruction::{DraftBoolInstruction, DraftIntInstruction};
+    use super::super::draft::instruction::{
+        DraftBoolInstruction, DraftIntInstruction, DraftIntegerOperand,
+    };
     use super::super::draft::{DraftGraphBuilder, DraftInt};
     use super::freeze;
     use crate::plan::FunctionCallTarget;
@@ -449,12 +453,13 @@ mod tests {
         ExecutionGraphProfile, FunctionExit, IntFunctionId, ProfiledFunctionBody,
     };
     use crate::plan::execution::graph::{
-        BlockGraphExitId, BlockId, BoolLocalId, Edge, IntInstruction, IntLocalId, ParamLocal,
-        ProfiledInstruction, ProfiledInstructionKind, Terminator, Transfer,
+        BlockGraphExitId, BlockId, BoolLocalId, Edge, IntInstruction, IntLocalId, IntegerOperand,
+        ParamLocal, ProfiledInstruction, ProfiledInstructionKind, Terminator, Transfer,
     };
     use crate::plan::execution::lowering::specialization::{
         RepresentationContext, SpecializationKey, StoredValueShape,
     };
+    use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::storage::Table;
     use std::collections::{HashMap, HashSet};
     use std::convert::Infallible;
@@ -522,16 +527,19 @@ pub fn main() { choose(True, 10) }
             vec![&ParamLocal::Int(IntLocalId(0))],
         );
         assert_int_shape(&plan, merge.params()[0].shape());
-        assert_eq!(merge.instructions().len(), 2);
-        assert_int_value(&plan, &merge.instructions()[0], IntLocalId(1), 3);
-        let multiply = &merge.instructions()[1];
-        assert_eq!(multiply.output().local(), &ParamLocal::Int(IntLocalId(2)));
+        assert_eq!(merge.instructions().len(), 1);
+        let multiply = &merge.instructions()[0];
+        assert_eq!(multiply.output().local(), &ParamLocal::Int(IntLocalId(1)));
         assert_int_shape(&plan, multiply.output().shape());
+        let (left, right) = int_binary_operands(multiply, IntBinaryOperation::Multiply);
         assert_eq!(
-            int_binary_operands(multiply, IntBinaryOperation::Multiply),
-            (IntLocalId(0), IntLocalId(1)),
+            (Rust::expression(&left), Rust::expression(&right)),
+            (
+                "data::graph::IntegerOperand::Local(data::graph::IntLocalId(0))".to_string(),
+                "data::graph::IntegerOperand::Immediate(3)".to_string(),
+            )
         );
-        assert_eq!(returned_int(body, merge.terminator()), IntLocalId(2));
+        assert_eq!(returned_int(body, merge.terminator()), IntLocalId(1));
 
         assert_branch_add_and_jump(&plan, body, BlockId::new(3), 2, BlockId::new(2));
     }
@@ -591,8 +599,8 @@ pub fn main() {
         let result = draft.int_instruction(
             &mut target,
             DraftIntInstruction::Add {
-                left: DraftInt::from_ref(&target_param),
-                right: inherited.clone(),
+                left: DraftIntegerOperand::Local(DraftInt::from_ref(&target_param)),
+                right: DraftIntegerOperand::Local(inherited.clone()),
             },
         );
         let target_id = target.id();
@@ -623,9 +631,13 @@ pub fn main() {
                 &ParamLocal::Int(IntLocalId(1)),
             ],
         );
+        let (left, right) = int_binary_operands(&target.instructions()[0], IntBinaryOperation::Add);
         assert_eq!(
-            int_binary_operands(&target.instructions()[0], IntBinaryOperation::Add),
-            (IntLocalId(0), IntLocalId(1)),
+            (Rust::expression(&left), Rust::expression(&right)),
+            (
+                "data::graph::IntegerOperand::Local(data::graph::IntLocalId(0))".to_string(),
+                "data::graph::IntegerOperand::Local(data::graph::IntLocalId(1))".to_string(),
+            )
         );
         assert_eq!(
             returned_int(&lowered.body, target.terminator()),
@@ -758,14 +770,6 @@ pub fn main() { loop(1) }
         );
     }
 
-    #[test]
-    #[should_panic(expected = "fixture should contain an Int value instruction")]
-    fn int_value_guard_rejects_an_add_instruction() {
-        let plan = execution_plan("pub fn main() { 1 + 2 }");
-        let graph = plan.int_function(IntFunctionId(0)).body().block_graph();
-        int_value(&graph.block(graph.entry()).instructions()[2]);
-    }
-
     fn assert_branch_add_and_jump(
         plan: &ExecutionPlan,
         body: &FunctionBody<IntLocalId, FunctionCallTarget<IntFunctionId>>,
@@ -783,31 +787,18 @@ pub fn main() { loop(1) }
             vec![&ParamLocal::Int(IntLocalId(0))],
         );
         assert_int_shape(plan, block.params()[0].shape());
-        assert_eq!(block.instructions().len(), 2);
-        assert_int_value(plan, &block.instructions()[0], IntLocalId(1), addend);
-
-        let add = &block.instructions()[1];
-        assert_eq!(add.output().local(), &ParamLocal::Int(IntLocalId(2)));
+        assert_eq!(block.instructions().len(), 1);
+        let add = &block.instructions()[0];
+        assert_eq!(add.output().local(), &ParamLocal::Int(IntLocalId(1)));
         assert_int_shape(plan, add.output().shape());
-        assert_eq!(
+        assert!(matches!(
             int_binary_operands(add, IntBinaryOperation::Add),
-            (IntLocalId(0), IntLocalId(1)),
-        );
+            (IntegerOperand::Local(IntLocalId(0)), IntegerOperand::Immediate(value)) if value == addend
+        ));
 
         let edge = jump(block.terminator());
         assert_eq!(edge.target(), target);
-        assert_eq!(edge.args(), &[ParamLocal::Int(IntLocalId(2))]);
-    }
-
-    fn assert_int_value<Graph: ExecutionGraphProfile>(
-        plan: &ExecutionPlan,
-        instruction: &ProfiledInstruction<Graph>,
-        output: IntLocalId,
-        value: i64,
-    ) {
-        assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
-        assert_int_shape(plan, instruction.output().shape());
-        assert_eq!(int_value(instruction), value.into());
+        assert_eq!(edge.args(), &[ParamLocal::Int(IntLocalId(1))]);
     }
 
     fn bool_branch(terminator: &Terminator) -> (BoolLocalId, &Edge, &Edge) {
@@ -834,7 +825,7 @@ pub fn main() { loop(1) }
     fn int_binary_operands<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
         operation: IntBinaryOperation,
-    ) -> (IntLocalId, IntLocalId) {
+    ) -> (IntegerOperand, IntegerOperand) {
         match (operation, instruction.kind()) {
             (
                 IntBinaryOperation::Add,
@@ -845,15 +836,6 @@ pub fn main() { loop(1) }
                 ProfiledInstructionKind::Int(IntInstruction::Mult { left, right }),
             ) => (*left, *right),
             _ => panic!("fixture should contain the requested Int binary instruction"),
-        }
-    }
-
-    fn int_value<Graph: ExecutionGraphProfile>(
-        instruction: &ProfiledInstruction<Graph>,
-    ) -> num_bigint::BigInt {
-        match instruction.kind() {
-            ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value.materialize(),
-            _ => panic!("fixture should contain an Int value instruction"),
         }
     }
 

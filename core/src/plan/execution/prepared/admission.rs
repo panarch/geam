@@ -1269,11 +1269,19 @@ pub fn main() {
         let mut artifact = artifact(bindings.prepare());
         assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
 
-        artifact.format = 1;
-        assert_eq!(
-            plain(&artifact).err().unwrap().to_string(),
-            "prepared format 1 is incompatible with format 8; regenerate the prepared program"
-        );
+        for (format, expected) in [
+            (
+                1,
+                "prepared format 1 is incompatible with format 9; regenerate the prepared program",
+            ),
+            (
+                8,
+                "prepared format 8 is incompatible with format 9; regenerate the prepared program",
+            ),
+        ] {
+            artifact.format = format;
+            assert_eq!(plain(&artifact).err().unwrap().to_string(), expected);
+        }
         artifact.format = FORMAT_VERSION;
 
         assert_eq!(artifact.program.value_shapes.shapes.len(), 1);
@@ -1382,7 +1390,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 8; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 9; regenerate the prepared program",
                 ),
             ),
             (
@@ -1589,7 +1597,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 8; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 9; regenerate the prepared program",
                 ),
             ),
             (

@@ -1,4 +1,4 @@
-use super::{DraftInt, DraftValueRef};
+use super::{DraftInt, DraftOperand, DraftUse, DraftValueRef};
 use crate::plan::execution::graph::{Endianness, Signedness, StringEncoding};
 use crate::plan::execution::type_::CustomConstructorId;
 
@@ -116,7 +116,7 @@ pub(in crate::plan::execution::lowering) enum DraftBitArrayBindingPattern {
 impl DraftMatchPattern {
     pub(in crate::plan::execution::lowering::graph) fn uses(
         &self,
-        values: &mut Vec<DraftValueRef>,
+        values: &mut Vec<impl DraftUse>,
     ) {
         match self {
             Self::Bind(_)
@@ -149,7 +149,7 @@ impl DraftMatchPattern {
 }
 
 impl DraftBitArrayPattern {
-    fn uses(&self, values: &mut Vec<DraftValueRef>) {
+    fn uses(&self, values: &mut Vec<impl DraftUse>) {
         for segment in &self.segments {
             match segment {
                 DraftBitArrayPatternSegment::Int { size, .. }
@@ -167,10 +167,10 @@ impl DraftBitArrayPattern {
 }
 
 impl DraftBitArrayPatternSizeExpr {
-    fn uses(&self, values: &mut Vec<DraftValueRef>) {
+    fn uses(&self, values: &mut Vec<impl DraftUse>) {
         match self {
             Self::Value(_) | Self::Binding(_) => {}
-            Self::Local(value) => values.push(value.erase()),
+            Self::Local(value) => value.push_operand(values),
             Self::Add { left, right }
             | Self::Subtract { left, right }
             | Self::Multiply { left, right }

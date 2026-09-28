@@ -1,13 +1,13 @@
 use super::{
-    write_binary, write_call, write_constant, write_function_call, write_literal, write_projection,
-    write_unary,
+    write_call, write_constant, write_function_call, write_integer_binary, write_literal,
+    write_projection, write_unary,
 };
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::IntFunctionId;
-use crate::plan::execution::graph::IntegerLiteral;
 use crate::plan::execution::graph::{
-    CustomLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, ParamLocal, TupleLocalId,
+    CustomLocal, IntFunctionLocalId, IntListLocalId, IntLocalId, IntegerLiteral, IntegerOperand,
+    ParamLocal, TupleLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
@@ -39,24 +39,24 @@ pub enum IntInstruction {
         index: usize,
     },
     Add {
-        left: IntLocalId,
-        right: IntLocalId,
+        left: IntegerOperand,
+        right: IntegerOperand,
     },
     Sub {
-        left: IntLocalId,
-        right: IntLocalId,
+        left: IntegerOperand,
+        right: IntegerOperand,
     },
     Mult {
-        left: IntLocalId,
-        right: IntLocalId,
+        left: IntegerOperand,
+        right: IntegerOperand,
     },
     Div {
-        left: IntLocalId,
-        right: IntLocalId,
+        left: IntegerOperand,
+        right: IntegerOperand,
     },
     Remainder {
-        left: IntLocalId,
-        right: IntLocalId,
+        left: IntegerOperand,
+        right: IntegerOperand,
     },
     Negate(IntLocalId),
 }
@@ -82,12 +82,20 @@ impl Explain for IntInstruction {
             IntInstruction::ListIndex { list, index } => {
                 write_projection(output, "int.list_index", list, *index);
             }
-            IntInstruction::Add { left, right } => write_binary(output, "int.add", left, right),
-            IntInstruction::Sub { left, right } => write_binary(output, "int.sub", left, right),
-            IntInstruction::Mult { left, right } => write_binary(output, "int.mult", left, right),
-            IntInstruction::Div { left, right } => write_binary(output, "int.div", left, right),
+            IntInstruction::Add { left, right } => {
+                write_integer_binary(output, "int.add", left, right)
+            }
+            IntInstruction::Sub { left, right } => {
+                write_integer_binary(output, "int.sub", left, right)
+            }
+            IntInstruction::Mult { left, right } => {
+                write_integer_binary(output, "int.mult", left, right)
+            }
+            IntInstruction::Div { left, right } => {
+                write_integer_binary(output, "int.div", left, right)
+            }
             IntInstruction::Remainder { left, right } => {
-                write_binary(output, "int.remainder", left, right);
+                write_integer_binary(output, "int.remainder", left, right);
             }
             IntInstruction::Negate(value) => write_unary(output, "int.negate", value),
         }
@@ -158,8 +166,8 @@ mod emission_tests {
     use crate::plan::execution::constant::ConstantId;
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::{
-        CustomLocal, CustomLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ParamLocal,
-        TupleLocalId,
+        CustomLocal, CustomLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, IntegerOperand,
+        ParamLocal, TupleLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
@@ -261,58 +269,65 @@ data::graph::IntInstruction::ListIndex {
             ),
             (
                 IntInstruction::Add {
-                    left: IntLocalId(2),
-                    right: IntLocalId(5),
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Local(IntLocalId(5)),
                 },
                 r#"
 data::graph::IntInstruction::Add {
-    left: data::graph::IntLocalId(2),
-    right: data::graph::IntLocalId(5),
+    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
 }"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Sub {
-                    left: IntLocalId(2),
-                    right: IntLocalId(5),
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Local(IntLocalId(5)),
                 },
                 r#"
 data::graph::IntInstruction::Sub {
-    left: data::graph::IntLocalId(2),
-    right: data::graph::IntLocalId(5),
+    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
 }"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Mult {
-                    left: IntLocalId(2),
-                    right: IntLocalId(5),
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Local(IntLocalId(5)),
                 },
                 r#"
 data::graph::IntInstruction::Mult {
-    left: data::graph::IntLocalId(2),
-    right: data::graph::IntLocalId(5),
+    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
 }"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Div {
-                    left: IntLocalId(2),
-                    right: IntLocalId(5),
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Local(IntLocalId(5)),
                 },
                 r#"
 data::graph::IntInstruction::Div {
-    left: data::graph::IntLocalId(2),
-    right: data::graph::IntLocalId(5),
+    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
 }"#.trim_start_matches('\n'),
             ),
             (
                 IntInstruction::Remainder {
-                    left: IntLocalId(2),
-                    right: IntLocalId(5),
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Local(IntLocalId(5)),
                 },
                 r#"
 data::graph::IntInstruction::Remainder {
-    left: data::graph::IntLocalId(2),
-    right: data::graph::IntLocalId(5),
+    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
 }"#.trim_start_matches('\n'),
+            ),
+            (
+                IntInstruction::Sub {
+                    left: IntegerOperand::Immediate(i64::MIN),
+                    right: IntegerOperand::Local(IntLocalId(5)),
+                },
+                "data::graph::IntInstruction::Sub {\n    left: data::graph::IntegerOperand::Immediate(-9223372036854775808),\n    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),\n}",
             ),
             (
                 IntInstruction::Negate(IntLocalId(2)),
@@ -347,11 +362,8 @@ pub fn main() {
 }
 "#;
         let expected = concat!(
-            "int.value 6 | int.value 2 | int.add %int#0 %int#1 | ",
-            "int.value 2 | int.sub %int#0 %int#3 | ",
-            "int.value 2 | int.mult %int#0 %int#5 | ",
-            "int.value 2 | int.div %int#0 %int#7 | ",
-            "int.value 2 | int.remainder %int#0 %int#9 | int.negate %int#0",
+            "int.value 6 | int.add 6 2 | int.sub 6 2 | int.mult 6 2 | ",
+            "int.div 6 2 | int.remainder 6 2 | int.negate %int#0",
         );
 
         assert_explanation(source, expected);
