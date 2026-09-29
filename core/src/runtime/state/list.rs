@@ -1,5 +1,7 @@
+mod borrowed;
 mod sequence;
 
+pub(in crate::runtime) use borrowed::StoredListValueRef;
 pub(in crate::runtime) use sequence::{ListSequence, ListSequenceIter};
 
 use num_bigint::BigInt;
@@ -855,39 +857,39 @@ impl RuntimeListStorage {
 
     pub(in crate::runtime) fn drop_first(
         &self,
-        value: &StoredListValueId,
+        value: StoredListValueRef<'_>,
         count: usize,
     ) -> StoredListValueId {
         match value {
-            StoredListValueId::Int(value) => self.tail_int(value.type_id(), value, count).into(),
-            StoredListValueId::String(value) => {
+            StoredListValueRef::Int(value) => self.tail_int(value.type_id(), value, count).into(),
+            StoredListValueRef::String(value) => {
                 self.tail_string(value.type_id(), value, count).into()
             }
-            StoredListValueId::BitArray(value) => {
+            StoredListValueRef::BitArray(value) => {
                 self.tail_bit_array(value.type_id(), value, count).into()
             }
-            StoredListValueId::UtfCodepoint(value) => self
+            StoredListValueRef::UtfCodepoint(value) => self
                 .tail_utf_codepoint(value.type_id(), value, count)
                 .into(),
-            StoredListValueId::Custom(value) => {
+            StoredListValueRef::Custom(value) => {
                 self.tail_custom(value.type_id(), value, count).into()
             }
-            StoredListValueId::External(value) => {
+            StoredListValueRef::External(value) => {
                 self.tail_external(value.type_id(), value, count).into()
             }
-            StoredListValueId::Float(value) => {
+            StoredListValueRef::Float(value) => {
                 self.tail_float(value.type_id(), value, count).into()
             }
-            StoredListValueId::Bool(value) => self.tail_bool(value.type_id(), value, count).into(),
-            StoredListValueId::Nil(value) => self.tail_nil(value.type_id(), value, count).into(),
-            StoredListValueId::Tuple(value) => {
+            StoredListValueRef::Bool(value) => self.tail_bool(value.type_id(), value, count).into(),
+            StoredListValueRef::Nil(value) => self.tail_nil(value.type_id(), value, count).into(),
+            StoredListValueRef::Tuple(value) => {
                 self.tail_tuple(value.type_id(), value, count).into()
             }
-            StoredListValueId::ParameterList(value) => self
+            StoredListValueRef::ParameterList(value) => self
                 .tail_parameter_list_list(value.type_id(), value, count)
                 .into(),
-            StoredListValueId::List(value) => self.tail_list(value.type_id(), value, count).into(),
-            StoredListValueId::Function(value) => {
+            StoredListValueRef::List(value) => self.tail_list(value.type_id(), value, count).into(),
+            StoredListValueRef::Function(value) => {
                 self.tail_function(value.type_id(), value, count).into()
             }
         }
@@ -1605,7 +1607,7 @@ pub fn main() {
             None
         );
 
-        let suffix = storage.drop_first(&stored, 2);
+        let suffix = storage.drop_first((&stored).into(), 2);
         assert_eq!(
             storage.evaluated_values(&suffix),
             [EvaluatedValue::Int(3.into())],
@@ -1704,7 +1706,7 @@ pub fn main() {
                 let alias = $value.clone();
                 assert_eq!($value, alias);
                 let stored: StoredListValueId = $value.clone().into();
-                assert_ne!(stored, storage.drop_first(&stored, 0));
+                assert_ne!(stored, storage.drop_first((&stored).into(), 0));
                 let mut relabeled = alias;
                 relabeled.type_id.list_type.0 += 1000;
                 assert_ne!($value, relabeled);
@@ -1795,7 +1797,7 @@ pub fn main() {
             assert_eq!(storage.evaluated_value_at(&value, 0), Some(expected));
             assert_eq!(storage.evaluated_value_at(&value, 1), None);
 
-            let dropped = storage.drop_first(&stored, usize::MAX);
+            let dropped = storage.drop_first((&stored).into(), usize::MAX);
             assert_eq!(dropped.list_type(), stored.list_type());
             assert_eq!(storage.list_len(&dropped.into_value()), 0);
         }
@@ -2050,7 +2052,7 @@ pub fn main() {
         );
         let dropped = state
             .lists_mut()
-            .drop_first(&StoredListValueId::BitArray(second), 0);
+            .drop_first((&StoredListValueId::BitArray(second)).into(), 0);
         assert_eq!(state.lists().list_len(&dropped.clone().into_value()), 0);
     }
 
@@ -2684,7 +2686,7 @@ pub fn main() { done(10000, []) == [1] }
             let list_type = value.list_type();
             assert_eq!(state.lists().list_len(&value.clone().into_value()), 1);
 
-            let dropped = state.lists_mut().drop_first(&value, 1);
+            let dropped = state.lists_mut().drop_first((&value).into(), 1);
             assert_eq!(dropped.list_type(), list_type);
             assert_eq!(state.lists().list_len(&dropped.into_value()), 0);
         }
@@ -2704,7 +2706,7 @@ pub fn main() { done(10000, []) == [1] }
             1
         );
         let dropped = state.lists_mut().drop_first(
-            &StoredListValueId::ParameterList(parameter_list),
+            (&StoredListValueId::ParameterList(parameter_list)).into(),
             usize::MAX,
         );
         assert_eq!(state.lists().list_len(&dropped.clone().into_value()), 0);
@@ -2879,9 +2881,10 @@ pub fn main() { build(65) }
             .unwrap();
         assert_eq!(owners.len(), 65);
         assert!(owners.iter().all(|owner| owner.strong_count() == 1));
-        let suffix = state
-            .lists()
-            .drop_first(BorrowedValue::from_value(&original).stored_list(), 1);
+        let suffix = state.lists().drop_first(
+            (BorrowedValue::from_value(&original).stored_list()).into(),
+            1,
+        );
         drop(original);
         assert_eq!(owners[0].strong_count(), 0);
         assert!(owners[1..].iter().all(|owner| owner.strong_count() == 1));

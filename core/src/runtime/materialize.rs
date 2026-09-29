@@ -966,7 +966,7 @@ pub fn main() -> List(Counter) {
             ValueType::List(Box::new(materialized_external.value_type())),
         );
 
-        let dropped = storage.drop_first(&stored_list, 1);
+        let dropped = storage.drop_first((&stored_list).into(), 1);
         assert_eq!(dropped.list_type(), list.type_id().list_type());
         assert_eq!(storage.list_len(&dropped.into_value()), 0);
     }
