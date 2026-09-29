@@ -39,6 +39,7 @@ nav = [
     "development/README.md",
     { "Testing" = "development/testing.md" },
     { "Test development" = "development/test-development.md" },
+    { "Performance improvement" = "development/performance.md" },
     { "Review policy" = "development/review-policy.md" },
     { "Upstream Gleam" = "development/upstream-gleam.md" },
     { "Release notes" = "development/release-notes.md" },
