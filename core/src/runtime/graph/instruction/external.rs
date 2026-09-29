@@ -66,8 +66,8 @@ where
                 .map_or_else(V::Error, V::Ready)
         }
         ExternalInstructionRef::ListIndex { list, index } => {
-            let list = environment.external_list(list);
-            let values = state.lists().external_values(&list);
+            let list = environment.external_list_ref(list);
+            let values = state.lists().external_values(list);
             list_element(plan, expected, index, values).map_or_else(V::Error, V::Ready)
         }
     }

@@ -1,4 +1,5 @@
-use super::list::MatchList;
+mod list;
+
 use crate::StringValue;
 use crate::plan::execution::function::RuntimeListFunctionId;
 use crate::runtime::evaluated::{
@@ -11,10 +12,11 @@ use crate::runtime::evaluated::{
     EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::state::list::ParameterListValueId;
+pub(in crate::runtime) use list::EvaluatedListRef;
 use num_bigint::BigInt;
 
-// Matching borrows the input owner. Only bindings acquire an owned value.
-pub(in crate::runtime::graph) enum MatchValue<'value> {
+// Read-only operations borrow the owner; retained results acquire an owned value.
+pub(in crate::runtime) enum EvaluatedValueRef<'value> {
     Int(&'value BigInt),
     Float(f64),
     String(&'value StringValue),
@@ -26,11 +28,11 @@ pub(in crate::runtime::graph) enum MatchValue<'value> {
     Nil,
     Tuple(&'value [EvaluatedValue]),
     ParameterList(ParameterListValueId),
-    List(MatchList<'value>),
-    Function(MatchFunction<'value>),
+    List(EvaluatedListRef<'value>),
+    Function(EvaluatedFunctionRef<'value>),
 }
 
-pub(in crate::runtime::graph) enum MatchFunction<'value> {
+pub(in crate::runtime) enum EvaluatedFunctionRef<'value> {
     Generic(&'value EvaluatedGenericFunction),
     Never(&'value EvaluatedNeverFunction),
     Int(&'value EvaluatedIntFunction),
@@ -49,8 +51,8 @@ pub(in crate::runtime::graph) enum MatchFunction<'value> {
     ExternalFunction(&'value EvaluatedExternalFunctionFunction),
 }
 
-impl MatchValue<'_> {
-    pub(in crate::runtime::graph) fn retain(&self) -> EvaluatedValue {
+impl EvaluatedValueRef<'_> {
+    pub(in crate::runtime) fn retain(&self) -> EvaluatedValue {
         match self {
             Self::Int(value) => EvaluatedValue::Int((*value).clone()),
             Self::Float(value) => EvaluatedValue::Float(*value),
@@ -69,7 +71,7 @@ impl MatchValue<'_> {
     }
 }
 
-impl<'value> From<&'value EvaluatedValue> for MatchValue<'value> {
+impl<'value> From<&'value EvaluatedValue> for EvaluatedValueRef<'value> {
     fn from(value: &'value EvaluatedValue) -> Self {
         match value {
             EvaluatedValue::Int(value) => Self::Int(value),
@@ -83,13 +85,13 @@ impl<'value> From<&'value EvaluatedValue> for MatchValue<'value> {
             EvaluatedValue::Nil => Self::Nil,
             EvaluatedValue::Tuple(value) => Self::Tuple(value),
             EvaluatedValue::ParameterList(value) => Self::ParameterList(*value),
-            EvaluatedValue::List(value) => Self::List(MatchList::from(value)),
-            EvaluatedValue::Function(value) => Self::Function(MatchFunction::from(value)),
+            EvaluatedValue::List(value) => Self::List(EvaluatedListRef::from(value)),
+            EvaluatedValue::Function(value) => Self::Function(EvaluatedFunctionRef::from(value)),
         }
     }
 }
 
-impl MatchFunction<'_> {
+impl EvaluatedFunctionRef<'_> {
     fn retain(&self) -> EvaluatedFunctionValue {
         match self {
             Self::Generic(value) => (*value).clone().into(),
@@ -117,7 +119,7 @@ impl MatchFunction<'_> {
     }
 }
 
-impl<'value> From<&'value EvaluatedFunctionValue> for MatchFunction<'value> {
+impl<'value> From<&'value EvaluatedFunctionValue> for EvaluatedFunctionRef<'value> {
     fn from(value: &'value EvaluatedFunctionValue) -> Self {
         match value.kind() {
             EvaluatedFunctionValueKind::Generic(value) => Self::Generic(value),
@@ -145,7 +147,7 @@ impl<'value> From<&'value EvaluatedFunctionValue> for MatchFunction<'value> {
 
 #[cfg(test)]
 mod tests {
-    use super::MatchValue;
+    use super::EvaluatedValueRef;
     use crate::runtime::borrowed::BorrowedValue;
     use crate::runtime::evaluated::EvaluatedValue;
     use num_bigint::BigInt;
@@ -158,21 +160,21 @@ mod tests {
             EvaluatedValue::String("an independently retained string".into()),
         ];
         assert!(matches!(
-            MatchValue::from(&fields[0]),
-            MatchValue::Int(value) if ptr::eq(value, BorrowedValue::from_value(&fields[0]).int())
+            EvaluatedValueRef::from(&fields[0]),
+            EvaluatedValueRef::Int(value) if ptr::eq(value, BorrowedValue::from_value(&fields[0]).int())
         ));
         assert!(matches!(
-            MatchValue::from(&fields[1]),
-            MatchValue::String(value)
+            EvaluatedValueRef::from(&fields[1]),
+            EvaluatedValueRef::String(value)
                 if ptr::eq(value, BorrowedValue::from_value(&fields[1]).string())
         ));
         let original_fields = fields.as_ptr();
         let original = EvaluatedValue::Tuple(fields);
         assert!(matches!(
-            MatchValue::from(&original),
-            MatchValue::Tuple(fields) if ptr::eq(fields.as_ptr(), original_fields)
+            EvaluatedValueRef::from(&original),
+            EvaluatedValueRef::Tuple(fields) if ptr::eq(fields.as_ptr(), original_fields)
         ));
-        let retained = MatchValue::from(&original).retain();
+        let retained = EvaluatedValueRef::from(&original).retain();
         drop(original);
         assert_eq!(
             retained,

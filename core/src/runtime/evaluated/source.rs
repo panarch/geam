@@ -1,26 +1,34 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use super::EvaluatedValue;
 use super::function::{
-    EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionFunction,
-    EvaluatedFunctionIdentity, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
+    EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionIdentity, EvaluatedFunctionValue,
+    EvaluatedFunctionValueKind,
 };
-use crate::runtime::retained_list::RetainedList;
-use crate::runtime::state::list::StoredListValueId;
+use super::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValue, EvaluatedValueRef};
 
 pub(in crate::runtime) fn values_equal(
     storage: &crate::runtime::RuntimeListStorage,
     left: &EvaluatedValue,
     right: &EvaluatedValue,
 ) -> bool {
+    value_refs_equal(storage, &left.into(), &right.into())
+}
+
+pub(in crate::runtime) fn value_refs_equal(
+    storage: &crate::runtime::RuntimeListStorage,
+    left: &EvaluatedValueRef<'_>,
+    right: &EvaluatedValueRef<'_>,
+) -> bool {
     match (left, right) {
-        (EvaluatedValue::Int(left), EvaluatedValue::Int(right)) => left == right,
-        (EvaluatedValue::Float(left), EvaluatedValue::Float(right)) => left == right,
-        (EvaluatedValue::String(left), EvaluatedValue::String(right)) => left == right,
-        (EvaluatedValue::BitArray(left), EvaluatedValue::BitArray(right)) => left == right,
-        (EvaluatedValue::UtfCodepoint(left), EvaluatedValue::UtfCodepoint(right)) => left == right,
-        (EvaluatedValue::Custom(left), EvaluatedValue::Custom(right)) => {
+        (EvaluatedValueRef::Int(left), EvaluatedValueRef::Int(right)) => left == right,
+        (EvaluatedValueRef::Float(left), EvaluatedValueRef::Float(right)) => left == right,
+        (EvaluatedValueRef::String(left), EvaluatedValueRef::String(right)) => left == right,
+        (EvaluatedValueRef::BitArray(left), EvaluatedValueRef::BitArray(right)) => left == right,
+        (EvaluatedValueRef::UtfCodepoint(left), EvaluatedValueRef::UtfCodepoint(right)) => {
+            left == right
+        }
+        (EvaluatedValueRef::Custom(left), EvaluatedValueRef::Custom(right)) => {
             left.constructor == right.constructor
                 && left.fields.len() == right.fields.len()
                 && left
@@ -29,27 +37,25 @@ pub(in crate::runtime) fn values_equal(
                     .zip(right.fields.iter())
                     .all(|(left, right)| values_equal(storage, left, right))
         }
-        (EvaluatedValue::External(left), EvaluatedValue::External(right)) => {
+        (EvaluatedValueRef::External(left), EvaluatedValueRef::External(right)) => {
             super::external::source::values_equal(storage, left, right)
         }
-        (EvaluatedValue::Bool(left), EvaluatedValue::Bool(right)) => left == right,
-        (EvaluatedValue::Nil, EvaluatedValue::Nil) => true,
-        (EvaluatedValue::Tuple(left), EvaluatedValue::Tuple(right)) => {
+        (EvaluatedValueRef::Bool(left), EvaluatedValueRef::Bool(right)) => left == right,
+        (EvaluatedValueRef::Nil, EvaluatedValueRef::Nil) => true,
+        (EvaluatedValueRef::Tuple(left), EvaluatedValueRef::Tuple(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
-                    .zip(right)
+                    .zip(right.iter())
                     .all(|(left, right)| values_equal(storage, left, right))
         }
-        (EvaluatedValue::ParameterList(left), EvaluatedValue::ParameterList(right)) => {
+        (EvaluatedValueRef::ParameterList(left), EvaluatedValueRef::ParameterList(right)) => {
             left.type_id() == right.type_id()
         }
-        (EvaluatedValue::List(left), EvaluatedValue::List(right)) => lists_equal(
-            storage,
-            &RetainedList::new(left.clone()),
-            &RetainedList::new(right.clone()),
-        ),
-        (EvaluatedValue::Function(left), EvaluatedValue::Function(right)) => {
+        (EvaluatedValueRef::List(left), EvaluatedValueRef::List(right)) => {
+            lists_equal(storage, left, right)
+        }
+        (EvaluatedValueRef::Function(left), EvaluatedValueRef::Function(right)) => {
             functions_equal(left, right)
         }
         _ => false,
@@ -228,73 +234,94 @@ fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut Defaul
 
 fn lists_equal(
     storage: &crate::runtime::RuntimeListStorage,
-    left: &RetainedList<StoredListValueId>,
-    right: &RetainedList<StoredListValueId>,
+    left: &EvaluatedListRef<'_>,
+    right: &EvaluatedListRef<'_>,
 ) -> bool {
-    if left.handle().list_type() != right.handle().list_type() {
+    if left.list_type() != right.list_type() {
         return false;
     }
 
-    left.len() == right.len()
+    let length = left.len();
+    length == right.len()
         && left
-            .iter()
-            .zip(right.iter())
-            .all(|(left, right)| values_equal(storage, &left, &right))
+            .iter_prefix(length)
+            .zip(right.iter_prefix(length))
+            .all(|(left, right)| value_refs_equal(storage, &left, &right))
 }
 
-fn functions_equal(left: &EvaluatedFunctionValue, right: &EvaluatedFunctionValue) -> bool {
-    match (left.kind(), right.kind()) {
-        (EvaluatedFunctionValueKind::Generic(left), EvaluatedFunctionValueKind::Generic(right)) => {
+fn functions_equal(left: &EvaluatedFunctionRef<'_>, right: &EvaluatedFunctionRef<'_>) -> bool {
+    match (left, right) {
+        (EvaluatedFunctionRef::Generic(left), EvaluatedFunctionRef::Generic(right)) => {
             function_values_equal(left, right)
         }
-        (EvaluatedFunctionValueKind::Never(left), EvaluatedFunctionValueKind::Never(right)) => {
+        (EvaluatedFunctionRef::Never(left), EvaluatedFunctionRef::Never(right)) => {
             function_values_equal(left, right)
         }
-        (EvaluatedFunctionValueKind::Int(left), EvaluatedFunctionValueKind::Int(right)) => {
+        (EvaluatedFunctionRef::Int(left), EvaluatedFunctionRef::Int(right)) => {
             function_values_equal(left, right)
         }
-        (EvaluatedFunctionValueKind::Float(left), EvaluatedFunctionValueKind::Float(right)) => {
+        (EvaluatedFunctionRef::Float(left), EvaluatedFunctionRef::Float(right)) => {
             function_values_equal(left, right)
         }
-        (EvaluatedFunctionValueKind::String(left), EvaluatedFunctionValueKind::String(right)) => {
+        (EvaluatedFunctionRef::String(left), EvaluatedFunctionRef::String(right)) => {
             function_values_equal(left, right)
         }
-        (
-            EvaluatedFunctionValueKind::BitArray(left),
-            EvaluatedFunctionValueKind::BitArray(right),
-        ) => function_values_equal(left, right),
-        (
-            EvaluatedFunctionValueKind::UtfCodepoint(left),
-            EvaluatedFunctionValueKind::UtfCodepoint(right),
-        ) => function_values_equal(left, right),
-        (EvaluatedFunctionValueKind::Custom(left), EvaluatedFunctionValueKind::Custom(right)) => {
+        (EvaluatedFunctionRef::BitArray(left), EvaluatedFunctionRef::BitArray(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::UtfCodepoint(left), EvaluatedFunctionRef::UtfCodepoint(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::Custom(left), EvaluatedFunctionRef::Custom(right)) => {
             custom_function_values_equal(left, right)
         }
+        (EvaluatedFunctionRef::External(left), EvaluatedFunctionRef::External(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::Bool(left), EvaluatedFunctionRef::Bool(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::Nil(left), EvaluatedFunctionRef::Nil(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::Tuple(left), EvaluatedFunctionRef::Tuple(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::List(left), EvaluatedFunctionRef::List(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::ExternalList(left), EvaluatedFunctionRef::ExternalList(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::List(left), EvaluatedFunctionRef::ExternalList(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::ExternalList(left), EvaluatedFunctionRef::List(right)) => {
+            function_values_equal(left, right)
+        }
+        (EvaluatedFunctionRef::CoreFunction(left), EvaluatedFunctionRef::CoreFunction(right)) => {
+            function_values_equal(left, right)
+        }
         (
-            EvaluatedFunctionValueKind::External(left),
-            EvaluatedFunctionValueKind::External(right),
+            EvaluatedFunctionRef::ExternalFunction(left),
+            EvaluatedFunctionRef::ExternalFunction(right),
         ) => function_values_equal(left, right),
-        (EvaluatedFunctionValueKind::Bool(left), EvaluatedFunctionValueKind::Bool(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionValueKind::Nil(left), EvaluatedFunctionValueKind::Nil(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionValueKind::Tuple(left), EvaluatedFunctionValueKind::Tuple(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionValueKind::List(left), EvaluatedFunctionValueKind::List(right)) => {
-            function_values_equal(left, right)
-        }
         (
-            EvaluatedFunctionValueKind::Function(left),
-            EvaluatedFunctionValueKind::Function(right),
-        ) => function_function_values_equal(left, right),
+            EvaluatedFunctionRef::CoreFunction(left),
+            EvaluatedFunctionRef::ExternalFunction(right),
+        ) => function_values_equal(left, right),
+        (
+            EvaluatedFunctionRef::ExternalFunction(left),
+            EvaluatedFunctionRef::CoreFunction(right),
+        ) => function_values_equal(left, right),
         _ => false,
     }
 }
 
-fn function_values_equal<Id>(left: &EvaluatedFunction<Id>, right: &EvaluatedFunction<Id>) -> bool {
+fn function_values_equal<LeftId, RightId>(
+    left: &EvaluatedFunction<LeftId>,
+    right: &EvaluatedFunction<RightId>,
+) -> bool {
     left.identity == right.identity
 }
 
@@ -312,13 +339,6 @@ fn custom_function_values_equal(
         ) => function_values_equal(left, right),
         _ => false,
     }
-}
-
-fn function_function_values_equal(
-    left: &EvaluatedFunctionFunction,
-    right: &EvaluatedFunctionFunction,
-) -> bool {
-    left.identity() == right.identity()
 }
 
 #[cfg(test)]
@@ -339,10 +359,119 @@ mod tests {
         ListFunctionId, NeverFunctionId, NilFunctionId, ProfiledFunctionFunctionId,
         RuntimeListFunctionId, StringFunctionId, TupleFunctionId, UtfCodepointFunctionId,
     };
-    use crate::runtime::retained_list::RetainedList;
+    use crate::runtime::evaluated::EvaluatedListRef;
     use crate::runtime::state::RuntimeState;
-    use crate::runtime::state::list::{ListValueId, ParameterListValueId};
+    use crate::runtime::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
     use bitvec::order::Msb0;
+
+    #[test]
+    fn function_returning_references_preserve_identity_across_return_families() {
+        use crate::execution_fixture::TestHost;
+        use crate::host::{HostComponentProfile, HostFutureStore, HostProfile, HostWorkProfile};
+        use crate::runtime::execution::Domain;
+        use crate::runtime::graph::RetainedValues;
+        use crate::runtime::{HostCallOrigin, RuntimeListStorage};
+        use crate::work_fixture::WorkComponent;
+        use crate::{
+            HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+            compile_typed_host_program, plan_host_program,
+        };
+        use std::{ptr, sync::Arc};
+
+        struct Profile;
+        impl HostProfile for Profile {
+            type RunState = ();
+            type ExternalStores = HostFutureStore;
+            type ExecutionState = ();
+        }
+        impl HostWorkProfile for Profile {
+            type Work = WorkComponent;
+        }
+        impl HostComponentProfile<WorkComponent> for Profile {
+            fn component_stores(stores: &HostFutureStore) -> &HostFutureStore {
+                stores
+            }
+            fn component_state(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+
+        let source = r#"
+import fixture/work
+fn core() { fn() { 42 } }
+fn external() { fn() { work.ready(42) } }
+fn different() { fn() { work.ready(42) } }
+pub fn main() { #(core, external, external, different) }
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("main", "main.gleam", source)],
+                ),
+            ],
+            HostProviderSet::from_providers(WorkComponent::providers::<Profile>().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let (plan, stores, captures) = execution.parts_mut();
+        assert!(ptr::eq(Profile::component_stores(stores), stores));
+        let host = TestHost::default();
+        let mut state = ();
+        assert!(ptr::eq(Profile::component_state(&mut state), &state));
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<Profile>::DEFAULT_BUDGET,
+        );
+        let context = domain.context();
+        host.block_on(domain.drive(async {
+            let values = context
+                .call(
+                    TupleFunctionId(0),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(values.len(), 4);
+            let storage = RuntimeListStorage::default();
+            let core = &values[0];
+            let external = &values[1];
+            let same = &values[2];
+            let different = &values[3];
+            assert!(!values_equal(&storage, core, external));
+            assert!(!values_equal(&storage, external, core));
+            assert!(values_equal(&storage, external, same));
+            assert!(!values_equal(&storage, external, different));
+            assert_eq!(
+                value_source_hash(&storage, external),
+                value_source_hash(&storage, same),
+            );
+        }))
+        .unwrap();
+        assert!(echo.is_empty());
+    }
 
     const EVERY_LIST_FAMILY_SOURCE: &str = r#"
 fn ints() -> List(Int) { [] }
@@ -403,18 +532,16 @@ pub fn main() { ints() }
             (vec![1, 2, 3], vec![1, 2, 9], false, 3),
             (vec![1, 2, 3], vec![1, 2, 3], true, 3),
         ] {
-            let left = RetainedList::new(
-                state
-                    .lists_mut()
-                    .int(type_id, left.into_iter().map(Into::into).collect())
-                    .into(),
-            );
-            let right = RetainedList::new(
-                state
-                    .lists_mut()
-                    .int(type_id, right.into_iter().map(Into::into).collect())
-                    .into(),
-            );
+            let left_handle: StoredListValueId = state
+                .lists_mut()
+                .int(type_id, left.into_iter().map(Into::into).collect())
+                .into();
+            let left = EvaluatedListRef::from(&left_handle);
+            let right_handle: StoredListValueId = state
+                .lists_mut()
+                .int(type_id, right.into_iter().map(Into::into).collect())
+                .into();
+            let right = EvaluatedListRef::from(&right_handle);
             assert_eq!(lists_equal(state.lists(), &left, &right), expected);
             assert_eq!(left.item_reads(), reads);
             assert_eq!(right.item_reads(), reads);
@@ -432,22 +559,20 @@ pub fn main() { #(int_tuples(), string_tuples()) }
 "#,
         );
         let storage = crate::runtime::RuntimeListStorage::default();
-        let left = RetainedList::new(
-            storage
-                .tuple(
-                    plan.tuple_list_function_id(0).type_id(),
-                    vec![vec![EvaluatedValue::Int(1.into())]],
-                )
-                .into(),
-        );
-        let right = RetainedList::new(
-            storage
-                .tuple(
-                    plan.tuple_list_function_id(1).type_id(),
-                    vec![vec![EvaluatedValue::String("one".into())]],
-                )
-                .into(),
-        );
+        let left_handle: StoredListValueId = storage
+            .tuple(
+                plan.tuple_list_function_id(0).type_id(),
+                vec![vec![EvaluatedValue::Int(1.into())]],
+            )
+            .into();
+        let left = EvaluatedListRef::from(&left_handle);
+        let right_handle: StoredListValueId = storage
+            .tuple(
+                plan.tuple_list_function_id(1).type_id(),
+                vec![vec![EvaluatedValue::String("one".into())]],
+            )
+            .into();
+        let right = EvaluatedListRef::from(&right_handle);
 
         assert!(!lists_equal(&storage, &left, &right));
         assert_eq!(left.item_reads(), 0);
@@ -470,10 +595,14 @@ pub fn main() { #(ints(), lists()) }
         let first = first_owner.int(int_type, vec![1.into(), 2.into()]);
         let second = second_owner.int(int_type, vec![1.into(), 2.into()]);
         let different = second_owner.int(int_type, vec![1.into(), 9.into()]);
-        let left = RetainedList::new(first_owner.list(list_type, vec![first.into()]).into());
-        let right = RetainedList::new(second_owner.list(list_type, vec![second.into()]).into());
-        let unequal =
-            RetainedList::new(second_owner.list(list_type, vec![different.into()]).into());
+        let left_handle: StoredListValueId = first_owner.list(list_type, vec![first.into()]).into();
+        let left = EvaluatedListRef::from(&left_handle);
+        let right_handle: StoredListValueId =
+            second_owner.list(list_type, vec![second.into()]).into();
+        let right = EvaluatedListRef::from(&right_handle);
+        let unequal_handle: StoredListValueId =
+            second_owner.list(list_type, vec![different.into()]).into();
+        let unequal = EvaluatedListRef::from(&unequal_handle);
         drop(first_owner);
         drop(second_owner);
 
@@ -498,20 +627,23 @@ pub fn main() { floats() }
         );
         let storage = crate::runtime::RuntimeListStorage::default();
         let type_id = plan.float_list_function_id(0).type_id();
-        let nan = RetainedList::new(storage.float(type_id, vec![f64::NAN]).into());
+        let nan_handle: StoredListValueId = storage.float(type_id, vec![f64::NAN]).into();
+        let nan = EvaluatedListRef::from(&nan_handle);
         assert!(!lists_equal(&storage, &nan, &nan));
         assert_eq!(nan.item_reads(), 2);
-        let value = EvaluatedValue::List(nan.handle().clone());
+        let value = EvaluatedValue::List(nan_handle.clone());
         assert!(!values_equal(&storage, &value, &value));
 
-        let positive = RetainedList::new(storage.float(type_id, vec![0.0]).into());
-        let negative = RetainedList::new(storage.float(type_id, vec![-0.0]).into());
+        let positive_handle: StoredListValueId = storage.float(type_id, vec![0.0]).into();
+        let positive = EvaluatedListRef::from(&positive_handle);
+        let negative_handle: StoredListValueId = storage.float(type_id, vec![-0.0]).into();
+        let negative = EvaluatedListRef::from(&negative_handle);
         assert!(lists_equal(&storage, &positive, &negative));
         assert_eq!(positive.item_reads(), 1);
         assert_eq!(negative.item_reads(), 1);
         assert_eq!(
-            value_source_hash(&storage, &EvaluatedValue::List(positive.handle().clone())),
-            value_source_hash(&storage, &EvaluatedValue::List(negative.handle().clone())),
+            value_source_hash(&storage, &EvaluatedValue::List(positive_handle.clone())),
+            value_source_hash(&storage, &EvaluatedValue::List(negative_handle.clone())),
         );
     }
 

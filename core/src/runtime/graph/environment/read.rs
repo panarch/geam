@@ -2,81 +2,112 @@ use super::BlockEnvironment;
 use crate::plan::execution::graph::{
     FunctionFunctionLocal, ListFunctionLocal, ListLocal, ParamLocal,
 };
-use crate::runtime::graph::pattern::{MatchFunction, MatchList, MatchValue};
+use crate::runtime::evaluated::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValueRef};
 use crate::runtime::state::list::StoredListValueRef;
 
 impl BlockEnvironment {
-    pub(in crate::runtime::graph) fn match_value(&self, local: &ParamLocal) -> MatchValue<'_> {
+    pub(in crate::runtime::graph) fn value_ref(&self, local: &ParamLocal) -> EvaluatedValueRef<'_> {
         match local {
-            ParamLocal::Int(local) => MatchValue::Int(&self.values.ints[local.0]),
-            ParamLocal::Float(local) => MatchValue::Float(self.values.floats[local.0]),
-            ParamLocal::String(local) => MatchValue::String(&self.values.strings[local.0]),
-            ParamLocal::BitArray(local) => MatchValue::BitArray(&self.values.bit_arrays[local.0]),
+            ParamLocal::Int(local) => EvaluatedValueRef::Int(&self.values.ints[local.0]),
+            ParamLocal::Float(local) => EvaluatedValueRef::Float(self.values.floats[local.0]),
+            ParamLocal::String(local) => EvaluatedValueRef::String(&self.values.strings[local.0]),
+            ParamLocal::BitArray(local) => {
+                EvaluatedValueRef::BitArray(&self.values.bit_arrays[local.0])
+            }
             ParamLocal::UtfCodepoint(local) => {
-                MatchValue::UtfCodepoint(self.values.utf_codepoints[local.0])
+                EvaluatedValueRef::UtfCodepoint(self.values.utf_codepoints[local.0])
             }
-            ParamLocal::Custom(local) => MatchValue::Custom(&self.values.customs[local.id().0]),
+            ParamLocal::Custom(local) => {
+                EvaluatedValueRef::Custom(&self.values.customs[local.id().0])
+            }
             ParamLocal::External(local) => {
-                MatchValue::External(&self.values.externals[local.id().0])
+                EvaluatedValueRef::External(&self.values.externals[local.id().0])
             }
-            ParamLocal::Bool(local) => MatchValue::Bool(self.values.bools[local.0]),
-            ParamLocal::Nil(_) => MatchValue::Nil,
-            ParamLocal::Tuple { local, .. } => MatchValue::Tuple(&self.values.tuples[local.0]),
-            ParamLocal::List(local) => self.match_list(local),
+            ParamLocal::Bool(local) => EvaluatedValueRef::Bool(self.values.bools[local.0]),
+            ParamLocal::Nil(_) => EvaluatedValueRef::Nil,
+            ParamLocal::Tuple { local, .. } => {
+                EvaluatedValueRef::Tuple(&self.values.tuples[local.0])
+            }
+            ParamLocal::List(local) => self.list_value_ref(local),
             ParamLocal::IntFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::Int(self.int_function(*local)))
+                EvaluatedValueRef::Function(EvaluatedFunctionRef::Int(self.int_function(*local)))
             }
-            ParamLocal::FloatFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::Float(self.float_function(*local)))
-            }
-            ParamLocal::StringFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::String(self.string_function(*local)))
-            }
-            ParamLocal::BitArrayFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::BitArray(self.bit_array_function(*local)))
-            }
-            ParamLocal::UtfCodepointFunction { local, .. } => MatchValue::Function(
-                MatchFunction::UtfCodepoint(self.utf_codepoint_function(*local)),
+            ParamLocal::FloatFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::Float(self.float_function(*local)),
+            ),
+            ParamLocal::StringFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::String(self.string_function(*local)),
+            ),
+            ParamLocal::BitArrayFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::BitArray(self.bit_array_function(*local)),
+            ),
+            ParamLocal::UtfCodepointFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::UtfCodepoint(self.utf_codepoint_function(*local)),
             ),
             ParamLocal::BoolFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::Bool(self.bool_function(*local)))
+                EvaluatedValueRef::Function(EvaluatedFunctionRef::Bool(self.bool_function(*local)))
             }
             ParamLocal::NilFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::Nil(self.nil_function(*local)))
+                EvaluatedValueRef::Function(EvaluatedFunctionRef::Nil(self.nil_function(*local)))
             }
-            ParamLocal::TupleFunction { local, .. } => {
-                MatchValue::Function(MatchFunction::Tuple(self.tuple_function(*local)))
-            }
-            ParamLocal::GenericFunction(local) => MatchValue::Function(MatchFunction::Generic(
-                &self.values.generic_functions[local.id().0],
-            )),
+            ParamLocal::TupleFunction { local, .. } => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::Tuple(self.tuple_function(*local)),
+            ),
+            ParamLocal::GenericFunction(local) => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::Generic(&self.values.generic_functions[local.id().0]),
+            ),
             ParamLocal::NeverFunction(local) => {
-                MatchValue::Function(MatchFunction::Never(self.never_function(local)))
+                EvaluatedValueRef::Function(EvaluatedFunctionRef::Never(self.never_function(local)))
             }
-            ParamLocal::CustomFunction(local) => {
-                MatchValue::Function(MatchFunction::Custom(self.custom_function(local)))
-            }
-            ParamLocal::ExternalFunction(local) => {
-                MatchValue::Function(MatchFunction::External(self.external_function(local)))
-            }
+            ParamLocal::CustomFunction(local) => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::Custom(self.custom_function(local)),
+            ),
+            ParamLocal::ExternalFunction(local) => EvaluatedValueRef::Function(
+                EvaluatedFunctionRef::External(self.external_function(local)),
+            ),
             ParamLocal::ListFunction(local) => {
-                MatchValue::Function(self.match_list_function(local))
+                EvaluatedValueRef::Function(self.list_function_ref(local))
             }
-            ParamLocal::FunctionFunction(local) => MatchValue::Function(match local {
+            ParamLocal::FunctionFunction(local) => EvaluatedValueRef::Function(match local {
                 FunctionFunctionLocal::Core(local) => {
-                    MatchFunction::CoreFunction(self.core_function_function(local))
+                    EvaluatedFunctionRef::CoreFunction(self.core_function_function(local))
                 }
                 FunctionFunctionLocal::External(local) => {
-                    MatchFunction::ExternalFunction(self.external_function_function(local))
+                    EvaluatedFunctionRef::ExternalFunction(self.external_function_function(local))
                 }
             }),
         }
     }
 
-    fn match_list(&self, local: &ListLocal) -> MatchValue<'_> {
+    pub(in crate::runtime::graph) fn list_len(&self, local: &ListLocal) -> usize {
+        match local {
+            ListLocal::Parameter { .. } => 0,
+            ListLocal::ParameterList { local, .. } => {
+                self.values.parameter_list_lists[local.0].len()
+            }
+            ListLocal::Int { local, .. } => self.values.int_lists[local.0].values().len(),
+            ListLocal::String { local, .. } => self.values.string_lists[local.0].values().len(),
+            ListLocal::BitArray { local, .. } => {
+                self.values.bit_array_lists[local.0].values().len()
+            }
+            ListLocal::UtfCodepoint { local, .. } => {
+                self.values.utf_codepoint_lists[local.0].values().len()
+            }
+            ListLocal::Custom { local, .. } => self.values.custom_lists[local.0].values().len(),
+            ListLocal::External { local, .. } => self.values.external_lists[local.0].values().len(),
+            ListLocal::Float { local, .. } => self.values.float_lists[local.0].values().len(),
+            ListLocal::Bool { local, .. } => self.values.bool_lists[local.0].values().len(),
+            ListLocal::Nil { local, .. } => self.values.nil_lists[local.0].len(),
+            ListLocal::Tuple { local, .. } => self.values.tuple_lists[local.0].values().len(),
+            ListLocal::List { local, .. } => self.values.list_lists[local.0].values().len(),
+            ListLocal::Function { local, .. } => self.values.function_lists[local.0].values().len(),
+        }
+    }
+
+    fn list_value_ref(&self, local: &ListLocal) -> EvaluatedValueRef<'_> {
         let handle = match local {
             ListLocal::Parameter { local, .. } => {
-                return MatchValue::ParameterList(self.values.parameter_lists[local.0]);
+                return EvaluatedValueRef::ParameterList(self.values.parameter_lists[local.0]);
             }
             ListLocal::ParameterList { local, .. } => {
                 StoredListValueRef::ParameterList(&self.values.parameter_list_lists[local.0])
@@ -118,52 +149,52 @@ impl BlockEnvironment {
                 StoredListValueRef::Function(&self.values.function_lists[local.0])
             }
         };
-        MatchValue::List(MatchList::new(handle))
+        EvaluatedValueRef::List(EvaluatedListRef::new(handle))
     }
 
-    fn match_list_function(&self, local: &ListFunctionLocal) -> MatchFunction<'_> {
+    fn list_function_ref(&self, local: &ListFunctionLocal) -> EvaluatedFunctionRef<'_> {
         match local {
             ListFunctionLocal::Parameter { local, .. } => {
-                MatchFunction::List(&self.values.parameter_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.parameter_list_functions[local.0])
             }
             ListFunctionLocal::ParameterList { local, .. } => {
-                MatchFunction::List(&self.values.parameter_list_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.parameter_list_list_functions[local.0])
             }
             ListFunctionLocal::Int { local, .. } => {
-                MatchFunction::List(&self.values.int_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.int_list_functions[local.0])
             }
             ListFunctionLocal::String { local, .. } => {
-                MatchFunction::List(&self.values.string_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.string_list_functions[local.0])
             }
             ListFunctionLocal::BitArray { local, .. } => {
-                MatchFunction::List(&self.values.bit_array_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.bit_array_list_functions[local.0])
             }
             ListFunctionLocal::UtfCodepoint { local, .. } => {
-                MatchFunction::List(&self.values.utf_codepoint_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.utf_codepoint_list_functions[local.0])
             }
             ListFunctionLocal::Custom { local, .. } => {
-                MatchFunction::List(&self.values.custom_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.custom_list_functions[local.0])
             }
             ListFunctionLocal::External { local, .. } => {
-                MatchFunction::ExternalList(&self.values.external_list_functions[local.0])
+                EvaluatedFunctionRef::ExternalList(&self.values.external_list_functions[local.0])
             }
             ListFunctionLocal::Float { local, .. } => {
-                MatchFunction::List(&self.values.float_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.float_list_functions[local.0])
             }
             ListFunctionLocal::Bool { local, .. } => {
-                MatchFunction::List(&self.values.bool_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.bool_list_functions[local.0])
             }
             ListFunctionLocal::Nil { local, .. } => {
-                MatchFunction::List(&self.values.nil_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.nil_list_functions[local.0])
             }
             ListFunctionLocal::Tuple { local, .. } => {
-                MatchFunction::List(&self.values.tuple_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.tuple_list_functions[local.0])
             }
             ListFunctionLocal::List { local, .. } => {
-                MatchFunction::List(&self.values.list_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.list_list_functions[local.0])
             }
             ListFunctionLocal::Function { local, .. } => {
-                MatchFunction::List(&self.values.function_list_functions[local.0])
+                EvaluatedFunctionRef::List(&self.values.function_list_functions[local.0])
             }
         }
     }
@@ -178,11 +209,12 @@ mod tests {
     use crate::plan::execution::graph::{IntLocalId, ParamLocal, TupleLocalId};
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::ValueType;
-    use crate::runtime::HostCallOrigin;
-    use crate::runtime::evaluated::EvaluatedValue;
+    use crate::runtime::evaluated::{
+        EvaluatedFunctionRef, EvaluatedValue, EvaluatedValueRef, value_refs_equal,
+    };
     use crate::runtime::execution::Domain;
     use crate::runtime::graph::environment::RetainedValues;
-    use crate::runtime::graph::pattern::{MatchFunction, MatchValue};
+    use crate::runtime::{HostCallOrigin, RuntimeListStorage};
     use crate::work_fixture::WorkComponent;
     use crate::{
         HostProviderSet, HostedExecution, ModuleSource, PackageSource, compile_typed_host_program,
@@ -193,22 +225,22 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn match_inputs_borrow_typed_slots_until_the_environment_is_consumed() {
+    fn read_inputs_borrow_typed_slots_until_the_environment_is_consumed() {
         let mut inputs = RetainedValues::empty();
         inputs.push_int(BigInt::from(1_u64) << 160);
         inputs.push_tuple(vec![EvaluatedValue::String("kept".into())]);
         let environment = BlockEnvironment::from_retained(inputs);
         assert!(matches!(
-            environment.match_value(&ParamLocal::Int(IntLocalId(0))),
-            MatchValue::Int(number) if ptr::eq(number, &environment.values.ints[0])
+            environment.value_ref(&ParamLocal::Int(IntLocalId(0))),
+            EvaluatedValueRef::Int(number) if ptr::eq(number, &environment.values.ints[0])
         ));
-        let borrowed = environment.match_value(&ParamLocal::Tuple {
+        let borrowed = environment.value_ref(&ParamLocal::Tuple {
             local: TupleLocalId(0),
             type_: vec![ValueType::String].into(),
         });
         assert!(matches!(
             &borrowed,
-            MatchValue::Tuple(fields)
+            EvaluatedValueRef::Tuple(fields)
                 if ptr::eq(fields.as_ptr(), environment.values.tuples[0].as_ptr())
         ));
         let retained = borrowed.retain();
@@ -357,11 +389,11 @@ pub fn main() {{
                     .unwrap();
                 assert_eq!(values.len(), 2, "{source}");
                 let original = &values[1];
-                let nested = MatchValue::from(original).retain();
+                let nested = EvaluatedValueRef::from(original).retain();
                 assert_eq!(&nested, original, "{source}");
                 assert!(matches!(
-                    MatchValue::from(&values[0]),
-                    MatchValue::Function(MatchFunction::Tuple(input)) if matches!(
+                    EvaluatedValueRef::from(&values[0]),
+                    EvaluatedValueRef::Function(EvaluatedFunctionRef::Tuple(input)) if matches!(
                         plan.tuple_function(input.runtime_id()),
                         ValueFunctionEntry::Graph(function) if {
                             let graph = function.body().block_graph();
@@ -370,7 +402,18 @@ pub fn main() {{
                             let mut inputs = RetainedValues::empty();
                             inputs.push_evaluated(original.clone());
                             let environment = BlockEnvironment::from_retained(inputs);
-                            let retained = environment.match_value(parameters[0].local()).retain();
+                            let local = parameters[0].local();
+                            let borrowed = environment.value_ref(local);
+                            let owned = environment.value(local);
+                            let owned_ref = EvaluatedValueRef::from(&owned);
+                            let storage = RuntimeListStorage::default();
+                            assert!(value_refs_equal(&storage, &borrowed, &borrowed), "{source}");
+                            assert!(value_refs_equal(&storage, &borrowed, &owned_ref), "{source}");
+                            assert!(value_refs_equal(&storage, &owned_ref, &borrowed), "{source}");
+                            if let ParamLocal::List(local) = local {
+                                assert_eq!(environment.list_len(local), usize::from(type_ != "List(a)"), "{source}");
+                            }
+                            let retained = borrowed.retain();
                             assert_eq!(&retained, original, "{source}");
                             drop(environment);
                             &retained == original

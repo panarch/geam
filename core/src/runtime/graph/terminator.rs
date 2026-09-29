@@ -181,7 +181,7 @@ where
         }
         Terminator::Match(matcher) => {
             let matched = {
-                let subject = environment.match_value(matcher.subject());
+                let subject = environment.value_ref(matcher.subject());
                 pattern::match_pattern(
                     plan,
                     state.lists(),
