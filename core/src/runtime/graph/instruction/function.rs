@@ -138,7 +138,7 @@ where
             *index,
             state
                 .lists()
-                .function_values(&environment.function_list(*list)),
+                .function_values(environment.function_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
     };

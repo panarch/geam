@@ -1,6 +1,6 @@
 mod capture;
 mod pool;
-mod subject;
+mod read;
 mod transfer;
 mod value;
 
@@ -296,7 +296,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn int_list(&self, local: IntListLocalId) -> IntListValueId {
-        self.values.int_lists[local.0].clone()
+        self.int_list_ref(local).clone()
+    }
+
+    pub(super) fn int_list_ref(&self, local: IntListLocalId) -> &IntListValueId {
+        &self.values.int_lists[local.0]
     }
 
     pub(super) fn push_string_list(&mut self, value: StringListValueId) {
@@ -304,7 +308,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn string_list(&self, local: StringListLocalId) -> StringListValueId {
-        self.values.string_lists[local.0].clone()
+        self.string_list_ref(local).clone()
+    }
+
+    pub(super) fn string_list_ref(&self, local: StringListLocalId) -> &StringListValueId {
+        &self.values.string_lists[local.0]
     }
 
     pub(super) fn push_bit_array_list(&mut self, value: BitArrayListValueId) {
@@ -312,7 +320,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn bit_array_list(&self, local: BitArrayListLocalId) -> BitArrayListValueId {
-        self.values.bit_array_lists[local.0].clone()
+        self.bit_array_list_ref(local).clone()
+    }
+
+    pub(super) fn bit_array_list_ref(&self, local: BitArrayListLocalId) -> &BitArrayListValueId {
+        &self.values.bit_array_lists[local.0]
     }
 
     pub(super) fn push_utf_codepoint_list(&mut self, value: UtfCodepointListValueId) {
@@ -323,7 +335,14 @@ impl BlockEnvironment {
         &self,
         local: UtfCodepointListLocalId,
     ) -> UtfCodepointListValueId {
-        self.values.utf_codepoint_lists[local.0].clone()
+        self.utf_codepoint_list_ref(local).clone()
+    }
+
+    pub(super) fn utf_codepoint_list_ref(
+        &self,
+        local: UtfCodepointListLocalId,
+    ) -> &UtfCodepointListValueId {
+        &self.values.utf_codepoint_lists[local.0]
     }
 
     pub(super) fn push_custom_list(&mut self, value: CustomListValueId) {
@@ -331,7 +350,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn custom_list(&self, local: CustomListLocalId) -> CustomListValueId {
-        self.values.custom_lists[local.0].clone()
+        self.custom_list_ref(local).clone()
+    }
+
+    pub(super) fn custom_list_ref(&self, local: CustomListLocalId) -> &CustomListValueId {
+        &self.values.custom_lists[local.0]
     }
 
     pub(super) fn push_external_list(&mut self, value: ExternalListValueId) {
@@ -339,7 +362,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn external_list(&self, local: ExternalListLocalId) -> ExternalListValueId {
-        self.values.external_lists[local.0].clone()
+        self.external_list_ref(local).clone()
+    }
+
+    pub(super) fn external_list_ref(&self, local: ExternalListLocalId) -> &ExternalListValueId {
+        &self.values.external_lists[local.0]
     }
 
     pub(super) fn push_float_list(&mut self, value: FloatListValueId) {
@@ -347,7 +374,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn float_list(&self, local: FloatListLocalId) -> FloatListValueId {
-        self.values.float_lists[local.0].clone()
+        self.float_list_ref(local).clone()
+    }
+
+    pub(super) fn float_list_ref(&self, local: FloatListLocalId) -> &FloatListValueId {
+        &self.values.float_lists[local.0]
     }
 
     pub(super) fn push_bool_list(&mut self, value: BoolListValueId) {
@@ -355,7 +386,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn bool_list(&self, local: BoolListLocalId) -> BoolListValueId {
-        self.values.bool_lists[local.0].clone()
+        self.bool_list_ref(local).clone()
+    }
+
+    pub(super) fn bool_list_ref(&self, local: BoolListLocalId) -> &BoolListValueId {
+        &self.values.bool_lists[local.0]
     }
 
     pub(super) fn push_nil_list(&mut self, value: NilListValueId) {
@@ -363,7 +398,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn nil_list(&self, local: NilListLocalId) -> NilListValueId {
-        self.values.nil_lists[local.0].clone()
+        self.nil_list_ref(local).clone()
+    }
+
+    pub(super) fn nil_list_ref(&self, local: NilListLocalId) -> &NilListValueId {
+        &self.values.nil_lists[local.0]
     }
 
     pub(super) fn push_tuple_list(&mut self, value: TupleListValueId) {
@@ -371,7 +410,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn tuple_list(&self, local: TupleListLocalId) -> TupleListValueId {
-        self.values.tuple_lists[local.0].clone()
+        self.tuple_list_ref(local).clone()
+    }
+
+    pub(super) fn tuple_list_ref(&self, local: TupleListLocalId) -> &TupleListValueId {
+        &self.values.tuple_lists[local.0]
     }
 
     pub(super) fn push_parameter_list_list(&mut self, value: ParameterListListValueId) {
@@ -382,7 +425,14 @@ impl BlockEnvironment {
         &self,
         local: ParameterListListLocalId,
     ) -> ParameterListListValueId {
-        self.values.parameter_list_lists[local.0].clone()
+        self.parameter_list_list_ref(local).clone()
+    }
+
+    pub(super) fn parameter_list_list_ref(
+        &self,
+        local: ParameterListListLocalId,
+    ) -> &ParameterListListValueId {
+        &self.values.parameter_list_lists[local.0]
     }
 
     pub(super) fn push_list_list(&mut self, value: ListListValueId) {
@@ -390,7 +440,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn list_list(&self, local: ListListLocalId) -> ListListValueId {
-        self.values.list_lists[local.0].clone()
+        self.list_list_ref(local).clone()
+    }
+
+    pub(super) fn list_list_ref(&self, local: ListListLocalId) -> &ListListValueId {
+        &self.values.list_lists[local.0]
     }
 
     pub(super) fn push_function_list(&mut self, value: FunctionListValueId) {
@@ -398,7 +452,11 @@ impl BlockEnvironment {
     }
 
     pub(super) fn function_list(&self, local: FunctionListLocalId) -> FunctionListValueId {
-        self.values.function_lists[local.0].clone()
+        self.function_list_ref(local).clone()
+    }
+
+    pub(super) fn function_list_ref(&self, local: FunctionListLocalId) -> &FunctionListValueId {
+        &self.values.function_lists[local.0]
     }
 
     pub(in crate::runtime) fn list(&self, local: &ListLocal) -> ListValueId {

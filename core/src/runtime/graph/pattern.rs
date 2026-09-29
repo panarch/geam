@@ -1,9 +1,3 @@
-mod list;
-mod value;
-
-pub(super) use list::MatchList;
-pub(super) use value::{MatchFunction, MatchValue};
-
 use num_bigint::BigInt;
 
 use super::bit_array;
@@ -15,7 +9,9 @@ use crate::plan::execution::graph::{
     MatchPatternList, MatchPatternListTail,
 };
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
+use crate::runtime::evaluated::{
+    EvaluatedBitArray, EvaluatedListRef, EvaluatedValue, EvaluatedValueRef,
+};
 use crate::runtime::{InvariantError, RuntimeListStorage};
 
 pub(super) struct MatchBindings {
@@ -58,7 +54,7 @@ pub(super) fn match_pattern<Plan>(
     lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    subject: &MatchValue<'_>,
+    subject: &EvaluatedValueRef<'_>,
     results: &mut Vec<EvaluatedValue>,
 ) -> Result<Option<MatchBindings>, InvariantError>
 where
@@ -80,7 +76,7 @@ fn matches<Plan>(
     lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    value: &MatchValue<'_>,
+    value: &EvaluatedValueRef<'_>,
     bindings: &mut MatchBindings,
 ) -> Result<bool, InvariantError>
 where
@@ -93,20 +89,20 @@ where
         }
         MatchPattern::Discard => Ok(true),
         MatchPattern::Int(pattern) => {
-            Ok(matches!(value, MatchValue::Int(value) if pattern.matches(value)))
+            Ok(matches!(value, EvaluatedValueRef::Int(value) if pattern.matches(value)))
         }
         MatchPattern::Float(pattern) => {
-            Ok(matches!(value, MatchValue::Float(value) if value == pattern))
+            Ok(matches!(value, EvaluatedValueRef::Float(value) if value == pattern))
         }
-        MatchPattern::String(pattern) => {
-            Ok(matches!(value, MatchValue::String(value) if value.as_str() == pattern.as_str()))
-        }
+        MatchPattern::String(pattern) => Ok(
+            matches!(value, EvaluatedValueRef::String(value) if value.as_str() == pattern.as_str()),
+        ),
         MatchPattern::Bool(pattern) => {
-            Ok(matches!(value, MatchValue::Bool(value) if value == pattern))
+            Ok(matches!(value, EvaluatedValueRef::Bool(value) if value == pattern))
         }
-        MatchPattern::Nil => Ok(matches!(value, MatchValue::Nil)),
+        MatchPattern::Nil => Ok(matches!(value, EvaluatedValueRef::Nil)),
         MatchPattern::Tuple(patterns) => {
-            let MatchValue::Tuple(values) = value else {
+            let EvaluatedValueRef::Tuple(values) = value else {
                 return Ok(false);
             };
             if patterns.len() != values.len() {
@@ -122,7 +118,7 @@ where
         }
         MatchPattern::List(pattern) => {
             let value = match value {
-                MatchValue::ParameterList(value) => {
+                EvaluatedValueRef::ParameterList(value) => {
                     if !pattern.elements().is_empty() {
                         return Ok(false);
                     }
@@ -131,13 +127,13 @@ where
                     }
                     return Ok(true);
                 }
-                MatchValue::List(value) => value,
+                EvaluatedValueRef::List(value) => value,
                 _ => return Ok(false),
             };
             matches_list(plan, lists, environment, pattern, value, bindings)
         }
         MatchPattern::BitArray(pattern) => {
-            let MatchValue::BitArray(value) = value else {
+            let EvaluatedValueRef::BitArray(value) = value else {
                 return Ok(false);
             };
             Ok(match_bit_array(environment, value, pattern, bindings))
@@ -146,7 +142,7 @@ where
             constructor,
             fields,
         } => {
-            let MatchValue::Custom(value) = value else {
+            let EvaluatedValueRef::Custom(value) = value else {
                 return Ok(false);
             };
             if value.constructor() != *constructor {
@@ -176,7 +172,7 @@ where
             left,
             right,
         } => {
-            let MatchValue::String(value) = value else {
+            let EvaluatedValueRef::String(value) = value else {
                 return Ok(false);
             };
             if !value.starts_with(prefix.as_str()) {
@@ -225,7 +221,7 @@ where
             lists,
             environment,
             pattern,
-            &MatchValue::from(value),
+            &EvaluatedValueRef::from(value),
             bindings,
         ),
     }
@@ -236,7 +232,7 @@ fn matches_list<Plan>(
     lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPatternList,
-    values: &MatchList<'_>,
+    values: &EvaluatedListRef<'_>,
     bindings: &mut MatchBindings,
 ) -> Result<bool, InvariantError>
 where
@@ -515,7 +511,10 @@ fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &
 mod tests {
     use super::super::GraphValue;
     use super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::{MatchBindings, MatchList, MatchPattern, MatchValue, match_pattern, matches_list};
+    use super::{
+        EvaluatedListRef, EvaluatedValueRef, MatchBindings, MatchPattern, match_pattern,
+        matches_list,
+    };
     use crate::BitArrayValue;
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
@@ -574,7 +573,7 @@ mod tests {
                 &lists,
                 &environment,
                 main_pattern(&plan),
-                &MatchValue::from(subject),
+                &EvaluatedValueRef::from(subject),
                 &mut results,
             )
             .unwrap()
@@ -623,7 +622,7 @@ pub fn main() {
             &lists,
             &environment,
             main_pattern(&plan),
-            &MatchValue::from(&subject),
+            &EvaluatedValueRef::from(&subject),
             &mut Vec::new(),
         )
         .unwrap()
@@ -666,7 +665,7 @@ pub fn main() {
                 &lists,
                 &environment,
                 main_pattern(&plan),
-                &MatchValue::from(&subject),
+                &EvaluatedValueRef::from(&subject),
                 &mut Vec::new(),
             )
             .unwrap()
@@ -947,7 +946,7 @@ pub fn main() {{
                 items.into_iter().map(Into::into).collect(),
             );
             let handle: StoredListValueId = list.into();
-            let values = MatchList::from(&handle);
+            let values = EvaluatedListRef::from(&handle);
             let environment = BlockEnvironment::from_retained(RetainedValues::empty());
             let mut bindings = MatchBindings::new(Vec::new());
 
@@ -996,7 +995,7 @@ pub fn main() {
         let handle: StoredListValueId = owner
             .list(list_type, vec![first.clone().into(), second.into()])
             .into();
-        let values = MatchList::from(&handle);
+        let values = EvaluatedListRef::from(&handle);
         drop(owner);
 
         let caller = RuntimeListStorage::default();
@@ -1078,7 +1077,7 @@ pub fn main() {
                 &lists,
                 &environment,
                 main_pattern(&plan),
-                &MatchValue::from(&subject),
+                &EvaluatedValueRef::from(&subject),
                 &mut results
             )
             .unwrap()
@@ -1175,7 +1174,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 subject,
             ))),
             &mut Vec::new(),
@@ -1220,7 +1219,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 original,
             ))),
             &mut Vec::new(),
@@ -1584,7 +1583,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+            &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 original,
             ))),
             &mut Vec::new(),
@@ -1818,7 +1817,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &MatchValue::from(&EvaluatedValue::String("prefix".into())),
+            &EvaluatedValueRef::from(&EvaluatedValue::String("prefix".into())),
             &mut Vec::new(),
         )
         .expect("string-prefix matching should not be an execution error")
@@ -1842,7 +1841,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &MatchValue::from(&EvaluatedValue::Bool(true)),
+            &EvaluatedValueRef::from(&EvaluatedValue::Bool(true)),
             &mut Vec::new(),
         )
         .expect("Bool matching should not be an execution error")
@@ -1879,7 +1878,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &MatchValue::from(&subject),
+            &EvaluatedValueRef::from(&subject),
             &mut results,
         ));
         assert!(results.is_empty());
@@ -1978,7 +1977,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &MatchValue::from(&subject),
+            &EvaluatedValueRef::from(&subject),
             &mut Vec::new(),
         )
         .expect("refutable mismatch should not be an execution error");
@@ -1999,7 +1998,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &MatchValue::from(&EvaluatedValue::List(list.into())),
+            &EvaluatedValueRef::from(&EvaluatedValue::List(list.into())),
             &mut Vec::new(),
         )
         .expect("list mismatch should not be an execution error");
@@ -2081,7 +2080,7 @@ pub fn main() {
                 state.lists_mut(),
                 &environment,
                 pattern,
-                &MatchValue::from(&subject),
+                &EvaluatedValueRef::from(&subject),
                 &mut Vec::new()
             )),
             InvariantError::CustomFieldFamilyMismatch {

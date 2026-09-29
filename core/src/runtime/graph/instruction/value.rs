@@ -20,7 +20,8 @@ use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::plan::execution::type_::ValueType;
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
-    EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue, values_equal,
+    EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue,
+    value_refs_equal,
 };
 use crate::runtime::state::list::ListSequence;
 use num_bigint::BigInt;
@@ -118,7 +119,7 @@ where
             plan,
             expected,
             *index,
-            state.lists().int_values(&environment.int_list(*list)),
+            state.lists().int_values(environment.int_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
         I::Add { left, right } => V::Ready(integer::add(environment, *left, *right)),
@@ -202,7 +203,9 @@ where
             plan,
             expected,
             *index,
-            state.lists().float_values(&environment.float_list(*list)),
+            state
+                .lists()
+                .float_values(environment.float_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
         I::Add { left, right } => V::Ready(environment.float(*left) + environment.float(*right)),
@@ -291,7 +294,9 @@ where
             plan,
             expected,
             *index,
-            state.lists().string_values(&environment.string_list(*list)),
+            state
+                .lists()
+                .string_values(environment.string_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
         I::Concatenate { left, right } => V::Ready(
@@ -384,7 +389,7 @@ where
             *index,
             state
                 .lists()
-                .bit_array_values(&environment.bit_array_list(*list)),
+                .bit_array_values(environment.bit_array_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
     }
@@ -462,7 +467,7 @@ where
             *index,
             state
                 .lists()
-                .utf_codepoint_values(&environment.utf_codepoint_list(*list)),
+                .utf_codepoint_values(environment.utf_codepoint_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
     }
@@ -554,7 +559,9 @@ where
             plan,
             expected,
             *index,
-            state.lists().custom_values(&environment.custom_list(*list)),
+            state
+                .lists()
+                .custom_values(environment.custom_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
     }
@@ -632,7 +639,7 @@ where
             plan,
             expected,
             *index,
-            state.lists().bool_values(&environment.bool_list(*list)),
+            state.lists().bool_values(environment.bool_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
         I::Not(value) => V::Ready(!environment.bool(*value)),
@@ -658,25 +665,21 @@ where
         I::GtEqFloat { left, right } => {
             V::Ready(environment.float(*left) >= environment.float(*right))
         }
-        I::Equal { left, right } => V::Ready(values_equal(
+        I::Equal { left, right } => V::Ready(value_refs_equal(
             state.lists(),
-            &environment.value(left),
-            &environment.value(right),
+            &environment.value_ref(left),
+            &environment.value_ref(right),
         )),
-        I::NotEqual { left, right } => V::Ready(!values_equal(
+        I::NotEqual { left, right } => V::Ready(!value_refs_equal(
             state.lists(),
-            &environment.value(left),
-            &environment.value(right),
+            &environment.value_ref(left),
+            &environment.value_ref(right),
         )),
         I::StringStartsWith { value, prefix } => {
             V::Ready(environment.string(*value).starts_with(prefix.as_str()))
         }
-        I::ListLengthEquals { value, length } => {
-            V::Ready(state.lists().list_len(&environment.list(value)) == *length)
-        }
-        I::ListLengthAtLeast { value, length } => {
-            V::Ready(state.lists().list_len(&environment.list(value)) >= *length)
-        }
+        I::ListLengthEquals { value, length } => V::Ready(environment.list_len(value) == *length),
+        I::ListLengthAtLeast { value, length } => V::Ready(environment.list_len(value) >= *length),
     }
 }
 
@@ -737,7 +740,7 @@ where
             .map_or_else(V::Error, V::Ready)
         }
         I::ListIndex { list, index } => {
-            let length = state.lists().nil_len(&environment.nil_list(*list));
+            let length = state.lists().nil_len(environment.nil_list_ref(*list));
             ensure_list_index(plan, expected, *index, length).map_or_else(V::Error, V::Ready)
         }
     }
@@ -818,7 +821,9 @@ where
             plan,
             expected,
             *index,
-            state.lists().tuple_values(&environment.tuple_list(*list)),
+            state
+                .lists()
+                .tuple_values(environment.tuple_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
     }

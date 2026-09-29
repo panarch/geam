@@ -165,7 +165,7 @@ where
         I::ListIndex { list, index } => {
             let length = state
                 .lists()
-                .parameter_list_list_len(&environment.parameter_list_list(*list));
+                .parameter_list_list_len(environment.parameter_list_list_ref(*list));
             ensure_list_index(plan, expected, *index, length)
                 .map_or_else(V::Error, |()| V::Ready(ParameterListValueId::new(type_id)))
         }
@@ -310,8 +310,8 @@ where
         )
         .map_or_else(V::Error, V::Ready),
         I::ListIndex { list, index } => {
-            let list = environment.list_list(*list);
-            let values = state.lists().list_values(&list);
+            let list = environment.list_list_ref(*list);
+            let values = state.lists().list_values(list);
             match values.get(*index) {
                 Some(value) => V::Projected(value.clone()),
                 None => V::Error(

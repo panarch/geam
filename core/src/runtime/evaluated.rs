@@ -6,6 +6,7 @@ use num_bigint::BigInt;
 mod capture;
 mod external;
 mod function;
+mod read;
 mod source;
 
 pub(in crate::runtime) use capture::{
@@ -21,7 +22,8 @@ pub(in crate::runtime) use function::{
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, FunctionReferenceId,
 };
-pub(in crate::runtime) use source::{value_source_hash, values_equal};
+pub(in crate::runtime) use read::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValueRef};
+pub(in crate::runtime) use source::{value_refs_equal, value_source_hash, values_equal};
 
 use super::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
 use crate::plan::ValueType;

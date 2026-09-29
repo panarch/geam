@@ -1,5 +1,6 @@
-use super::value::{MatchFunction, MatchValue};
+use super::{EvaluatedFunctionRef, EvaluatedValueRef};
 use crate::StringValue;
+use crate::plan::execution::type_::ListTypeId;
 use crate::runtime::RuntimeListStorage;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -13,13 +14,13 @@ use num_bigint::BigInt;
 use std::cell::Cell;
 use std::ops::Range;
 
-pub(in crate::runtime::graph) struct MatchList<'value> {
+pub(in crate::runtime) struct EvaluatedListRef<'value> {
     handle: StoredListValueRef<'value>,
     #[cfg(test)]
     item_reads: Cell<usize>,
 }
 
-pub(super) struct MatchListIter<'value> {
+pub(in crate::runtime) struct EvaluatedListIter<'value> {
     inner: ListItems<'value>,
     #[cfg(test)]
     item_reads: &'value Cell<usize>,
@@ -41,8 +42,8 @@ enum ListItems<'value> {
     Function(ListSequenceIter<'value, EvaluatedFunctionValue>),
 }
 
-impl<'value> MatchList<'value> {
-    pub(in crate::runtime::graph) fn new(handle: StoredListValueRef<'value>) -> Self {
+impl<'value> EvaluatedListRef<'value> {
+    pub(in crate::runtime) fn new(handle: StoredListValueRef<'value>) -> Self {
         Self {
             handle,
             #[cfg(test)]
@@ -50,7 +51,25 @@ impl<'value> MatchList<'value> {
         }
     }
 
-    pub(super) fn len(&self) -> usize {
+    pub(in crate::runtime::evaluated) fn list_type(&self) -> ListTypeId {
+        match self.handle {
+            StoredListValueRef::Nil(value) => value.type_id().list_type(),
+            StoredListValueRef::ParameterList(value) => value.type_id().list_type(),
+            StoredListValueRef::Int(value) => value.type_id().list_type(),
+            StoredListValueRef::String(value) => value.type_id().list_type(),
+            StoredListValueRef::BitArray(value) => value.type_id().list_type(),
+            StoredListValueRef::UtfCodepoint(value) => value.type_id().list_type(),
+            StoredListValueRef::Custom(value) => value.type_id().list_type(),
+            StoredListValueRef::External(value) => value.type_id().list_type(),
+            StoredListValueRef::Float(value) => value.type_id().list_type(),
+            StoredListValueRef::Bool(value) => value.type_id().list_type(),
+            StoredListValueRef::Tuple(value) => value.type_id().list_type(),
+            StoredListValueRef::List(value) => value.type_id().list_type(),
+            StoredListValueRef::Function(value) => value.type_id().list_type(),
+        }
+    }
+
+    pub(in crate::runtime) fn len(&self) -> usize {
         match self.handle {
             StoredListValueRef::Nil(value) => value.len(),
             StoredListValueRef::ParameterList(value) => value.len(),
@@ -68,7 +87,7 @@ impl<'value> MatchList<'value> {
         }
     }
 
-    pub(super) fn iter_prefix(&self, limit: usize) -> MatchListIter<'_> {
+    pub(in crate::runtime) fn iter_prefix(&self, limit: usize) -> EvaluatedListIter<'_> {
         let inner = match self.handle {
             StoredListValueRef::Nil(value) => ListItems::Nil(0..limit.min(value.len())),
             StoredListValueRef::ParameterList(value) => ListItems::ParameterList(
@@ -99,14 +118,14 @@ impl<'value> MatchList<'value> {
                 ListItems::Function(value.values().iter_prefix(limit))
             }
         };
-        MatchListIter {
+        EvaluatedListIter {
             inner,
             #[cfg(test)]
             item_reads: &self.item_reads,
         }
     }
 
-    pub(super) fn retain(&self) -> EvaluatedValue {
+    pub(in crate::runtime) fn retain(&self) -> EvaluatedValue {
         match self.handle {
             StoredListValueRef::Nil(value) => EvaluatedValue::List(value.clone().into()),
             StoredListValueRef::ParameterList(value) => EvaluatedValue::List(value.clone().into()),
@@ -124,46 +143,52 @@ impl<'value> MatchList<'value> {
         }
     }
 
-    pub(super) fn tail(&self, lists: &RuntimeListStorage, count: usize) -> EvaluatedValue {
+    pub(in crate::runtime) fn tail(
+        &self,
+        lists: &RuntimeListStorage,
+        count: usize,
+    ) -> EvaluatedValue {
         EvaluatedValue::List(lists.drop_first(self.handle, count))
     }
 
     #[cfg(test)]
-    pub(super) fn item_reads(&self) -> usize {
+    pub(in crate::runtime) fn item_reads(&self) -> usize {
         self.item_reads.get()
     }
 }
 
-impl<'value> From<&'value StoredListValueId> for MatchList<'value> {
+impl<'value> From<&'value StoredListValueId> for EvaluatedListRef<'value> {
     fn from(value: &'value StoredListValueId) -> Self {
         Self::new(value.into())
     }
 }
 
-impl<'value> Iterator for MatchListIter<'value> {
-    type Item = MatchValue<'value>;
+impl<'value> Iterator for EvaluatedListIter<'value> {
+    type Item = EvaluatedValueRef<'value>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = match &mut self.inner {
-            ListItems::Nil(values) => values.next().map(|_| MatchValue::Nil),
-            ListItems::ParameterList(value, values) => {
-                values.next().map(|_| MatchValue::ParameterList(*value))
+            ListItems::Nil(values) => values.next().map(|_| EvaluatedValueRef::Nil),
+            ListItems::ParameterList(value, values) => values
+                .next()
+                .map(|_| EvaluatedValueRef::ParameterList(*value)),
+            ListItems::Int(values) => values.next().map(EvaluatedValueRef::Int),
+            ListItems::String(values) => values.next().map(EvaluatedValueRef::String),
+            ListItems::BitArray(values) => values.next().map(EvaluatedValueRef::BitArray),
+            ListItems::UtfCodepoint(values) => {
+                values.next().copied().map(EvaluatedValueRef::UtfCodepoint)
             }
-            ListItems::Int(values) => values.next().map(MatchValue::Int),
-            ListItems::String(values) => values.next().map(MatchValue::String),
-            ListItems::BitArray(values) => values.next().map(MatchValue::BitArray),
-            ListItems::UtfCodepoint(values) => values.next().copied().map(MatchValue::UtfCodepoint),
-            ListItems::Custom(values) => values.next().map(MatchValue::Custom),
-            ListItems::External(values) => values.next().map(MatchValue::External),
-            ListItems::Float(values) => values.next().copied().map(MatchValue::Float),
-            ListItems::Bool(values) => values.next().copied().map(MatchValue::Bool),
-            ListItems::Tuple(values) => values.next().map(|value| MatchValue::Tuple(value)),
+            ListItems::Custom(values) => values.next().map(EvaluatedValueRef::Custom),
+            ListItems::External(values) => values.next().map(EvaluatedValueRef::External),
+            ListItems::Float(values) => values.next().copied().map(EvaluatedValueRef::Float),
+            ListItems::Bool(values) => values.next().copied().map(EvaluatedValueRef::Bool),
+            ListItems::Tuple(values) => values.next().map(|value| EvaluatedValueRef::Tuple(value)),
             ListItems::List(values) => values
                 .next()
-                .map(|value| MatchValue::List(MatchList::from(value))),
+                .map(|value| EvaluatedValueRef::List(EvaluatedListRef::from(value))),
             ListItems::Function(values) => values
                 .next()
-                .map(|value| MatchValue::Function(MatchFunction::from(value))),
+                .map(|value| EvaluatedValueRef::Function(EvaluatedFunctionRef::from(value))),
         };
         #[cfg(test)]
         if value.is_some() {
@@ -175,7 +200,7 @@ impl<'value> Iterator for MatchListIter<'value> {
 
 #[cfg(test)]
 mod tests {
-    use super::MatchList;
+    use super::EvaluatedListRef;
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::execution_fixture::TestHost;
     use crate::host::{
@@ -184,7 +209,7 @@ mod tests {
         HostTypeParameter, HostValue, HostWorkProfile,
     };
     use crate::runtime::borrowed::BorrowedValue;
-    use crate::runtime::graph::pattern::MatchValue;
+    use crate::runtime::evaluated::EvaluatedValueRef;
     use crate::runtime::plan_src;
     use crate::runtime::state::list::{RuntimeListStorage, StoredListValueRef};
     use crate::work_fixture::WorkComponent;
@@ -200,13 +225,13 @@ mod tests {
             plan.int_list_function_id(0).type_id(),
             (0..600).map(BigInt::from).collect(),
         );
-        let borrowed = MatchList::new(StoredListValueRef::Int(&handle));
+        let borrowed = EvaluatedListRef::new(StoredListValueRef::Int(&handle));
         for limit in [0, 1, 31, 32, 33, 255, 256, 257, 600, 601] {
             let mut cursor = borrowed.iter_prefix(limit);
             for index in 0..limit.min(600) {
                 assert!(matches!(
                     cursor.next(),
-                    Some(MatchValue::Int(value))
+                    Some(EvaluatedValueRef::Int(value))
                         if ptr::eq(value, handle.values().get(index).unwrap())
                             && value == &BigInt::from(index)
                 ));
@@ -345,7 +370,7 @@ pub fn run() {
         let owner = call.retain_value::<HostListType<HostTypeParameter<0>>>(values);
         let expected = call.retain_value::<HostTypeParameter<0>>(expected);
         let handle = BorrowedValue::from_value(owner.value()).stored_list();
-        let borrowed = MatchList::from(handle);
+        let borrowed = EvaluatedListRef::from(handle);
         assert_eq!(borrowed.len(), len);
         assert_eq!(borrowed.item_reads(), 0);
         for limit in [0, 1, 2, len, len + 1, usize::MAX] {
@@ -363,12 +388,12 @@ pub fn run() {
         let retained = borrowed.retain();
         let tail = borrowed.tail(&storage, 1.min(len));
         drop(owner);
-        let retained = MatchList::from(BorrowedValue::from_value(&retained).stored_list());
+        let retained = EvaluatedListRef::from(BorrowedValue::from_value(&retained).stored_list());
         assert_eq!(retained.len(), len);
         for item in retained.iter_prefix(usize::MAX) {
             assert_eq!(&item.retain(), expected.value());
         }
-        let tail = MatchList::from(BorrowedValue::from_value(&tail).stored_list());
+        let tail = EvaluatedListRef::from(BorrowedValue::from_value(&tail).stored_list());
         assert_eq!(tail.len(), len.saturating_sub(1));
         for item in tail.iter_prefix(usize::MAX) {
             assert_eq!(&item.retain(), expected.value());
