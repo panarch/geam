@@ -1,3 +1,9 @@
+mod list;
+mod value;
+
+pub(super) use list::MatchList;
+pub(super) use value::{MatchFunction, MatchValue};
+
 use num_bigint::BigInt;
 
 use super::bit_array;
@@ -8,10 +14,9 @@ use crate::plan::execution::graph::{
     IntegerLiteral, MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding,
     MatchPatternList, MatchPatternListTail,
 };
-use crate::runtime::InvariantError;
+use crate::plan::execution::runtime::RuntimeExecutionPlan;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedValue};
-use crate::runtime::retained_list::RetainedList;
-use crate::runtime::state::list::StoredListValueId;
+use crate::runtime::{InvariantError, RuntimeListStorage};
 
 pub(super) struct MatchBindings {
     values: Vec<EvaluatedValue>,
@@ -46,16 +51,18 @@ impl MatchBindings {
     }
 }
 
+// Keep match scratch and recursive dispatch outside the shared graph loop.
+#[inline(never)]
 pub(super) fn match_pattern<Plan>(
     plan: &Plan,
-    lists: &mut crate::runtime::RuntimeListStorage,
+    lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    subject: &EvaluatedValue,
+    subject: &MatchValue<'_>,
     results: &mut Vec<EvaluatedValue>,
 ) -> Result<Option<MatchBindings>, InvariantError>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
 {
     let mut bindings = MatchBindings::new(std::mem::take(results));
     if matches(plan, lists, environment, pattern, subject, &mut bindings)? {
@@ -70,36 +77,36 @@ where
 
 fn matches<Plan>(
     plan: &Plan,
-    lists: &mut crate::runtime::RuntimeListStorage,
+    lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
-    value: &EvaluatedValue,
+    value: &MatchValue<'_>,
     bindings: &mut MatchBindings,
 ) -> Result<bool, InvariantError>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
 {
     match pattern {
         MatchPattern::Bind(binding) => {
-            bindings.bind(binding, value.clone());
+            bindings.bind(binding, value.retain());
             Ok(true)
         }
         MatchPattern::Discard => Ok(true),
         MatchPattern::Int(pattern) => {
-            Ok(matches!(value, EvaluatedValue::Int(value) if pattern.matches(value)))
+            Ok(matches!(value, MatchValue::Int(value) if pattern.matches(value)))
         }
         MatchPattern::Float(pattern) => {
-            Ok(matches!(value, EvaluatedValue::Float(value) if value == pattern))
+            Ok(matches!(value, MatchValue::Float(value) if value == pattern))
         }
         MatchPattern::String(pattern) => {
-            Ok(matches!(value, EvaluatedValue::String(value) if value.as_str() == pattern.as_str()))
+            Ok(matches!(value, MatchValue::String(value) if value.as_str() == pattern.as_str()))
         }
         MatchPattern::Bool(pattern) => {
-            Ok(matches!(value, EvaluatedValue::Bool(value) if value == pattern))
+            Ok(matches!(value, MatchValue::Bool(value) if value == pattern))
         }
-        MatchPattern::Nil => Ok(matches!(value, EvaluatedValue::Nil)),
+        MatchPattern::Nil => Ok(matches!(value, MatchValue::Nil)),
         MatchPattern::Tuple(patterns) => {
-            let EvaluatedValue::Tuple(values) = value else {
+            let MatchValue::Tuple(values) = value else {
                 return Ok(false);
             };
             if patterns.len() != values.len() {
@@ -107,7 +114,7 @@ where
             }
             for (index, pattern) in patterns.iter().enumerate() {
                 let value = &values[index];
-                if !matches(plan, lists, environment, pattern, value, bindings)? {
+                if !matches_evaluated(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -115,7 +122,7 @@ where
         }
         MatchPattern::List(pattern) => {
             let value = match value {
-                EvaluatedValue::ParameterList(value) => {
+                MatchValue::ParameterList(value) => {
                     if !pattern.elements().is_empty() {
                         return Ok(false);
                     }
@@ -124,20 +131,13 @@ where
                     }
                     return Ok(true);
                 }
-                EvaluatedValue::List(value) => value,
+                MatchValue::List(value) => value,
                 _ => return Ok(false),
             };
-            matches_list(
-                plan,
-                lists,
-                environment,
-                pattern,
-                &RetainedList::new(value.clone()),
-                bindings,
-            )
+            matches_list(plan, lists, environment, pattern, value, bindings)
         }
         MatchPattern::BitArray(pattern) => {
-            let EvaluatedValue::BitArray(value) = value else {
+            let MatchValue::BitArray(value) = value else {
                 return Ok(false);
             };
             Ok(match_bit_array(environment, value, pattern, bindings))
@@ -146,7 +146,7 @@ where
             constructor,
             fields,
         } => {
-            let EvaluatedValue::Custom(value) = value else {
+            let MatchValue::Custom(value) = value else {
                 return Ok(false);
             };
             if value.constructor() != *constructor {
@@ -165,7 +165,7 @@ where
                         actual: value.value_type(plan.value_metadata()),
                     });
                 }
-                if !matches(plan, lists, environment, pattern, value, bindings)? {
+                if !matches_evaluated(plan, lists, environment, pattern, value, bindings)? {
                     return Ok(false);
                 }
             }
@@ -176,7 +176,7 @@ where
             left,
             right,
         } => {
-            let EvaluatedValue::String(value) = value else {
+            let MatchValue::String(value) = value else {
                 return Ok(false);
             };
             if !value.starts_with(prefix.as_str()) {
@@ -197,22 +197,50 @@ where
             if !matches(plan, lists, environment, pattern, value, bindings)? {
                 return Ok(false);
             }
-            bindings.bind(binding, value.clone());
+            bindings.bind(binding, value.retain());
             Ok(true)
         }
     }
 }
 
-fn matches_list<Plan>(
+fn matches_evaluated<Plan>(
     plan: &Plan,
-    lists: &mut crate::runtime::RuntimeListStorage,
+    lists: &RuntimeListStorage,
     environment: &BlockEnvironment,
-    pattern: &MatchPatternList,
-    values: &RetainedList<StoredListValueId>,
+    pattern: &MatchPattern,
+    value: &EvaluatedValue,
     bindings: &mut MatchBindings,
 ) -> Result<bool, InvariantError>
 where
-    Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
+    Plan: RuntimeExecutionPlan,
+{
+    match pattern {
+        MatchPattern::Bind(binding) => {
+            bindings.bind(binding, value.clone());
+            Ok(true)
+        }
+        MatchPattern::Discard => Ok(true),
+        _ => matches(
+            plan,
+            lists,
+            environment,
+            pattern,
+            &MatchValue::from(value),
+            bindings,
+        ),
+    }
+}
+
+fn matches_list<Plan>(
+    plan: &Plan,
+    lists: &RuntimeListStorage,
+    environment: &BlockEnvironment,
+    pattern: &MatchPatternList,
+    values: &MatchList<'_>,
+    bindings: &mut MatchBindings,
+) -> Result<bool, InvariantError>
+where
+    Plan: RuntimeExecutionPlan,
 {
     let element_count = pattern.elements().len();
     if pattern.tail().is_some() {
@@ -232,8 +260,7 @@ where
         }
     }
     if let Some(MatchPatternListTail::Bind(binding)) = pattern.tail() {
-        let tail = lists.drop_first(values.handle(), element_count);
-        bindings.bind(binding, EvaluatedValue::List(tail));
+        bindings.bind(binding, values.tail(lists, element_count));
     }
     Ok(true)
 }
@@ -488,7 +515,7 @@ fn bind_utf_codepoint(pattern: &BitArrayBindingPattern, value: char, bindings: &
 mod tests {
     use super::super::GraphValue;
     use super::super::environment::{BlockEnvironment, RetainedValues};
-    use super::{MatchBindings, MatchPattern, match_pattern, matches_list};
+    use super::{MatchBindings, MatchList, MatchPattern, MatchValue, match_pattern, matches_list};
     use crate::BitArrayValue;
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
@@ -498,9 +525,10 @@ mod tests {
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
-    use crate::runtime::retained_list::RetainedList;
     use crate::runtime::state::RuntimeState;
-    use crate::runtime::state::list::{CustomListAllocation, ListValueId, ParameterListValueId};
+    use crate::runtime::state::list::{
+        CustomListAllocation, ListValueId, ParameterListValueId, StoredListValueId,
+    };
     use crate::runtime::{InvariantError, RuntimeListStorage, Value, run_src};
     use ecow::EcoString;
 
@@ -534,7 +562,7 @@ mod tests {
             ),
         ];
         let mut results = Vec::new();
-        let mut lists = RuntimeListStorage::default();
+        let lists = RuntimeListStorage::default();
         for index in [0, 1, 2, 1, 0, 2] {
             let (source, subject, expected) = &cases[index];
             let plan = execution_plan(source);
@@ -543,10 +571,10 @@ mod tests {
             let environment = BlockEnvironment::from_retained(RetainedValues::empty());
             let bindings = match_pattern(
                 &plan,
-                &mut lists,
+                &lists,
                 &environment,
                 main_pattern(&plan),
-                subject,
+                &MatchValue::from(subject),
                 &mut results,
             )
             .unwrap()
@@ -585,17 +613,17 @@ pub fn main() {
 "#;
         assert_eq!(run_src(source), Value::Int(3.into()));
         let plan = execution_plan(source);
-        let mut lists = RuntimeListStorage::default();
+        let lists = RuntimeListStorage::default();
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         let subject = EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
             BitArrayValue::from_bytes(vec![1, 2, 3]),
         ));
         let bindings = match_pattern(
             &plan,
-            &mut lists,
+            &lists,
             &environment,
             main_pattern(&plan),
-            &subject,
+            &MatchValue::from(&subject),
             &mut Vec::new(),
         )
         .unwrap()
@@ -624,7 +652,7 @@ pub fn main() {
 "#;
         assert_eq!(run_src(source), Value::Int(49.into()));
         let plan = execution_plan(source);
-        let mut lists = RuntimeListStorage::default();
+        let lists = RuntimeListStorage::default();
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
         for (bytes, expected_size, expected_first, expected_second) in [
             (vec![11, 8, 42, 7], 8, 42, 7),
@@ -635,10 +663,10 @@ pub fn main() {
             ));
             let bindings = match_pattern(
                 &plan,
-                &mut lists,
+                &lists,
                 &environment,
                 main_pattern(&plan),
-                &subject,
+                &MatchValue::from(&subject),
                 &mut Vec::new(),
             )
             .unwrap()
@@ -918,7 +946,8 @@ pub fn main() {{
                 plan.int_list_function_id(0).type_id(),
                 items.into_iter().map(Into::into).collect(),
             );
-            let values = RetainedList::new(list.into());
+            let handle: StoredListValueId = list.into();
+            let values = MatchList::from(&handle);
             let environment = BlockEnvironment::from_retained(RetainedValues::empty());
             let mut bindings = MatchBindings::new(Vec::new());
 
@@ -964,14 +993,13 @@ pub fn main() {
         let owner = RuntimeListStorage::default();
         let first = owner.int(int_type, vec![1.into(), 2.into(), 3.into()]);
         let second = owner.int(int_type, vec![4.into(), 5.into()]);
-        let values = RetainedList::new(
-            owner
-                .list(list_type, vec![first.clone().into(), second.into()])
-                .into(),
-        );
+        let handle: StoredListValueId = owner
+            .list(list_type, vec![first.clone().into(), second.into()])
+            .into();
+        let values = MatchList::from(&handle);
         drop(owner);
 
-        let mut caller = RuntimeListStorage::default();
+        let caller = RuntimeListStorage::default();
         let unrelated = caller.int(int_type, vec![999.into()]);
         let unrelated_lists = caller.list(list_type, vec![unrelated.into()]);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
@@ -979,7 +1007,7 @@ pub fn main() {
         assert_eq!(
             matches_list(
                 &plan,
-                &mut caller,
+                &caller,
                 &environment,
                 list_pattern(main_pattern(&plan)),
                 &values,
@@ -990,7 +1018,7 @@ pub fn main() {
         assert_eq!(values.item_reads(), 1);
         assert_eq!(bindings.values.len(), 5);
         assert_eq!(bindings.values[3], EvaluatedValue::List(first.into()));
-        drop(values);
+        drop(handle);
         drop(unrelated_lists);
 
         assert_eq!(
@@ -1029,7 +1057,7 @@ pub fn main() {
 }
 "#,
         );
-        let mut lists = RuntimeListStorage::default();
+        let lists = RuntimeListStorage::default();
         let mut text = EcoString::from("shared string payload retained by partial bindings");
         let allocation = text.as_str().as_ptr();
         let inner = lists.string(
@@ -1047,10 +1075,10 @@ pub fn main() {
         assert!(
             match_pattern(
                 &plan,
-                &mut lists,
+                &lists,
                 &environment,
                 main_pattern(&plan),
-                &subject,
+                &MatchValue::from(&subject),
                 &mut results
             )
             .unwrap()
@@ -1147,7 +1175,9 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(subject)),
+            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+                subject,
+            ))),
             &mut Vec::new(),
         )
         .unwrap()
@@ -1190,7 +1220,9 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(original)),
+            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+                original,
+            ))),
             &mut Vec::new(),
         )
         .unwrap()
@@ -1552,7 +1584,9 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &EvaluatedValue::BitArray(EvaluatedBitArray::from_value(original)),
+            &MatchValue::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
+                original,
+            ))),
             &mut Vec::new(),
         )
         .unwrap()
@@ -1784,7 +1818,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &EvaluatedValue::String("prefix".into()),
+            &MatchValue::from(&EvaluatedValue::String("prefix".into())),
             &mut Vec::new(),
         )
         .expect("string-prefix matching should not be an execution error")
@@ -1808,7 +1842,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &EvaluatedValue::Bool(true),
+            &MatchValue::from(&EvaluatedValue::Bool(true)),
             &mut Vec::new(),
         )
         .expect("Bool matching should not be an execution error")
@@ -1845,7 +1879,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &subject,
+            &MatchValue::from(&subject),
             &mut results,
         ));
         assert!(results.is_empty());
@@ -1944,7 +1978,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             pattern,
-            &subject,
+            &MatchValue::from(&subject),
             &mut Vec::new(),
         )
         .expect("refutable mismatch should not be an execution error");
@@ -1965,7 +1999,7 @@ pub fn main() {
             state.lists_mut(),
             &environment,
             main_pattern(&plan),
-            &EvaluatedValue::List(list.into()),
+            &MatchValue::from(&EvaluatedValue::List(list.into())),
             &mut Vec::new(),
         )
         .expect("list mismatch should not be an execution error");
@@ -2047,7 +2081,7 @@ pub fn main() {
                 state.lists_mut(),
                 &environment,
                 pattern,
-                &subject,
+                &MatchValue::from(&subject),
                 &mut Vec::new()
             )),
             InvariantError::CustomFieldFamilyMismatch {

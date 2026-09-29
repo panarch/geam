@@ -2,7 +2,8 @@ use super::environment::{BlockEnvironment, RetainedValues};
 use super::pattern;
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
-    BlockGraphExitId, BlockId, Edge, MatchEdge, NeverCallTarget, SourceStopKind, Terminator,
+    BlockGraphExitId, BlockId, Edge, IntSwitch, MatchEdge, NeverCallTarget, SourceStopKind,
+    Terminator,
 };
 use crate::runtime::ExecutionError;
 
@@ -151,15 +152,7 @@ where
             Ok(transition(environment, edge))
         }
         Terminator::IntSwitch(switch) => {
-            let subject = environment.int(switch.subject());
-            let selected = switch
-                .clauses()
-                .iter()
-                .find_map(|(pattern, edge)| pattern.matches(&subject).then_some(edge));
-            let edge = match selected {
-                Some(edge) => edge,
-                None => switch.fallback(),
-            };
+            let edge = select_int_edge(&environment, switch);
             Ok(transition(environment, edge))
         }
         Terminator::FloatSwitch(switch) => {
@@ -187,16 +180,17 @@ where
             Ok(transition(environment, edge))
         }
         Terminator::Match(matcher) => {
-            let subject = environment.value(matcher.subject());
-            let matched = pattern::match_pattern(
-                plan,
-                state.lists_mut(),
-                &environment,
-                matcher.pattern(),
-                &subject,
-                match_results,
-            );
-            drop(subject);
+            let matched = {
+                let subject = environment.match_value(matcher.subject());
+                pattern::match_pattern(
+                    plan,
+                    state.lists(),
+                    &environment,
+                    matcher.pattern(),
+                    &subject,
+                    match_results,
+                )
+            };
             matched
                 .map_err(State::Error::from)
                 .map(|matched| match matched {
@@ -277,6 +271,20 @@ fn transition(environment: BlockEnvironment, edge: &Edge) -> GraphAction {
     }
 }
 
+// Keep clause traversal outside the shared block dispatch.
+#[inline(never)]
+fn select_int_edge<'plan>(environment: &BlockEnvironment, switch: &'plan IntSwitch) -> &'plan Edge {
+    let subject = environment.int_ref(switch.subject());
+    let selected = switch
+        .clauses()
+        .iter()
+        .find_map(|(pattern, edge)| pattern.matches(subject).then_some(edge));
+    match selected {
+        Some(edge) => edge,
+        None => switch.fallback(),
+    }
+}
+
 fn transition_match(
     environment: BlockEnvironment,
     edge: &MatchEdge,
@@ -299,5 +307,104 @@ fn panic_kind(kind: SourceStopKind) -> PanicKind {
         SourceStopKind::EmptyFunction => PanicKind::EmptyFunction,
         SourceStopKind::EmptyBlock => PanicKind::EmptyBlock,
         SourceStopKind::IncompleteUse => PanicKind::IncompleteUse,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::runtime::{Value, run_src};
+    use num_bigint::BigInt;
+
+    #[test]
+    fn integer_switches_preserve_digit_boundaries_and_values_on_the_selected_edge() {
+        for (number, label) in [
+            ("-18446744073709551617", "other"),
+            ("-18446744073709551616", "negative wide"),
+            ("-4294967296", "negative limb"),
+            ("-1", "negative one"),
+            ("0", "zero"),
+            ("1", "one"),
+            ("2", "other"),
+            ("4294967295", "limb maximum"),
+            ("4294967296", "next limb"),
+            ("4294967297", "other"),
+            ("18446744073709551615", "two limbs"),
+            ("18446744073709551616", "wide"),
+            ("1208925819614629174706176", "large"),
+            ("1208925819614629174706177", "other"),
+        ] {
+            let source = format!(
+                r#"
+fn classify(value: Int) {{
+  let label = case value {{
+    0 -> "zero"
+    1208925819614629174706176 -> "large"
+    -1 -> "negative one"
+    4294967296 -> "next limb"
+    -18446744073709551616 -> "negative wide"
+    1 -> "one"
+    4294967295 -> "limb maximum"
+    18446744073709551616 -> "wide"
+    -4294967296 -> "negative limb"
+    18446744073709551615 -> "two limbs"
+    _ -> "other"
+  }}
+  #(value, label, value)
+}}
+pub fn main() {{ classify({number}) }}
+"#,
+            );
+            let expected = number.parse::<BigInt>().unwrap();
+            assert_eq!(
+                run_src(&source),
+                Value::Tuple(vec![
+                    Value::Int(expected.clone()),
+                    Value::String(label.into()),
+                    Value::Int(expected),
+                ]),
+                "{number}",
+            );
+        }
+    }
+
+    #[test]
+    fn integer_switches_preserve_first_matching_guarded_clause_and_fallback() {
+        let source = r#"
+fn select(value, enabled) {
+  let selected = case value {
+    0 if enabled -> 10
+    0 -> 20
+    4294967296 if enabled -> 30
+    4294967296 -> 40
+    _ -> 50
+  }
+  #(value, selected)
+}
+pub fn main() {
+  #(
+    select(0, True),
+    select(0, False),
+    select(4294967296, True),
+    select(4294967296, False),
+    select(-1, True),
+  )
+}
+"#;
+        assert_eq!(
+            run_src(source),
+            Value::Tuple(vec![
+                Value::Tuple(vec![Value::Int(0.into()), Value::Int(10.into())]),
+                Value::Tuple(vec![Value::Int(0.into()), Value::Int(20.into())]),
+                Value::Tuple(vec![
+                    Value::Int(4_294_967_296_u64.into()),
+                    Value::Int(30.into())
+                ]),
+                Value::Tuple(vec![
+                    Value::Int(4_294_967_296_u64.into()),
+                    Value::Int(40.into())
+                ]),
+                Value::Tuple(vec![Value::Int((-1).into()), Value::Int(50.into())]),
+            ]),
+        );
     }
 }
