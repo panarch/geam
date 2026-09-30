@@ -62,24 +62,26 @@ fn runs_the_documented_async_files_provider_to_completion() {
         config["dependencies"]["geam"]["path"] = geam_path.clone();
         fs::write(&path, toml::to_string_pretty(&config).expect("Gleam TOML"))
             .expect("resolve the checkout package after copying the example");
-
-        let path = directory.join("manifest.toml");
-        let source = fs::read_to_string(&path).expect("Gleam lock");
-        let mut lock: toml::Value = toml::from_str(&source).expect("valid lock document");
-        lock["requirements"]["geam"]["path"] = geam_path.clone();
-        let package = lock["packages"]
-            .as_array_mut()
-            .expect("locked packages")
-            .iter_mut()
-            .find(|package| package["name"].as_str() == Some("geam"))
-            .expect("locked Geam package");
-        package["path"] = geam_path.clone();
-        fs::write(
-            &path,
-            toml::to_string_pretty(&lock).expect("Gleam lock TOML"),
-        )
-        .expect("relocate only the local package path, preserving locked versions");
     }
+
+    // The application owns the resolved dependency lock. Local packages only
+    // need their dependency declarations relocated.
+    let path = project.join("manifest.toml");
+    let source = fs::read_to_string(&path).expect("Gleam lock");
+    let mut lock: toml::Value = toml::from_str(&source).expect("valid lock document");
+    lock["requirements"]["geam"]["path"] = geam_path.clone();
+    let package = lock["packages"]
+        .as_array_mut()
+        .expect("locked packages")
+        .iter_mut()
+        .find(|package| package["name"].as_str() == Some("geam"))
+        .expect("locked Geam package");
+    package["path"] = geam_path;
+    fs::write(
+        &path,
+        toml::to_string_pretty(&lock).expect("Gleam lock TOML"),
+    )
+    .expect("relocate only the local package path, preserving locked versions");
 
     let add = geam_at(&project, ["provider", "add", "--path", "../provider"]);
     assert!(
