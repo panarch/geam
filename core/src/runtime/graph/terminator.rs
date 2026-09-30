@@ -1,4 +1,4 @@
-use super::environment::{BlockEnvironment, RetainedValues};
+use super::environment::{BlockEnvironment, MatchResults, RetainedValues};
 use super::pattern;
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
@@ -9,7 +9,6 @@ use crate::runtime::ExecutionError;
 
 use crate::runtime::captures::Captures;
 use crate::runtime::error::PanicKind;
-use crate::runtime::evaluated::EvaluatedValue;
 
 use crate::runtime::state::RuntimeState;
 
@@ -135,7 +134,7 @@ pub(in crate::runtime) fn terminator_action<Plan, State>(
     state: &mut State,
     environment: BlockEnvironment,
     terminator: &Terminator,
-    match_results: &mut Vec<EvaluatedValue>,
+    match_results: &mut MatchResults,
 ) -> Result<GraphAction, State::Error>
 where
     Plan: crate::plan::execution::runtime::RuntimeExecutionPlan,
@@ -289,7 +288,7 @@ fn transition_match(
     environment: BlockEnvironment,
     edge: &MatchEdge,
     bindings: pattern::MatchBindings,
-    match_results: &mut Vec<EvaluatedValue>,
+    match_results: &mut MatchResults,
 ) -> GraphAction {
     let inputs =
         environment.into_match_retained(&edge.transfer, &edge.bindings, bindings, match_results);

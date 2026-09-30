@@ -1,9 +1,12 @@
 mod capture;
+mod match_results;
 mod pool;
 mod read;
 mod transfer;
 mod value;
+mod write;
 
+pub(in crate::runtime::graph) use match_results::MatchResults;
 pub(super) use pool::StoragePool;
 pub(in crate::runtime) use value::GraphValue;
 
@@ -754,7 +757,9 @@ impl BlockEnvironment {
             F::Bool(value) => self.push_bool_function(value),
             F::Nil(value) => self.push_nil_function(value),
             F::Tuple(value) => self.push_tuple_function(value),
-            F::List(value) => self.values.push_list_function(value),
+            F::List(value) => {
+                self.values.write_list_function(value);
+            }
             F::Function(value) => self.push_function_function(value),
         }
     }
@@ -806,21 +811,7 @@ impl RetainedValues {
     }
 
     pub(in crate::runtime) fn push_evaluated(&mut self, value: EvaluatedValue) {
-        match value {
-            EvaluatedValue::Int(value) => self.values.ints.push(value),
-            EvaluatedValue::Float(value) => self.values.floats.push(value),
-            EvaluatedValue::String(value) => self.values.strings.push(value),
-            EvaluatedValue::BitArray(value) => self.values.bit_arrays.push(value),
-            EvaluatedValue::UtfCodepoint(value) => self.values.utf_codepoints.push(value),
-            EvaluatedValue::Custom(value) => self.values.customs.push(value),
-            EvaluatedValue::External(value) => self.values.externals.push(value),
-            EvaluatedValue::Bool(value) => self.values.bools.push(value),
-            EvaluatedValue::Nil => {}
-            EvaluatedValue::Tuple(value) => self.values.tuples.push(value),
-            EvaluatedValue::ParameterList(value) => self.values.parameter_lists.push(value),
-            EvaluatedValue::List(value) => self.push_list(value.into_value()),
-            EvaluatedValue::Function(value) => self.push_function(value),
-        }
+        self.values.write_evaluated(value);
     }
 
     pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {
@@ -920,7 +911,7 @@ impl RetainedValues {
                     self.values.tuple_functions.push(value.clone())
                 }
                 EvaluatedCaptureKind::ListFunction { value, .. } => {
-                    self.values.push_list_function(value.clone())
+                    self.values.write_list_function(value.clone());
                 }
                 EvaluatedCaptureKind::FunctionFunction { value, .. } => match value {
                     EvaluatedFunctionFunction::Core(value) => {
@@ -1012,9 +1003,10 @@ impl RetainedValues {
                 .values
                 .tuple_functions
                 .push(environment.tuple_function(*local).clone()),
-            ParamLocal::ListFunction(local) => self
-                .values
-                .push_list_function(environment.list_function(local)),
+            ParamLocal::ListFunction(local) => {
+                self.values
+                    .write_list_function(environment.list_function(local));
+            }
             ParamLocal::FunctionFunction(local) => match local {
                 FunctionFunctionLocal::Core(local) => self
                     .values
@@ -1029,48 +1021,11 @@ impl RetainedValues {
     }
 
     pub(in crate::runtime) fn push_list(&mut self, value: ListValueId) {
-        match value {
-            ListValueId::Parameter(value) => self.values.parameter_lists.push(value),
-            ListValueId::Int(value) => self.values.int_lists.push(value),
-            ListValueId::String(value) => self.values.string_lists.push(value),
-            ListValueId::BitArray(value) => self.values.bit_array_lists.push(value),
-            ListValueId::UtfCodepoint(value) => self.values.utf_codepoint_lists.push(value),
-            ListValueId::Custom(value) => self.values.custom_lists.push(value),
-            ListValueId::External(value) => self.values.external_lists.push(value),
-            ListValueId::Float(value) => self.values.float_lists.push(value),
-            ListValueId::Bool(value) => self.values.bool_lists.push(value),
-            ListValueId::Nil(value) => self.values.nil_lists.push(value),
-            ListValueId::Tuple(value) => self.values.tuple_lists.push(value),
-            ListValueId::ParameterList(value) => self.values.parameter_list_lists.push(value),
-            ListValueId::List(value) => self.values.list_lists.push(value),
-            ListValueId::Function(value) => self.values.function_lists.push(value),
-        }
+        self.values.write_list(value);
     }
 
     pub(in crate::runtime) fn push_function(&mut self, value: EvaluatedFunctionValue) {
-        use crate::runtime::EvaluatedFunctionValueKind as F;
-
-        match value.into_kind() {
-            F::Generic(value) => self.values.generic_functions.push(value),
-            F::Never(value) => self.values.never_functions.push(value),
-            F::Int(value) => self.values.int_functions.push(value),
-            F::Float(value) => self.values.float_functions.push(value),
-            F::String(value) => self.values.string_functions.push(value),
-            F::BitArray(value) => self.values.bit_array_functions.push(value),
-            F::UtfCodepoint(value) => self.values.utf_codepoint_functions.push(value),
-            F::Custom(value) => self.values.custom_functions.push(value),
-            F::External(value) => self.values.external_functions.push(value),
-            F::Bool(value) => self.values.bool_functions.push(value),
-            F::Nil(value) => self.values.nil_functions.push(value),
-            F::Tuple(value) => self.values.tuple_functions.push(value),
-            F::List(value) => self.values.push_list_function(value),
-            F::Function(EvaluatedFunctionFunction::Core(value)) => {
-                self.values.core_function_functions.push(value);
-            }
-            F::Function(EvaluatedFunctionFunction::External(value)) => {
-                self.values.external_function_functions.push(value);
-            }
-        }
+        self.values.write_function(value);
     }
 
     fn push_list_capture(&mut self, value: &EvaluatedListCapture) {
@@ -1139,34 +1094,6 @@ impl HostCallArguments for RetainedValues {
     }
 
     fn nil(&self, _slot: HostNilArgumentSlot) {}
-}
-
-impl BlockValues {
-    fn push_list_function(&mut self, value: EvaluatedListFunction) {
-        use crate::plan::execution::function::ListFunctionId as F;
-        use crate::plan::execution::function::RuntimeListFunctionId as R;
-
-        match value.runtime_id() {
-            R::Core(function) => match function {
-                F::Parameter(_) => self.parameter_list_functions.push(value),
-                F::ParameterList(_) => self.parameter_list_list_functions.push(value),
-                F::Int(_) => self.int_list_functions.push(value),
-                F::String(_) => self.string_list_functions.push(value),
-                F::BitArray(_) => self.bit_array_list_functions.push(value),
-                F::UtfCodepoint(_) => self.utf_codepoint_list_functions.push(value),
-                F::Custom(_) => self.custom_list_functions.push(value),
-                F::Float(_) => self.float_list_functions.push(value),
-                F::Bool(_) => self.bool_list_functions.push(value),
-                F::Nil(_) => self.nil_list_functions.push(value),
-                F::Tuple(_) => self.tuple_list_functions.push(value),
-                F::List(_) => self.list_list_functions.push(value),
-                F::Function(_) => self.function_list_functions.push(value),
-            },
-            R::External(function) => self
-                .external_list_functions
-                .push(value.map_runtime_id(|_| function)),
-        }
-    }
 }
 
 #[cfg(test)]

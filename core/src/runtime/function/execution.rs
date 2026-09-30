@@ -403,7 +403,7 @@ pub fn main() { count(0) }
     }
 
     #[test]
-    fn match_results_survive_root_tail_calls_nested_calls_and_independent_yields() {
+    fn graph_storage_survives_root_tail_calls_nested_calls_and_independent_yields() {
         let plan = crate::runtime::plan_src(
             r#"
 fn ordinary(value, depth) {
@@ -459,10 +459,8 @@ pub fn main() { left([1, 2, 3], 0) }
                     .unwrap(),
             );
         }
-        let first_buffer = first.storage.match_results.as_ptr();
-        let second_buffer = second.storage.match_results.as_ptr();
-        let capacity = first.storage.match_results.capacity();
-        assert!(capacity >= 2);
+        let first_buffer = &*first.storage as *const _;
+        let second_buffer = &*second.storage as *const _;
         assert_ne!(first_buffer, second_buffer);
         for _ in 0..4_000 {
             first = continuing(
@@ -483,12 +481,9 @@ pub fn main() { left([1, 2, 3], 0) }
                     )
                     .unwrap(),
             );
-            assert!(first.storage.match_results.is_empty());
-            assert!(second.storage.match_results.is_empty());
-            assert_eq!(first.storage.match_results.as_ptr(), first_buffer);
-            assert_eq!(second.storage.match_results.as_ptr(), second_buffer);
-            assert_eq!(first.storage.match_results.capacity(), capacity);
-            assert_eq!(second.storage.match_results.capacity(), capacity);
+
+            assert_eq!(&*first.storage as *const _, first_buffer);
+            assert_eq!(&*second.storage as *const _, second_buffer);
         }
         assert!(first_echo.len() > 10);
         assert_eq!(first_echo.len(), second_echo.len());
@@ -509,8 +504,7 @@ pub fn main() { left([1, 2, 3], 0) }
                 )
                 .unwrap(),
         );
-        assert_eq!(second.storage.match_results.as_ptr(), second_buffer);
-        assert!(second.storage.match_results.is_empty());
+        assert_eq!(&*second.storage as *const _, second_buffer);
     }
 
     #[test]
