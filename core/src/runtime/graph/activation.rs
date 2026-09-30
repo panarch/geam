@@ -1,5 +1,5 @@
 use super::RuntimeGraphState;
-use super::environment::StoragePool;
+use super::environment::{MatchResults, StoragePool};
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
@@ -30,7 +30,7 @@ pub(in crate::runtime) struct Execution<'plan, Plan: ExecutableRuntimePlan> {
 pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     pub(super) returns: Returns<'plan, Plan>,
     pub(super) pool: StoragePool,
-    pub(in crate::runtime) match_results: Vec<EvaluatedValue>,
+    match_results: MatchResults,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -238,7 +238,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
         Self {
             returns: Returns::new(),
             pool: StoragePool::default(),
-            match_results: Vec::new(),
+            match_results: MatchResults::default(),
         }
     }
 }

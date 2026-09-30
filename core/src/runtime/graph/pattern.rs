@@ -1,7 +1,7 @@
 use num_bigint::BigInt;
 
 use super::bit_array;
-use super::environment::BlockEnvironment;
+use super::environment::{BlockEnvironment, MatchResults};
 use crate::plan::execution::graph::{
     BitArrayBindingPattern, BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize,
     BitArrayPatternSizeExpr, BitArrayPatternValue, BitArrayStringPattern, FloatBitSize,
@@ -15,20 +15,20 @@ use crate::runtime::evaluated::{
 use crate::runtime::{InvariantError, RuntimeListStorage};
 
 pub(super) struct MatchBindings {
-    values: Vec<EvaluatedValue>,
+    results: MatchResults,
     ints: Vec<BigInt>,
 }
 
 impl MatchBindings {
-    fn new(values: Vec<EvaluatedValue>) -> Self {
+    fn new(results: MatchResults) -> Self {
         Self {
-            values,
+            results,
             ints: Vec::new(),
         }
     }
 
     fn bind(&mut self, _binding: &MatchPatternBinding, value: EvaluatedValue) {
-        self.values.push(value);
+        self.results.push(value);
     }
 
     fn bind_int(&mut self, binding: &MatchIntPatternBinding, value: &BigInt) {
@@ -42,8 +42,8 @@ impl MatchBindings {
         self.ints[binding.index()].clone()
     }
 
-    pub(in crate::runtime::graph) fn into_values(self) -> Vec<EvaluatedValue> {
-        self.values
+    pub(in crate::runtime::graph) fn into_results(self) -> MatchResults {
+        self.results
     }
 }
 
@@ -55,7 +55,7 @@ pub(super) fn match_pattern<Plan>(
     environment: &BlockEnvironment,
     pattern: &MatchPattern,
     subject: &EvaluatedValueRef<'_>,
-    results: &mut Vec<EvaluatedValue>,
+    results: &mut MatchResults,
 ) -> Result<Option<MatchBindings>, InvariantError>
 where
     Plan: RuntimeExecutionPlan,
@@ -64,9 +64,9 @@ where
     if matches(plan, lists, environment, pattern, subject, &mut bindings)? {
         Ok(Some(bindings))
     } else {
-        let mut values = bindings.into_values();
-        values.clear();
-        *results = values;
+        let mut returned = bindings.into_results();
+        returned.clear();
+        *results = returned;
         Ok(None)
     }
 }
@@ -512,15 +512,16 @@ mod tests {
     use super::super::GraphValue;
     use super::super::environment::{BlockEnvironment, RetainedValues};
     use super::{
-        EvaluatedListRef, EvaluatedValueRef, MatchBindings, MatchPattern, match_pattern,
-        matches_list,
+        EvaluatedListRef, EvaluatedValueRef, MatchBindings, MatchPattern, MatchResults,
+        match_pattern, matches_list,
     };
     use crate::BitArrayValue;
     use crate::plan::ValueType;
     use crate::plan::execution::ExecutionPlan;
     use crate::plan::execution::function::{CoreRuntimeFunctionId, RuntimeFunctionId};
     use crate::plan::execution::graph::{
-        MatchPatternBinding, MatchPatternList, Terminator, Transfer,
+        BitArrayLocalId, BoolLocalId, IntListLocalId, IntLocalId, ListListLocalId,
+        MatchPatternBinding, MatchPatternList, StringLocalId, Terminator, Transfer,
     };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
@@ -532,74 +533,17 @@ mod tests {
     use ecow::EcoString;
 
     #[test]
-    fn match_results_reuse_capacity_after_growth_smaller_matches_and_empty_matches() {
-        let cases = [
-            (
-                "pub fn main() { let assert 42 = 42 0 }",
-                EvaluatedValue::Int(42.into()),
-                Vec::new(),
-            ),
-            (
-                "pub fn main() { let assert 42 as value = 42 value }",
-                EvaluatedValue::Int(42.into()),
-                vec![EvaluatedValue::Int(42.into())],
-            ),
+    fn source_matches_preserve_literal_alias_and_many_binding_results() {
+        for (source, expected) in [
+            ("pub fn main() { let assert 42 = 42 0 }", 0),
+            ("pub fn main() { let assert 42 as value = 42 value }", 42),
             (
                 "pub fn main() { let assert <<a, b, c, d, e, f, g>> = <<1, 2, 3, 4, 5, 6, 7>> a + b + c + d + e + f + g }",
-                EvaluatedValue::BitArray(EvaluatedBitArray::from_value(BitArrayValue::from_bytes(
-                    vec![1, 2, 3, 4, 5, 6, 7],
-                ))),
-                vec![
-                    EvaluatedValue::Int(1.into()),
-                    EvaluatedValue::Int(2.into()),
-                    EvaluatedValue::Int(3.into()),
-                    EvaluatedValue::Int(4.into()),
-                    EvaluatedValue::Int(5.into()),
-                    EvaluatedValue::Int(6.into()),
-                    EvaluatedValue::Int(7.into()),
-                ],
+                28,
             ),
-        ];
-        let mut results = Vec::new();
-        let lists = RuntimeListStorage::default();
-        for index in [0, 1, 2, 1, 0, 2] {
-            let (source, subject, expected) = &cases[index];
-            let plan = execution_plan(source);
-            let previous_capacity = results.capacity();
-            let previous_buffer = results.as_ptr();
-            let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-            let bindings = match_pattern(
-                &plan,
-                &lists,
-                &environment,
-                main_pattern(&plan),
-                &EvaluatedValueRef::from(subject),
-                &mut results,
-            )
-            .unwrap()
-            .unwrap();
-            assert_eq!(&bindings.values, expected);
-            assert_eq!(results.capacity(), 0);
-            if expected.len() <= previous_capacity {
-                assert_eq!(bindings.values.as_ptr(), previous_buffer);
-                assert_eq!(bindings.values.capacity(), previous_capacity);
-            }
-            let buffer = bindings.values.as_ptr();
-            let capacity = bindings.values.capacity();
-            // This edge discards every result, including results with allocated payloads.
-            environment.into_match_retained(
-                &Transfer {
-                    families: Vec::new().into(),
-                },
-                &[],
-                bindings,
-                &mut results,
-            );
-            assert!(results.is_empty());
-            assert_eq!(results.as_ptr(), buffer);
-            assert_eq!(results.capacity(), capacity);
+        ] {
+            assert_eq!(run_src(source), Value::Int(expected.into()));
         }
-        assert!(results.capacity() >= 7);
     }
 
     #[test]
@@ -623,21 +567,18 @@ pub fn main() {
             &environment,
             main_pattern(&plan),
             &EvaluatedValueRef::from(&subject),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .unwrap()
         .unwrap();
         assert_eq!(bindings.ints.len(), 0);
         assert_eq!(bindings.ints.capacity(), 0);
+        let environment = retained_bindings(bindings, &[0, 1, 2]);
+        assert_eq!(environment.int(IntLocalId(0)), 1.into());
+        assert_eq!(environment.int(IntLocalId(1)), 2.into());
         assert_eq!(
-            bindings.values,
-            vec![
-                EvaluatedValue::Int(1.into()),
-                EvaluatedValue::Int(2.into()),
-                EvaluatedValue::BitArray(EvaluatedBitArray::from_value(BitArrayValue::from_bytes(
-                    vec![3]
-                ),)),
-            ]
+            environment.bit_array(BitArrayLocalId(0)).value(),
+            BitArrayValue::from_bytes(vec![3])
         );
     }
 
@@ -666,20 +607,16 @@ pub fn main() {
                 &environment,
                 main_pattern(&plan),
                 &EvaluatedValueRef::from(&subject),
-                &mut Vec::new(),
+                &mut MatchResults::default(),
             )
             .unwrap()
             .unwrap();
             assert_eq!(bindings.ints, vec![expected_size.into()]);
-            assert_eq!(
-                bindings.values,
-                vec![
-                    EvaluatedValue::Int(11.into()),
-                    EvaluatedValue::Int(expected_size.into()),
-                    EvaluatedValue::Int(expected_first.into()),
-                    EvaluatedValue::Int(expected_second.into()),
-                ]
-            );
+            let environment = retained_bindings(bindings, &[0, 1, 2, 3]);
+            assert_eq!(environment.int(IntLocalId(0)), 11.into());
+            assert_eq!(environment.int(IntLocalId(1)), expected_size.into());
+            assert_eq!(environment.int(IntLocalId(2)), expected_first.into());
+            assert_eq!(environment.int(IntLocalId(3)), expected_second.into());
         }
     }
 
@@ -693,7 +630,7 @@ pub fn main() {
         let second = vec![EvaluatedValue::Int(20.into())];
         let first_buffer = first.as_ptr();
         let second_buffer = second.as_ptr();
-        let mut bindings = MatchBindings::new(Vec::new());
+        let mut bindings = MatchBindings::new(MatchResults::default());
         for (index, value) in [
             EvaluatedValue::Tuple(first),
             EvaluatedValue::String("unused".into()),
@@ -706,9 +643,7 @@ pub fn main() {
             bindings.bind(&MatchPatternBinding { index }, value);
         }
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-        let binding_buffer = bindings.values.as_ptr();
-        let binding_capacity = bindings.values.capacity();
-        let mut results = Vec::new();
+        let mut results = MatchResults::default();
         let retained = environment.into_match_retained(
             &Transfer {
                 families: vec![FamilyTransfer {
@@ -732,9 +667,6 @@ pub fn main() {
             bindings,
             &mut results,
         );
-        assert!(results.is_empty());
-        assert_eq!(results.as_ptr(), binding_buffer);
-        assert_eq!(results.capacity(), binding_capacity);
         let mut environment = BlockEnvironment::from_retained(retained);
         assert_eq!(
             environment.tuple(TupleLocalId(0)),
@@ -948,7 +880,7 @@ pub fn main() {{
             let handle: StoredListValueId = list.into();
             let values = EvaluatedListRef::from(&handle);
             let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-            let mut bindings = MatchBindings::new(Vec::new());
+            let mut bindings = MatchBindings::new(MatchResults::default());
 
             assert_eq!(
                 matches_list(
@@ -963,7 +895,7 @@ pub fn main() {{
                 "{pattern}",
             );
             assert_eq!(values.item_reads(), reads, "{pattern}");
-            assert!(bindings.values.is_empty());
+            // Literal-only list patterns never create an owned binding.
             assert!(echo.is_empty());
         }
     }
@@ -1002,7 +934,7 @@ pub fn main() {
         let unrelated = caller.int(int_type, vec![999.into()]);
         let unrelated_lists = caller.list(list_type, vec![unrelated.into()]);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-        let mut bindings = MatchBindings::new(Vec::new());
+        let mut bindings = MatchBindings::new(MatchResults::default());
         assert_eq!(
             matches_list(
                 &plan,
@@ -1015,8 +947,8 @@ pub fn main() {
             Ok(true),
         );
         assert_eq!(values.item_reads(), 1);
-        assert_eq!(bindings.values.len(), 5);
-        assert_eq!(bindings.values[3], EvaluatedValue::List(first.into()));
+        let environment = retained_bindings(bindings, &[0, 1, 2, 3, 4]);
+        assert_eq!(environment.int_list(IntListLocalId(1)), first);
         drop(handle);
         drop(unrelated_lists);
 
@@ -1024,7 +956,13 @@ pub fn main() {
             crate::runtime::materialize::value(
                 plan.value_metadata(),
                 &caller,
-                EvaluatedValue::Tuple(bindings.values),
+                EvaluatedValue::Tuple(vec![
+                    EvaluatedValue::Int(environment.int(IntLocalId(0))),
+                    EvaluatedValue::Int(environment.int(IntLocalId(1))),
+                    EvaluatedValue::List(environment.int_list(IntListLocalId(0)).into()),
+                    EvaluatedValue::List(environment.int_list(IntListLocalId(1)).into()),
+                    EvaluatedValue::List(environment.list_list(ListListLocalId(0)).into()),
+                ]),
             ),
             Value::Tuple(vec![
                 Value::Int(1.into()),
@@ -1069,7 +1007,7 @@ pub fn main() {
         );
         let subject = EvaluatedValue::List(outer.into());
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-        let mut results = Vec::new();
+        let mut results = MatchResults::default();
 
         assert!(
             match_pattern(
@@ -1083,8 +1021,6 @@ pub fn main() {
             .unwrap()
             .is_none()
         );
-        assert!(results.is_empty());
-        assert!(results.capacity() >= 3);
         drop(subject);
         // With no head, tail or alias binding left, mutation needs no COW copy.
         assert_eq!(text.make_mut().as_ptr(), allocation);
@@ -1177,23 +1113,26 @@ pub fn main() {
             &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 subject,
             ))),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .unwrap()
         .unwrap();
-        assert_eq!(bindings.values.len(), 3);
+        let environment = retained_bindings(bindings, &[0, 1, 2]);
         for (binding, offset, expected) in [
-            (&bindings.values[0], 1, &[10, 20][..]),
-            (&bindings.values[1], 3, &[30][..]),
-            (&bindings.values[2], 4, &[40, 50][..]),
+            (environment.bit_array(BitArrayLocalId(0)), 1, &[10, 20][..]),
+            (environment.bit_array(BitArrayLocalId(1)), 3, &[30][..]),
+            (environment.bit_array(BitArrayLocalId(2)), 4, &[40, 50][..]),
         ] {
-            let value = matched_bit_array(binding);
+            let value = binding.value();
             assert_eq!(value.bytes(), expected);
             assert_eq!(value.bytes().as_ptr(), pointer.wrapping_add(offset));
         }
         drop(original);
         drop(plan);
-        assert_eq!(matched_bit_array(&bindings.values[2]).bytes(), &[40, 50]);
+        assert_eq!(
+            environment.bit_array(BitArrayLocalId(2)).value().bytes(),
+            &[40, 50]
+        );
     }
 
     #[test]
@@ -1222,21 +1161,15 @@ pub fn main() {
             &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 original,
             ))),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .unwrap()
         .unwrap();
-        assert_eq!(bindings.values.len(), 1);
-        let value = matched_bit_array(&bindings.values[0]);
+        let environment = retained_bindings(bindings, &[0]);
+        let value = environment.bit_array(BitArrayLocalId(0)).value();
         assert!(value.bytes().is_empty());
         assert_eq!(value.bit_len(), 0);
         assert_ne!(value.bytes().as_ptr(), end);
-    }
-
-    #[test]
-    #[should_panic(expected = "fixture binding should be a bit array")]
-    fn matched_bit_array_guard_rejects_other_families() {
-        matched_bit_array(&EvaluatedValue::Nil);
     }
 
     #[test]
@@ -1586,12 +1519,12 @@ pub fn main() {
             &EvaluatedValueRef::from(&EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
                 original,
             ))),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .unwrap()
         .unwrap();
-        assert_eq!(bindings.values.len(), 1);
-        let value = matched_bit_array(&bindings.values[0]);
+        let environment = retained_bindings(bindings, &[0]);
+        let value = environment.bit_array(BitArrayLocalId(0)).value();
         assert!(value.bytes().is_empty());
         assert_eq!(value.bit_len(), 0);
         assert_ne!(value.bytes().as_ptr(), original_bytes);
@@ -1818,12 +1751,13 @@ pub fn main() {
             &environment,
             pattern,
             &EvaluatedValueRef::from(&EvaluatedValue::String("prefix".into())),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .expect("string-prefix matching should not be an execution error")
         .expect("the prefix should match");
 
-        assert_eq!(bindings.values[0], EvaluatedValue::String("pre".into()));
+        let environment = retained_bindings(bindings, &[0]);
+        assert_eq!(environment.string(StringLocalId(0)), "pre");
     }
 
     #[test]
@@ -1842,12 +1776,13 @@ pub fn main() {
             &environment,
             pattern,
             &EvaluatedValueRef::from(&EvaluatedValue::Bool(true)),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .expect("Bool matching should not be an execution error")
         .expect("the Bool pattern should match");
 
-        assert_eq!(bindings.values[0], EvaluatedValue::Bool(true));
+        let environment = retained_bindings(bindings, &[0]);
+        assert!(environment.bool(BoolLocalId(0)));
     }
 
     #[test]
@@ -1871,7 +1806,7 @@ pub fn main() {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
-        let mut results = Vec::new();
+        let mut results = MatchResults::default();
 
         let error = exact_match_error(match_pattern(
             &plan,
@@ -1881,9 +1816,7 @@ pub fn main() {
             &EvaluatedValueRef::from(&subject),
             &mut results,
         ));
-        assert!(results.is_empty());
-        // An invariant stops the execution: partial bindings and their allocation are released.
-        assert_eq!(results.capacity(), 0);
+        // An invariant stops the execution and releases partial bindings.
         drop(subject);
         assert_eq!(text.make_mut().as_ptr(), allocation);
 
@@ -1978,7 +1911,7 @@ pub fn main() {
             &environment,
             pattern,
             &EvaluatedValueRef::from(&subject),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .expect("refutable mismatch should not be an execution error");
         assert!(matched.is_none());
@@ -1999,7 +1932,7 @@ pub fn main() {
             &environment,
             main_pattern(&plan),
             &EvaluatedValueRef::from(&EvaluatedValue::List(list.into())),
-            &mut Vec::new(),
+            &mut MatchResults::default(),
         )
         .expect("list mismatch should not be an execution error");
 
@@ -2081,7 +2014,7 @@ pub fn main() {
                 &environment,
                 pattern,
                 &EvaluatedValueRef::from(&subject),
-                &mut Vec::new()
+                &mut MatchResults::default()
             )),
             InvariantError::CustomFieldFamilyMismatch {
                 custom_type: plan.custom_value_type(constructor.type_id()),
@@ -2132,11 +2065,17 @@ pub fn main() {
         }
     }
 
-    fn matched_bit_array(value: &EvaluatedValue) -> &crate::BitArrayValue {
-        match value {
-            EvaluatedValue::BitArray(value) => value.as_value(),
-            _ => panic!("fixture binding should be a bit array"),
-        }
+    fn retained_bindings(bindings: MatchBindings, selected: &[usize]) -> BlockEnvironment {
+        let environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let retained = environment.into_match_retained(
+            &Transfer {
+                families: Vec::new().into(),
+            },
+            selected,
+            bindings,
+            &mut MatchResults::default(),
+        );
+        BlockEnvironment::from_retained(retained)
     }
 
     fn main_pattern(plan: &ExecutionPlan) -> &MatchPattern {
