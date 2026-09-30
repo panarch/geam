@@ -1,5 +1,12 @@
 import geam/future.{type Future}
 
+pub type Reason {
+  Caught(String)
+}
+
+@external(erlang, "standalone_future", "rescue")
+pub fn rescue(body: fn() -> value) -> Result(value, Reason)
+
 @external(erlang, "standalone_future", "timer")
 pub fn timer() -> Future(Int)
 

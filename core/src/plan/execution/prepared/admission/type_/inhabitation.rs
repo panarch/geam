@@ -1,7 +1,8 @@
 use super::{TypeError, Types};
 use crate::plan::execution::type_::custom::CustomDefinition;
 use crate::plan::execution::type_::{
-    CustomConstructorRefinement, TypeMetadata, ValueShapeDescriptor, ValueShapeId,
+    CustomConstructorDescriptor, CustomConstructorRefinement, CustomValueShapeDescriptor,
+    TypeMetadata, ValueShapeDescriptor, ValueShapeId,
 };
 use std::collections::HashSet;
 
@@ -43,6 +44,38 @@ impl Types<'_> {
         shape: &ValueShapeDescriptor,
     ) -> bool {
         self.shape_inhabited(shape, &mut HashSet::new(), &mut HashSet::new())
+    }
+
+    pub(in crate::plan::execution::prepared::admission) fn inhabited_constructors<'shape>(
+        &'shape self,
+        shape: &'shape CustomValueShapeDescriptor,
+    ) -> impl Iterator<Item = &'shape CustomConstructorDescriptor> + 'shape {
+        let mut active = HashSet::new();
+        let mut known = HashSet::new();
+        let arguments = shape
+            .arguments
+            .iter()
+            .map(|argument| {
+                self.shape_inhabited(
+                    &self.shapes.shapes[argument.index()],
+                    &mut active,
+                    &mut known,
+                )
+            })
+            .collect::<Vec<_>>();
+        let definition = self.definition_of(shape.type_id);
+        self.customs.types[shape.type_id.index()]
+            .constructors
+            .iter()
+            .filter(move |constructor| {
+                !matches!(shape.constructor, CustomConstructorRefinement::Exact(selected) if selected != constructor.id.index)
+                    && definition.constructors[constructor.id.index]
+                        .fields
+                        .iter()
+                        .all(|field| {
+                            self.template_inhabited(&field.type_, &arguments, &mut active, &mut known)
+                        })
+            })
     }
 
     fn shape_inhabited(

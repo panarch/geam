@@ -103,6 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     native.function(FunctionDeclaration::<(BitArrayValue,), BitArrayValue>::new(
         "bit_tail",
     ))?;
+    native.function(FunctionDeclaration::<(), bool>::new("generic_results"))?;
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [

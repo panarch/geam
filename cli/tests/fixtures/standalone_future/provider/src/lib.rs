@@ -44,11 +44,29 @@ pub struct Component;
 #[geam::module(path = "standalone_future/native")]
 mod native {
     use super::State;
-    use geam::provider::{BigInt, Call, Callback, HostFailure, HostResult, StringValue};
+    use geam::HostExecutionError;
+    use geam::provider::{BigInt, Call, Callback, HostFailure, HostResult, StringValue, Value};
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[geam::custom]
+    enum Reason {
+        Caught(StringValue),
+    }
+
+    #[geam::function(await)]
+    async fn rescue<Item>(
+        #[geam::call] call: &mut Call<State>,
+        body: Callback<fn() -> Value<Item>>,
+    ) -> HostResult<Result<Value<Item>, Reason>> {
+        match call.invoke(&body, ()).await {
+            Ok(value) => Ok(Ok(value)),
+            Err(HostExecutionError::Cancelled) => Err(HostExecutionError::Cancelled),
+            Err(_) => Ok(Err(Reason::Caught("caught".into()))),
+        }
+    }
 
     #[geam::function]
     async fn timer(#[geam::call] call: &mut Call<State>) -> HostResult<BigInt> {
