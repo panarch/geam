@@ -66,9 +66,13 @@ import gleam/erlang/process
 import gleam/io
 import ordinary
 import standalone_future/native
+import standalone_future/protected
 
 pub fn main() {
   ordinary.main()
+  let assert Ok(5) = protected.protect(fn() { 5 })
+  let assert Error("caught") = protected.protect(fn() { panic })
+  let assert Error("caught") = protected.protect(fn() -> Int { panic })
   let assert Ok(root) = application.priv_directory("standalone_fixture")
   let assert Ok(dependency) = application.priv_directory("pure_labels")
   io.println(root)

@@ -1255,11 +1255,72 @@ fn native_data_matches_preparation_output() {
             "bit_tail",
         ))
         .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), bool>::new("generic_results"))
+        .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
         include_str!("fixtures/prepared/native.rs").trim()
     );
     NATIVE.load(native_provider::hosts()).unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifacts() {
+    let program = compile_typed_host_program(
+        "application",
+        "main",
+        [PackageSource::new(
+            "application",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "main",
+                "src/main.gleam",
+                include_str!("fixtures/prepared/native.gleam"),
+            )],
+        )],
+        native_provider::hosts(),
+    )
+    .unwrap();
+    let (dynamic, dynamic_entry) = HostedModuleBuilder::new(program)
+        .unwrap()
+        .function(FunctionDeclaration::<(), bool>::new("generic_results"))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for _ in 0..2 {
+        let mut prepared = NATIVE.load(native_provider::hosts()).unwrap();
+        let entry = prepared
+            .function(FunctionDeclaration::<(), bool>::new("generic_results"))
+            .unwrap();
+        let mut module = prepared.seal();
+        let mut echo = Vec::new();
+        let value = runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    scope.call(&entry, ()).await.unwrap()
+                }),
+            )
+            .unwrap();
+        assert!(value);
+        assert!(echo.is_empty());
+    }
+    let mut module = dynamic.seal().unwrap();
+    let mut echo = Vec::new();
+    assert!(
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    scope.call(&dynamic_entry, ()).await.unwrap()
+                })
+            )
+            .unwrap(),
+    );
+    assert!(echo.is_empty());
 }
 
 #[cfg(feature = "tokio")]
