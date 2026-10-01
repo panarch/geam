@@ -1,5 +1,6 @@
 mod alignment;
 pub(in crate::plan::execution::lowering::graph) mod arithmetic;
+mod bool_test;
 mod instruction;
 mod integer;
 mod pattern;
@@ -113,6 +114,7 @@ where
     TailCall: Clone,
 {
     integer::use_immediates(&mut graph);
+    bool_test::fuse(&mut graph.graph);
     arithmetic::form_regions(&mut graph);
     let liveness = GraphLiveness::analyze(graph.graph());
     let order = reachable_blocks(graph.graph());
@@ -248,6 +250,15 @@ where
         DraftTerminator::Jump(edge) => E::Jump(execution::graph::Jump::new(freeze_edge(
             &edge, layout, layouts,
         ))),
+        DraftTerminator::TestBranch {
+            test,
+            true_,
+            false_,
+        } => E::TestBranch(execution::graph::TestBranch::new(
+            bool_test::freeze(&test, &layout.values),
+            freeze_edge(&true_, layout, layouts),
+            freeze_edge(&false_, layout, layouts),
+        )),
         DraftTerminator::BoolBranch {
             subject,
             true_,
@@ -717,8 +728,7 @@ pub fn main() {
             "    %int#0:shape#1(Int) = int.value 42\n",
             "    %int#1:shape#1(Int) = int.value 43\n",
             "    %list.int#0:shape#2(list_type#0) = list.int[type#0] value elements=[%int#0, %int#1]\n",
-            "    %bool#1:shape#0(Bool) = bool.list_length_at_least %list.int#0 length=1\n",
-            "    branch %bool#1 true=b1(%bool#0, %list.int#0) false=b5()\n",
+            "    branch_test bool.list_length_at_least %list.int#0 length=1 true=b1(%bool#0, %list.int#0) false=b5()\n",
             "  block b1 params=[%bool#0:shape#0(Bool), %list.int#0:shape#2(list_type#0)]\n",
             "    branch %bool#0 true=b2(%list.int#0) false=b3()\n",
             "  block b2 params=[%list.int#0:shape#2(list_type#0)]\n",

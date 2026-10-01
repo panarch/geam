@@ -1,3 +1,4 @@
+use super::super::draft::DraftBoolTest;
 use super::super::draft::instruction::{
     DraftBoolInstruction, DraftIntInstruction, DraftIntegerOperand,
 };
@@ -101,33 +102,28 @@ fn bool(
     literals: &HashMap<DraftValueKey, i64>,
     replaced: &mut HashSet<DraftValueKey>,
 ) {
-    match instruction {
-        DraftBoolInstruction::EqualInt { left, right }
-        | DraftBoolInstruction::NotEqualInt { left, right }
-        | DraftBoolInstruction::LtInt { left, right }
-        | DraftBoolInstruction::LtEqInt { left, right }
-        | DraftBoolInstruction::GtInt { left, right }
-        | DraftBoolInstruction::GtEqInt { left, right } => {
-            operand(left, literals, replaced);
-            operand(right, literals, replaced);
+    if let DraftBoolInstruction::Test(test) = instruction {
+        match test {
+            DraftBoolTest::EqualInt { left, right }
+            | DraftBoolTest::NotEqualInt { left, right }
+            | DraftBoolTest::LtInt { left, right }
+            | DraftBoolTest::LtEqInt { left, right }
+            | DraftBoolTest::GtInt { left, right }
+            | DraftBoolTest::GtEqInt { left, right } => {
+                operand(left, literals, replaced);
+                operand(right, literals, replaced);
+            }
+            DraftBoolTest::Not(_)
+            | DraftBoolTest::LtFloat { .. }
+            | DraftBoolTest::LtEqFloat { .. }
+            | DraftBoolTest::GtFloat { .. }
+            | DraftBoolTest::GtEqFloat { .. }
+            | DraftBoolTest::Equal { .. }
+            | DraftBoolTest::NotEqual { .. }
+            | DraftBoolTest::StringStartsWith { .. }
+            | DraftBoolTest::ListLengthEquals { .. }
+            | DraftBoolTest::ListLengthAtLeast { .. } => {}
         }
-        DraftBoolInstruction::Value(_)
-        | DraftBoolInstruction::Constant(_)
-        | DraftBoolInstruction::Call { .. }
-        | DraftBoolInstruction::FunctionCall { .. }
-        | DraftBoolInstruction::TupleIndex { .. }
-        | DraftBoolInstruction::CustomField { .. }
-        | DraftBoolInstruction::ListIndex { .. }
-        | DraftBoolInstruction::Not(_)
-        | DraftBoolInstruction::LtFloat { .. }
-        | DraftBoolInstruction::LtEqFloat { .. }
-        | DraftBoolInstruction::GtFloat { .. }
-        | DraftBoolInstruction::GtEqFloat { .. }
-        | DraftBoolInstruction::Equal { .. }
-        | DraftBoolInstruction::NotEqual { .. }
-        | DraftBoolInstruction::StringStartsWith { .. }
-        | DraftBoolInstruction::ListLengthEquals { .. }
-        | DraftBoolInstruction::ListLengthAtLeast { .. } => {}
     }
 }
 

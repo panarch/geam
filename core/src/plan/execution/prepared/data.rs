@@ -130,6 +130,7 @@ pub mod graph {
         ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion,
     };
     pub use crate::plan::execution::graph::bit_array::{Endianness, FloatBitSize, StringEncoding};
+    pub use crate::plan::execution::graph::block::bool_test::BoolTest;
     pub use crate::plan::execution::graph::block::instruction::bit_array::{
         BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction, BitArraySegment,
     };
@@ -179,6 +180,7 @@ pub mod graph {
     pub use crate::plan::execution::graph::block::terminator::switch::float::FloatSwitch;
     pub use crate::plan::execution::graph::block::terminator::switch::int::IntSwitch;
     pub use crate::plan::execution::graph::block::terminator::switch::string::StringSwitch;
+    pub use crate::plan::execution::graph::block::terminator::test_branch::TestBranch;
     pub use crate::plan::execution::graph::block::{BlockHeader, BlockId};
     pub use crate::plan::execution::graph::exit::BlockGraphExitId;
     pub use crate::plan::execution::graph::integer::{IntegerLiteral, IntegerOperand};

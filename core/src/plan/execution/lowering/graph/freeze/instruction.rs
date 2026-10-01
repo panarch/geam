@@ -7,6 +7,7 @@ use super::super::draft::instruction::{
     DraftUtfCodepointInstruction,
 };
 use super::super::draft::{DraftFunction, DraftInstruction, DraftList};
+use super::bool_test;
 use super::value::BlockValues;
 use crate::plan::execution;
 
@@ -578,67 +579,7 @@ fn freeze_bool(
             list: values.bool_list(list),
             index: *index,
         },
-        DraftBoolInstruction::Not(value) => E::Not(values.bool(value)),
-        DraftBoolInstruction::EqualInt { left, right } => E::EqualInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::NotEqualInt { left, right } => E::NotEqualInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::LtInt { left, right } => E::LtInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::LtEqInt { left, right } => E::LtEqInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::GtInt { left, right } => E::GtInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::GtEqInt { left, right } => E::GtEqInt {
-            left: values.integer_operand(left),
-            right: values.integer_operand(right),
-        },
-        DraftBoolInstruction::LtFloat { left, right } => E::LtFloat {
-            left: values.float(left),
-            right: values.float(right),
-        },
-        DraftBoolInstruction::LtEqFloat { left, right } => E::LtEqFloat {
-            left: values.float(left),
-            right: values.float(right),
-        },
-        DraftBoolInstruction::GtFloat { left, right } => E::GtFloat {
-            left: values.float(left),
-            right: values.float(right),
-        },
-        DraftBoolInstruction::GtEqFloat { left, right } => E::GtEqFloat {
-            left: values.float(left),
-            right: values.float(right),
-        },
-        DraftBoolInstruction::Equal { left, right } => E::Equal {
-            left: values.any(left),
-            right: values.any(right),
-        },
-        DraftBoolInstruction::NotEqual { left, right } => E::NotEqual {
-            left: values.any(left),
-            right: values.any(right),
-        },
-        DraftBoolInstruction::StringStartsWith { value, prefix } => E::StringStartsWith {
-            value: values.string(value),
-            prefix: prefix.clone().into(),
-        },
-        DraftBoolInstruction::ListLengthEquals { value, length } => E::ListLengthEquals {
-            value: values.list(value),
-            length: *length,
-        },
-        DraftBoolInstruction::ListLengthAtLeast { value, length } => E::ListLengthAtLeast {
-            value: values.list(value),
-            length: *length,
-        },
+        DraftBoolInstruction::Test(test) => E::Test(bool_test::freeze(test, values)),
     }
 }
 

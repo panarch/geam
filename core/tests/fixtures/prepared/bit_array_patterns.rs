@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 10,
+    format: 11,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -271,9 +271,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..3,
-                                        instructions: 0..1,
-                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
-                                            subject: data::graph::BoolLocalId(0),
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::GtEqInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            },
                                             true_: data::graph::Edge {
                                                 target: data::graph::BlockId(2),
                                                 args: data::Storage::Static(&[
@@ -281,13 +284,7 @@ data::ModuleArtifact {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                             false_: data::graph::Edge {
@@ -300,11 +297,6 @@ data::ModuleArtifact {
                                                             length: 0,
                                                             steps: data::Storage::Static(&[]),
                                                         },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
                                                     ]),
                                                 },
                                             },
@@ -312,12 +304,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 3..5,
-                                        instructions: 1..2,
+                                        instructions: 0..1,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 5..5,
-                                        instructions: 2..2,
+                                        instructions: 1..1,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -330,12 +322,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 5..5,
-                                        instructions: 2..3,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 5..5,
-                                        instructions: 3..3,
+                                        instructions: 2..2,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -370,16 +362,6 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                            shape: data::type_::ValueShapeId(4),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                        }),
-                                    }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
@@ -504,9 +486,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..4,
-                                        instructions: 0..1,
-                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
-                                            subject: data::graph::BoolLocalId(0),
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::GtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(10),
+                                            },
                                             true_: data::graph::Edge {
                                                 target: data::graph::BlockId(2),
                                                 args: data::Storage::Static(&[
@@ -515,13 +500,7 @@ data::ModuleArtifact {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                             false_: data::graph::Edge {
@@ -534,11 +513,6 @@ data::ModuleArtifact {
                                                             length: 0,
                                                             steps: data::Storage::Static(&[]),
                                                         },
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
                                                     ]),
                                                 },
                                             },
@@ -546,12 +520,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 4..7,
-                                        instructions: 1..2,
+                                        instructions: 0..1,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 2..2,
+                                        instructions: 1..1,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -564,12 +538,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 2..3,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 3..3,
+                                        instructions: 2..2,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -612,16 +586,6 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                            shape: data::type_::ValueShapeId(4),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Immediate(10),
-                                        }),
-                                    }),
                                     data::graph::ProfiledInstruction::IntegerRegion(data::graph::ArithmeticRegion {
                                         inputs: data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
@@ -1444,7 +1408,6 @@ data::ModuleArtifact {
                     data::type_::ValueShapeId(0),
                     data::type_::ValueShapeId(1),
                 ])),
-                data::type_::ValueShapeDescriptor::Bool,
             ]),
             shape_types: data::Storage::Static(&[
                 data::type_::ValueType::BitArray,
@@ -1456,7 +1419,6 @@ data::ModuleArtifact {
                     data::type_::ValueType::BitArray,
                     data::type_::ValueType::Int,
                 ])),
-                data::type_::ValueType::Bool,
             ]),
             custom_shapes: data::Storage::Static(&[]),
         },

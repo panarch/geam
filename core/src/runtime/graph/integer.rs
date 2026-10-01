@@ -30,7 +30,7 @@ arithmetic!(multiply, multiply);
 arithmetic!(divide, divide);
 arithmetic!(remainder, remainder);
 
-pub(super) fn equal(
+pub(in crate::runtime::graph) fn equal(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -38,7 +38,7 @@ pub(super) fn equal(
     compare(environment, left, right).is_eq()
 }
 
-pub(super) fn compare(
+pub(in crate::runtime::graph) fn compare(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,

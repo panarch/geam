@@ -186,11 +186,7 @@ where
     Graph::ExternalListFunctionId: Target,
     <Graph::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: Operand,
 {
-    let control = super::control::Control {
-        blocks,
-        types: context.types,
-    };
-    let guards = super::guard::Guards { blocks };
+    let control = super::control::Control::new(blocks, context.types);
     for (block_index, block) in blocks.iter().enumerate() {
         let mut locals = Locals::default();
         for parameter in block.params() {
@@ -221,7 +217,8 @@ where
                     index,
                     error,
                 })?;
-            guards
+            control
+                .guards
                 .check(
                     crate::plan::execution::graph::BlockId(block_index),
                     instruction,

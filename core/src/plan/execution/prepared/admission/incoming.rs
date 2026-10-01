@@ -1,7 +1,8 @@
 use super::block::Blocks;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
-    BlockId, BoolLocalId, Edge, Match, MatchEdgeArgument, ParamLocal, StringLocalId, Terminator,
+    BlockId, BoolLocalId, BoolTest, Edge, Match, MatchEdgeArgument, ParamLocal, StringLocalId,
+    Terminator,
 };
 
 pub(super) struct Incoming<'data> {
@@ -18,6 +19,10 @@ pub(super) enum Input<'data> {
 #[derive(Clone, Copy)]
 pub(super) enum Condition<'data> {
     Always,
+    Test {
+        test: &'data BoolTest,
+        truth: bool,
+    },
     Bool {
         subject: BoolLocalId,
         truth: bool,
@@ -52,6 +57,22 @@ pub(super) fn parameter<'data, Graph: ExecutionGraphProfile>(
         };
         match block.terminator() {
             Terminator::Jump(value) => regular(&value.edge, Condition::Always)?,
+            Terminator::TestBranch(value) => {
+                regular(
+                    &value.true_,
+                    Condition::Test {
+                        test: &value.test,
+                        truth: true,
+                    },
+                )?;
+                regular(
+                    &value.false_,
+                    Condition::Test {
+                        test: &value.test,
+                        truth: false,
+                    },
+                )?;
+            }
             Terminator::BoolBranch(value) => {
                 regular(
                     &value.true_,
@@ -132,11 +153,12 @@ pub(super) fn parameter<'data, Graph: ExecutionGraphProfile>(
 mod tests {
     use super::{Blocks, Condition, Input, parameter};
     use crate::plan::execution::graph::{
-        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, Echo, Edge, FloatLocalId,
-        FloatSwitch, IntLocalId, IntSwitch, Jump, Match, MatchEdge, MatchEdgeArgument,
-        MatchPattern, MatchPatternBinding, ParamLocal, ParamSlot, ProfiledBlockGraph,
-        StringLocalId, StringSwitch, Terminator, Transfer,
+        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, BoolTest, Echo, Edge,
+        FloatLocalId, FloatSwitch, IntLocalId, IntSwitch, Jump, Match, MatchEdge,
+        MatchEdgeArgument, MatchPattern, MatchPatternBinding, ParamLocal, ParamSlot,
+        ProfiledBlockGraph, StringLocalId, StringSwitch, Terminator, TestBranch, Transfer,
     };
+    use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::ValueShapeId;
     use crate::plan::{EchoSite, SourceSpan};
@@ -169,6 +191,16 @@ mod tests {
                     if local == &ParamLocal::Int(IntLocalId(0))));
             }
             match kind {
+                "test" => {
+                    let (first, first_truth) = direct_condition(incoming[0].condition);
+                    let (second, second_truth) = direct_condition(incoming[1].condition);
+                    assert_eq!(
+                        Rust::expression(first),
+                        "data::graph::BoolTest::Not(data::graph::BoolLocalId(0))"
+                    );
+                    assert!(std::ptr::eq(first, second));
+                    assert_eq!((first_truth, second_truth), (true, false));
+                }
                 "bool" => {
                     assert!(matches!(
                         incoming[0].condition,
@@ -204,6 +236,19 @@ mod tests {
             }
             assert!(parameter(&blocks, BlockId(2), 0).unwrap().is_empty());
         }
+    }
+
+    fn direct_condition(condition: Condition<'_>) -> (&BoolTest, bool) {
+        match condition {
+            Condition::Test { test, truth } => (test, truth),
+            _ => panic!("fixture should retain a direct test condition"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture should retain a direct test condition")]
+    fn direct_condition_fixture_rejects_an_unconditional_edge() {
+        direct_condition(Condition::Always);
     }
 
     #[test]
@@ -360,6 +405,14 @@ mod tests {
                 "bool",
                 Terminator::BoolBranch(BoolBranch {
                     subject: BoolLocalId(0),
+                    true_: first.clone(),
+                    false_: second.clone(),
+                }),
+            ),
+            (
+                "test",
+                Terminator::TestBranch(TestBranch {
+                    test: BoolTest::Not(BoolLocalId(0)),
                     true_: first.clone(),
                     false_: second.clone(),
                 }),

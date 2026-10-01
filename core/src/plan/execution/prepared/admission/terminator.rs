@@ -1,7 +1,7 @@
 use super::block::Blocks;
 use super::call::{self, CallError, Target};
 use super::edge::{self, EdgeError};
-use super::instruction::Instructions;
+use super::instruction::{self, InstructionError, Instructions};
 use super::local::{LocalError, Locals};
 use super::operand::Operand;
 use super::pattern::{Bindings, PatternError};
@@ -13,6 +13,7 @@ use crate::plan::execution::graph::{BlockGraphExitId, NeverCallTarget, Terminato
 pub(super) enum TerminatorError {
     Integer(super::literal::IntegerError),
     Local(LocalError),
+    Test(InstructionError),
     Edge(EdgeError),
     Pattern(PatternError),
     Source(SourceError),
@@ -36,6 +37,11 @@ pub(super) fn check<'data, Graph: ExecutionGraphProfile>(
     };
     match terminator {
         Terminator::Jump(value) => edge(&value.edge)?,
+        Terminator::TestBranch(value) => {
+            instruction::bool_test(&value.test, locals).map_err(TerminatorError::Test)?;
+            edge(&value.true_)?;
+            edge(&value.false_)?;
+        }
         Terminator::BoolBranch(value) => {
             value.subject.read(locals).map_err(TerminatorError::Local)?;
             edge(&value.true_)?;
@@ -130,11 +136,13 @@ mod tests {
         TerminatorError, check,
     };
     use crate::plan::execution::graph::{
-        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, Echo, Edge,
-        FamilyTransfer, FloatLocalId, FloatSwitch, IntLocalId, IntSwitch, IntegerLiteral, Jump,
-        LetAssertPanic, Match, MatchEdge, MatchPattern, ParamLocal, ParamSlot, ProfiledBlockGraph,
-        SourceStop, SourceStopKind, StorageFamily, StringLocalId, StringSwitch, Transfer,
+        BlockGraphExitId, BlockHeader, BlockId, BoolBranch, BoolLocalId, BoolTest, Echo, Edge,
+        FamilyTransfer, FloatLocalId, FloatSwitch, IntLocalId, IntSwitch, IntegerLiteral,
+        IntegerOperand, Jump, LetAssertPanic, Match, MatchEdge, MatchPattern, ParamLocal,
+        ParamSlot, ProfiledBlockGraph, SourceStop, SourceStopKind, StorageFamily, StringLocalId,
+        StringSwitch, TestBranch, Transfer,
     };
+    use crate::plan::execution::prepared::admission::instruction::InstructionError;
     use crate::plan::execution::prepared::admission::{
         block::BlockError, catalog::Catalog, literal::IntegerError, local::Address,
         pattern::PatternError, source::Sources, type_::Types,
@@ -248,6 +256,50 @@ mod tests {
                 check(
                     &Terminator::BoolBranch(BoolBranch {
                         subject: BoolLocalId(subject),
+                        true_: edge(yes),
+                        false_: edge(no)
+                    }),
+                    &blocks,
+                    &locals,
+                    &context
+                ),
+                expected
+            );
+        }
+        for (test, yes, no, expected) in [
+            (BoolTest::Not(BoolLocalId(0)), 0, 0, Ok(None)),
+            (
+                BoolTest::Not(BoolLocalId(99)),
+                0,
+                0,
+                Err(TerminatorError::Test(InstructionError::Local(
+                    LocalError::Missing(Address::from(BoolLocalId(99))),
+                ))),
+            ),
+            (
+                BoolTest::LtInt {
+                    left: IntegerOperand::Local(IntLocalId(0)),
+                    right: IntegerOperand::Immediate(100),
+                },
+                99,
+                0,
+                Err(bad_edge()),
+            ),
+            (BoolTest::Not(BoolLocalId(0)), 0, 99, Err(bad_edge())),
+            (
+                BoolTest::Equal {
+                    left: ParamLocal::Int(IntLocalId(0)),
+                    right: ParamLocal::String(StringLocalId(0)),
+                },
+                0,
+                0,
+                Err(TerminatorError::Test(InstructionError::OperandType)),
+            ),
+        ] {
+            assert_eq!(
+                check(
+                    &Terminator::TestBranch(TestBranch {
+                        test,
                         true_: edge(yes),
                         false_: edge(no)
                     }),

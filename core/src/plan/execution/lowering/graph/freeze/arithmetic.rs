@@ -194,9 +194,10 @@ fn region(
 mod tests {
     use crate::plan::execution::function::{ExecutionGraphProfile, IntFunctionId};
     use crate::plan::execution::graph::{
-        ArithmeticNode as N, ArithmeticOperand as O, ArithmeticRegion, IntLocalId, ParamLocal,
-        ProfiledInstruction,
+        ArithmeticNode as N, ArithmeticOperand as O, ArithmeticRegion, BoolTest, IntLocalId,
+        IntegerOperand, ParamLocal, ProfiledInstruction, Terminator,
     };
+    use crate::plan::execution::prepared::rust::Rust;
     use crate::runtime::{Value, run_main};
 
     fn arithmetic_region<Graph: ExecutionGraphProfile>(
@@ -267,6 +268,57 @@ pub fn main() { calculate(4, 7) }
             run_main(&plan, &mut Vec::new()).unwrap(),
             Value::Int(34.into())
         );
+    }
+
+    #[test]
+    fn region_output_feeds_a_direct_branch_without_a_bool_slot() {
+        for (arguments, expected) in [
+            ("4, 7", "19"),
+            ("4, 8", "19"),
+            ("9223372036854775808, -27670116110564327424", "0"),
+            ("9223372036854775807, 3", "27670116110564327423"),
+        ] {
+            let plan = plan_src(&format!(
+                "fn choose(n: Int, total: Int) {{ let product = n * 3 let next = total + product case next < 20 {{ True -> next False -> next - 1 }} }} pub fn main() {{ choose({arguments}) }}"
+            ));
+            let graph = plan.int_function(IntFunctionId(1)).body().block_graph();
+            let entry = graph.block(graph.entry());
+            assert_eq!(entry.instructions().len(), 1);
+            let region = arithmetic_region(&entry.instructions()[0]).unwrap();
+            assert_eq!(region.inputs.as_ref(), &[IntLocalId(0), IntLocalId(1)]);
+            assert_eq!(
+                region.nodes.as_ref(),
+                &[
+                    N::Multiply(O::Input(0), O::Immediate(3)),
+                    N::Add(O::Input(1), O::Value(0)),
+                ]
+            );
+            assert!(region.native);
+            assert_eq!(
+                region
+                    .outputs
+                    .iter()
+                    .map(|output| (output.value, output.slot.local.clone()))
+                    .collect::<Vec<_>>(),
+                [(1, ParamLocal::Int(IntLocalId(2)))]
+            );
+            let Terminator::TestBranch(branch) = entry.terminator() else {
+                panic!("region output should feed a direct test branch");
+            };
+            assert_eq!(
+                Rust::expression(&branch.test),
+                Rust::expression(&BoolTest::LtInt {
+                    left: IntegerOperand::Local(IntLocalId(2)),
+                    right: IntegerOperand::Immediate(20),
+                })
+            );
+            assert_eq!(branch.true_.args(), &[ParamLocal::Int(IntLocalId(2))]);
+            assert_eq!(branch.false_.args(), &[ParamLocal::Int(IntLocalId(2))]);
+            assert_eq!(
+                run_main(&plan, &mut Vec::new()).unwrap(),
+                Value::Int(expected.parse().unwrap())
+            );
+        }
     }
 
     #[test]

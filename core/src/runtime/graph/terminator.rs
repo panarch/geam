@@ -1,5 +1,5 @@
 use super::environment::{BlockEnvironment, MatchResults, RetainedValues};
-use super::pattern;
+use super::{bool_test, pattern};
 use crate::plan::execution::function::NeverFunctionId;
 use crate::plan::execution::graph::{
     BlockGraphExitId, BlockId, Edge, IntSwitch, MatchEdge, NeverCallTarget, SourceStopKind,
@@ -142,6 +142,14 @@ where
 {
     match terminator {
         Terminator::Jump(jump) => Ok(transition(environment, jump.edge())),
+        Terminator::TestBranch(branch) => {
+            let edge = if bool_test::evaluate(state, &environment, &branch.test) {
+                &branch.true_
+            } else {
+                &branch.false_
+            };
+            Ok(transition(environment, edge))
+        }
         Terminator::BoolBranch(branch) => {
             let edge = if environment.bool(branch.subject()) {
                 branch.true_()
