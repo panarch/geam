@@ -566,6 +566,86 @@ mod tests {
     }
 
     #[test]
+    fn nested_list_guards_exclude_only_independently_contradicted_paths() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::guard::GuardError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::graph::{
+            BoolTest, Jump, ListListLocalId, Terminator, TestBranch,
+        };
+
+        let source = r#"
+pub type Tree { Bytes(Int) Text(Int) Many(List(Tree)) }
+fn to_list(stack: List(List(Tree)), acc: List(Int)) -> List(Int) {
+  case stack {
+    [] -> acc
+    [[], ..remaining] -> to_list(remaining, acc)
+    [[Bytes(value), ..rest], ..remaining] -> to_list([rest, ..remaining], [value, ..acc])
+    [[Text(value), ..rest], ..remaining] -> to_list([rest, ..remaining], [value, ..acc])
+    [[Many(trees), ..rest], ..remaining] -> to_list([trees, rest, ..remaining], acc)
+  }
+}
+pub fn main() {
+  to_list([[Bytes(1), Many([]), Text(2), Many([Bytes(3)])]], []) == [3, 2, 1]
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, function) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), bool>::new("main"))
+            .unwrap();
+        assert!(
+            bindings
+                .seal()
+                .call(&function, (), &mut Vec::new())
+                .unwrap()
+        );
+
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), bool>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+
+        // Without excluding an empty outer stack, the later nonempty checks
+        // can fail. Their failure edges must still prevent an unguarded read.
+        let (_, function) =
+            &mut owned_mut(&mut artifact.program.functions.list_returns.int_list_functions)[0];
+        let blocks = owned_mut(&mut function.body.block_graph.blocks);
+        let branches = blocks
+            .iter()
+            .filter_map(|header| match &header.terminator {
+                Terminator::TestBranch(TestBranch {
+                    test: BoolTest::ListLengthEquals { length, .. },
+                    false_,
+                    ..
+                }) => Some((*length, false_)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(branches[0].0, 0);
+        blocks[0].terminator = Terminator::Jump(Jump::new(branches[0].1.clone()));
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::IntList,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Guard {
+                    block: 18,
+                    index: 0,
+                    error: GuardError::Unproved {
+                        local: ListListLocalId(0).into(),
+                        requirement: "at least 1 list elements".into(),
+                    },
+                }),
+            }))
+        );
+    }
+
+    #[test]
     fn admits_exhaustive_nested_constructor_failures() {
         let source = r#"
 pub type Option(a) { Some(a) None }

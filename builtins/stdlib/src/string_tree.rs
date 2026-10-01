@@ -2,6 +2,7 @@ mod function;
 mod storage;
 
 pub(super) use provider::__GeamStores as Stores;
+pub(crate) use provider::payload_access;
 pub use provider::{
     __GeamExternalSchema0 as StringTreeSchema, __GeamExternalStorage0 as StringTreeExternalStorage,
     StringTreePayload,
@@ -24,7 +25,9 @@ pub type StringTree = HostExternalType<StringTreeSchema>;
 )]
 mod provider {
     use super::{BigInt, StoredStringTree, StringValue, function};
-    use geam_core::provider::ExternalPayload;
+    use crate::GleamStdlibProviderProfile;
+    use geam_core::host::{HostCall, HostProvider, HostType};
+    use geam_core::provider::{ExternalPayload, ProviderExternalPayloadAccess};
 
     #[geam_macros::external(name = "StringTree", manual)]
     pub struct StringTreePayload {
@@ -39,6 +42,21 @@ mod provider {
         pub(super) fn stored(&self) -> &StoredStringTree {
             &self.tree
         }
+
+        pub(crate) fn append_bytes(&self, output: &mut Vec<u8>) {
+            self.tree.append_bytes(output);
+        }
+    }
+
+    pub(crate) fn payload_access<Profile, Provider, Return>(
+        call: &HostCall<'_, Profile, Provider, Return>,
+    ) -> ProviderExternalPayloadAccess<StringTreePayload>
+    where
+        Profile: GleamStdlibProviderProfile,
+        Provider: HostProvider<Profile>,
+        Return: HostType,
+    {
+        call.provider_external_payload_access_with::<__GeamProvider, __GeamExternalSchema0>()
     }
 
     impl ExternalPayload for StringTreePayload {

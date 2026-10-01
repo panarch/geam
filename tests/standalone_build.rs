@@ -41,6 +41,8 @@ fn builds_and_relocates_complete_applications_without_development_inputs() {
     );
     assert_eq!(fs::read_dir(&deployed_root).unwrap().count(), 2);
 
+    include_bytes_tree_consumer(fixture.path());
+
     for package in ["geam-catalog", "geam-counter"] {
         checked(&mut geam(
             &project,
@@ -54,13 +56,13 @@ fn builds_and_relocates_complete_applications_without_development_inputs() {
             ],
         ));
     }
-    checked(&mut geam(
-        &project,
-        &["provider", "add", "--path", "../future/provider"],
-    ));
+    for path in ["../future/provider", "../bytes_tree/provider"] {
+        checked(&mut geam(&project, &["provider", "add", "--path", path]));
+    }
     fs::write(project.join("src/ordinary.gleam"), ordinary).unwrap();
     let complete = r#"
 import geam/future
+import bytes_tree_service_fixture
 import gleam/erlang/application
 import gleam/erlang/process
 import gleam/io
@@ -69,6 +71,7 @@ import standalone_future/native
 import standalone_future/protected
 
 pub fn main() {
+  bytes_tree_service_fixture.main()
   ordinary.main()
   let assert Ok(5) = protected.protect(fn() { 5 })
   let assert Error("caught") = protected.protect(fn() { panic })
@@ -141,6 +144,9 @@ pub fn main() {
     )
     .unwrap();
     fs::copy(&debug, &binary).unwrap();
+    let debug_binary =
+        deployed_root.join(format!("debug_application{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(&debug, &debug_binary).unwrap();
     let arguments = vec![
         OsString::from("--help"),
         OsString::from(""),
@@ -319,13 +325,17 @@ pub fn main() {
     assert_eq!(fs::read(project.join("Cargo.lock")).unwrap(), lock);
     drop(fixture);
     assert!(!project.exists());
-    let output = checked(
-        deployed(&binary, &cwd)
-            .env("GEAM_CONFIG", &config)
-            .args(&arguments),
-    );
-    assert_application_stdout(&output.stdout, &expected, &deployed_root);
-    assert_eq!(output.stderr, expected_echo.as_bytes());
+    for application in [&debug_binary, &binary] {
+        for _ in 0..2 {
+            let output = checked(
+                deployed(application, &cwd)
+                    .env("GEAM_CONFIG", &config)
+                    .args(&arguments),
+            );
+            assert_application_stdout(&output.stdout, &expected, &deployed_root);
+            assert_eq!(output.stderr, expected_echo.as_bytes());
+        }
+    }
     let failure = capture(
         deployed(
             &deployed_root.join(format!("failure{}", std::env::consts::EXE_SUFFIX)),
@@ -626,6 +636,47 @@ pub fn main() {{
         );
         assert!(output.stderr.is_empty());
     }
+}
+
+fn include_bytes_tree_consumer(root: &Path) {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = repository.join("tests/fixtures/bytes_tree_service");
+    let consumer = root.join("bytes_tree");
+    for directory in ["project", "provider"] {
+        copy_directory(&source.join(directory), &consumer.join(directory));
+    }
+    let project = root.join("project");
+    let gleam = project.join("gleam.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&gleam).unwrap().parse().unwrap();
+    manifest["dependencies"].as_table_mut().unwrap().insert(
+        "bytes_tree_service_fixture".into(),
+        toml::toml! { path = "../bytes_tree/project" }.into(),
+    );
+    fs::write(gleam, toml::to_string(&manifest).unwrap()).unwrap();
+    let provider = consumer.join("provider");
+    let cargo = provider.join("Cargo.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&cargo).unwrap().parse().unwrap();
+    for dependency in ["dependencies", "dev-dependencies"] {
+        let geam = manifest[dependency]["geam"].as_table_mut().unwrap();
+        geam.remove("path");
+        geam.insert(
+            "version".into(),
+            toml::Value::String(format!("={}", env!("CARGO_PKG_VERSION"))),
+        );
+    }
+    fs::write(cargo, toml::to_string(&manifest).unwrap()).unwrap();
+    fs::create_dir_all(provider.join(".cargo")).unwrap();
+    let geam_path = toml::Value::String(repository.to_str().unwrap().into());
+    fs::write(
+        provider.join(".cargo/config.toml"),
+        format!("[patch.crates-io]\ngeam = {{ path = {geam_path} }}\n[net]\noffline = true\n"),
+    )
+    .unwrap();
+    checked(
+        Command::new("gleam")
+            .args(["deps", "download"])
+            .current_dir(project),
+    );
 }
 
 fn fixture() -> tempfile::TempDir {

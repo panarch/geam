@@ -782,11 +782,35 @@ cargo llvm-cov report --manifest-path tests/fixtures/dict_service/provider/Cargo
 ```
 
 Workspace owns Rust formatting and Clippy; Acceptance's mandatory Linux
-`Charlist and Dict service consumers` job owns original-source tests and Gleam
-formatting. Coverage includes `dict_service` in the service-consumer matrix. Its fresh
-100% line/full-region denominator is the fixture provider package, independently
-of Geam's production dependencies. This fixture proves construction, not an
-`envoy` implementation or process-environment semantics.
+`Charlist, Dict and BytesTree service consumers` job owns original-source tests
+and Gleam formatting. Coverage includes `dict_service` in the service-consumer
+matrix. Its fresh 100% line/full-region denominator is the fixture provider
+package, independently of Geam's production dependencies. This fixture proves
+construction, not an `envoy` implementation or process-environment semantics.
+
+## BytesTree Service Consumer
+
+The independent [BytesTree fixture](../../tests/fixtures/bytes_tree_service)
+owns public consumer execution. Its Cargo workspace adds `embedding` only for
+tests; normal provider dependencies enable `provider,gleam-stdlib`. The fixture
+README describes its original-source and lifetime scenarios. The existing
+`standalone_build` target includes the same consumer in its compiled application.
+
+```sh
+cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/bytes_tree_service/project/src
+cargo llvm-cov clean --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --package geam-bytes-tree-service-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace owns formatting/Clippy, Acceptance's existing service-consumer job owns
+execution and Gleam formatting, and Coverage's service-consumer matrix requires
+fresh 100% line/full-region coverage of this fixture provider package. Stdlib
+schema/input/read owner tests and production coverage remain in `geam-stdlib`.
 
 ## Benchmark Tooling
 

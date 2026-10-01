@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) struct Control<'graph, 'data, Graph: ExecutionGraphProfile> {
     pub(super) blocks: &'graph Blocks<'data, Graph>,
     pub(super) types: &'graph Types<'data>,
+    pub(super) guards: Guards<'graph, 'data, Graph>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,6 +51,17 @@ enum PatternVisit<'data> {
 }
 
 impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
+    pub(super) fn new<'graph>(
+        blocks: &'graph Blocks<'data, Graph>,
+        types: &'graph Types<'data>,
+    ) -> Control<'graph, 'data, Graph> {
+        Control {
+            blocks,
+            types,
+            guards: Guards::new(blocks),
+        }
+    }
+
     pub(super) fn refine_projection(
         &self,
         block: BlockId,
@@ -193,11 +205,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 return false;
             };
             for input in inputs {
-                if (Guards {
-                    blocks: self.blocks,
-                })
-                .contradicts(input.block, input.condition)
-                {
+                if self.guards.contradicts(input.block, input.condition) {
                     continue;
                 }
                 let mut source = query.clone();
@@ -561,10 +569,7 @@ pub fn main() { inspect(Error("failed")) }
         assert_eq!(matchers.len(), 2);
         let mut matcher = matchers[0].clone();
         let blocks = Blocks::admit(graph).unwrap();
-        let control = Control {
-            blocks: &blocks,
-            types: &types,
-        };
+        let control = Control::new(&blocks, &types);
         let subject = Place::local(super::Address::of(&matcher.subject));
         let parent = Assumption {
             path: Vec::new(),
@@ -785,10 +790,7 @@ pub fn main() { inspect(Error("failed")) }
             let raw: ProfiledBlockGraph<Infallible> =
                 ProfiledBlockGraph::from_parts(graph.entry, bodies);
             let blocks = Blocks::admit(&raw).unwrap();
-            let control = Control {
-                blocks: &blocks,
-                types: &types,
-            };
+            let control = Control::new(&blocks, &types);
             assert_eq!(
                 control.proves(BlockId(4), source, ConstructorFact::IsNot(0)),
                 expected
@@ -857,10 +859,7 @@ pub fn main() {{ read(0, First(42)) }}
                     cycle,
                 );
                 let blocks = Blocks::admit(&graph).unwrap();
-                let control = Control {
-                    blocks: &blocks,
-                    types: &types,
-                };
+                let control = Control::new(&blocks, &types);
                 let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
                 assert_eq!(
                     control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
@@ -1049,10 +1048,7 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                 ],
             );
             let blocks = Blocks::admit(&graph).unwrap();
-            let control = Control {
-                blocks: &blocks,
-                types: &types,
-            };
+            let control = Control::new(&blocks, &types);
             assert!(!control.proves(BlockId(1), &slot.local, ConstructorFact::IsNot(1)));
         }
     }
@@ -1176,10 +1172,7 @@ pub fn main() { #(widen(First(42)), Second(7)) }
             ],
         );
         let blocks = Blocks::admit(&graph).unwrap();
-        let control = Control {
-            blocks: &blocks,
-            types: &types,
-        };
+        let control = Control::new(&blocks, &types);
         assert!(control.proves(BlockId(4), &slot.local, ConstructorFact::IsNot(1)));
         assert!(control.proves(BlockId(4), &slot.local, ConstructorFact::Is(0)));
         assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
@@ -1311,10 +1304,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
         .unwrap();
         let body = plan.program.functions.value_returns.tuple_functions[0].body();
         let blocks = Blocks::admit(body.block_graph()).unwrap();
-        let control = Control {
-            blocks: &blocks,
-            types: &types,
-        };
+        let control = Control::new(&blocks, &types);
         let root = body.block_graph().instructions.iter().find(|instruction| {
             matches!(&instruction.output.local, ParamLocal::Tuple { type_, .. } if type_.len() == 4)
         }).unwrap().output.shape;
@@ -1405,10 +1395,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             &raw,
         )
         .unwrap();
-        let control = Control {
-            blocks: &blocks,
-            types: &types,
-        };
+        let control = Control::new(&blocks, &types);
         assert_eq!(
             control.projected_shape(missing_shape, &[Projection::Custom(0)], &[]),
             None
@@ -1448,10 +1435,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             )],
         );
         let blocks = Blocks::admit(&graph).unwrap();
-        let control = Control {
-            blocks: &blocks,
-            types: &types,
-        };
+        let control = Control::new(&blocks, &types);
         let leaf = MatchPattern::Custom {
             constructor: CustomConstructorId {
                 type_id: CustomTypeId(0),

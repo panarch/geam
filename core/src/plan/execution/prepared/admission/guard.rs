@@ -10,6 +10,7 @@ use super::place::{self, Place, Projection};
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
     BlockId, BoolInstruction, BoolTest, ParamLocal, ProfiledInstruction, ProfiledInstructionKind,
+    Terminator,
 };
 use length::Length;
 use origin::Origin;
@@ -18,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 pub(super) struct Guards<'graph, 'data, Graph: ExecutionGraphProfile> {
     pub(super) blocks: &'graph Blocks<'data, Graph>,
+    contradictions: HashSet<(BlockId, bool)>,
 }
 
 enum Boolean<'data> {
@@ -57,6 +59,44 @@ enum Visit<'data> {
 }
 
 impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
+    pub(super) fn new<'graph>(
+        blocks: &'graph Blocks<'data, Graph>,
+    ) -> Guards<'graph, 'data, Graph> {
+        let mut guards = Guards {
+            blocks,
+            contradictions: HashSet::new(),
+        };
+        // Each new contradiction is proved using only facts established before
+        // it. This finite closure permits dependent exclusions without circular
+        // proofs or recursive walks, and is shared by all checks in the body.
+        loop {
+            let previous = guards.contradictions.len();
+            for (index, block) in blocks.iter().enumerate() {
+                for truth in [false, true] {
+                    let condition = match block.terminator() {
+                        Terminator::TestBranch(branch) => Condition::Test {
+                            test: &branch.test,
+                            truth,
+                        },
+                        Terminator::BoolBranch(branch) => Condition::Bool {
+                            subject: branch.subject,
+                            truth,
+                        },
+                        _ => continue,
+                    };
+                    let key = (BlockId(index), truth);
+                    if !guards.contradictions.contains(&key) && guards.contradicts(key.0, condition)
+                    {
+                        guards.contradictions.insert(key);
+                    }
+                }
+            }
+            if guards.contradictions.len() == previous {
+                return guards;
+            }
+        }
+    }
+
     pub(super) fn contradicts(&self, block_id: BlockId, condition: Condition<'data>) -> bool {
         let Some((value, truth)) = self.boolean_value(block_id, condition) else {
             return false;
@@ -202,6 +242,14 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     return false;
                 };
                 for input in inputs {
+                    // Incoming conditions refer to the source block's sole
+                    // terminator, so its selected truth identifies the edge.
+                    if let Condition::Bool { truth, .. } | Condition::Test { truth, .. } =
+                        input.condition
+                        && self.contradictions.contains(&(input.block, truth))
+                    {
+                        continue;
+                    }
                     match input.value {
                         Input::Local(source) => {
                             let Some(source) = query
@@ -499,7 +547,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
 
     fn check_graph(graph: &ProfiledBlockGraph<Infallible>) -> usize {
         let blocks = Blocks::admit(graph).unwrap();
-        let guards = Guards { blocks: &blocks };
+        let guards = Guards::new(&blocks);
         let mut count = 0;
         for (index, block) in blocks.iter().enumerate() {
             for instruction in block.instructions() {
@@ -578,7 +626,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                     bypass,
                 );
                 let blocks = Blocks::admit(&graph).unwrap();
-                let guards = Guards { blocks: &blocks };
+                let guards = Guards::new(&blocks);
                 assert_eq!(
                     guards.proves(Query {
                         block: BlockId(1),
@@ -641,7 +689,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 }
                 let graph = ProfiledBlockGraph::from_parts(BlockId(0), graph_blocks);
                 let blocks = Blocks::admit(&graph).unwrap();
-                let guards = Guards { blocks: &blocks };
+                let guards = Guards::new(&blocks);
                 assert_eq!(
                     guards.proves(Query {
                         block: BlockId(3),
@@ -707,7 +755,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 false,
             );
             let blocks = Blocks::admit(&graph).unwrap();
-            let guards = Guards { blocks: &blocks };
+            let guards = Guards::new(&blocks);
             assert_eq!(
                 guards.proves(Query {
                     block: BlockId(1),
@@ -838,7 +886,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 ],
             );
             let blocks = Blocks::admit(&graph).unwrap();
-            let guards = Guards { blocks: &blocks };
+            let guards = Guards::new(&blocks);
             assert_eq!(
                 guards.proves(Query {
                     block: BlockId(1),
@@ -996,7 +1044,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             );
             let blocks = Blocks::admit(&graph).unwrap();
             assert_eq!(
-                Guards { blocks: &blocks }.proves(Query {
+                Guards::new(&blocks).proves(Query {
                     block: BlockId(1),
                     place: Place::local(IntListLocalId(0).into()),
                     requirement: Requirement::length(1),
@@ -1047,7 +1095,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             )],
         );
         let blocks = Blocks::admit(&graph).unwrap();
-        let guards = Guards { blocks: &blocks };
+        let guards = Guards::new(&blocks);
         let source = Place::local(IntListLocalId(0).into());
         for (block, index) in [(99, 0), (0, 0), (0, 1), (0, 2), (0, 99)] {
             assert_eq!(
@@ -1116,7 +1164,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             )],
         );
         let blocks = Blocks::admit(&graph).unwrap();
-        let guards = Guards { blocks: &blocks };
+        let guards = Guards::new(&blocks);
         let prefix = Requirement::Prefix("pre".into());
         for (local, text, expected) in [
             (0, "prefix", true),
@@ -1259,7 +1307,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 ],
             );
             let blocks = Blocks::admit(&graph).unwrap();
-            let guards = Guards { blocks: &blocks };
+            let guards = Guards::new(&blocks);
             assert!(!guards.proves(Query {
                 block: BlockId(1),
                 place: Place::local(TupleLocalId(0).into()),
@@ -1400,7 +1448,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 )],
             );
             let blocks = Blocks::admit(&graph).unwrap();
-            let guards = Guards { blocks: &blocks };
+            let guards = Guards::new(&blocks);
             assert_eq!(
                 guards.contradicts(
                     BlockId(0),
@@ -1474,7 +1522,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             )],
         );
         let blocks = Blocks::admit(&graph).unwrap();
-        let guards = Guards { blocks: &blocks };
+        let guards = Guards::new(&blocks);
         let first = StringLocalId(0).into();
         let second = StringLocalId(1).into();
         let joined = StringLocalId(2).into();
@@ -1762,7 +1810,7 @@ mod direct_test_tests {
                     ],
                 );
                 let blocks = Blocks::admit(&graph).unwrap();
-                let guards = Guards { blocks: &blocks };
+                let guards = Guards::new(&blocks);
                 assert_eq!(
                     guards.proves(Query {
                         block: BlockId(1),

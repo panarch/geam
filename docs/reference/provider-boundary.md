@@ -934,6 +934,66 @@ similarly consumes typed key/item pairs under an exact `DictOf<Key, Item>` token
 It retains the producer's storage and value semantics, with the last equal pair
 winning as in `dict.from_list`, including when the Dict is nested in a return.
 
+## Consuming Standard-Library BytesTree Inputs
+
+Enable `provider,gleam-stdlib` to receive the original opaque
+`gleam/bytes_tree.BytesTree` in another provider:
+
+```rust
+#[geam::provider(package = "binary_sink", modules = [native])]
+pub struct Component;
+
+#[geam::module(path = "binary_sink")]
+mod native {
+    use geam::gleam_stdlib::service;
+    use geam::provider::BitArrayValue;
+
+    #[geam::function]
+    fn read(tree: service::BytesTreeInput) -> BitArrayValue {
+        tree.to_bit_array()
+    }
+}
+```
+
+The original source signature remains nominal:
+
+```gleam
+import gleam/bytes_tree.{type BytesTree}
+
+@external(erlang, "binary_sink_native", "read")
+pub fn read(tree: BytesTree) -> BitArray
+```
+
+Keep the module-qualified `service::BytesTreeInput` spelling in native signatures
+so the macro selects the producer's directional codec. Compose the provider's
+`Component` with `geam::gleam_stdlib::Component<Io>` and register the original
+stdlib providers. The caller's profile implements `GleamStdlibHostProfile` and
+both component projections. The stdlib owns the recursive schema, sharing grant,
+and StringTree storage; the consumer does not repeat its private constructors or
+foreign binding. The grant delegates native representation access under the
+existing host contract; it does not change Gleam's opaque visibility.
+
+Receiving an input retains its root, lazy child List, and producer-owned text
+handles without flattening the complete tree. `to_bit_array(&self)` explicitly
+copies all content in source order, including binary data and UTF-8 StringTree
+leaves, without modifying aliases. Repeated reads repeat this work. The adapter
+owns its handles, is transferable across native suspension points, and bounds
+text-store access to the read itself. It is an input adapter, not a BytesTree
+constructor or output adapter. The resulting BitArray owns its bytes and remains
+readable after the input, state, and execution are dropped.
+
+Traversal uses heap frames proportional to nesting depth and an output buffer
+proportional to the byte count. Decoding a `Many` allocates a box for its retained
+List handle; traversal moves that box into its frame without copying the List.
+Existing indexed child-List access adds
+`sum(m log(m + 1))` work for visited Lists of length `m`; shared subtrees are read
+on each visit. Buffer growth and final BitArray storage conversion may copy bytes
+again. This API does not promise zero-copy or cache flattened trees.
+
+The [independent BytesTree fixture](../../tests/fixtures/bytes_tree_service)
+contains complete original-source, typed embedding, native suspension and
+standalone examples.
+
 ## Standalone CLI Boundary
 
 The standalone CLI emits one aggregate `Stores`, `RunState`, `Profile`,
