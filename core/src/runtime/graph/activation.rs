@@ -14,13 +14,13 @@ use crate::runtime::evaluated::{
     EvaluatedValue,
 };
 use crate::runtime::function::EntryTarget;
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
     ParameterListValueId, StringListValueId, TupleListValueId, UtfCodepointListValueId,
 };
 use crate::runtime::{ExecutableRuntimePlan, RuntimeGraph};
-use num_bigint::BigInt;
 use std::marker::PhantomData;
 
 pub(in crate::runtime) struct Execution<'plan, Plan: ExecutableRuntimePlan> {
@@ -31,6 +31,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     pub(super) returns: Returns<'plan, Plan>,
     pub(super) pool: StoragePool,
     match_results: MatchResults,
+    pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -239,6 +240,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             returns: Returns::new(),
             pool: StoragePool::default(),
             match_results: MatchResults::default(),
+            arithmetic: Default::default(),
         }
     }
 }
@@ -547,7 +549,7 @@ macro_rules! return_value {
     };
 }
 
-return_value!(BigInt, ints, push_int);
+return_value!(IntegerValue, ints, push_int);
 return_value!(f64, floats, push_float);
 return_value!(StringValue, strings, push_string);
 return_value!(EvaluatedBitArray, bit_arrays, push_bit_array);
@@ -601,6 +603,7 @@ mod tests {
     use crate::ExecutionPlan;
     use crate::plan::execution::function::{FunctionExit, IntFunctionId};
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
+    use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{EvaluatedValue, HostCallOrigin, RuntimeListStorage, Value};
     use num_bigint::BigInt;
@@ -612,7 +615,7 @@ mod tests {
     fn returned_int(plan: &ExecutionPlan, id: IntFunctionId, completed: CompletedGraph) -> BigInt {
         let body = plan.int_function(id).body();
         match body.exit(completed.exit()) {
-            FunctionExit::Return(value) => completed.into_value(value),
+            FunctionExit::Return(value) => completed.into_value(value).into_bigint(),
             FunctionExit::TailCall { .. } => {
                 panic!("fixture root returns rather than tail-calling")
             }
@@ -713,10 +716,15 @@ pub fn main() {
             let frame = active_frame(&execution);
             assert_eq!(frame.position.instruction, instructions.len());
             assert_eq!(
-                frame
-                    .position
-                    .environment
-                    .value(instructions.last().unwrap().output().local()),
+                frame.position.environment.value(
+                    instructions
+                        .last()
+                        .unwrap()
+                        .value()
+                        .unwrap()
+                        .output()
+                        .local()
+                ),
                 EvaluatedValue::Int(42.into()),
             );
             let execution = continuing(
@@ -931,10 +939,10 @@ pub fn main() { walk(100) + 1 }
                     HostCallOrigin::Entry,
                     inputs,
                     destination,
-                    move |value: BigInt| {
+                    move |value: IntegerValue| {
                         observed_calls.fetch_add(1, Ordering::SeqCst);
                         drop(lease);
-                        Ok(value + 1)
+                        Ok(value.add(&1.into()))
                     },
                 ),
             };
@@ -962,7 +970,7 @@ pub fn main() { walk(100) + 1 }
                         .position
                         .environment
                         .int(IntLocalId(0)),
-                    42.into()
+                    BigInt::from(42)
                 );
                 assert_eq!(calls.load(Ordering::SeqCst), 1);
                 assert_eq!(drops.load(Ordering::SeqCst), 1);

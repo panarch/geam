@@ -336,9 +336,11 @@ pub fn main() {
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    if let ProfiledInstructionKind::Function(value) = &instruction.kind {
+                    if let ProfiledInstructionKind::Function(value) =
+                        &instruction.value().unwrap().kind
+                    {
                         assert_eq!(
-                            context.function(value, &instruction.output, &locals),
+                            context.function(value, &instruction.value().unwrap().output, &locals),
                             Ok(())
                         );
                         origins[match &value.kind {
@@ -360,14 +362,16 @@ pub fn main() {
                                     target,
                                     &[],
                                     FunctionReturnFamily::Bool,
-                                    &instruction.output,
+                                    &instruction.value().unwrap().output,
                                     &locals,
                                 ),
                                 Err(InstructionError::FunctionFamily),
                             );
                         }
                     }
-                    locals.define(&instruction.output, &types).unwrap();
+                    locals
+                        .define(&instruction.value().unwrap().output, &types)
+                        .unwrap();
                 }
             }
         }
@@ -376,6 +380,8 @@ pub fn main() {
             .body()
             .block_graph()
             .instructions[0]
+            .value()
+            .unwrap()
             .output;
         let locals = Locals::default();
         assert_eq!(
@@ -495,10 +501,10 @@ pub fn main() {
         let references = graph
             .instructions
             .iter()
-            .filter_map(|instruction| match &instruction.kind {
+            .filter_map(|instruction| match &instruction.value().unwrap().kind {
                 ProfiledInstructionKind::Function(value) => match value.kind {
                     FunctionInstructionKind::Reference(FunctionTarget::Int(target)) => {
-                        Some((target, &instruction.output))
+                        Some((target, &instruction.value().unwrap().output))
                     }
                     _ => None,
                 },
@@ -514,7 +520,8 @@ pub fn main() {
                 locals.define(slot, &types).unwrap();
             }
             for instruction in block.instructions() {
-                if let ProfiledInstructionKind::Function(value) = &instruction.kind {
+                if let ProfiledInstructionKind::Function(value) = &instruction.value().unwrap().kind
+                {
                     let (index, expected) =
                         match (value.type_.argument_types(), value.type_.return_()) {
                             ([], _) => (
@@ -532,7 +539,7 @@ pub fn main() {
                         context.bound_function(
                             target.resolve(&catalog, &types).unwrap(),
                             &[],
-                            &instruction.output,
+                            &instruction.value().unwrap().output,
                             &locals
                         ),
                         expected
@@ -553,7 +560,7 @@ pub fn main() {
                                     target: IntLocalId(1),
                                     source: IntLocalId(999)
                                 }],
-                                &instruction.output,
+                                &instruction.value().unwrap().output,
                                 &locals
                             ),
                             Err(InstructionError::Local(LocalError::Missing(
@@ -562,7 +569,9 @@ pub fn main() {
                         );
                     }
                 }
-                locals.define(&instruction.output, &types).unwrap();
+                locals
+                    .define(&instruction.value().unwrap().output, &types)
+                    .unwrap();
             }
         }
         assert_eq!(checked, [true; 4]);
@@ -664,8 +673,8 @@ pub fn main() {
             .blocks()
             .flat_map(|block| block.instructions())
         {
-            if let ProfiledInstructionKind::Function(value) = &instruction.kind {
-                let output = &instruction.output;
+            if let ProfiledInstructionKind::Function(value) = &instruction.value().unwrap().kind {
+                let output = &instruction.value().unwrap().output;
                 assert_eq!(
                     header(context.types, &value.type_, value.family, output),
                     Ok(())
@@ -766,10 +775,14 @@ pub fn main() { #(Box(First), fn(x: Choice) { Box(x) }, Second) }
             .block_graph()
             .instructions
             .iter()
-            .filter_map(|instruction| match &instruction.output.local {
-                ParamLocal::Custom(local) => Some((&instruction.output, local)),
-                _ => None,
-            })
+            .filter_map(
+                |instruction| match &instruction.value().unwrap().output.local {
+                    ParamLocal::Custom(local) => {
+                        Some((&instruction.value().unwrap().output, local))
+                    }
+                    _ => None,
+                },
+            )
             .collect::<Vec<_>>();
         let (boxed, boxed_local) = outputs
             .iter()
@@ -945,12 +958,14 @@ pub fn main() {
             }
             for instruction in block.instructions() {
                 assert_eq!(context.check(instruction, &locals), Ok(()));
-                if let ProfiledInstructionKind::Function(value) = instruction.kind() {
+                if let ProfiledInstructionKind::Function(value) =
+                    instruction.value().unwrap().kind()
+                {
                     let mut invalid = value.clone();
                     assert_ne!(value.family, FunctionReturnFamily::Bool);
                     invalid.family = FunctionReturnFamily::Bool;
                     assert_eq!(
-                        context.function(&invalid, instruction.output(), &locals),
+                        context.function(&invalid, instruction.value().unwrap().output(), &locals),
                         Err(InstructionError::FunctionFamily)
                     );
                     match &value.kind {
@@ -962,7 +977,11 @@ pub fn main() {
                             invalid.family = value.family;
                             invalid.kind = FunctionInstructionKind::Reference(target.clone());
                             assert_eq!(
-                                context.function(&invalid, instruction.output(), &locals),
+                                context.function(
+                                    &invalid,
+                                    instruction.value().unwrap().output(),
+                                    &locals
+                                ),
                                 Err(InstructionError::Arity {
                                     expected: captures.len(),
                                     found: 0
@@ -973,7 +992,9 @@ pub fn main() {
                         _ => {}
                     }
                 }
-                locals.define(instruction.output(), context.types).unwrap();
+                locals
+                    .define(instruction.value().unwrap().output(), context.types)
+                    .unwrap();
             }
         }
     }

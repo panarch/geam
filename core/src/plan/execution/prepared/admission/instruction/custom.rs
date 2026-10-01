@@ -310,9 +310,11 @@ pub fn main() {
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    if let ProfiledInstructionKind::Custom(value) = instruction.kind() {
+                    if let ProfiledInstructionKind::Custom(value) =
+                        instruction.value().unwrap().kind()
+                    {
                         context
-                            .custom(value, instruction.output(), &locals)
+                            .custom(value, instruction.value().unwrap().output(), &locals)
                             .unwrap();
                         if let CustomInstruction::Construct {
                             constructor,
@@ -321,14 +323,14 @@ pub fn main() {
                         {
                             constructors += 1;
                             let mut extra = fields.iter().cloned().collect::<Vec<_>>();
-                            extra.push(instruction.output().local.clone());
+                            extra.push(instruction.value().unwrap().output().local.clone());
                             assert_eq!(
                                 context.custom(
                                     &CustomInstruction::Construct {
                                         constructor: *constructor,
                                         fields: extra.into()
                                     },
-                                    instruction.output(),
+                                    instruction.value().unwrap().output(),
                                     &locals
                                 ),
                                 Err(InstructionError::Arity {
@@ -340,7 +342,12 @@ pub fn main() {
                         if let CustomInstruction::CustomField { source, index } = value {
                             projections += 1;
                             assert_eq!(
-                                context.custom_field(source, 999, instruction.output(), &locals),
+                                context.custom_field(
+                                    source,
+                                    999,
+                                    instruction.value().unwrap().output(),
+                                    &locals
+                                ),
                                 Err(InstructionError::CustomField { index: 999 }),
                             );
                             assert_eq!(
@@ -350,7 +357,7 @@ pub fn main() {
                                         ..*source
                                     },
                                     *index,
-                                    instruction.output(),
+                                    instruction.value().unwrap().output(),
                                     &locals,
                                 ),
                                 Err(InstructionError::Local(LocalError::Missing(
@@ -359,7 +366,7 @@ pub fn main() {
                             );
                             let missing = ParamSlot {
                                 shape: ValueShapeId(999),
-                                ..instruction.output().clone()
+                                ..instruction.value().unwrap().output().clone()
                             };
                             assert_eq!(
                                 context.custom_field(source, *index, &missing, &locals),
@@ -369,7 +376,12 @@ pub fn main() {
                             );
                             locals.restrict_constructors(&ParamLocal::Custom(*source), vec![]);
                             assert_eq!(
-                                context.custom_field(source, *index, instruction.output(), &locals),
+                                context.custom_field(
+                                    source,
+                                    *index,
+                                    instruction.value().unwrap().output(),
+                                    &locals
+                                ),
                                 Err(InstructionError::CustomField { index: *index }),
                             );
                             locals.restrict_constructors(
@@ -383,7 +395,9 @@ pub fn main() {
                             list_projections += 1;
                         }
                     }
-                    locals.define(instruction.output(), &types).unwrap();
+                    locals
+                        .define(instruction.value().unwrap().output(), &types)
+                        .unwrap();
                 }
             }
         }

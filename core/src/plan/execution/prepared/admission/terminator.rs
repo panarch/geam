@@ -456,15 +456,19 @@ pub fn main() { #(stop, "message", 42) }
         let mut locals = Locals::default();
         let block = raw.blocks().next().unwrap();
         for instruction in block.instructions() {
-            locals.define(&instruction.output, &types).unwrap();
+            locals
+                .define(&instruction.value().unwrap().output, &types)
+                .unwrap();
         }
         let callbacks = block
             .instructions()
             .iter()
-            .filter_map(|instruction| match &instruction.output.local {
-                ParamLocal::NeverFunction(local) => Some(local.clone()),
-                _ => None,
-            })
+            .filter_map(
+                |instruction| match &instruction.value().unwrap().output.local {
+                    ParamLocal::NeverFunction(local) => Some(local.clone()),
+                    _ => None,
+                },
+            )
             .collect::<Vec<_>>();
         assert_eq!(callbacks.len(), 1);
         assert_eq!(

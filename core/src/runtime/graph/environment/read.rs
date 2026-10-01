@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn read_inputs_borrow_typed_slots_until_the_environment_is_consumed() {
         let mut inputs = RetainedValues::empty();
-        inputs.push_int(BigInt::from(1_u64) << 160);
+        inputs.push_int((BigInt::from(1_u64) << 160_u32).into());
         inputs.push_tuple(vec![EvaluatedValue::String("kept".into())]);
         let environment = BlockEnvironment::from_retained(inputs);
         assert!(matches!(

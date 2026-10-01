@@ -144,10 +144,15 @@ impl<'scope, Args, Return> ReadValue for Callable<'scope, Args, Return> {
 
 impl<'scope, Args, Return> SharedValue for Callable<'scope, Args, Return> {
     type Context = CallableContext<'scope>;
+    type Read<'value> = BorrowedValue<'value>;
 
-    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self {
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
+        value
+    }
+
+    fn view(read: &Self::Read<'_>, context: &Self::Context) -> Self {
         Self {
-            value: value.function(),
+            value: read.function(),
             context: context.clone(),
             marker: PhantomData,
         }

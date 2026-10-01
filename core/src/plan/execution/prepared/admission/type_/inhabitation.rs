@@ -351,7 +351,7 @@ pub fn main() { #(identity, from_empty, never, add) }
         let functions = main
             .blocks()
             .flat_map(|block| block.instructions())
-            .map(|instruction| instruction.output())
+            .map(|instruction| instruction.value().unwrap().output())
             .filter_map(|slot| match types.shape_type(slot.shape).unwrap() {
                 ValueType::Function(function) => Some((slot, function)),
                 _ => None,

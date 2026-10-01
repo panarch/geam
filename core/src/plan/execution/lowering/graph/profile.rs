@@ -84,8 +84,13 @@ fn seal_plain_core_runtime_function_id(
 fn seal_plain_instruction(
     instruction: ProfiledInstruction<HostedExecutionGraph>,
 ) -> Representability<ProfiledInstruction<Infallible>> {
-    let (output, kind) = instruction.into_parts();
-    seal_plain_instruction_kind(kind).map(|kind| ProfiledInstruction::new(output, kind))
+    match instruction {
+        ProfiledInstruction::IntegerRegion(region) => {
+            Representability::Inhabited(ProfiledInstruction::IntegerRegion(region))
+        }
+        ProfiledInstruction::Value(value) => seal_plain_instruction_kind(value.kind)
+            .map(|kind| ProfiledInstruction::new(value.output, kind)),
+    }
 }
 
 fn seal_plain_instruction_kind(

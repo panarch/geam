@@ -285,7 +285,7 @@ fn select_int_edge<'plan>(environment: &BlockEnvironment, switch: &'plan IntSwit
     let selected = switch
         .clauses()
         .iter()
-        .find_map(|(pattern, edge)| pattern.matches(subject).then_some(edge));
+        .find_map(|(pattern, edge)| subject.matches_literal(pattern).then_some(edge));
     match selected {
         Some(edge) => edge,
         None => switch.fallback(),

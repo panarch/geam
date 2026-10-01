@@ -30,11 +30,11 @@ pub(in crate::runtime) fn value_refs_equal(
         }
         (EvaluatedValueRef::Custom(left), EvaluatedValueRef::Custom(right)) => {
             left.constructor == right.constructor
-                && left.fields.len() == right.fields.len()
+                && left.fields().len() == right.fields().len()
                 && left
-                    .fields
+                    .fields()
                     .iter()
-                    .zip(right.fields.iter())
+                    .zip(right.fields().iter())
                     .all(|(left, right)| values_equal(storage, left, right))
         }
         (EvaluatedValueRef::External(left), EvaluatedValueRef::External(right)) => {

@@ -98,10 +98,13 @@ mod tests {
         let value = Value::<Parameter, ProviderValueContext<Parameter>>::from_stored(
             StoredRuntimeValue::test_int(42.into()),
         );
-        assert_eq!(BorrowedValue::from_stored(value.stored()).int(), &42.into());
+        assert_eq!(
+            BorrowedValue::from_stored(value.stored()).int(),
+            &num_bigint::BigInt::from(42)
+        );
         assert_eq!(
             BorrowedValue::from_stored(&value.into_stored()).int(),
-            &42.into()
+            &num_bigint::BigInt::from(42)
         );
     }
 }

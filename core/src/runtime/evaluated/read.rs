@@ -11,13 +11,13 @@ use crate::runtime::evaluated::{
     EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction,
     EvaluatedStringFunction, EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::ParameterListValueId;
 pub(in crate::runtime) use list::EvaluatedListRef;
-use num_bigint::BigInt;
 
 // Read-only operations borrow the owner; retained results acquire an owned value.
 pub(in crate::runtime) enum EvaluatedValueRef<'value> {
-    Int(&'value BigInt),
+    Int(&'value IntegerValue),
     Float(f64),
     String(&'value StringValue),
     BitArray(&'value EvaluatedBitArray),
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn tuple_inspection_borrows_fields_and_only_retained_bindings_outlive_the_owner() {
         let fields = vec![
-            EvaluatedValue::Int(BigInt::from(1_u64) << 200),
+            EvaluatedValue::Int((BigInt::from(1_u64) << 200_u32).into()),
             EvaluatedValue::String("an independently retained string".into()),
         ];
         assert!(matches!(
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(
             retained,
             EvaluatedValue::Tuple(vec![
-                EvaluatedValue::Int(BigInt::from(1_u64) << 200),
+                EvaluatedValue::Int((BigInt::from(1_u64) << 200_u32).into()),
                 EvaluatedValue::String("an independently retained string".into()),
             ])
         );

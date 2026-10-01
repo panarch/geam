@@ -22,7 +22,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 10;
+const FORMAT_VERSION: u32 = 11;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {

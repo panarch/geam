@@ -11,6 +11,7 @@ pub(crate) mod execution;
 mod function;
 mod graph;
 mod host;
+pub(crate) mod integer;
 mod materialize;
 mod native;
 mod profile;
@@ -22,7 +23,7 @@ mod retained;
 mod value;
 pub(crate) mod work;
 
-pub(crate) use borrowed::BorrowedValue;
+pub(crate) use borrowed::{BorrowedValue, IntegerRead};
 pub(crate) use captures::CaptureStorage;
 pub use echo::{EchoLocation, EchoOutput, EchoSink};
 pub(crate) use embedding::{

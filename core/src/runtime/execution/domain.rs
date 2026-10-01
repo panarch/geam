@@ -990,7 +990,7 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
             )))
             .unwrap()
             .unwrap();
-        assert_eq!(output, Ok(BigInt::from(42)));
+        assert_eq!(output.map(Into::into), Ok(BigInt::from(42)));
         assert!(
             host.turns.load(Ordering::SeqCst) > 100,
             "the source yields during its CPU loop"
@@ -1158,7 +1158,7 @@ pub fn main() {{
                 };
                 assert_eq!(
                     result.map_err(|error| error.to_string()),
-                    expected.map_err(str::to_owned)
+                    expected.map(Into::into).map_err(str::to_owned)
                 );
                 assert_eq!(
                     state.get(),
@@ -4165,7 +4165,9 @@ mod work_requests {
             completed_observation(poll_domain(&mut execution, &executor, observer.as_mut()));
         result.read(|result| {
             let value = result.as_ref().ok().expect("successful callback");
-            value.read(|value| assert_eq!(value.value(), &EvaluatedValue::Int(BigInt::from(42))));
+            value.read(|value| {
+                assert_eq!(value.value(), &EvaluatedValue::Int(BigInt::from(42).into()))
+            });
         });
 
         drop(execution);
@@ -4173,7 +4175,9 @@ mod work_requests {
         let repeated = completed_observation(repeated.as_mut().poll(&mut cx));
         repeated.read(|result| {
             let value = result.as_ref().ok().expect("cached success");
-            value.read(|value| assert_eq!(value.value(), &EvaluatedValue::Int(BigInt::from(42))));
+            value.read(|value| {
+                assert_eq!(value.value(), &EvaluatedValue::Int(BigInt::from(42).into()))
+            });
         });
         assert_eq!(host.get(), 3);
         assert_eq!(echo.len(), 1);

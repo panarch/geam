@@ -254,9 +254,9 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
 mod tests {
     use super::super::super::{catalog::Catalog, local::LocalError, source::Sources, type_::Types};
     use super::{InstructionError, Instructions, IntInstruction, Locals};
-    use crate::plan::execution::function::FunctionBodyOwner;
     use crate::plan::execution::graph::{
-        BoolInstruction, BoolTest, IntLocalId, IntegerOperand, ParamLocal, ProfiledInstructionKind,
+        BoolInstruction, BoolTest, IntLocalId, IntegerOperand, ParamLocal, ProfiledBlockGraph,
+        ProfiledInstructionKind,
     };
     use crate::{ExecutionPlan, compile_typed_module, plan_module};
     use std::convert::Infallible;
@@ -328,22 +328,22 @@ pub fn main() {
         };
         let mut counts = [0; 7];
         for function in plan.program.functions.value_returns.int_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan.program.functions.value_returns.float_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan.program.functions.value_returns.string_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan.program.functions.value_returns.bool_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan.program.functions.value_returns.nil_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan.program.functions.value_returns.tuple_functions.iter() {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         for function in plan
             .program
@@ -352,24 +352,31 @@ pub fn main() {
             .utf_codepoint_functions
             .iter()
         {
-            check_body(&context, function.body(), &mut counts);
+            check_graph(&context, function.body().block_graph(), &mut counts);
         }
         assert!(counts.iter().all(|count| *count > 0), "{counts:?}");
     }
 
-    fn check_body<'data>(
+    fn check_graph<'data>(
         context: &Instructions<'_, 'data, Infallible>,
-        body: &'data impl FunctionBodyOwner<Graph = Infallible>,
+        graph: &'data ProfiledBlockGraph<Infallible>,
         counts: &mut [usize; 7],
     ) {
-        for block in body.function_body().block_graph().blocks() {
+        for block in graph.blocks() {
             let mut locals = Locals::default();
             for slot in block.params() {
                 locals.define(slot, context.types).unwrap();
             }
             for instruction in block.instructions() {
-                let output = instruction.output();
-                let checked = match instruction.kind() {
+                let Some(scalar) = instruction.value() else {
+                    context.check(instruction, &locals).unwrap();
+                    for output in instruction.outputs() {
+                        locals.define(output, context.types).unwrap();
+                    }
+                    continue;
+                };
+                let output = scalar.output();
+                let checked = match scalar.kind() {
                     ProfiledInstructionKind::Int(value) => {
                         counts[0] += 1;
                         context.int(value, output, &locals)
@@ -440,7 +447,7 @@ pub fn main() {
         for slot in block.params() {
             locals.define(slot, &types).unwrap();
         }
-        let output = block.instructions()[0].output();
+        let output = block.instructions()[0].value().unwrap().output();
         use IntegerOperand::{Immediate, Local};
         for (left, right, expected) in [
             (Local(IntLocalId(0)), Local(IntLocalId(1)), Ok(())),
@@ -558,7 +565,7 @@ pub fn main() {
         let mut checked = 0;
         for instruction in block.instructions() {
             if let ProfiledInstructionKind::Int(IntInstruction::TupleIndex { tuple, index: _ }) =
-                instruction.kind()
+                instruction.value().unwrap().kind()
             {
                 assert_eq!(
                     context.int(
@@ -566,7 +573,7 @@ pub fn main() {
                             tuple: *tuple,
                             index: 2
                         },
-                        instruction.output(),
+                        instruction.value().unwrap().output(),
                         &locals
                     ),
                     Err(InstructionError::TupleIndex { index: 2 })
@@ -574,22 +581,26 @@ pub fn main() {
                 let boolean = block
                     .instructions()
                     .iter()
-                    .find(|value| matches!(value.output().local, ParamLocal::Bool(_)))
+                    .find(|value| {
+                        matches!(value.value().unwrap().output().local, ParamLocal::Bool(_))
+                    })
                     .unwrap();
                 assert_eq!(
                     context.int(
                         &IntInstruction::Negate(IntLocalId(0)),
-                        boolean.output(),
+                        boolean.value().unwrap().output(),
                         &locals
                     ),
                     Err(InstructionError::OutputType)
                 );
                 checked += 1;
             }
-            locals.define(instruction.output(), &types).unwrap();
+            locals
+                .define(instruction.value().unwrap().output(), &types)
+                .unwrap();
         }
         assert_eq!(checked, 1);
-        let int_output = block.instructions()[0].output();
+        let int_output = block.instructions()[0].value().unwrap().output();
         assert_eq!(int_output.local, ParamLocal::Int(IntLocalId(0)));
         use crate::plan::execution::graph::{
             BoolInstruction, FloatInstruction, NilInstruction, StringInstruction, TupleInstruction,
@@ -625,10 +636,10 @@ pub fn main() {
             .iter()
             .find_map(|instruction| {
                 matches!(
-                    instruction.kind(),
+                    instruction.value().unwrap().kind(),
                     ProfiledInstructionKind::Tuple(TupleInstruction::Value(_))
                 )
-                .then_some(instruction.output())
+                .then_some(instruction.value().unwrap().output())
             })
             .unwrap();
         assert_eq!(
@@ -659,7 +670,9 @@ pub fn main() {
         let boolean = block
             .instructions()
             .iter()
-            .find(|value| matches!(value.output().local, ParamLocal::Bool(_)))
+            .find(|value| matches!(value.value().unwrap().output().local, ParamLocal::Bool(_)))
+            .unwrap()
+            .value()
             .unwrap()
             .output()
             .local

@@ -243,7 +243,7 @@ pub fn main() { function.accept(fn(value: Int) { value + 1 }) }
                 .unwrap();
         assert_eq!(prepared.emit_rust(), r#"
 data::HostedEntryArtifact {
-    format: 10,
+    format: 11,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -281,13 +281,13 @@ data::HostedEntryArtifact {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[

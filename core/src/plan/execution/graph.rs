@@ -1,4 +1,9 @@
 use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(in crate::plan::execution) mod arithmetic;
+pub(crate) use arithmetic::{
+    ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion,
+};
+pub(crate) use arithmetic::{MAX_ARITHMETIC_NODES, native_proof};
 pub(in crate::plan::execution) mod bit_array;
 pub(in crate::plan::execution) mod block;
 pub(in crate::plan::execution) mod exit;

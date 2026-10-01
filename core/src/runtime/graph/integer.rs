@@ -1,161 +1,41 @@
 use super::BlockEnvironment;
 use crate::plan::execution::graph::IntegerOperand;
-use num_bigint::{BigInt, Sign};
+use crate::runtime::integer::IntegerValue;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 
-pub(in crate::runtime::graph) fn add(
-    environment: &BlockEnvironment,
-    left: IntegerOperand,
-    right: IntegerOperand,
-) -> BigInt {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => environment.int_ref(left) + environment.int_ref(right),
-        (Local(left), Immediate(right)) => environment.int_ref(left) + right,
-        (Immediate(left), Local(right)) => left + environment.int_ref(right),
-        (Immediate(left), Immediate(right)) => match left.checked_add(right) {
-            Some(value) => BigInt::from(value),
-            None => BigInt::from(left) + right,
-        },
+fn operand(environment: &BlockEnvironment, value: IntegerOperand) -> Cow<'_, IntegerValue> {
+    match value {
+        IntegerOperand::Local(local) => Cow::Borrowed(environment.int_ref(local)),
+        IntegerOperand::Immediate(value) => Cow::Owned(value.into()),
     }
 }
 
-pub(in crate::runtime::graph) fn subtract(
-    environment: &BlockEnvironment,
-    left: IntegerOperand,
-    right: IntegerOperand,
-) -> BigInt {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => environment.int_ref(left) - environment.int_ref(right),
-        (Local(left), Immediate(right)) => environment.int_ref(left) - right,
-        (Immediate(left), Local(right)) => left - environment.int_ref(right),
-        (Immediate(left), Immediate(right)) => match left.checked_sub(right) {
-            Some(value) => BigInt::from(value),
-            None => BigInt::from(left) - right,
-        },
-    }
+macro_rules! arithmetic {
+    ($name:ident, $kernel:ident) => {
+        pub(super) fn $name(
+            environment: &BlockEnvironment,
+            left: IntegerOperand,
+            right: IntegerOperand,
+        ) -> IntegerValue {
+            operand(environment, left)
+                .as_ref()
+                .$kernel(operand(environment, right).as_ref())
+        }
+    };
 }
-
-pub(in crate::runtime::graph) fn multiply(
-    environment: &BlockEnvironment,
-    left: IntegerOperand,
-    right: IntegerOperand,
-) -> BigInt {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => environment.int_ref(left) * environment.int_ref(right),
-        (Local(left), Immediate(right)) => environment.int_ref(left) * right,
-        (Immediate(left), Local(right)) => left * environment.int_ref(right),
-        (Immediate(left), Immediate(right)) => match left.checked_mul(right) {
-            Some(value) => BigInt::from(value),
-            None => BigInt::from(left) * right,
-        },
-    }
-}
-
-pub(in crate::runtime::graph) fn divide(
-    environment: &BlockEnvironment,
-    left: IntegerOperand,
-    right: IntegerOperand,
-) -> BigInt {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => {
-            let right = environment.int_ref(right);
-            if right.sign() == Sign::NoSign {
-                BigInt::from(0)
-            } else {
-                environment.int_ref(left) / right
-            }
-        }
-        (Local(left), Immediate(right)) => {
-            if right == 0 {
-                BigInt::from(0)
-            } else {
-                environment.int_ref(left) / right
-            }
-        }
-        (Immediate(left), Local(right)) => {
-            let right = environment.int_ref(right);
-            if right.sign() == Sign::NoSign {
-                BigInt::from(0)
-            } else {
-                left / right
-            }
-        }
-        (Immediate(left), Immediate(right)) => {
-            if right == 0 {
-                BigInt::from(0)
-            } else {
-                match left.checked_div(right) {
-                    Some(value) => BigInt::from(value),
-                    None => BigInt::from(left) / right,
-                }
-            }
-        }
-    }
-}
-
-pub(in crate::runtime::graph) fn remainder(
-    environment: &BlockEnvironment,
-    left: IntegerOperand,
-    right: IntegerOperand,
-) -> BigInt {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => {
-            let right = environment.int_ref(right);
-            if right.sign() == Sign::NoSign {
-                BigInt::from(0)
-            } else {
-                environment.int_ref(left) % right
-            }
-        }
-        (Local(left), Immediate(right)) => {
-            if right == 0 {
-                BigInt::from(0)
-            } else {
-                environment.int_ref(left) % right
-            }
-        }
-        (Immediate(left), Local(right)) => {
-            let right = environment.int_ref(right);
-            if right.sign() == Sign::NoSign {
-                BigInt::from(0)
-            } else {
-                left % right
-            }
-        }
-        (Immediate(left), Immediate(right)) => {
-            if right == 0 {
-                BigInt::from(0)
-            } else {
-                match left.checked_rem(right) {
-                    Some(value) => BigInt::from(value),
-                    None => BigInt::from(left) % right,
-                }
-            }
-        }
-    }
-}
+arithmetic!(add, add);
+arithmetic!(subtract, subtract);
+arithmetic!(multiply, multiply);
+arithmetic!(divide, divide);
+arithmetic!(remainder, remainder);
 
 pub(in crate::runtime::graph) fn equal(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
 ) -> bool {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => environment.int_ref(left) == environment.int_ref(right),
-        (Local(left), Immediate(right)) => {
-            compare_immediate(environment.int_ref(left), right).is_eq()
-        }
-        (Immediate(left), Local(right)) => {
-            compare_immediate(environment.int_ref(right), left).is_eq()
-        }
-        (Immediate(left), Immediate(right)) => left == right,
-    }
+    compare(environment, left, right).is_eq()
 }
 
 pub(in crate::runtime::graph) fn compare(
@@ -163,28 +43,9 @@ pub(in crate::runtime::graph) fn compare(
     left: IntegerOperand,
     right: IntegerOperand,
 ) -> Ordering {
-    use IntegerOperand::{Immediate, Local};
-    match (left, right) {
-        (Local(left), Local(right)) => environment.int_ref(left).cmp(environment.int_ref(right)),
-        (Local(left), Immediate(right)) => compare_immediate(environment.int_ref(left), right),
-        (Immediate(left), Local(right)) => {
-            compare_immediate(environment.int_ref(right), left).reverse()
-        }
-        (Immediate(left), Immediate(right)) => left.cmp(&right),
-    }
-}
-
-fn compare_immediate(left: &BigInt, right: i64) -> Ordering {
-    match i64::try_from(left) {
-        Ok(left) => left.cmp(&right),
-        Err(_) => {
-            if left.sign() == Sign::Minus {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        }
-    }
+    operand(environment, left)
+        .as_ref()
+        .cmp(operand(environment, right).as_ref())
 }
 
 #[cfg(test)]
@@ -397,8 +258,8 @@ mod tests {
             let right: BigInt = right.parse().unwrap();
             let expected = expected.map(|value| value.parse::<BigInt>().unwrap());
             let mut values = RetainedValues::empty();
-            values.push_int(left.clone());
-            values.push_int(right.clone());
+            values.push_int(left.clone().into());
+            values.push_int(right.clone().into());
             let environment = BlockEnvironment::from_retained(values);
             let mut lefts = vec![IntegerOperand::Local(IntLocalId(0))];
             let mut rights = vec![IntegerOperand::Local(IntLocalId(1))];
@@ -428,7 +289,7 @@ mod tests {
     #[test]
     fn repeated_local_reads_leave_the_owned_input_unchanged() {
         let mut values = RetainedValues::empty();
-        values.push_int(BigInt::from(-7));
+        values.push_int(BigInt::from(-7).into());
         let environment = BlockEnvironment::from_retained(values);
         let value = IntegerOperand::Local(IntLocalId(0));
         assert_eq!(add(&environment, value, value), BigInt::from(-14));

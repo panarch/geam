@@ -13,6 +13,7 @@ use crate::plan::execution::graph::{
 use crate::runtime::BitArraySegmentPanicReason;
 use crate::runtime::evaluated::EvaluatedBitArray;
 use crate::runtime::graph::RuntimeGraphState;
+use crate::runtime::integer::IntegerValue;
 
 pub(super) fn evaluate<State>(
     plan: &impl crate::plan::execution::runtime::RuntimeExecutionPlan,
@@ -45,7 +46,7 @@ where
             value,
             bit_size,
             endianness,
-        } => append_integer(output, &environment.int(*value), *bit_size, *endianness),
+        } => append_integer(output, environment.int_ref(*value), *bit_size, *endianness),
         BitArraySegment::EvaluatedInt {
             value,
             size,
@@ -53,7 +54,7 @@ where
             site,
         } => {
             let bit_size = evaluate_size(plan, state, environment, size, site)?;
-            append_integer(output, &environment.int(*value), bit_size, *endianness);
+            append_integer(output, environment.int_ref(*value), bit_size, *endianness);
         }
         BitArraySegment::Float {
             value,
@@ -127,16 +128,18 @@ fn evaluate_size<State>(
 where
     State: RuntimeGraphState,
 {
-    let value = environment.int(size.value());
-    let bit_size = if value < BigInt::from(0) {
-        BigInt::from(0)
+    let value = environment.int_ref(size.value());
+    let bit_size = if value.sign() == Sign::Minus {
+        IntegerValue::from(0)
     } else {
-        value * BigInt::from(size.unit())
+        value.multiply(&IntegerValue::from(size.unit()))
     };
-    usize::try_from(bit_size.clone()).map_err(|_| {
+    bit_size.to_usize().ok_or_else(|| {
         state.bit_array_segment_panic(
             plan.source_context_for(site.module()),
-            BitArraySegmentPanicReason::SizeOutOfRange { bit_size },
+            BitArraySegmentPanicReason::SizeOutOfRange {
+                bit_size: bit_size.into_bigint(),
+            },
             site.clone(),
         )
     })
@@ -144,15 +147,38 @@ where
 
 fn append_integer(
     output: &mut BitVec<u8, Msb0>,
-    value: &BigInt,
+    value: &IntegerValue,
     bit_size: usize,
     endianness: Endianness,
 ) {
     if bit_size == 0 {
         return;
     }
+    if let Some(value) = value.small().filter(|_| bit_size <= 64) {
+        match endianness {
+            Endianness::Big => {
+                let bytes = value.to_be_bytes();
+                output.extend_from_bitslice(&bytes.view_bits::<Msb0>()[64 - bit_size..]);
+            }
+            Endianness::Little => {
+                let bytes = value.to_le_bytes();
+                let full_bytes = bit_size / 8;
+                for byte in &bytes[..full_bytes] {
+                    output.extend_from_bitslice(byte.view_bits::<Msb0>());
+                }
+                let remaining = bit_size % 8;
+                if remaining > 0 {
+                    output.extend_from_bitslice(
+                        &bytes[full_bytes].view_bits::<Msb0>()[8 - remaining..],
+                    );
+                }
+            }
+        }
+        return;
+    }
+    let value = value.bigint();
     let mask = (BigInt::from(1u8) << bit_size) - BigInt::from(1u8);
-    let truncated = value & mask;
+    let truncated = value.as_ref() & mask;
     match endianness {
         Endianness::Big => append_low_bits(output, &truncated.to_bytes_be().1, bit_size),
         Endianness::Little => {
@@ -277,9 +303,9 @@ pub(super) fn decode_integer(
     bits: &BitSlice<u8, Msb0>,
     endianness: Endianness,
     signedness: Signedness,
-) -> BigInt {
+) -> IntegerValue {
     if bits.is_empty() {
-        return BigInt::from(0u8);
+        return IntegerValue::from(0u8);
     }
     if bits.len() <= 64 {
         let value = match endianness {
@@ -294,10 +320,10 @@ pub(super) fn decode_integer(
                 }),
         };
         return match signedness {
-            Signedness::Unsigned => BigInt::from(value),
+            Signedness::Unsigned => IntegerValue::from(value),
             Signedness::Signed => {
                 let shift = 64 - bits.len();
-                BigInt::from(((value << shift) as i64) >> shift)
+                IntegerValue::from(((value << shift) as i64) >> shift)
             }
         };
     }
@@ -313,8 +339,8 @@ pub(super) fn decode_integer(
             .collect(),
     };
     match signedness {
-        Signedness::Unsigned => BigInt::from_bytes_le(Sign::Plus, &bytes),
-        Signedness::Signed => BigInt::from_signed_bytes_le(&bytes),
+        Signedness::Unsigned => BigInt::from_bytes_le(Sign::Plus, &bytes).into(),
+        Signedness::Signed => BigInt::from_signed_bytes_le(&bytes).into(),
     }
 }
 
@@ -698,6 +724,44 @@ pub fn main() {
     }
 
     #[test]
+    fn integer_encoder_preserves_wide_signed_values_padding_and_partial_bytes() {
+        use super::append_integer;
+        use crate::runtime::integer::IntegerValue;
+        let huge: BigInt = (BigInt::from(1_u8) << 256) + 0x123;
+        let cases: Vec<(IntegerValue, usize, Endianness, Vec<u8>)> = vec![
+            ((-1).into(), 80, Endianness::Big, vec![0xff; 10]),
+            ((-1).into(), 80, Endianness::Little, vec![0xff; 10]),
+            (0.into(), 72, Endianness::Big, vec![0; 9]),
+            (
+                huge.clone().into(),
+                72,
+                Endianness::Big,
+                vec![0, 0, 0, 0, 0, 0, 0, 1, 0x23],
+            ),
+            (
+                huge.clone().into(),
+                72,
+                Endianness::Little,
+                vec![0x23, 1, 0, 0, 0, 0, 0, 0, 0],
+            ),
+            (huge.clone().into(), 12, Endianness::Big, vec![0x12, 0x30]),
+            (huge.into(), 12, Endianness::Little, vec![0x23, 0x10]),
+            (
+                (-1).into(),
+                73,
+                Endianness::Little,
+                vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x80],
+            ),
+        ];
+        for (value, width, endian, bytes) in cases {
+            let mut output = BitVec::<u8, Msb0>::new();
+            append_integer(&mut output, &value, width, endian);
+            assert_eq!(output.len(), width);
+            assert_eq!(output.as_bitslice(), &bytes.view_bits::<Msb0>()[..width]);
+        }
+    }
+
+    #[test]
     fn integer_decoder_preserves_signedness_and_partial_little_endian_bytes() {
         assert_eq!(
             decode_integer(
@@ -705,7 +769,7 @@ pub fn main() {
                 Endianness::Big,
                 Signedness::Signed,
             ),
-            (-2).into(),
+            BigInt::from(-2),
         );
         assert_eq!(
             decode_integer(
@@ -713,7 +777,7 @@ pub fn main() {
                 Endianness::Little,
                 Signedness::Unsigned,
             ),
-            0x234.into(),
+            BigInt::from(0x234),
         );
         assert_eq!(
             decode_integer(
@@ -721,7 +785,7 @@ pub fn main() {
                 Endianness::Little,
                 Signedness::Signed,
             ),
-            (-2).into(),
+            BigInt::from(-2),
         );
         assert_eq!(
             decode_integer(
@@ -729,7 +793,7 @@ pub fn main() {
                 Endianness::Big,
                 Signedness::Signed,
             ),
-            127.into(),
+            BigInt::from(127),
         );
     }
 
@@ -742,7 +806,7 @@ pub fn main() {
             let ones = BitVec::<u8, Msb0>::repeat(true, width);
             for endian in [Endianness::Big, Endianness::Little] {
                 for signed in [Signedness::Unsigned, Signedness::Signed] {
-                    assert_eq!(decode_integer(&zeros, endian, signed), 0.into());
+                    assert_eq!(decode_integer(&zeros, endian, signed), BigInt::from(0));
                 }
                 assert_eq!(
                     decode_integer(&ones, endian, Signedness::Unsigned),
@@ -865,7 +929,7 @@ pub fn main() {
                 Endianness::Little,
                 Signedness::Unsigned,
             ),
-            36.into(),
+            BigInt::from(36),
         );
     }
 
@@ -880,7 +944,7 @@ pub fn main() {
                 let mut bits = BitVec::<u8, Msb0>::repeat(false, width);
                 bits.set(low, true);
                 for signed in [Signedness::Unsigned, Signedness::Signed] {
-                    assert_eq!(decode_integer(&bits, endian, signed), 1.into());
+                    assert_eq!(decode_integer(&bits, endian, signed), BigInt::from(1));
                 }
                 bits.set(high, true);
                 let magnitude = BigInt::from(1u8) << (width - 1);

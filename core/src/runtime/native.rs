@@ -1,6 +1,7 @@
 use crate::host::{HostExternalEquality, HostExternalHashing, HostExternalInspection};
 use crate::plan::execution::runtime::{OwnedRuntimeValueMetadata, RuntimeValueMetadata};
 use crate::runtime::evaluated::EvaluatedValue;
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::ListValueId;
 use crate::runtime::{RetainedValueRef, StoredRuntimeValue};
@@ -57,7 +58,7 @@ pub enum NativeKind {
 }
 
 enum Node<'value> {
-    Int(Cow<'value, BigInt>),
+    Int(Cow<'value, IntegerValue>),
     Float(f64),
     Binary(Binary<'value>),
     Symbol(&'value str),
@@ -228,7 +229,10 @@ impl NativeValue {
     /// Reads an integer or a Unicode codepoint's integer value.
     pub fn as_int(&self) -> Option<BigInt> {
         self.with_node(|node| match node {
-            Node::Int(value) => Some(value.into_owned()),
+            Node::Int(value) => Some(match value {
+                Cow::Borrowed(value) => value.bigint().into_owned(),
+                Cow::Owned(value) => value.into_bigint(),
+            }),
             _ => None,
         })
     }
@@ -770,7 +774,7 @@ fn inspect_list(values: Sequence<'_>, context: &HostExternalInspection<'_>) -> E
         item.with_node(|node| {
             if let Some(characters) = chars.as_mut() {
                 let byte = match &node {
-                    Node::Int(value) => u8::try_from(value.as_ref()).ok(),
+                    Node::Int(value) => value.to_u8(),
                     _ => None,
                 };
                 match byte {

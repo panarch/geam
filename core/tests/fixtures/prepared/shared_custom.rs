@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 10,
+        format: 11,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -68,7 +68,7 @@ pub fn main() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -83,7 +83,7 @@ pub fn main() {
                                                 },
                                                 index: 0,
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -112,7 +112,7 @@ pub fn main() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -121,7 +121,7 @@ pub fn main() {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Immediate(2),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -165,7 +165,7 @@ pub fn main() {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(0),
@@ -185,7 +185,7 @@ pub fn main() {
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     ]),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -260,7 +260,7 @@ pub fn main() {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(0),
@@ -288,7 +288,7 @@ pub fn main() {
                                                         },
                                                     ]),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -335,7 +335,7 @@ pub fn main() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -346,8 +346,8 @@ pub fn main() {
                                                     41,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(0),
@@ -371,8 +371,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(248, 264)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(1),
@@ -402,8 +402,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(268, 274)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(2),
@@ -433,8 +433,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(278, 287)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -452,8 +452,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(291, 302)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -479,8 +479,8 @@ pub fn main() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(3),
@@ -512,8 +512,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(320, 357)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(4),
@@ -543,8 +543,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(361, 367)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(1),
@@ -579,8 +579,8 @@ pub fn main() {
                                                     site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(371, 382)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -591,8 +591,8 @@ pub fn main() {
                                                     40,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -604,8 +604,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("consumer", "main", data::source::SourceSpan::new(396, 408)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Tuple {
                                                     local: data::graph::TupleLocalId(0),
@@ -620,7 +620,7 @@ pub fn main() {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
                                             ]))),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -685,7 +685,7 @@ pub fn main() {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -717,7 +717,7 @@ pub fn main() {
                                                         index: 0,
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[

@@ -173,7 +173,7 @@ mod tests {
                         .collect::<Vec<_>>(),
                     [&ParamLocal::Int(IntLocalId(0))]
                 );
-                let instruction = sole_instruction(entry.instructions());
+                let instruction = sole_instruction(entry.instructions()).value().unwrap();
                 assert_eq!(instruction.output.local, ParamLocal::Bool(BoolLocalId(0)));
                 let mut actual = String::new();
                 let mut context = explain::ExplainContext::new(plan, &mut actual);
@@ -193,7 +193,7 @@ mod tests {
         explain::with_execution_plan(source, |plan| {
             let graph = plan.int_function(IntFunctionId(1)).body().block_graph();
             let entry = graph.block(graph.entry());
-            let instruction = sole_instruction(entry.instructions());
+            let instruction = sole_instruction(entry.instructions()).value().unwrap();
             let mut actual = String::new();
             let mut context = explain::ExplainContext::new(plan, &mut actual);
             context.write(&instruction.kind);

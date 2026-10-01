@@ -352,11 +352,11 @@ mod explain_tests {
 pub fn main() {
   let value = 6
   #(
-    value + 2,
-    value - 2,
-    value * 2,
-    value / 2,
-    value % 2,
+    value + 2, Nil,
+    value - 2, Nil,
+    value * 2, Nil,
+    value / 2, Nil,
+    value % 2, Nil,
     -value,
   )
 }
@@ -425,7 +425,9 @@ pub fn main() {
             let graph = plan.tuple_function(TupleFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-                if let ProfiledInstructionKind::Int(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Int(instruction) =
+                    instruction.value().unwrap().kind()
+                {
                     write_separator(output, &mut first);
                     let mut context = explain::ExplainContext::new(plan, output);
                     context.write(instruction);

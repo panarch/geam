@@ -574,7 +574,7 @@ pub fn main() { #(42, fn(value: Int) { value }, make()) }
         let function = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.kind() {
+            .find_map(|instruction| match instruction.value().unwrap().kind() {
                 InstructionKind::Function(function)
                     if matches!(function.kind(), FunctionInstructionKind::Call { .. }) =>
                 {
@@ -632,7 +632,7 @@ pub fn main() {
         let function_list_type = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.kind() {
+            .find_map(|instruction| match instruction.value().unwrap().kind() {
                 InstructionKind::List(ListInstruction::Function(type_id, _)) => Some(*type_id),
                 _ => None,
             })
@@ -640,7 +640,7 @@ pub fn main() {
         let float_reference = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .find_map(|instruction| match instruction.kind() {
+            .find_map(|instruction| match instruction.value().unwrap().kind() {
                 InstructionKind::Function(function)
                     if matches!(
                         function.kind(),
@@ -677,7 +677,8 @@ pub fn main() {
         let mut list_projection_checked = false;
         for block in graph.blocks() {
             for instruction in block.instructions() {
-                let InstructionKind::Function(function) = instruction.kind() else {
+                let InstructionKind::Function(function) = instruction.value().unwrap().kind()
+                else {
                     continue;
                 };
                 let expected = ValueType::Function(Box::new(plan.function_type(function.type_())));

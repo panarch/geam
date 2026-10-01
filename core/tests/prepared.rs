@@ -548,14 +548,14 @@ fn standalone_entries_preserve_generic_function_outer_work_and_source_failure_be
 
 #[test]
 fn incompatible_format_never_produces_a_prepared_binding_owner() {
-    static INCOMPATIBLE: data::ModuleArtifact<Infallible> = data::ModuleArtifact {
-        format: 6,
-        ..include!("fixtures/prepared/arithmetic.rs")
-    };
-    let error = INCOMPATIBLE.load().err().unwrap();
+    const ARTIFACT: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
+    let mut incompatible = ARTIFACT;
+    incompatible.format = 6;
+    let incompatible = Box::leak(Box::new(incompatible));
+    let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 10; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 11; regenerate the prepared program"
     );
 }
 
@@ -1152,8 +1152,12 @@ fn emitted_plain_program_loads_into_independent_callable_modules() {
 
 #[test]
 fn plain_data_matches_preparation_output() {
-    let module =
-        compile_typed_module("example", "src/example.gleam", "pub fn main() { 21 * 2 }").unwrap();
+    let module = compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("fixtures/prepared/arithmetic.gleam"),
+    )
+    .unwrap();
     let (bindings, _) = ModuleBuilder::new(module)
         .unwrap()
         .function(FunctionDeclaration::<(), BigInt>::new("main"))

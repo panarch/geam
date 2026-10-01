@@ -3,12 +3,14 @@ use crate::host::{
     HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
 use crate::plan::execution::type_::ListStorageTypeId;
+use crate::runtime::borrowed::SharedIntegerReads;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedFunctionValueKind, EvaluatedGenericFunction, EvaluatedValue,
 };
 use crate::runtime::function::InvocableFunctionValue;
 use crate::runtime::graph::RetainedValues;
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::retained_list::RetainedList;
 use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, ListValueId, ParameterListValueId,
@@ -21,7 +23,7 @@ use std::sync::Arc;
 
 #[derive(Default)]
 pub(super) struct ScopedValues {
-    ints: Vec<BigInt>,
+    ints: Vec<IntegerValue>,
     floats: Vec<f64>,
     strings: Vec<crate::StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
@@ -66,6 +68,7 @@ pub(crate) struct StoredRuntimeValue {
 
 #[derive(Clone)]
 struct StoredValue {
+    integer_reads: SharedIntegerReads,
     value: EvaluatedValue,
     type_: crate::plan::ValueType,
     metadata: crate::plan::execution::runtime::OwnedRuntimeValueMetadata,
@@ -118,6 +121,7 @@ impl StoredRuntimeValue {
     ) -> Self {
         Self {
             retained: Arc::new(StoredValue {
+                integer_reads: Default::default(),
                 type_: value.value_type(metadata),
                 value,
                 metadata: metadata.to_owned(),
@@ -129,7 +133,11 @@ impl StoredRuntimeValue {
     pub(crate) fn test_int(value: BigInt) -> Self {
         use crate::plan::execution::runtime::RuntimeExecutionPlan;
         let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        Self::new(EvaluatedValue::Int(value), plan.value_metadata())
+        Self::new(EvaluatedValue::Int(value.into()), plan.value_metadata())
+    }
+
+    pub(in crate::runtime) fn integer_reads(&self) -> &SharedIntegerReads {
+        &self.retained.integer_reads
     }
 
     pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
@@ -192,9 +200,14 @@ impl StoredRuntimeValue {
                 .into_iter()
                 .map(|value| map(Self::new(value, metadata.as_borrowed())))
                 .collect()),
-            retained => Err(Self {
-                retained: Arc::new(retained),
-            }),
+            mut retained => {
+                // This new allocation has new scalar addresses. Do not carry
+                // the old root's address-keyed conversions into its read owner.
+                retained.integer_reads = Default::default();
+                Err(Self {
+                    retained: Arc::new(retained),
+                })
+            }
         }
     }
 
@@ -242,7 +255,7 @@ impl StoredRuntimeList {
         let plan = crate::runtime::plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
         let storage = crate::runtime::state::list::RuntimeListStorage::default();
-        let value = storage.int(type_id, values);
+        let value = storage.int(type_id, values.into_iter().map(Into::into).collect());
         Self::new(value.into())
     }
 
@@ -305,7 +318,7 @@ impl<'value> StoredRuntimeListItem<'value> {
 
     pub(crate) fn into_stored(self, retention: &ValueRetention) -> StoredRuntimeValue {
         let value = match self.token.family {
-            HostValueFamily::Int => EvaluatedValue::Int(self.values.take_int(self.token)),
+            HostValueFamily::Int => EvaluatedValue::Int(self.values.take_integer(self.token)),
             HostValueFamily::Float => EvaluatedValue::Float(self.values.take_float(self.token)),
             HostValueFamily::String => EvaluatedValue::String(self.values.take_string(self.token)),
             HostValueFamily::BitArray => EvaluatedValue::BitArray(EvaluatedBitArray::from_value(
@@ -559,7 +572,7 @@ impl ScopedValues {
 
     pub(super) fn push_scoped(&mut self, value: HostScopedValue) -> HostValueToken {
         match value {
-            HostScopedValue::Int(value) => self.push(EvaluatedValue::Int(value)),
+            HostScopedValue::Int(value) => self.push(EvaluatedValue::Int(value.into())),
             HostScopedValue::Float(value) => self.push(EvaluatedValue::Float(value)),
             HostScopedValue::String(value) => self.push(EvaluatedValue::String(value)),
             HostScopedValue::BitArray(value) => self.push(EvaluatedValue::BitArray(
@@ -850,7 +863,7 @@ impl ScopedValues {
 
     pub(super) fn value_from_scoped(&self, value: HostScopedValue) -> EvaluatedValue {
         match value {
-            HostScopedValue::Int(value) => EvaluatedValue::Int(value),
+            HostScopedValue::Int(value) => EvaluatedValue::Int(value.into()),
             HostScopedValue::Float(value) => EvaluatedValue::Float(value),
             HostScopedValue::String(value) => EvaluatedValue::String(value),
             HostScopedValue::BitArray(value) => {
@@ -902,7 +915,7 @@ impl ScopedValues {
     }
 
     pub(super) fn int(&self, value: HostValueToken) -> BigInt {
-        self.ints[value.index].clone()
+        self.ints[value.index].bigint().into_owned()
     }
 
     pub(super) fn float(&self, value: HostValueToken) -> f64 {
@@ -926,6 +939,10 @@ impl ScopedValues {
     }
 
     fn take_int(&mut self, value: HostValueToken) -> BigInt {
+        self.take_integer(value).into_bigint()
+    }
+
+    fn take_integer(&mut self, value: HostValueToken) -> IntegerValue {
         self.ints.swap_remove(value.index)
     }
 
@@ -1061,7 +1078,10 @@ mod tests {
         let storage = crate::runtime::CaptureStorage::default();
         let function = EvaluatedIntFunction::closure(
             IntFunctionId(0),
-            storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), captured.clone())]),
+            storage.capture(vec![EvaluatedCapture::int(
+                IntLocalId(0),
+                captured.clone().into(),
+            )]),
             FunctionType::new(Vec::new(), ValueType::Int),
         );
         let original_captures = function.captures().as_ptr();
@@ -1100,7 +1120,7 @@ mod tests {
                 let value = int_target(value);
                 assert_eq!(
                     value.captures(),
-                    &[EvaluatedCapture::int(IntLocalId(0), captured)]
+                    &[EvaluatedCapture::int(IntLocalId(0), captured.into())]
                 );
             });
         })
@@ -1199,6 +1219,7 @@ mod tests {
     #[test]
     fn consuming_stored_tuple_moves_unique_items_and_preserves_shared_items() {
         use crate::runtime::BorrowedValue;
+        use std::sync::Arc;
 
         let plan = crate::runtime::plan_src("pub fn main() { #(#(7)) }");
         for shared in [false, true] {
@@ -1229,9 +1250,25 @@ mod tests {
             }
         }
 
-        let scalar = StoredRuntimeValue::test_int(7.into());
-        let scalar = scalar.map_tuple_items(|_| ()).unwrap_err();
-        assert_eq!(scalar.value(), &EvaluatedValue::Int(7.into()));
+        for shared in [false, true] {
+            let scalar = StoredRuntimeValue::test_int(7.into());
+            assert_eq!(
+                BorrowedValue::from_stored(&scalar).int_bigint().as_ref(),
+                &BigInt::from(7)
+            );
+            let previous = Arc::downgrade(scalar.integer_reads().get().unwrap());
+            let alias = shared.then(|| scalar.clone_retained());
+            let scalar = scalar.map_tuple_items(|_| ()).unwrap_err();
+            assert_eq!(scalar.value(), &EvaluatedValue::Int(7.into()));
+            assert!(scalar.integer_reads().get().is_none());
+            assert_eq!(previous.upgrade().is_some(), shared);
+            assert_eq!(
+                BorrowedValue::from_stored(&scalar).int_bigint().as_ref(),
+                &BigInt::from(7)
+            );
+            drop(alias);
+            assert!(previous.upgrade().is_none());
+        }
     }
 
     #[test]

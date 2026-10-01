@@ -139,6 +139,7 @@ mod tests {
     use crate::plan::execution::constant::ProfiledConstantTable;
     use crate::plan::execution::function::HostedExecutionGraph;
     use crate::plan::execution::graph::BlockId;
+    use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
     use crate::plan::execution::prepared::admission::{
         catalog::Catalog,
         source::Sources,
@@ -204,12 +205,13 @@ mod tests {
                 .unwrap(),
         );
         let slot = ParamSlot::new(ParamLocal::Int(IntLocalId(0)), int);
-        let literal = ProfiledInstruction::<HostedExecutionGraph> {
-            output: slot.clone(),
-            kind: ProfiledInstructionKind::Int(IntInstruction::Value(
-                num_bigint::BigInt::from(42).into(),
-            )),
-        };
+        let literal =
+            ProfiledInstruction::<HostedExecutionGraph>::Value(ProfiledValueInstruction {
+                output: slot.clone(),
+                kind: ProfiledInstructionKind::Int(IntInstruction::Value(
+                    num_bigint::BigInt::from(42).into(),
+                )),
+            });
         let cases = [
             (
                 int,
@@ -275,10 +277,10 @@ mod tests {
             (
                 int,
                 Vec::new(),
-                vec![ProfiledInstruction {
+                vec![ProfiledInstruction::Value(ProfiledValueInstruction {
                     output: slot,
                     kind: ProfiledInstructionKind::Int(IntInstruction::Negate(IntLocalId(99))),
-                }],
+                })],
                 vec![IntLocalId(0)],
                 Err(BodyError::Instruction {
                     block: 0,

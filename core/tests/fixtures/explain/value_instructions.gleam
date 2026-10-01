@@ -219,12 +219,15 @@ pub fn main() {
 //     %string#2:shape#3(String) = string.drop_prefix %string#0 prefix="prefix-"
 //     jump b3(%string#2, %function.int#0, %function.float#0, %function.string#0, %function.bit_array#0, %function.utf_codepoint#0, %function.custom#0, %function.bool#0, %function.nil#0, %function.tuple#0, %utf_codepoint#0, %custom#0, %tuple#0, %string#1, %int#0, %int#1)
 //   block b3 params=[%string#0:shape#3(String), %function.int#0:shape#9(fn(Int) -> Int), %function.float#0:shape#10(fn(Float) -> Float), %function.string#0:shape#11(fn(String) -> String), %function.bit_array#0:shape#12(fn(BitArray) -> BitArray), %function.utf_codepoint#0:shape#13(fn(UtfCodepoint) -> UtfCodepoint), %function.custom#0:shape#14(fn(custom_type#0) -> custom_type#0), %function.bool#0:shape#15(fn(Bool) -> Bool), %function.nil#0:shape#16(fn(Nil) -> Nil), %function.tuple#0:shape#17(fn(#(Int)) -> #(Int)), %utf_codepoint#0:shape#5(UtfCodepoint), %custom#0:shape#18(custom_type#0), %tuple#0:shape#19(#(Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int))), %string#1:shape#3(String), %int#0:shape#1(Int), %int#1:shape#1(Int)]
-//     %int#2:shape#1(Int) = int.add 1 2
-//     %int#3:shape#1(Int) = int.mult 3 4
-//     %int#4:shape#1(Int) = int.div %int#3 5
-//     %int#5:shape#1(Int) = int.remainder %int#4 6
-//     %int#6:shape#1(Int) = int.sub %int#2 %int#5
-//     %int#7:shape#1(Int) = int.negate %int#1
+//     arithmetic.region inputs=[%int#1] native=true
+//       value#0 = Add(Immediate(1), Immediate(2))
+//       value#1 = Multiply(Immediate(3), Immediate(4))
+//       value#2 = Divide(Value(1), Immediate(5))
+//       value#3 = Remainder(Value(2), Immediate(6))
+//       value#4 = Subtract(Value(0), Value(3))
+//       value#5 = Negate(Input(0))
+//       %int#2:shape#1(Int) = value#4
+//       %int#3:shape#1(Int) = value#5
 //     %float#0:shape#2(Float) = float.value 1.0
 //     %float#1:shape#2(Float) = float.value 2.0
 //     %float#2:shape#2(Float) = float.add %float#0 %float#1
@@ -257,10 +260,10 @@ pub fn main() {
 //     %bool#9:shape#6(Bool) = bool.gte_float %float#15 %float#16
 //     %bool#10:shape#6(Bool) = bool.equal_int 1 1
 //     %bool#11:shape#6(Bool) = bool.not_equal_int 1 2
-//     %int#8:shape#1(Int) = int.value 1
-//     %int#9:shape#1(Int) = int.call int#0 args=[%int#8]
-//     %int#10:shape#1(Int) = int.value 1
-//     %int#11:shape#1(Int) = int.function_call %function.int#0 args=[%int#10]
+//     %int#4:shape#1(Int) = int.value 1
+//     %int#5:shape#1(Int) = int.call int#0 args=[%int#4]
+//     %int#6:shape#1(Int) = int.value 1
+//     %int#7:shape#1(Int) = int.function_call %function.int#0 args=[%int#6]
 //     %float#17:shape#2(Float) = float.value 1.0
 //     %float#18:shape#2(Float) = float.call float#0 args=[%float#17]
 //     %float#19:shape#2(Float) = float.value 1.0
@@ -269,11 +272,11 @@ pub fn main() {
 //     %string#6:shape#3(String) = string.call string#0 args=[%string#5]
 //     %string#7:shape#3(String) = string.value "one"
 //     %string#8:shape#3(String) = string.function_call %function.string#0 args=[%string#7]
-//     %int#12:shape#1(Int) = int.value 1
-//     %bit_array#0:shape#4(BitArray) = bit_array.value [int(%int#12, bits=8, big)]
+//     %int#8:shape#1(Int) = int.value 1
+//     %bit_array#0:shape#4(BitArray) = bit_array.value [int(%int#8, bits=8, big)]
 //     %bit_array#1:shape#4(BitArray) = bit_array.call bit_array#0 args=[%bit_array#0]
-//     %int#13:shape#1(Int) = int.value 1
-//     %bit_array#2:shape#4(BitArray) = bit_array.value [int(%int#13, bits=8, big)]
+//     %int#9:shape#1(Int) = int.value 1
+//     %bit_array#2:shape#4(BitArray) = bit_array.value [int(%int#9, bits=8, big)]
 //     %bit_array#3:shape#4(BitArray) = bit_array.function_call %function.bit_array#0 args=[%bit_array#2]
 //     %utf_codepoint#1:shape#5(UtfCodepoint) = utf_codepoint.call utf_codepoint#0 args=[%utf_codepoint#0]
 //     %utf_codepoint#2:shape#5(UtfCodepoint) = utf_codepoint.function_call %function.utf_codepoint#0 args=[%utf_codepoint#0]
@@ -287,13 +290,13 @@ pub fn main() {
 //     %nil#1:shape#7(Nil) = nil.call nil#0 args=[%nil#0]
 //     %nil#2:shape#7(Nil) = nil.value
 //     %nil#3:shape#7(Nil) = nil.function_call %function.nil#0 args=[%nil#2]
-//     %int#14:shape#1(Int) = int.value 1
-//     %tuple#1:shape#8(#(Int)) = tuple.value elements=[%int#14]
+//     %int#10:shape#1(Int) = int.value 1
+//     %tuple#1:shape#8(#(Int)) = tuple.value elements=[%int#10]
 //     %tuple#2:shape#8(#(Int)) = tuple.call tuple#1 args=[%tuple#1]
-//     %int#15:shape#1(Int) = int.value 1
-//     %tuple#3:shape#8(#(Int)) = tuple.value elements=[%int#15]
+//     %int#11:shape#1(Int) = int.value 1
+//     %tuple#3:shape#8(#(Int)) = tuple.value elements=[%int#11]
 //     %tuple#4:shape#8(#(Int)) = tuple.function_call %function.tuple#0 args=[%tuple#3]
-//     %int#16:shape#1(Int) = int.tuple_index %tuple#0 index=0
+//     %int#12:shape#1(Int) = int.tuple_index %tuple#0 index=0
 //     %float#21:shape#2(Float) = float.tuple_index %tuple#0 index=1
 //     %string#9:shape#3(String) = string.tuple_index %tuple#0 index=2
 //     %bit_array#4:shape#4(BitArray) = bit_array.tuple_index %tuple#0 index=3
@@ -302,7 +305,7 @@ pub fn main() {
 //     %bool#16:shape#6(Bool) = bool.tuple_index %tuple#0 index=6
 //     %nil#4:shape#7(Nil) = nil.tuple_index %tuple#0 index=7
 //     %tuple#5:shape#8(#(Int)) = tuple.tuple_index %tuple#0 index=8
-//     %int#17:shape#1(Int) = int.custom_field %custom#0 index=0
+//     %int#13:shape#1(Int) = int.custom_field %custom#0 index=0
 //     %float#22:shape#2(Float) = float.custom_field %custom#0 index=1
 //     %string#10:shape#3(String) = string.custom_field %custom#0 index=2
 //     %bit_array#5:shape#4(BitArray) = bit_array.custom_field %custom#0 index=3
@@ -310,22 +313,22 @@ pub fn main() {
 //     %bool#17:shape#6(Bool) = bool.custom_field %custom#0 index=5
 //     %nil#5:shape#7(Nil) = nil.custom_field %custom#0 index=6
 //     %tuple#6:shape#8(#(Int)) = tuple.custom_field %custom#0 index=7
-//     %int#18:shape#1(Int) = int.value 1
-//     %int#19:shape#1(Int) = int.value 2
+//     %int#14:shape#1(Int) = int.value 1
+//     %int#15:shape#1(Int) = int.value 2
 //     %float#23:shape#2(Float) = float.value 1.5
 //     %float#24:shape#2(Float) = float.value 1.5
-//     %int#20:shape#1(Int) = int.mult %int#0 8
+//     %int#16:shape#1(Int) = int.mult %int#0 8
 //     %string#11:shape#3(String) = string.value "one"
 //     %string#12:shape#3(String) = string.value "two"
 //     %string#13:shape#3(String) = string.value "three"
-//     %int#21:shape#1(Int) = int.value 1
-//     %bit_array#6:shape#4(BitArray) = bit_array.value [int(%int#21, bits=8, big)]
-//     %int#22:shape#1(Int) = int.value 2
-//     %bit_array#7:shape#4(BitArray) = bit_array.value [int(%int#22, bits=8, big)]
-//     %int#23:shape#1(Int) = int.value 3
-//     %bit_array#8:shape#4(BitArray) = bit_array.value [int(%int#23, bits=8, big)]
-//     %bit_array#9:shape#4(BitArray) = bit_array.value [int(%int#18, bits=4, big), int(%int#19, bits=%int#0*1, little), float(%float#23, bits=16, big), float(%float#24, bits=%int#20*1, little), string(%string#11, utf8), string(%string#12, utf16.big), string(%string#13, utf32.little), utf_codepoint(%utf_codepoint#0, utf8), utf_codepoint(%utf_codepoint#0, utf16.little), utf_codepoint(%utf_codepoint#0, utf32.big), bits(%bit_array#6), bits(%bit_array#7, bits=4), bits(%bit_array#8, bits=%int#0*1)]
-//     %tuple#7:shape#20(#(Int, Int, Float, String, String, String, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Int, Int, Float, Float, String, String, BitArray, BitArray, UtfCodepoint, UtfCodepoint, custom_type#0, custom_type#0, Bool, Bool, Nil, Nil, #(Int), #(Int), Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int), Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int), BitArray)) = tuple.value elements=[%int#6, %int#7, %float#8, %string#4, %string#1, %string#0, %bool#1, %bool#2, %bool#3, %bool#4, %bool#5, %bool#6, %bool#7, %bool#8, %bool#9, %bool#10, %bool#11, %int#9, %int#11, %float#18, %float#20, %string#6, %string#8, %bit_array#1, %bit_array#3, %utf_codepoint#1, %utf_codepoint#2, %custom#1, %custom#2, %bool#13, %bool#15, %nil#1, %nil#3, %tuple#2, %tuple#4, %int#16, %float#21, %string#9, %bit_array#4, %utf_codepoint#3, %custom#3, %bool#16, %nil#4, %tuple#5, %int#17, %float#22, %string#10, %bit_array#5, %utf_codepoint#4, %custom#0, %bool#17, %nil#5, %tuple#6, %bit_array#9]
+//     %int#17:shape#1(Int) = int.value 1
+//     %bit_array#6:shape#4(BitArray) = bit_array.value [int(%int#17, bits=8, big)]
+//     %int#18:shape#1(Int) = int.value 2
+//     %bit_array#7:shape#4(BitArray) = bit_array.value [int(%int#18, bits=8, big)]
+//     %int#19:shape#1(Int) = int.value 3
+//     %bit_array#8:shape#4(BitArray) = bit_array.value [int(%int#19, bits=8, big)]
+//     %bit_array#9:shape#4(BitArray) = bit_array.value [int(%int#14, bits=4, big), int(%int#15, bits=%int#0*1, little), float(%float#23, bits=16, big), float(%float#24, bits=%int#16*1, little), string(%string#11, utf8), string(%string#12, utf16.big), string(%string#13, utf32.little), utf_codepoint(%utf_codepoint#0, utf8), utf_codepoint(%utf_codepoint#0, utf16.little), utf_codepoint(%utf_codepoint#0, utf32.big), bits(%bit_array#6), bits(%bit_array#7, bits=4), bits(%bit_array#8, bits=%int#0*1)]
+//     %tuple#7:shape#20(#(Int, Int, Float, String, String, String, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Int, Int, Float, Float, String, String, BitArray, BitArray, UtfCodepoint, UtfCodepoint, custom_type#0, custom_type#0, Bool, Bool, Nil, Nil, #(Int), #(Int), Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int), Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int), BitArray)) = tuple.value elements=[%int#2, %int#3, %float#8, %string#4, %string#1, %string#0, %bool#1, %bool#2, %bool#3, %bool#4, %bool#5, %bool#6, %bool#7, %bool#8, %bool#9, %bool#10, %bool#11, %int#5, %int#7, %float#18, %float#20, %string#6, %string#8, %bit_array#1, %bit_array#3, %utf_codepoint#1, %utf_codepoint#2, %custom#1, %custom#2, %bool#13, %bool#15, %nil#1, %nil#3, %tuple#2, %tuple#4, %int#12, %float#21, %string#9, %bit_array#4, %utf_codepoint#3, %custom#3, %bool#16, %nil#4, %tuple#5, %int#13, %float#22, %string#10, %bit_array#5, %utf_codepoint#4, %custom#0, %bool#17, %nil#5, %tuple#6, %bit_array#9]
 //     return %tuple#7
 //   block b4 params=[%function.int#0:shape#9(fn(Int) -> Int), %function.float#0:shape#10(fn(Float) -> Float), %function.string#0:shape#11(fn(String) -> String), %function.bit_array#0:shape#12(fn(BitArray) -> BitArray), %function.utf_codepoint#0:shape#13(fn(UtfCodepoint) -> UtfCodepoint), %function.custom#0:shape#14(fn(custom_type#0) -> custom_type#0), %function.bool#0:shape#15(fn(Bool) -> Bool), %function.nil#0:shape#16(fn(Nil) -> Nil), %function.tuple#0:shape#17(fn(#(Int)) -> #(Int)), %utf_codepoint#0:shape#5(UtfCodepoint), %custom#0:shape#18(custom_type#0), %tuple#0:shape#19(#(Int, Float, String, BitArray, UtfCodepoint, custom_type#0, Bool, Nil, #(Int))), %string#0:shape#3(String), %int#0:shape#1(Int), %int#1:shape#1(Int)]
 //     %string#1:shape#3(String) = string.value ""

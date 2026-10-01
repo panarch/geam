@@ -77,7 +77,7 @@ mod tests {
             .iter()
             .find(|instruction| {
                 matches!(
-                    instruction.kind(),
+                    instruction.value().unwrap().kind(),
                     ProfiledInstructionKind::Int(IntInstruction::Constant(_))
                 )
             })
@@ -85,7 +85,7 @@ mod tests {
         reference(
             &common.constants,
             ConstantId::<IntLocalId>::new(0),
-            instruction.output(),
+            instruction.value().unwrap().output(),
             &types,
         )
         .unwrap();
@@ -93,21 +93,28 @@ mod tests {
             reference(
                 &common.constants,
                 ConstantId::<IntLocalId>::new(1),
-                instruction.output(),
+                instruction.value().unwrap().output(),
                 &types
             ),
             Err(ConstantError::Missing { index: 1 })
         );
-        let boolean = block
+        let booleans = block
             .instructions()
             .iter()
-            .find(|instruction| matches!(instruction.output().local, ParamLocal::Bool(_)))
-            .unwrap();
+            .filter(|instruction| {
+                matches!(
+                    instruction.value().unwrap().output().local,
+                    ParamLocal::Bool(_)
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(booleans.len(), 1);
+        let boolean = booleans[0];
         assert_eq!(
             reference(
                 &common.constants,
                 ConstantId::<IntLocalId>::new(0),
-                boolean.output(),
+                boolean.value().unwrap().output(),
                 &types
             ),
             Err(ConstantError::ReturnType)
@@ -125,7 +132,11 @@ mod tests {
             }))
         );
         assert_eq!(
-            super::result_type(ValueShapeId(999), instruction.output(), &types),
+            super::result_type(
+                ValueShapeId(999),
+                instruction.value().unwrap().output(),
+                &types
+            ),
             Err(ConstantError::Type(TypeError::MissingShape { index: 999 }))
         );
     }

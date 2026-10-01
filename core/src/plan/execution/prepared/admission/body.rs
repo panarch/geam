@@ -203,11 +203,13 @@ where
             );
         }
         for (index, instruction) in block.instructions().iter().enumerate() {
-            control.refine_projection(
-                crate::plan::execution::graph::BlockId(block_index),
-                &instruction.output,
-                &mut locals,
-            );
+            for output in instruction.outputs() {
+                control.refine_projection(
+                    crate::plan::execution::graph::BlockId(block_index),
+                    output,
+                    &mut locals,
+                );
+            }
             context
                 .check(instruction, &locals)
                 .map_err(|error| BodyError::Instruction {
@@ -226,17 +228,19 @@ where
                     index,
                     error,
                 })?;
-            locals
-                .define(&instruction.output, context.types)
-                .map_err(|error| BodyError::Local {
-                    block: block_index,
-                    error,
-                })?;
-            control.refine(
-                crate::plan::execution::graph::BlockId(block_index),
-                &instruction.output,
-                &mut locals,
-            );
+            for output in instruction.outputs() {
+                locals
+                    .define(output, context.types)
+                    .map_err(|error| BodyError::Local {
+                        block: block_index,
+                        error,
+                    })?;
+                control.refine(
+                    crate::plan::execution::graph::BlockId(block_index),
+                    output,
+                    &mut locals,
+                );
+            }
         }
         if let Some(id) =
             terminator::check(block.terminator(), blocks, &locals, context).map_err(|error| {
@@ -277,6 +281,7 @@ pub(super) fn return_value(
 mod tests {
     use super::super::source::Sources;
     use super::{Catalog, FunctionTableFamily, Instructions, Types, function};
+    use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
 
     #[test]
     fn nominal_body_disagreement_is_rejected_before_reading_the_graph() {
@@ -419,9 +424,11 @@ mod tests {
             constants: &common.constants,
         };
         let declaration = catalog.function(FunctionTableFamily::Int, 0).unwrap();
-        let int = |shape, value| ProfiledInstruction::<Infallible> {
-            output: ParamSlot::new(ParamLocal::Int(IntLocalId(0)), shape),
-            kind: ProfiledInstructionKind::Int(value),
+        let int = |shape, value| {
+            ProfiledInstruction::<Infallible>::Value(ProfiledValueInstruction {
+                output: ParamSlot::new(ParamLocal::Int(IntLocalId(0)), shape),
+                kind: ProfiledInstructionKind::Int(value),
+            })
         };
         let literal = || {
             int(
@@ -699,13 +706,15 @@ mod tests {
             ),
             (
                 0,
-                vec![ProfiledInstruction::<Infallible> {
-                    output: ParamSlot::new(ParamLocal::String(StringLocalId(1)), shape),
-                    kind: ProfiledInstructionKind::String(StringInstruction::DropPrefix {
-                        value: StringLocalId(0),
-                        prefix: "a".into(),
-                    }),
-                }],
+                vec![ProfiledInstruction::<Infallible>::Value(
+                    ProfiledValueInstruction {
+                        output: ParamSlot::new(ParamLocal::String(StringLocalId(1)), shape),
+                        kind: ProfiledInstructionKind::String(StringInstruction::DropPrefix {
+                            value: StringLocalId(0),
+                            prefix: "a".into(),
+                        }),
+                    },
+                )],
                 Err(BodyError::Guard {
                     block: 0,
                     index: 0,

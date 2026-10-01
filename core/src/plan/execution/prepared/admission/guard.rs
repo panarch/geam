@@ -148,9 +148,13 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     if !visited.insert(subject.0) {
                         return None;
                     }
-                    let instruction = block.instructions().iter().find(|instruction| {
-                        Address::of(&instruction.output.local) == Address::from(subject)
-                    })?;
+                    let instruction = block
+                        .instructions()
+                        .iter()
+                        .filter_map(|instruction| instruction.value())
+                        .find(|instruction| {
+                            Address::of(&instruction.output.local) == Address::from(subject)
+                        })?;
                     match &instruction.kind {
                         ProfiledInstructionKind::Bool(BoolInstruction::Value(value)) => {
                             return Some((Boolean::Value(*value), truth));
@@ -178,6 +182,9 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         block: BlockId,
         instruction: &'data ProfiledInstruction<Graph>,
     ) -> Result<(), GuardError> {
+        let Some(instruction) = instruction.value() else {
+            return Ok(());
+        };
         if let Some(access) = access::instruction(&instruction.kind)?
             && !self.proves(Query {
                 block,
@@ -298,6 +305,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             } else if let Some(instruction) = block
                 .instructions()
                 .iter()
+                .filter_map(|instruction| instruction.value())
                 .find(|instruction| Address::of(&instruction.output.local) == query.place.root)
             {
                 if !query.place.path.is_empty()
@@ -436,6 +444,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 let literal = block
                     .instructions()
                     .iter()
+                    .filter_map(|instruction| instruction.value())
                     .find(|instruction| Address::of(&instruction.output.local) == left)
                     .and_then(|instruction| match origin::instruction(&instruction.kind) {
                         Origin::Text(value) => Some(value),
@@ -552,7 +561,11 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         for (index, block) in blocks.iter().enumerate() {
             for instruction in block.instructions() {
                 guards.check(BlockId(index), instruction).unwrap();
-                count += usize::from(access::instruction(&instruction.kind).unwrap().is_some());
+                count += usize::from(
+                    access::instruction(&instruction.value().unwrap().kind)
+                        .unwrap()
+                        .is_some(),
+                );
             }
         }
         count
@@ -1703,10 +1716,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         local: ParamLocal,
         kind: ProfiledInstructionKind<Infallible>,
     ) -> ProfiledInstruction<Infallible> {
-        ProfiledInstruction {
-            output: slot(local),
-            kind,
-        }
+        ProfiledInstruction::new(slot(local), kind)
     }
 
     fn exit() -> Terminator {

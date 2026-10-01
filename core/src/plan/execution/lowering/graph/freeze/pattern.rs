@@ -1226,7 +1226,7 @@ pub fn main() {
     }
 
     fn int_add_operands(instruction: &Instruction) -> (IntLocalId, IntLocalId) {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::Int(IntInstruction::Add {
                 left: execution_graph::IntegerOperand::Local(left),
                 right: execution_graph::IntegerOperand::Local(right),

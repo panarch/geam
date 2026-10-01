@@ -650,7 +650,7 @@ mod tests {
                 let graph = plan.bool_function(BoolFunctionId(1)).body().block_graph();
                 let instructions = graph.blocks().flat_map(|block| block.instructions());
                 for instruction in instructions {
-                    ExplainContext::new(plan, output).write(instruction.kind());
+                    ExplainContext::new(plan, output).write(instruction.value().unwrap().kind());
                 }
             });
         }

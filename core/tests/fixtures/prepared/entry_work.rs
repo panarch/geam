@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 10,
+    format: 11,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -95,7 +95,7 @@ pub fn main() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -104,7 +104,7 @@ pub fn main() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(1),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -160,14 +160,14 @@ pub fn main() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 shape: data::type_::ValueShapeId(2),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("main"))),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -178,8 +178,8 @@ pub fn main() {
                                                     41,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                     id: data::graph::ExternalLocalId(0),
@@ -197,8 +197,8 @@ pub fn main() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("entry_work", "main", data::source::SourceSpan::new(62, 76)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
                                                     id: data::graph::CoreFunctionFunctionLocalId(0),
@@ -248,7 +248,7 @@ pub fn main() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -397,7 +397,7 @@ pub fn main() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -406,8 +406,8 @@ pub fn main() {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Immediate(1),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -433,7 +433,7 @@ pub fn main() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[

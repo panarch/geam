@@ -557,7 +557,16 @@ pub fn main() { #(First, Second, Box(First), Box(Second)) }
         .unwrap();
         let body = plan.program.functions.value_returns.tuple_functions[0].body();
         let tuple = types
-            .tuple_slot(&body.block_graph().instructions.last().unwrap().output)
+            .tuple_slot(
+                &body
+                    .block_graph()
+                    .instructions
+                    .last()
+                    .unwrap()
+                    .value()
+                    .unwrap()
+                    .output,
+            )
             .unwrap();
         let elements = tuple.elements;
         let customs = common

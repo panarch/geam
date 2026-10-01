@@ -4,7 +4,8 @@ mod sequence;
 pub(in crate::runtime) use borrowed::StoredListValueRef;
 pub(in crate::runtime) use sequence::{ListSequence, ListSequenceIter};
 
-use num_bigint::BigInt;
+use crate::runtime::borrowed::{IntegerReadCell, SharedIntegerReads};
+use crate::runtime::integer::IntegerValue;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -30,19 +31,25 @@ pub(crate) struct RuntimeListStorage {
 // Only construction and composite destruction use the storage's release queue.
 macro_rules! typed_list_value_id {
     ($name:ident, $type_id:ty, $variant:ident, items $item:ty) => {
+        typed_list_value_id!($name, $type_id, $variant, items $item, reads ());
+    };
+    ($name:ident, $type_id:ty, $variant:ident, items $item:ty, reads $reads:ty) => {
         typed_list_value_id!(@owner $name, $type_id, $variant, ListLease<$item>);
 
         impl $name {
-            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item> {
+            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item, $reads> {
                 &self.lease.values
             }
         }
     };
     ($name:ident, $type_id:ty, $variant:ident, composite $item:ty) => {
+        typed_list_value_id!($name, $type_id, $variant, composite $item, reads ());
+    };
+    ($name:ident, $type_id:ty, $variant:ident, composite $item:ty, reads $reads:ty) => {
         typed_list_value_id!(@owner $name, $type_id, $variant, dyn ListReadOwner<$item>);
 
         impl $name {
-            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item> {
+            pub(in crate::runtime) fn values(&self) -> &ListSequence<$item, $reads> {
                 self.lease.values()
             }
         }
@@ -101,7 +108,7 @@ macro_rules! typed_list_value_id {
     };
 }
 
-typed_list_value_id!(IntListValueId, IntListTypeId, Int, items BigInt);
+typed_list_value_id!(IntListValueId, IntListTypeId, Int, items IntegerValue, reads IntegerReadCell);
 typed_list_value_id!(StringListValueId, StringListTypeId, String, items StringValue);
 typed_list_value_id!(BitArrayListValueId, BitArrayListTypeId, BitArray, items EvaluatedBitArray);
 typed_list_value_id!(UtfCodepointListValueId, UtfCodepointListTypeId, UtfCodepoint, items char);
@@ -110,7 +117,7 @@ typed_list_value_id!(ExternalListValueId, ExternalListTypeId, External, composit
 typed_list_value_id!(FloatListValueId, FloatListTypeId, Float, items f64);
 typed_list_value_id!(BoolListValueId, BoolListTypeId, Bool, items bool);
 typed_list_value_id!(NilListValueId, NilListTypeId, Nil, length);
-typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple, composite Vec<EvaluatedValue>);
+typed_list_value_id!(TupleListValueId, TupleListTypeId, Tuple, composite Vec<EvaluatedValue>, reads SharedIntegerReads);
 typed_list_value_id!(
     ParameterListListValueId,
     ParameterListListTypeId,
@@ -273,12 +280,12 @@ impl From<StoredListValueId> for ListValueId {
 }
 
 struct ListLease<Item: ListItem> {
-    values: ListSequence<Item>,
+    values: ListSequence<Item, Item::Reads>,
     release: Item::Release,
 }
 
 impl<Item: ListItem> ListLease<Item> {
-    fn new(values: ListSequence<Item>, releases: &Arc<ListReleaseQueue>) -> Self {
+    fn new(values: ListSequence<Item, Item::Reads>, releases: &Arc<ListReleaseQueue>) -> Self {
         Self {
             values,
             release: Item::release_context(releases),
@@ -294,15 +301,15 @@ impl<Item: ListItem> Drop for ListLease<Item> {
 
 // The item type remains exact, while this narrow read owner stops recursive
 // auto-trait expansion in external consumers. Leaf handles stay concrete.
-trait ListReadOwner<Item>: Send + Sync {
-    fn values(&self) -> &ListSequence<Item>;
+trait ListReadOwner<Item: ListItem>: Send + Sync {
+    fn values(&self) -> &ListSequence<Item, Item::Reads>;
 }
 
 impl<Item: ListItem + Send + Sync> ListReadOwner<Item> for ListLease<Item>
 where
     Item::Release: Send + Sync,
 {
-    fn values(&self) -> &ListSequence<Item> {
+    fn values(&self) -> &ListSequence<Item, Item::Reads> {
         &self.values
     }
 }
@@ -310,27 +317,32 @@ where
 // This private, closed trait selects release behavior at construction. Reads
 // neither inspect a family tag nor acquire the release lock.
 trait ListItem: Sized {
+    type Reads: Default + Send + Sync;
     type Release;
 
     fn release_context(queue: &Arc<ListReleaseQueue>) -> Self::Release;
-    fn release(context: &Self::Release, values: ListSequence<Self>);
+    fn release(context: &Self::Release, values: ListSequence<Self, Self::Reads>);
 }
 
 macro_rules! leaf_list_item {
     ($item:ty) => {
+        leaf_list_item!($item, ());
+    };
+    ($item:ty, $reads:ty) => {
         impl ListItem for $item {
+            type Reads = $reads;
             type Release = ();
 
             fn release_context(_queue: &Arc<ListReleaseQueue>) {}
 
-            fn release(_context: &(), values: ListSequence<Self>) {
+            fn release(_context: &(), values: ListSequence<Self, Self::Reads>) {
                 drop(values);
             }
         }
     };
 }
 
-leaf_list_item!(BigInt);
+leaf_list_item!(IntegerValue, IntegerReadCell);
 leaf_list_item!(StringValue);
 leaf_list_item!(EvaluatedBitArray);
 leaf_list_item!(char);
@@ -339,14 +351,18 @@ leaf_list_item!(bool);
 
 macro_rules! composite_list_item {
     ($item:ty, $variant:ident) => {
+        composite_list_item!($item, $variant, ());
+    };
+    ($item:ty, $variant:ident, $reads:ty) => {
         impl ListItem for $item {
+            type Reads = $reads;
             type Release = Arc<ListReleaseQueue>;
 
             fn release_context(queue: &Arc<ListReleaseQueue>) -> Self::Release {
                 Arc::clone(queue)
             }
 
-            fn release(context: &Self::Release, values: ListSequence<Self>) {
+            fn release(context: &Self::Release, values: ListSequence<Self, Self::Reads>) {
                 context.release(ReleasedList::$variant(values));
             }
         }
@@ -355,7 +371,7 @@ macro_rules! composite_list_item {
 
 composite_list_item!(EvaluatedCustomValue, Custom);
 composite_list_item!(EvaluatedExternalValue, External);
-composite_list_item!(Vec<EvaluatedValue>, Tuple);
+composite_list_item!(Vec<EvaluatedValue>, Tuple, SharedIntegerReads);
 composite_list_item!(StoredListValueId, List);
 composite_list_item!(EvaluatedFunctionValue, Function);
 
@@ -374,7 +390,7 @@ struct ListReleaseState {
 enum ReleasedList {
     Custom(ListSequence<EvaluatedCustomValue>),
     External(ListSequence<EvaluatedExternalValue>),
-    Tuple(ListSequence<Vec<EvaluatedValue>>),
+    Tuple(ListSequence<Vec<EvaluatedValue>, SharedIntegerReads>),
     List(ListSequence<StoredListValueId>),
     Function(ListSequence<EvaluatedFunctionValue>),
 }
@@ -445,22 +461,42 @@ impl Drop for FinishReleaseOnUnwind<'_> {
 macro_rules! value_storage {
     ($allocate:ident, $store:ident, $read:ident, $prepend:ident, $tail:ident,
      $type_id:ty, $item:ty, $handle:ident) => {
+        value_storage!(
+            $allocate,
+            $store,
+            $read,
+            $prepend,
+            $tail,
+            $type_id,
+            $item,
+            $handle,
+            ()
+        );
+    };
+    ($allocate:ident, $store:ident, $read:ident, $prepend:ident, $tail:ident,
+     $type_id:ty, $item:ty, $handle:ident, $reads:ty) => {
         pub(in crate::runtime) fn $allocate(
             &self,
             type_id: $type_id,
             values: Vec<$item>,
         ) -> $handle {
-            self.$store(type_id, values.into())
+            self.$store(type_id, ListSequence::from_items(values))
         }
 
-        sequence_storage!($store, $read, $prepend, $tail, $type_id, $item, $handle);
+        sequence_storage!(
+            $store, $read, $prepend, $tail, $type_id, $item, $handle, $reads
+        );
     };
 }
 
 macro_rules! sequence_storage {
     ($store:ident, $read:ident, $prepend:ident, $tail:ident,
      $type_id:ty, $item:ty, $handle:ident) => {
-        fn $store(&self, type_id: $type_id, values: ListSequence<$item>) -> $handle {
+        sequence_storage!($store, $read, $prepend, $tail, $type_id, $item, $handle, ());
+    };
+    ($store:ident, $read:ident, $prepend:ident, $tail:ident,
+     $type_id:ty, $item:ty, $handle:ident, $reads:ty) => {
+        fn $store(&self, type_id: $type_id, values: ListSequence<$item, $reads>) -> $handle {
             $handle {
                 type_id,
                 lease: Arc::new(ListLease::new(values, &self.releases)),
@@ -470,7 +506,7 @@ macro_rules! sequence_storage {
         pub(in crate::runtime) fn $read<'value>(
             &self,
             value: &'value $handle,
-        ) -> &'value ListSequence<$item> {
+        ) -> &'value ListSequence<$item, $reads> {
             value.values()
         }
 
@@ -502,8 +538,9 @@ impl RuntimeListStorage {
         prepend_int,
         tail_int,
         IntListTypeId,
-        BigInt,
-        IntListValueId
+        IntegerValue,
+        IntListValueId,
+        IntegerReadCell
     );
     value_storage!(
         string,
@@ -563,7 +600,8 @@ impl RuntimeListStorage {
         tail_tuple,
         TupleListTypeId,
         Vec<EvaluatedValue>,
-        TupleListValueId
+        TupleListValueId,
+        SharedIntegerReads
     );
     value_storage!(
         list,
@@ -904,7 +942,7 @@ fn lock<Value>(mutex: &Mutex<Value>) -> MutexGuard<'_, Value> {
 
 #[cfg(test)]
 mod storage_tests {
-    use super::{ListSequence, RuntimeListStorage, lock};
+    use super::{IntegerValue, ListSequence, RuntimeListStorage, lock};
     use crate::runtime::evaluated::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
         EvaluatedIntFunction,
@@ -1012,15 +1050,17 @@ pub fn main() -> List(Counter) {
 
     fn external_equal(context: &HostExternalEquality<'_>, left: &BigInt, right: &BigInt) -> bool {
         context.0.stored_values_equal(
-            &RetainedValueRef::new(&EvaluatedValue::Int(left.clone())),
-            &RetainedValueRef::new(&EvaluatedValue::Int(right.clone())),
+            &RetainedValueRef::new(&EvaluatedValue::Int(left.clone().into())),
+            &RetainedValueRef::new(&EvaluatedValue::Int(right.clone().into())),
         )
     }
 
     fn external_hash(context: &HostExternalHashing<'_>, value: &BigInt) -> u64 {
         context
             .0
-            .stored_value_hash(&RetainedValueRef::new(&EvaluatedValue::Int(value.clone())))
+            .stored_value_hash(&RetainedValueRef::new(&EvaluatedValue::Int(
+                value.clone().into(),
+            )))
     }
 
     fn external_inspect(context: &HostExternalInspection<'_>, value: &BigInt) -> EcoString {
@@ -1028,7 +1068,9 @@ pub fn main() -> List(Counter) {
             "Counter({})",
             context
                 .0
-                .inspect_stored_value(&RetainedValueRef::new(&EvaluatedValue::Int(value.clone())))
+                .inspect_stored_value(&RetainedValueRef::new(&EvaluatedValue::Int(
+                    value.clone().into()
+                )))
         )
         .into()
     }
@@ -1119,7 +1161,7 @@ pub fn main() -> List(Counter) {
                             assert_eq!(*lock(&reentrant_drops), [0]);
                             assert_eq!(lock(&reentrant_storage.releases.state).pending.len(), 2);
                             let value = reentrant_storage.int(int_type, vec![7.into()]);
-                            assert_eq!(value.values().get(0), Some(&BigInt::from(7)));
+                            assert_eq!(value.values().get(0), Some(&IntegerValue::from(7)));
                             drop(value);
                             if unwind {
                                 panic!("list payload unwind");
@@ -1383,7 +1425,7 @@ pub fn main() -> List(Counter) {
                 .iter()
                 .cloned()
                 .collect::<Vec<_>>(),
-            vec![1.into(), 2.into()]
+            vec![num_bigint::BigInt::from(1), num_bigint::BigInt::from(2)]
         );
         drop(retained);
         assert_eq!(weak.strong_count(), 0);
@@ -1402,11 +1444,11 @@ pub fn main() -> List(Counter) {
         let second = storage.int(type_id, vec![2.into()]);
         assert_eq!(
             second.values().iter().cloned().collect::<Vec<_>>(),
-            vec![2.into()]
+            vec![num_bigint::BigInt::from(2)]
         );
         assert_eq!(
             live.values().iter().cloned().collect::<Vec<_>>(),
-            vec![3.into()]
+            vec![num_bigint::BigInt::from(3)]
         );
         assert_ne!(live, second);
     }
@@ -1479,7 +1521,7 @@ pub fn main() -> List(Counter) {
                 (0..len).collect::<Vec<_>>()
             );
 
-            let mut growing = ListSequence::default();
+            let mut growing = ListSequence::<Item>::default();
             for value in (0..len).rev() {
                 growing = growing.prepend(vec![Item { value }]);
             }
@@ -1500,7 +1542,7 @@ pub fn main() -> List(Counter) {
             0_usize, 1, 2, 63, 64, 65, 127, 128, 129, 1_000, 4_096, 4_097,
         ] {
             let expected: Vec<BigInt> = (0..len).map(BigInt::from).collect();
-            let original = storage.int(type_id, expected.clone());
+            let original = storage.int(type_id, expected.iter().cloned().map(Into::into).collect());
             let alias = original.clone();
             for count in [0, 1, 63, 64, 65, len, len + 1, usize::MAX] {
                 let tail = storage.tail_int(type_id, &original, count);
@@ -1515,8 +1557,10 @@ pub fn main() -> List(Counter) {
             }
             for prefix in [vec![], vec![(-2).into(), (-1).into()]] {
                 let combined = storage.prepend_int(type_id, prefix.clone(), &original);
-                let expected_combined: Vec<_> =
-                    prefix.into_iter().chain(expected.iter().cloned()).collect();
+                let expected_combined: Vec<_> = prefix
+                    .into_iter()
+                    .chain(expected.iter().cloned().map(Into::into))
+                    .collect();
                 assert_eq!(
                     storage
                         .int_values(&combined)
@@ -1821,6 +1865,7 @@ mod tests {
     use crate::runtime::error::HostCallOrigin;
     use crate::runtime::function::{run_int_list, run_list, run_tuple};
     use crate::runtime::graph::RetainedValues;
+    use crate::runtime::integer::IntegerValue;
     use crate::runtime::retained_list::RetainedList;
     use crate::runtime::{
         BorrowedValue, EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue,
@@ -1842,12 +1887,12 @@ mod tests {
     struct LeaseProfile;
     struct LeaseProvider;
     impl HostProfile for LeaseProfile {
-        type RunState = Option<Weak<ListLease<BigInt>>>;
+        type RunState = Option<Weak<ListLease<IntegerValue>>>;
         type ExternalStores = ();
         type ExecutionState = ();
     }
     impl HostProvider<LeaseProfile> for LeaseProvider {
-        type State = Option<Weak<ListLease<BigInt>>>;
+        type State = Option<Weak<ListLease<IntegerValue>>>;
         fn project(state: &mut Self::State) -> &mut Self::State {
             state
         }
@@ -1915,7 +1960,7 @@ mod tests {
         }))
     }
 
-    fn list_lease(value: &StoredRuntimeValue) -> Weak<ListLease<BigInt>> {
+    fn list_lease(value: &StoredRuntimeValue) -> Weak<ListLease<IntegerValue>> {
         let value = match value.value() {
             EvaluatedValue::Custom(custom) => custom.fields().first(),
             value => Some(value),
@@ -1984,7 +2029,7 @@ pub fn main() {
         let retained = value.clone();
         let queue = lock(&storage.releases.state);
         for _ in 0..10_000 {
-            assert_eq!(value.values().get(0), Some(&BigInt::from(1)));
+            assert_eq!(value.values().get(0), Some(&IntegerValue::from(1)));
             assert_eq!(Arc::strong_count(&value.lease), 2);
         }
         drop(value);
@@ -2008,10 +2053,13 @@ pub fn main() {
         assert_eq!(weak.strong_count(), 0);
         let replacement = storage.int(type_id, vec![2.into()]);
         drop(storage);
-        assert_eq!(items.iter().cloned().collect::<Vec<_>>(), vec![1.into()]);
+        assert_eq!(
+            items.iter().cloned().collect::<Vec<_>>(),
+            vec![num_bigint::BigInt::from(1)]
+        );
         assert_eq!(
             replacement.values().iter().cloned().collect::<Vec<_>>(),
-            vec![2.into()]
+            vec![num_bigint::BigInt::from(2)]
         );
     }
 
@@ -2303,7 +2351,7 @@ pub fn main() {
                 .iter()
                 .cloned()
                 .collect::<Vec<_>>(),
-            vec![1.into()]
+            vec![num_bigint::BigInt::from(1)]
         );
         let weak = Arc::downgrade(&value.lease);
         assert_eq!(weak.strong_count(), 1);
@@ -2441,16 +2489,16 @@ pub fn main() { done(10000, []) == [1] }
         drop(storage);
         assert_eq!(
             value.values().iter().cloned().collect::<Vec<_>>(),
-            vec![1.into()]
+            vec![num_bigint::BigInt::from(1)]
         );
         drop(value);
         assert_eq!(
             clone.values().iter().cloned().collect::<Vec<_>>(),
-            vec![1.into()]
+            vec![num_bigint::BigInt::from(1)]
         );
         drop(clone);
         assert_eq!(weak.strong_count(), 0);
-        assert_eq!(other.values().get(0), Some(&BigInt::from(1)));
+        assert_eq!(other.values().get(0), Some(&IntegerValue::from(1)));
     }
 
     #[test]
@@ -2736,7 +2784,7 @@ pub fn main() { done(10000, []) == [1] }
         assert_eq!(child_weak.strong_count(), 1);
         assert_eq!(
             child.values().iter().cloned().collect::<Vec<_>>(),
-            vec![1.into()]
+            vec![num_bigint::BigInt::from(1)]
         );
         drop(child);
         assert_eq!(child_weak.strong_count(), 0);
@@ -2928,7 +2976,7 @@ pub fn main() { build(65) }
         assert_eq!(weak.strong_count(), 0);
     }
 
-    fn captured_int_list(value: &EvaluatedValue) -> Option<Weak<ListLease<BigInt>>> {
+    fn captured_int_list(value: &EvaluatedValue) -> Option<Weak<ListLease<IntegerValue>>> {
         use crate::runtime::EvaluatedListCapture;
         use crate::runtime::evaluated::{EvaluatedCaptureKind, EvaluatedFunctionValueKind};
         match value {

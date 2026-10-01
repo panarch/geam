@@ -509,7 +509,11 @@ pub fn main() {
             let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
             let mut parts = Vec::new();
             for block in graph.blocks() {
-                for instruction in block.instructions() {
+                for instruction in block
+                    .instructions()
+                    .iter()
+                    .filter_map(|instruction| instruction.value())
+                {
                     if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
                         let mut part = String::new();
                         let mut context = explain::ExplainContext::new(plan, &mut part);

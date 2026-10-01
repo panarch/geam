@@ -126,6 +126,9 @@ pub mod constant {
 
 pub mod graph {
     pub use crate::plan::execution::graph::ProfiledBlockGraph;
+    pub use crate::plan::execution::graph::arithmetic::{
+        ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion,
+    };
     pub use crate::plan::execution::graph::bit_array::{Endianness, FloatBitSize, StringEncoding};
     pub use crate::plan::execution::graph::block::bool_test::BoolTest;
     pub use crate::plan::execution::graph::block::instruction::bit_array::{
@@ -149,7 +152,7 @@ pub mod graph {
     pub use crate::plan::execution::graph::block::instruction::tuple::TupleInstruction;
     pub use crate::plan::execution::graph::block::instruction::utf_codepoint::UtfCodepointInstruction;
     pub use crate::plan::execution::graph::block::instruction::{
-        ProfiledInstruction, ProfiledInstructionKind,
+        ProfiledInstruction, ProfiledInstructionKind, ProfiledValueInstruction,
     };
     pub use crate::plan::execution::graph::block::terminator::Terminator;
     pub use crate::plan::execution::graph::block::terminator::branch::BoolBranch;

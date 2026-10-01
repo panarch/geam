@@ -1,8 +1,11 @@
+mod integer;
 use crate::StringValue;
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{ListValueId, ParameterListValueId, StoredListValueId};
 use crate::runtime::{EvaluatedExternalValue, StoredRuntimeValue};
-use num_bigint::BigInt;
+pub(crate) use integer::IntegerRead;
+pub(in crate::runtime) use integer::{IntegerReadCell, SharedIntegerReads};
 use std::slice;
 
 /// A borrowed row in the existing value-family layout. Construction routes the
@@ -10,7 +13,9 @@ use std::slice;
 /// Typed provider and embedding readers select their proven column. Opaque
 /// functions remain in the stored owner; this view grants no call permission.
 pub(crate) struct BorrowedValue<'value> {
-    ints: &'value [BigInt],
+    integer_reads: Option<&'value SharedIntegerReads>,
+    integer_cell: Option<&'value IntegerReadCell>,
+    ints: &'value [IntegerValue],
     floats: &'value [f64],
     strings: &'value [StringValue],
     bit_arrays: &'value [EvaluatedBitArray],
@@ -26,7 +31,7 @@ pub(crate) struct BorrowedValue<'value> {
 
 impl<'value> BorrowedValue<'value> {
     pub(crate) fn from_stored(value: &'value StoredRuntimeValue) -> Self {
-        Self::from_value(value.value())
+        Self::from_value(value.value()).with_integer_reads(value.integer_reads())
     }
 
     pub(in crate::runtime) fn from_value(value: &'value EvaluatedValue) -> Self {
@@ -55,8 +60,14 @@ impl<'value> BorrowedValue<'value> {
         self.functions.retain()
     }
 
-    pub(crate) fn int(&self) -> &'value BigInt {
+    pub(crate) fn int(&self) -> &'value IntegerValue {
         &self.ints[0]
+    }
+    pub(crate) fn int_bigint(&self) -> IntegerRead<'value> {
+        match self.integer_cell {
+            Some(cell) => integer::read_cell(self.int(), cell),
+            None => integer::read(self.int(), self.integer_reads),
+        }
     }
     pub(crate) fn float(&self) -> f64 {
         self.floats[0]
@@ -78,11 +89,12 @@ impl<'value> BorrowedValue<'value> {
     }
 
     pub(crate) fn tuple_item(&self, index: usize) -> Self {
-        Self::from_value(&self.tuples[0][index])
+        Self::from_value(&self.tuples[0][index]).with_optional_integer_reads(self.integer_reads)
     }
 
     pub(crate) fn custom_field(&self, index: usize) -> Self {
         Self::from_value(&self.customs[0].fields()[index])
+            .with_integer_reads(self.customs[0].integer_reads())
     }
 
     pub(crate) fn retained_custom(&self) -> crate::runtime::EmbeddingCustomInput {
@@ -105,8 +117,19 @@ impl<'value> BorrowedValue<'value> {
         &self.externals[0]
     }
 
+    pub(in crate::runtime) fn with_integer_reads(self, reads: &'value SharedIntegerReads) -> Self {
+        self.with_optional_integer_reads(Some(reads))
+    }
+
+    fn with_optional_integer_reads(mut self, reads: Option<&'value SharedIntegerReads>) -> Self {
+        self.integer_reads = reads;
+        self
+    }
+
     fn empty() -> Self {
         Self {
+            integer_reads: None,
+            integer_cell: None,
             ints: &[],
             floats: &[],
             strings: &[],
@@ -140,7 +163,14 @@ impl BorrowedValue<'_> {
             }};
         }
         match value {
-            StoredListValueId::Int(value) => item!(value, ints),
+            StoredListValueId::Int(value) => {
+                value.values().get_with_cache(index).map(|(value, cache)| {
+                    let mut row = BorrowedValue::empty();
+                    row.ints = slice::from_ref(value);
+                    row.integer_cell = Some(cache);
+                    read(row)
+                })
+            }
             StoredListValueId::Float(value) => item!(value, floats),
             StoredListValueId::String(value) => item!(value, strings),
             StoredListValueId::BitArray(value) => item!(value, bit_arrays),
@@ -148,7 +178,13 @@ impl BorrowedValue<'_> {
                 item!(value, utf_codepoints)
             }
             StoredListValueId::Bool(value) => item!(value, bools),
-            StoredListValueId::Tuple(value) => item!(value, tuples),
+            StoredListValueId::Tuple(value) => {
+                value.values().get_with_cache(index).map(|(value, cache)| {
+                    let mut row = BorrowedValue::empty();
+                    row.tuples = slice::from_ref(value);
+                    read(row.with_integer_reads(cache))
+                })
+            }
             StoredListValueId::Custom(value) => item!(value, customs),
             StoredListValueId::External(value) => item!(value, externals),
             StoredListValueId::List(value) => item!(value, lists),
@@ -329,10 +365,10 @@ pub fn run() {
     fn recursive_reads_borrow_the_original_scalar_storage() {
         use crate::plan::execution::runtime::RuntimeExecutionPlan;
         let plan = crate::runtime::plan_src("pub fn main() { Nil }");
-        let number = BigInt::from(1u64) << 256;
+        let number = BigInt::from(1u64) << 256_u32;
         let stored = StoredRuntimeValue::new(
             EvaluatedValue::Tuple(vec![
-                EvaluatedValue::Int(number),
+                EvaluatedValue::Int(number.into()),
                 EvaluatedValue::String("a string longer than the inline storage".into()),
                 EvaluatedValue::Float(3.5),
                 EvaluatedValue::Bool(true),
@@ -364,7 +400,7 @@ pub fn run() {
         let storage = RuntimeListStorage::default();
         let handle = storage.int(
             plan.int_list_function_id(0).type_id(),
-            vec![BigInt::from(1u64) << 256],
+            vec![(BigInt::from(1u64) << 256_u32).into()],
         );
         let values = storage.int_values(&handle);
         let retained: StoredListValueId = handle.clone().into();
@@ -372,7 +408,7 @@ pub fn run() {
             assert_eq!(
                 BorrowedValue::read_list_item(&retained, 0, |value| {
                     assert!(ptr::eq(value.int(), values.get(0).expect("source item")));
-                    value.int().bits()
+                    value.int().bigint().bits()
                 }),
                 Some(257)
             );
@@ -380,7 +416,7 @@ pub fn run() {
         assert_eq!(BorrowedValue::read_list_item(&retained, 1, |_| true), None);
         drop(storage);
         assert_eq!(
-            BorrowedValue::read_list_item(&retained, 0, |value| value.int().bits()),
+            BorrowedValue::read_list_item(&retained, 0, |value| value.int().bigint().bits()),
             Some(257)
         );
     }

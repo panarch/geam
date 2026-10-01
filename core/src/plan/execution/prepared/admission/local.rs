@@ -1014,7 +1014,7 @@ mod tests {
         let slots = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .map(|instruction| instruction.output())
+            .map(|instruction| instruction.value().unwrap().output())
             .collect::<Vec<_>>();
         assert_eq!(slots.len(), 2);
         let integer = slots[0];

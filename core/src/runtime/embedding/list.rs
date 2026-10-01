@@ -8,8 +8,10 @@ pub(crate) struct EmbeddingList {
 }
 
 impl EmbeddingList {
-    pub(crate) fn from_borrowed(value: crate::runtime::BorrowedValue<'_>) -> Self {
-        Self::new(value.stored_list().clone())
+    pub(crate) fn from_borrowed(value: &crate::runtime::BorrowedValue<'_>) -> Self {
+        Self {
+            retained: RetainedList::new(value.stored_list().clone()),
+        }
     }
 
     pub(super) fn new(value: StoredListValueId) -> Self {

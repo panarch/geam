@@ -27,7 +27,8 @@ pub(super) fn use_immediates<Return: DraftGraphValue, TailCall>(
                 DraftInstruction::Bool { kind, .. } => {
                     bool(kind, &literals, &mut replaced);
                 }
-                DraftInstruction::Float { .. }
+                DraftInstruction::IntegerRegion(_)
+                | DraftInstruction::Float { .. }
                 | DraftInstruction::String { .. }
                 | DraftInstruction::BitArray { .. }
                 | DraftInstruction::UtfCodepoint { .. }
@@ -178,7 +179,7 @@ mod tests {
             block
                 .instructions
                 .iter()
-                .map(|instruction| instruction.output().key)
+                .flat_map(|instruction| instruction.outputs().map(|output| output.key))
                 .collect::<Vec<_>>(),
             [kept.key, unused.key, sum.key]
         );
@@ -192,7 +193,7 @@ mod tests {
         );
         let block = constant.block_graph().block(constant.block_graph().entry());
         assert_eq!(
-            Rust::expression(block.instructions()[2].kind()),
+            Rust::expression(block.instructions()[2].value().unwrap().kind()),
             "data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {\n    left: data::graph::IntegerOperand::Immediate(10),\n    right: data::graph::IntegerOperand::Immediate(20),\n})"
         );
     }
@@ -226,7 +227,7 @@ mod tests {
             entry
                 .instructions
                 .iter()
-                .map(|instruction| instruction.output().key)
+                .flat_map(|instruction| instruction.outputs().map(|output| output.key))
                 .collect::<Vec<_>>(),
             [kept.key, sum.key]
         );
@@ -244,7 +245,7 @@ mod tests {
             ("pub fn main() { 1 + 2 }", "int.add 1 2"),
             (
                 "pub fn main() { let x = 5 let alias = x let _ = alias + 1 x - 2 }",
-                "int.add 5 1 | int.sub 5 2",
+                "    arithmetic.region inputs=[] native=true\n      value#0 = Add(Immediate(5), Immediate(1))\n      value#1 = Subtract(Immediate(5), Immediate(2))\n      %int#0:shape#0(Int) = value#1\n",
             ),
             (
                 "pub fn main() { let x = 5 let _ = x + 1 x }",
@@ -286,7 +287,14 @@ mod tests {
                     if index > 0 {
                         output.push_str(" | ");
                     }
-                    ExplainContext::new(plan, output).write(instruction.kind());
+                    match instruction {
+                        crate::plan::execution::graph::ProfiledInstruction::Value(value) => {
+                            ExplainContext::new(plan, output).write(value.kind())
+                        }
+                        crate::plan::execution::graph::ProfiledInstruction::IntegerRegion(
+                            region,
+                        ) => ExplainContext::new(plan, output).write(region),
+                    }
                 }
             });
         }
@@ -314,7 +322,7 @@ mod tests {
         let block = constant.block_graph().block(constant.block_graph().entry());
         assert_eq!(block.instructions().len(), 1);
         assert_eq!(
-            Rust::expression(block.instructions()[0].kind()),
+            Rust::expression(block.instructions()[0].value().unwrap().kind()),
             "data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {\n    left: data::graph::IntegerOperand::Immediate(20),\n    right: data::graph::IntegerOperand::Immediate(22),\n})"
         );
     }

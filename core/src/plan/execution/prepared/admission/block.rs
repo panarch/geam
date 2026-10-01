@@ -194,6 +194,7 @@ impl<'data, Graph: ExecutionGraphProfile> Blocks<'data, Graph> {
 #[cfg(test)]
 mod tests {
     use super::{BlockError, BlockId, Blocks, ProfiledBlockGraph, Range, Types};
+    use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockHeader, IntInstruction, IntLocalId, ParamLocal, ParamSlot,
         ProfiledInstruction, ProfiledInstructionKind, Terminator,
@@ -351,7 +352,7 @@ mod tests {
             entry: BlockId(0),
             blocks: vec![header(0..0, 0..1)].into(),
             params: Table::Static(&[]),
-            instructions: vec![ProfiledInstruction {
+            instructions: vec![ProfiledInstruction::Value(ProfiledValueInstruction {
                 output: ParamSlot {
                     local: ParamLocal::Int(IntLocalId(0)),
                     shape: ValueShapeId(0),
@@ -359,7 +360,7 @@ mod tests {
                 kind: ProfiledInstructionKind::Int(IntInstruction::Value(
                     num_bigint::BigInt::from(1).into(),
                 )),
-            }]
+            })]
             .into(),
         }
     }

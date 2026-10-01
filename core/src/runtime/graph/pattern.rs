@@ -1,4 +1,4 @@
-use num_bigint::BigInt;
+use crate::runtime::integer::IntegerValue;
 
 use super::bit_array;
 use super::environment::{BlockEnvironment, MatchResults};
@@ -16,7 +16,7 @@ use crate::runtime::{InvariantError, RuntimeListStorage};
 
 pub(super) struct MatchBindings {
     results: MatchResults,
-    ints: Vec<BigInt>,
+    ints: Vec<IntegerValue>,
 }
 
 impl MatchBindings {
@@ -31,14 +31,14 @@ impl MatchBindings {
         self.results.push(value);
     }
 
-    fn bind_int(&mut self, binding: &MatchIntPatternBinding, value: &BigInt) {
+    fn bind_int(&mut self, binding: &MatchIntPatternBinding, value: &IntegerValue) {
         if binding.size.is_some() {
             self.ints.push(value.clone());
         }
         self.bind(&binding.binding, EvaluatedValue::Int(value.clone()));
     }
 
-    fn int(&self, binding: MatchIntBindingId) -> BigInt {
+    fn int(&self, binding: MatchIntBindingId) -> IntegerValue {
         self.ints[binding.index()].clone()
     }
 
@@ -89,7 +89,7 @@ where
         }
         MatchPattern::Discard => Ok(true),
         MatchPattern::Int(pattern) => {
-            Ok(matches!(value, EvaluatedValueRef::Int(value) if pattern.matches(value)))
+            Ok(matches!(value, EvaluatedValueRef::Int(value) if value.matches_literal(pattern)))
         }
         MatchPattern::Float(pattern) => {
             Ok(matches!(value, EvaluatedValueRef::Float(value) if value == pattern))
@@ -385,9 +385,7 @@ fn evaluate_size(
         BitArrayPatternSize::Fixed(bits) => usize::try_from(*bits).ok(),
         BitArrayPatternSize::Dynamic { value, unit } => {
             let value = evaluate_size_expression(environment, bindings, value);
-            let Ok(value) = usize::try_from(value) else {
-                return None;
-            };
+            let value = value.to_usize()?;
             value.checked_mul(usize::from(*unit))
         }
     }
@@ -397,9 +395,9 @@ fn evaluate_size_expression(
     environment: &BlockEnvironment,
     bindings: &MatchBindings,
     expression: &BitArrayPatternSizeExpr,
-) -> BigInt {
+) -> IntegerValue {
     match expression {
-        BitArrayPatternSizeExpr::Value(value) => value.materialize(),
+        BitArrayPatternSizeExpr::Value(value) => IntegerValue::from_literal(value),
         BitArrayPatternSizeExpr::Local(local) => environment.int(*local),
         BitArrayPatternSizeExpr::Binding(binding) => bindings.int(*binding),
         BitArrayPatternSizeExpr::Add { left, right } => {
@@ -416,16 +414,16 @@ fn evaluate_size_expression(
         }
         BitArrayPatternSizeExpr::Divide { left, right } => {
             let right = evaluate_size_expression(environment, bindings, right);
-            if right == BigInt::from(0) {
-                BigInt::from(0)
+            if right == IntegerValue::from(0) {
+                IntegerValue::from(0)
             } else {
                 evaluate_size_expression(environment, bindings, left) / right
             }
         }
         BitArrayPatternSizeExpr::Remainder { left, right } => {
             let right = evaluate_size_expression(environment, bindings, right);
-            if right == BigInt::from(0) {
-                BigInt::from(0)
+            if right == IntegerValue::from(0) {
+                IntegerValue::from(0)
             } else {
                 evaluate_size_expression(environment, bindings, left) % right
             }
@@ -435,11 +433,11 @@ fn evaluate_size_expression(
 
 fn match_int(
     pattern: &BitArrayPatternValue<IntegerLiteral, MatchIntPatternBinding>,
-    value: &BigInt,
+    value: &IntegerValue,
     bindings: &mut MatchBindings,
 ) -> bool {
     match pattern {
-        BitArrayPatternValue::Literal(expected) => expected.matches(value),
+        BitArrayPatternValue::Literal(expected) => value.matches_literal(expected),
         BitArrayPatternValue::Bind(binding) => {
             bindings.bind_int(binding, value);
             true
@@ -531,6 +529,7 @@ mod tests {
     };
     use crate::runtime::{InvariantError, RuntimeListStorage, Value, run_src};
     use ecow::EcoString;
+    use num_bigint::BigInt;
 
     #[test]
     fn source_matches_preserve_literal_alias_and_many_binding_results() {
@@ -574,8 +573,8 @@ pub fn main() {
         assert_eq!(bindings.ints.len(), 0);
         assert_eq!(bindings.ints.capacity(), 0);
         let environment = retained_bindings(bindings, &[0, 1, 2]);
-        assert_eq!(environment.int(IntLocalId(0)), 1.into());
-        assert_eq!(environment.int(IntLocalId(1)), 2.into());
+        assert_eq!(environment.int(IntLocalId(0)), BigInt::from(1));
+        assert_eq!(environment.int(IntLocalId(1)), BigInt::from(2));
         assert_eq!(
             environment.bit_array(BitArrayLocalId(0)).value(),
             BitArrayValue::from_bytes(vec![3])
@@ -611,12 +610,15 @@ pub fn main() {
             )
             .unwrap()
             .unwrap();
-            assert_eq!(bindings.ints, vec![expected_size.into()]);
+            assert_eq!(bindings.ints, vec![BigInt::from(expected_size)]);
             let environment = retained_bindings(bindings, &[0, 1, 2, 3]);
-            assert_eq!(environment.int(IntLocalId(0)), 11.into());
-            assert_eq!(environment.int(IntLocalId(1)), expected_size.into());
-            assert_eq!(environment.int(IntLocalId(2)), expected_first.into());
-            assert_eq!(environment.int(IntLocalId(3)), expected_second.into());
+            assert_eq!(environment.int(IntLocalId(0)), BigInt::from(11));
+            assert_eq!(environment.int(IntLocalId(1)), BigInt::from(expected_size));
+            assert_eq!(environment.int(IntLocalId(2)), BigInt::from(expected_first));
+            assert_eq!(
+                environment.int(IntLocalId(3)),
+                BigInt::from(expected_second)
+            );
         }
     }
 
@@ -1921,9 +1923,10 @@ pub fn main() {
         let plan = execution_plan(source);
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
-        let list = state
-            .lists_mut()
-            .int(plan.int_list_function_id(0).type_id(), values);
+        let list = state.lists_mut().int(
+            plan.int_list_function_id(0).type_id(),
+            values.into_iter().map(Into::into).collect(),
+        );
         let environment = BlockEnvironment::from_retained(RetainedValues::empty());
 
         let matched = match_pattern(

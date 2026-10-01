@@ -160,10 +160,12 @@ pub fn main() {
             .iter()
             .find(|instruction| {
                 matches!(
-                    instruction.kind(),
+                    instruction.value().unwrap().kind(),
                     crate::plan::execution::graph::ProfiledInstructionKind::Function(_)
                 )
             })
+            .unwrap()
+            .value()
             .unwrap()
             .output;
         let linked = NativeFunctions::new(&values, &nevers, native_hosts()).unwrap();

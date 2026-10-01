@@ -57,6 +57,7 @@ impl Place {
             let Some(instruction) = block
                 .instructions()
                 .iter()
+                .filter_map(|instruction| instruction.value())
                 .find(|value| Address::of(&value.output.local) == self.root)
             else {
                 return Some(self);
@@ -159,8 +160,8 @@ mod tests {
     use super::{Blocks, MatchPattern, Place, Projection, binding_path, pattern_at};
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockHeader, BlockId, IntLocalId, MatchPatternBinding, MatchPatternList,
-        MatchPatternListTail, ProfiledBlockGraph, ProfiledInstructionKind, Terminator,
-        TupleInstruction, TupleLocalId,
+        MatchPatternListTail, ProfiledBlockGraph, ProfiledInstruction, ProfiledInstructionKind,
+        Terminator, TupleInstruction, TupleLocalId,
     };
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
@@ -217,10 +218,12 @@ pub fn main() { project(#(#(42, True), "text")) }
         );
         assert_eq!(Place::local(root).normalize(BlockId(99), &blocks), None);
         let mut instructions = raw.instructions.to_vec();
-        instructions[0].kind = ProfiledInstructionKind::Tuple(TupleInstruction::TupleIndex {
+        let mut instruction = instructions[0].value().unwrap().clone();
+        instruction.kind = ProfiledInstructionKind::Tuple(TupleInstruction::TupleIndex {
             tuple: TupleLocalId(1),
             index: 0,
         });
+        instructions[0] = ProfiledInstruction::Value(instruction);
         raw.instructions = instructions.into();
         let blocks = Blocks::admit(&raw).unwrap();
         assert_eq!(

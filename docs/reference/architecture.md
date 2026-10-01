@@ -58,6 +58,14 @@ feature boundary. `ExecutionPlan::explain()` provides a human-readable view of
 lowered functions, values, instructions, and control-flow edges, but its text is
 not a stable serialization format.
 
+Execution lowering groups consecutive pure integer arithmetic within a basic
+block into bounded regions. A region retains its typed inputs and externally
+used outputs; internal intermediate values do not need enclosing block slots.
+Preparation proves whether every intermediate fits the native calculation
+range. The runtime uses that path for small inputs and otherwise executes the
+same region with exact arbitrary-precision arithmetic. Calls, effects,
+projections, and control-flow transitions remain region boundaries.
+
 Prepared embedding and standalone builds perform this pipeline before the final
 Rust build and emit the
 complete immutable execution plan as Rust data. Loading admits that data and
@@ -66,6 +74,9 @@ Dynamic owned tables and prepared static tables expose the same borrowed reads
 to the evaluator; prepared loading does not re-run the frontend or rebuild the
 complete owned graph. Source diagnostics are included, while runtime state,
 capabilities and application resources remain separate.
+
+Prepared admission checks a region's links, outputs, size, and native range
+claim before execution. It does not trust the emitted claim without checking it.
 
 ## Plain And Hosted Programs
 

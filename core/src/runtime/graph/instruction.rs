@@ -1,3 +1,4 @@
+pub(in crate::runtime::graph) mod arithmetic;
 mod external;
 mod function;
 mod list;
@@ -14,7 +15,8 @@ use super::{BlockEnvironment, RuntimeGraphState};
 use crate::plan::execution::function::ProfiledFunctionFunctionId;
 use crate::plan::execution::graph::{
     ExternalFunctionCallTarget, ExternalFunctionInstruction, ExternalFunctionInstructionView,
-    ExternalListInstruction, ListInstruction, ParamLocal, ProfiledInstructionKind,
+    ExternalListInstruction, ListInstruction, ParamLocal, ProfiledInstruction,
+    ProfiledInstructionKind,
 };
 use crate::plan::execution::type_::ValueType;
 use crate::runtime::captures::Captures;
@@ -40,6 +42,19 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
     let block = frame.graph.block(frame.position.block);
     while let Some(instruction) = block.instructions().get(frame.position.instruction) {
         frame.position.instruction += 1;
+        let instruction = match instruction {
+            ProfiledInstruction::Value(instruction) => instruction,
+            ProfiledInstruction::IntegerRegion(region) => {
+                storage
+                    .arithmetic
+                    .execute(region, &mut frame.position.environment);
+                if frame.position.instruction == block.instructions().len() || *remaining == 0 {
+                    return Ok(Activation::Graph(frame));
+                }
+                *remaining -= 1;
+                continue;
+            }
+        };
         let expected = plan.shape_value_type(instruction.output().shape());
         let environment = &frame.position.environment;
         macro_rules! store_value {
@@ -469,16 +484,16 @@ mod tests {
         .retain(&caller, &mut StoragePool::default());
         assert!(inputs.belongs_to(Some(storage.domain())));
         assert!(!inputs.belongs_to(None));
-        assert_eq!(caller.int(IntLocalId(0)), 10.into());
-        assert_eq!(caller.int(IntLocalId(1)), 20.into());
+        assert_eq!(caller.int(IntLocalId(0)), num_bigint::BigInt::from(10));
+        assert_eq!(caller.int(IntLocalId(1)), num_bigint::BigInt::from(20));
         assert_eq!(caller.string(StringLocalId(0)), "argument");
         drop(caller);
         drop(captures);
         let inputs = BlockEnvironment::from_retained(inputs);
-        assert_eq!(inputs.int(IntLocalId(0)), 20.into());
-        assert_eq!(inputs.int(IntLocalId(1)), 10.into());
-        assert_eq!(inputs.int(IntLocalId(2)), 20.into());
-        assert_eq!(inputs.int(IntLocalId(3)), 30.into());
+        assert_eq!(inputs.int(IntLocalId(0)), num_bigint::BigInt::from(20));
+        assert_eq!(inputs.int(IntLocalId(1)), num_bigint::BigInt::from(10));
+        assert_eq!(inputs.int(IntLocalId(2)), num_bigint::BigInt::from(20));
+        assert_eq!(inputs.int(IntLocalId(3)), num_bigint::BigInt::from(30));
         assert_eq!(inputs.string(StringLocalId(0)), "argument");
         assert_eq!(inputs.string(StringLocalId(1)), "capture");
     }
@@ -679,6 +694,32 @@ pub fn main() -> #(fn(#({source_type})) -> #({source_type}, Int), {source_type})
             .unwrap();
             assert!(echo.is_empty());
         }
+    }
+
+    #[test]
+    fn hosted_arithmetic_regions_continue_into_effects_with_remaining_budget() {
+        let source = r#"
+fn calculate(value: Int) {
+  let scaled = value * 2 + 1
+  let pair = #(scaled, 3)
+  let observed = echo pair
+  observed.0 + observed.1
+}
+pub fn main() { calculate(19) }
+"#;
+        let mut execution = hosted_program(source);
+        let host = TestHost::default();
+        let mut echo = Vec::new();
+        let result = host.block_on(execution.run_main(&host, &mut (), &mut echo));
+        assert_eq!(result.unwrap(), crate::Value::Int(42.into()));
+        assert_eq!(echo.len(), 1);
+        assert_eq!(
+            echo[0].value(),
+            &crate::Value::Tuple(vec![
+                crate::Value::Int(39.into()),
+                crate::Value::Int(3.into())
+            ])
+        );
     }
 
     #[test]
@@ -1066,7 +1107,7 @@ pub fn main() {
         let value = vec![EvaluatedValue::Int(7.into())];
         let values = ListSequence::from(vec![value.clone()]);
         assert_eq!(
-            list_element::<_, ExecutionError>(&plan, &type_, 0, &values),
+            list_element::<_, ExecutionError, _>(&plan, &type_, 0, &values),
             Ok(value)
         );
         assert_eq!(
@@ -1075,7 +1116,7 @@ pub fn main() {
         );
         assert_eq!(plan.conversions(), 0);
         assert_eq!(
-            list_element::<_, ExecutionError>(&plan, &type_, 1, &values),
+            list_element::<_, ExecutionError, _>(&plan, &type_, 1, &values),
             Err(ExecutionError::Invariant(
                 InvariantError::ListIndexOutOfBounds {
                     item_type: crate::plan::ValueType::Tuple(vec![crate::plan::ValueType::Int]),

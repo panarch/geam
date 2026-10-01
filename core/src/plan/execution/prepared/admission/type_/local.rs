@@ -629,7 +629,7 @@ pub fn main() { #(Box, identity, stop, fn() { fn() { 42 } }, fn() { #(42) }) }
             .block_graph();
         let mut checked = [0; 5];
         for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-            let slot = instruction.output();
+            let slot = instruction.value().unwrap().output();
             let mut local = slot.local.clone();
             match &mut local {
                 ParamLocal::CustomFunction(value) => {
@@ -774,7 +774,7 @@ pub fn main() {
         let graph = graphs[0];
         let mut checked = [0; 6];
         for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-            let slot = instruction.output();
+            let slot = instruction.value().unwrap().output();
             let cases = match &slot.local {
                 ParamLocal::CustomFunction(value) => {
                     checked[0] += 1;
@@ -934,10 +934,14 @@ pub fn main() {
         let locals: Vec<_> = graph
             .blocks()
             .flat_map(|block| block.instructions())
-            .filter_map(|instruction| match instruction.output().local {
-                ParamLocal::Custom(local) => Some((instruction.output(), local)),
-                _ => None,
-            })
+            .filter_map(
+                |instruction| match instruction.value().unwrap().output().local {
+                    ParamLocal::Custom(local) => {
+                        Some((instruction.value().unwrap().output(), local))
+                    }
+                    _ => None,
+                },
+            )
             .collect();
         assert_eq!(locals.len(), 2);
         let (left_slot, left) = locals[0];
@@ -971,8 +975,8 @@ pub fn main() {
             }
             for instruction in block.instructions() {
                 assert_eq!(
-                    *types.slot(instruction.output()).unwrap(),
-                    *instruction.output()
+                    *types.slot(instruction.value().unwrap().output()).unwrap(),
+                    *instruction.value().unwrap().output()
                 );
             }
         }

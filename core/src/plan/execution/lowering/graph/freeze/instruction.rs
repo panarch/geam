@@ -19,6 +19,28 @@ pub(super) fn freeze(
     use execution::graph::InstructionKind as K;
 
     let (output, kind) = match instruction {
+        DraftInstruction::IntegerRegion(region) => {
+            use execution::graph::{ArithmeticOutput, ArithmeticRegion, native_proof};
+            return execution::graph::Instruction::IntegerRegion(ArithmeticRegion {
+                inputs: region
+                    .inputs
+                    .iter()
+                    .map(|value| values.int(value))
+                    .collect::<Vec<_>>()
+                    .into(),
+                nodes: region.nodes.clone().into(),
+                outputs: region
+                    .outputs
+                    .iter()
+                    .map(|(value, output)| ArithmeticOutput {
+                        value: *value,
+                        slot: values.slot(&output.erase()),
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+                native: native_proof(region.inputs.len(), &region.nodes),
+            });
+        }
         DraftInstruction::Int { output, kind } => {
             (output.erase(), K::Int(freeze_int(kind, values)))
         }
@@ -1487,7 +1509,7 @@ mod tests {
     }
 
     fn int_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) -> num_bigint::BigInt {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::Int(crate::plan::execution::graph::IntInstruction::Value(value)) => {
                 value.materialize()
             }
@@ -1498,7 +1520,7 @@ mod tests {
     fn utf_codepoint_call(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (UtfCodepointFunctionId, usize) {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::UtfCodepoint(
                 crate::plan::execution::graph::UtfCodepointInstruction::Call {
                     function, args, ..
@@ -1511,7 +1533,7 @@ mod tests {
     fn custom_construct(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (CustomConstructorId, usize) {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::Custom(
                 crate::plan::execution::graph::CustomInstruction::Construct {
                     constructor,
@@ -1525,7 +1547,7 @@ mod tests {
     fn external_call(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> (ExternalFunctionId, usize) {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::External(ExternalInstruction::Call { function, args, .. }) => {
                 (*function, args.len())
             }
@@ -1534,7 +1556,7 @@ mod tests {
     }
 
     fn nil_value(instruction: &ProfiledInstruction<HostedExecutionGraph>) {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::Nil(NilInstruction::Value) => {}
             _ => panic!("Nil draft instruction should freeze as a Nil value"),
         }
@@ -1543,7 +1565,7 @@ mod tests {
     fn int_function_reference(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> IntFunctionId {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             InstructionKind::Function(function) => match function.kind() {
                 FunctionInstructionKind::Reference(
                     crate::plan::execution::graph::FunctionTarget::Int(target),
@@ -1557,7 +1579,7 @@ mod tests {
     fn instruction_family(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> InstructionFamily {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::Int(_) => InstructionFamily::Int,
             ProfiledInstructionKind::Float(_) => InstructionFamily::Float,
             ProfiledInstructionKind::String(_) => InstructionFamily::String,

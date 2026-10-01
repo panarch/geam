@@ -195,7 +195,9 @@ pub fn main() {
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    if let ProfiledInstructionKind::BitArray(value) = instruction.kind() {
+                    if let ProfiledInstructionKind::BitArray(value) =
+                        instruction.value().unwrap().kind()
+                    {
                         let index = match value {
                             BitArrayInstruction::Value(_) => 0,
                             BitArrayInstruction::Constant(_) => 1,
@@ -206,12 +208,18 @@ pub fn main() {
                             BitArrayInstruction::ListIndex { .. } => 6,
                         };
                         assert_eq!(
-                            context.bit_array(value, instruction.output(), &locals),
+                            context.bit_array(
+                                value,
+                                instruction.value().unwrap().output(),
+                                &locals
+                            ),
                             Ok(())
                         );
                         seen[index] = true;
                     }
-                    locals.define(instruction.output(), &types).unwrap();
+                    locals
+                        .define(instruction.value().unwrap().output(), &types)
+                        .unwrap();
                 }
             }
         }

@@ -159,9 +159,13 @@ macro_rules! opaque {
 
         impl<'scope, Schema: NamedTypeSchema> SharedValue for $value<'scope, Schema> {
             type Context = OpaqueContext<'scope>;
-            fn view(value: BorrowedValue<'_>, context: &Self::Context) -> Self {
+            type Read<'value> = BorrowedValue<'value>;
+            fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
+                value
+            }
+            fn view(read: &Self::Read<'_>, context: &Self::Context) -> Self {
                 Self {
-                    value: ($read)(value),
+                    value: ($read)(read),
                     context: context.clone(),
                     schema: PhantomData,
                 }
@@ -273,7 +277,7 @@ opaque!(
     CustomTypeName,
     customs,
     take_custom,
-    |value: BorrowedValue<'_>| value.retained_custom(),
+    |value: &BorrowedValue<'_>| value.retained_custom(),
     |mut value: EmbeddingOutput| value.take_custom()
 );
 opaque!(
@@ -284,7 +288,7 @@ opaque!(
     ExternalTypeName,
     externals,
     take_external,
-    |value: BorrowedValue<'_>| value.external().clone(),
+    |value: &BorrowedValue<'_>| value.external().clone(),
     std::convert::identity
 );
 
@@ -1308,7 +1312,10 @@ pub fn read(session: Session) { let Session(value) = session value }
                 );
                 let (session, resources) = scope.call(&compound, (false,)).await.unwrap();
                 assert!(resources.is_empty());
-                assert_eq!(scope.call(&read, (&session,)).await.unwrap(), 42.into());
+                assert_eq!(
+                    scope.call(&read, (&session,)).await.unwrap(),
+                    num_bigint::BigInt::from(42)
+                );
             }),
         )
         .unwrap();
