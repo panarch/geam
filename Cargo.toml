@@ -157,6 +157,11 @@ path = "tests/future_builtins.rs"
 required-features = ["embedding", "provider", "builtins"]
 
 [[test]]
+name = "guard_constructor_locals"
+path = "tests/guard_constructor_locals.rs"
+required-features = ["embedding", "gleam-stdlib"]
+
+[[test]]
 name = "prepared_embedding"
 path = "tests/prepared_embedding.rs"
 required-features = ["cli", "embedding"]

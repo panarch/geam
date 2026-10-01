@@ -9,6 +9,7 @@ use crate::planner::context::{FunctionLocalBinding, PlanContext, ResolvedLocal};
 use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
 };
+use crate::planner::expression::constant;
 use crate::planner::expression::conversion::{expect_expression, value_type_from_gleam};
 use ecow::EcoString;
 use gleam_compiler_core::ast::{BinOp, ClauseGuard};
@@ -32,9 +33,10 @@ pub(super) fn referenced_locals(guard: &ClauseGuard<Arc<Type>>) -> HashSet<&EcoS
                 pending.push(left);
                 pending.push(right);
             }
-            ClauseGuard::Constant(_)
-            | ClauseGuard::ModuleSelect { .. }
-            | ClauseGuard::Invalid { .. } => {}
+            ClauseGuard::Constant(value) => {
+                names.extend(constant::guard_locals(value));
+            }
+            ClauseGuard::ModuleSelect { .. } | ClauseGuard::Invalid { .. } => {}
         }
     }
     names
@@ -52,7 +54,7 @@ fn plan_expr(
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match guard {
-        ClauseGuard::Constant(constant) => super::super::constant::plan(constant, context),
+        ClauseGuard::Constant(value) => constant::plan_guard(value, context),
         ClauseGuard::Block { value, .. } => plan_expr(*value, context),
         ClauseGuard::Var { name, .. } => plan_local(name, context),
         ClauseGuard::TupleIndex {
@@ -365,7 +367,8 @@ mod tests {
     use super::{function_local_get, plan_expr, referenced_locals};
     use crate::plan::{
         BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomExpr, CustomFunctionExpr,
+        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomConstruction, CustomConstructor,
+        CustomConstructorField, CustomConstructorRefinement, CustomExpr, CustomFunctionExpr,
         CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomType,
         CustomTypeName, CustomValueShape, Expr, ExternalExpr, ExternalFunctionExpr,
         ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal,
@@ -380,7 +383,7 @@ mod tests {
         UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
-    use crate::planner::support::dummy_span;
+    use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
         InvalidTypedAstReason, PlanError,
@@ -476,6 +479,127 @@ mod tests {
             Err(invalid_expression_shape(
                 InvalidExpressionShapeKind::ConstantLocalVariable
             )),
+        );
+    }
+
+    #[test]
+    fn plan_source_guard_constructor_with_concrete_local() {
+        let mut typed = compile(
+            r#"
+pub fn main(value: Int, expected: Result(Int, Nil)) -> Bool {
+  case expected {
+    candidate if Ok(value) == candidate -> True
+    _ -> False
+  }
+}
+"#,
+        );
+        let (_, _, clauses) =
+            super::super::expect_case_statement_mut(&mut typed.definitions.functions[0].body[0]);
+        let guard = clauses[0].guard.take().expect("source has a guard");
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let value = context.define_int_local("value".into());
+        let type_name = CustomTypeName::new("".into(), "gleam".into(), "Result".into());
+        let type_ = CustomType::new(type_name.clone(), vec![ValueType::Int, ValueType::Nil]);
+        let candidate_shape = CustomValueShape::any(type_.clone());
+        let candidate =
+            context.define_custom_local_shape("candidate".into(), candidate_shape.clone());
+        let construction = CustomConstruction::from_validated(
+            CustomConstructor::new(
+                type_,
+                "Ok".into(),
+                0,
+                vec![CustomConstructorField::new(None, ValueType::Int)],
+            ),
+            vec![Expr::int(IntExpr::local_get(value, "value".into()))],
+        );
+        let expected = BoolExpr::equal(
+            Expr::custom(CustomExpr::from_construction(
+                CustomValueShape::new(
+                    type_name,
+                    vec![ValueShape::Int, ValueShape::Nil],
+                    CustomConstructorRefinement::Exact(0),
+                ),
+                construction,
+            )),
+            Expr::custom(CustomExpr::local_get(
+                CustomLocal::from_shape(candidate, candidate_shape),
+                "candidate".into(),
+            )),
+        );
+        assert_eq!(
+            referenced_locals(&guard)
+                .into_iter()
+                .map(EcoString::as_str)
+                .collect::<HashSet<_>>(),
+            HashSet::from(["value", "candidate"]),
+        );
+        assert_eq!(plan_expr(guard, &mut context), Ok(Expr::bool(expected)));
+    }
+
+    #[test]
+    fn referenced_locals_visits_source_guard_composite_values() {
+        let mut typed = compile(
+            r#"
+pub type Boxed(a) { Boxed(a) }
+pub fn main(first: String, second: String, value: Int, tail: List(Int), expected) {
+  case expected {
+    candidate if Boxed(#(first <> second, [value, ..tail], <<value:size(8)>>, value)) == candidate -> True
+    _ -> False
+  }
+}
+"#,
+        );
+        let (_, _, clauses) =
+            super::super::expect_case_statement_mut(&mut typed.definitions.functions[0].body[0]);
+        let guard = clauses[0].guard.as_ref().expect("source has a guard");
+        assert_eq!(
+            referenced_locals(guard)
+                .into_iter()
+                .map(EcoString::as_str)
+                .collect::<HashSet<_>>(),
+            HashSet::from(["first", "second", "value", "tail", "candidate"]),
+        );
+    }
+
+    #[test]
+    fn reject_margin_nested_guard_local_outside_scope() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let guard = ClauseGuard::Constant(Constant::Tuple {
+            location: dummy_span(),
+            elements: vec![Constant::Var {
+                location: dummy_span(),
+                module: None,
+                name: "missing".into(),
+                constructor: Some(Box::new(ValueConstructor::local_variable(
+                    dummy_span(),
+                    VariableOrigin::generated(),
+                    type_::int(),
+                ))),
+                type_: type_::int(),
+            }],
+            type_: type_::tuple(vec![type_::int()]),
+        });
+        assert_eq!(
+            referenced_locals(&guard)
+                .into_iter()
+                .map(EcoString::as_str)
+                .collect::<HashSet<_>>(),
+            HashSet::from(["missing"]),
+        );
+        assert_eq!(
+            plan_expr(guard, &mut context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "missing".into()
+                }
+            }),
         );
     }
 

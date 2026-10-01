@@ -3,7 +3,7 @@ use crate::plan::{
     Expr, ExternalExpr, ExternalFunctionExpr, FloatExpr, FloatFunctionExpr, FunctionExpr,
     FunctionFunctionExpr, GenericFunctionExpr, IntExpr, IntFunctionExpr, ListExpr,
     ListFunctionExpr, LocalId, NilExpr, NilFunctionExpr, StringExpr, StringFunctionExpr, TupleExpr,
-    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr,
+    TupleFunctionExpr, UtfCodepointExpr, UtfCodepointFunctionExpr, ValueShape,
 };
 use crate::planner::context::{
     FunctionLocalBinding, ModuleFunctionTarget, PlanContext, ResolvedLocal,
@@ -20,34 +20,11 @@ use gleam_compiler_core::type_::{
 pub(super) fn plan_var(
     name: EcoString,
     constructor: ValueConstructor,
-    constructor_shape: crate::plan::ValueShape,
+    constructor_shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match constructor.variant {
-        ValueConstructorVariant::LocalVariable { .. } => {
-            let expression = match context.resolve_local(&name)? {
-                ResolvedLocal::Primitive(local) => local_get(local, name),
-                ResolvedLocal::Custom(local) => Expr::custom(CustomExpr::local_get(local, name)),
-                ResolvedLocal::External(local) => {
-                    Expr::external(ExternalExpr::local_get(local, name))
-                }
-                ResolvedLocal::Tuple { local, shape } => {
-                    let type_ = shape
-                        .iter()
-                        .map(crate::plan::ValueShape::value_type)
-                        .collect();
-                    Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
-                }
-                ResolvedLocal::List { local, item_shape } => {
-                    Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
-                }
-                ResolvedLocal::Function { binding, shape } => {
-                    function_local_get(binding, name, shape)?
-                }
-            };
-
-            Ok(expression)
-        }
+        ValueConstructorVariant::LocalVariable { .. } => plan_local(name, context),
         ValueConstructorVariant::Record {
             ref name,
             ref module,
@@ -98,11 +75,28 @@ pub(super) fn plan_var(
     }
 }
 
+pub(super) fn plan_local(name: EcoString, context: &PlanContext<'_>) -> Result<Expr, PlanError> {
+    let expression = match context.resolve_local(&name)? {
+        ResolvedLocal::Primitive(local) => local_get(local, name),
+        ResolvedLocal::Custom(local) => Expr::custom(CustomExpr::local_get(local, name)),
+        ResolvedLocal::External(local) => Expr::external(ExternalExpr::local_get(local, name)),
+        ResolvedLocal::Tuple { local, shape } => {
+            let type_ = shape.iter().map(ValueShape::value_type).collect();
+            Expr::tuple(TupleExpr::local_get(local, name, type_).with_shape(shape))
+        }
+        ResolvedLocal::List { local, item_shape } => {
+            Expr::list(ListExpr::local_get(local, name).with_item_shape(item_shape))
+        }
+        ResolvedLocal::Function { binding, shape } => function_local_get(binding, name, shape)?,
+    };
+    Ok(expression)
+}
+
 pub(super) fn plan_module_select(
     module_name: EcoString,
     label: EcoString,
     constructor: ModuleValueConstructor,
-    shape: crate::plan::ValueShape,
+    shape: ValueShape,
     context: &mut PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     match constructor {
@@ -145,9 +139,9 @@ pub(super) fn plan_module_select(
     }
 }
 
-fn plan_function_reference(
+pub(super) fn plan_function_reference(
     target: ModuleFunctionTarget,
-    constructor_shape: crate::plan::ValueShape,
+    constructor_shape: ValueShape,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
     let target = target.validate_external(context)?;

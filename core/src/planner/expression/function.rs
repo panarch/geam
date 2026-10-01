@@ -476,6 +476,82 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_closure_captures_used_only_inside_guard_values_in_first_use_order() {
+        use crate::plan::{
+            BoolExpr, BoolFunctionExpr, BoolFunctionReturn, BoolReturn, ParamSlot,
+            monomorphic_function_instantiation,
+        };
+
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  let first = 7
+  let second = 8
+  fn() {
+    case 0 {
+      _ if #(second, first, second) == #(8, 7, 8) -> True
+      _ -> False
+    }
+  }
+}
+"#,
+        ))
+        .expect("guard-only captures should plan");
+        let signature = FunctionShape::new(Vec::new(), ValueShape::Bool);
+        let expected_closure = BoolFunctionExpr::closure(
+            monomorphic_function_instantiation(1, signature.clone()),
+            vec![capture_int(1), capture_int(0)],
+            FunctionType::new(Vec::new(), ValueType::Bool),
+        );
+        assert_eq!(
+            actual.main_function().steps(),
+            &[
+                let_int_step(0, "first", int(7)),
+                let_int_step(1, "second", int(8)),
+            ]
+        );
+        assert_eq!(
+            actual.main_function().return_(),
+            &ReturnExpr::bool_function_shape_body(
+                signature,
+                BoolFunctionReturn::expr(expected_closure)
+            )
+        );
+        let anonymous = &actual.anonymous_functions()[0];
+        assert_eq!(anonymous.name().as_str(), "<anonymous:0>");
+        assert_eq!(
+            anonymous.entry().captures(),
+            &[
+                ParamSlot::from_local(ParamLocal::int(IntLocalId(0))),
+                ParamSlot::from_local(ParamLocal::int(IntLocalId(1))),
+            ]
+        );
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::equal(
+                tuple([
+                    local_int(0, "second"),
+                    local_int(1, "first"),
+                    local_int(0, "second"),
+                ])
+                .into(),
+                tuple([int(8), int(7), int(8)]).into(),
+            ),
+        );
+        assert_eq!(
+            anonymous.return_(),
+            &ReturnExpr::bool_body(BoolReturn::block(
+                vec![let_int_step(2, "<case:int:2>", int(0))],
+                BoolReturn::bool_case(
+                    condition,
+                    BoolReturn::expr(BoolExpr::value(true)),
+                    BoolReturn::expr(BoolExpr::value(false)),
+                ),
+            ))
+        );
+    }
+
+    #[test]
     fn plan_nested_and_sibling_closures_in_discovery_order() {
         let source = r#"
 pub fn main() {

@@ -209,6 +209,9 @@ jobs:
         working-directory: benchmarks/project
         run: gleam format --check src
 
+      - name: Check guard constructor fixture formatting
+        run: gleam format --check tests/fixtures/projects/guard_constructor_locals/src
+
       - name: Check documented compiler pin
         shell: bash
         run: |

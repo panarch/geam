@@ -8,6 +8,11 @@ mod services;
 
 #[path = "prepared_embedding/process_consumers.rs"]
 mod process_consumers;
+#[path = "support/workspace_dependencies.rs"]
+mod workspace_dependencies;
+
+#[path = "prepared_embedding/guard_constructors.rs"]
+mod guard_constructors;
 
 #[test]
 fn prepares_packages_and_runs_without_the_original_gleam_project() {

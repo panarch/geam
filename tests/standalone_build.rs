@@ -6,6 +6,8 @@ use std::process::{Command, Output, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+#[path = "support/guard_constructor_fixture.rs"]
+mod guard_constructor_fixture;
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
 
@@ -43,6 +45,21 @@ fn builds_and_relocates_complete_applications_without_development_inputs() {
 
     include_bytes_tree_consumer(fixture.path());
 
+    let guards = fixture.path().join("guard_constructor_locals");
+    guard_constructor_fixture::copy_project(&guards);
+    let gleam = project.join("gleam.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&gleam).unwrap().parse().unwrap();
+    manifest["dependencies"].as_table_mut().unwrap().insert(
+        "guard_constructor_locals".into(),
+        toml::toml! { path = "../guard_constructor_locals" }.into(),
+    );
+    fs::write(gleam, toml::to_string(&manifest).unwrap()).unwrap();
+    checked(
+        Command::new("gleam")
+            .args(["deps", "download"])
+            .current_dir(&project),
+    );
+
     for package in ["geam-catalog", "geam-counter"] {
         checked(&mut geam(
             &project,
@@ -66,6 +83,7 @@ import bytes_tree_service_fixture
 import gleam/erlang/application
 import gleam/erlang/process
 import gleam/io
+import guard_constructor_locals
 import ordinary
 import standalone_future/native
 import standalone_future/protected
@@ -80,6 +98,7 @@ pub fn main() {
   let assert Ok(dependency) = application.priv_directory("pure_labels")
   io.println(root)
   io.println(dependency)
+  guard_constructor_locals.main()
   let reply = process.new_subject()
   let _ = process.spawn_unlinked(fn() { process.send(reply, 42) })
   let assert 42 = process.receive_forever(reply)
@@ -118,6 +137,12 @@ pub fn main() {
         ],
     ));
     assert!(String::from_utf8_lossy(&dynamic.stdout).contains("\"count:3/count:4\"\n"));
+    assert!(
+        dynamic
+            .stdout
+            .windows(guard_constructor_fixture::OUTPUT.len())
+            .any(|line| line == guard_constructor_fixture::OUTPUT)
+    );
     checked(&mut geam(&project, &["build"]));
     assert_eq!(
         fs::read(project.join("build/geam/program.rs")).unwrap(),
@@ -162,7 +187,7 @@ pub fn main() {
         arguments
     };
     let expected = format!(
-        "initialized\narguments:{arguments:?}\n\"count:3/count:4\"\n{}\n{}\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
+        "initialized\narguments:{arguments:?}\n\"count:3/count:4\"\n{}\n{}\nguard locals and original clip opt/flag: ok\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
         deployed_root.join("priv/standalone_fixture").display(),
         deployed_root.join("priv/pure_labels").display()
     );
