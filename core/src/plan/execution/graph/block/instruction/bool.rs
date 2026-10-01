@@ -1,14 +1,10 @@
-use super::{
-    write_binary, write_call, write_constant, write_function_call, write_integer_binary,
-    write_length, write_literal, write_projection, write_unary,
-};
-use crate::plan::Text;
+use super::{write_call, write_constant, write_function_call, write_literal, write_projection};
 use crate::plan::execution::constant::ConstantId;
 use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::BoolFunctionId;
 use crate::plan::execution::graph::{
-    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, FloatLocalId, IntegerOperand,
-    ListLocal, LocalLabel, ParamLocal, StringLocalId, TupleLocalId,
+    BoolFunctionLocalId, BoolListLocalId, BoolLocalId, BoolTest, CustomLocal, ParamLocal,
+    TupleLocalId,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 use crate::plan::execution::storage::Table;
@@ -39,67 +35,7 @@ pub enum BoolInstruction {
         list: BoolListLocalId,
         index: usize,
     },
-    Not(BoolLocalId),
-    EqualInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    NotEqualInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    LtInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    LtEqInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    GtInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    GtEqInt {
-        left: IntegerOperand,
-        right: IntegerOperand,
-    },
-    LtFloat {
-        left: FloatLocalId,
-        right: FloatLocalId,
-    },
-    LtEqFloat {
-        left: FloatLocalId,
-        right: FloatLocalId,
-    },
-    GtFloat {
-        left: FloatLocalId,
-        right: FloatLocalId,
-    },
-    GtEqFloat {
-        left: FloatLocalId,
-        right: FloatLocalId,
-    },
-    Equal {
-        left: ParamLocal,
-        right: ParamLocal,
-    },
-    NotEqual {
-        left: ParamLocal,
-        right: ParamLocal,
-    },
-    StringStartsWith {
-        value: StringLocalId,
-        prefix: Text,
-    },
-    ListLengthEquals {
-        value: ListLocal,
-        length: usize,
-    },
-    ListLengthAtLeast {
-        value: ListLocal,
-        length: usize,
-    },
+    Test(BoolTest),
 }
 
 impl Explain for BoolInstruction {
@@ -125,55 +61,7 @@ impl Explain for BoolInstruction {
             BoolInstruction::ListIndex { list, index } => {
                 write_projection(output, "bool.list_index", list, *index);
             }
-            BoolInstruction::Not(value) => write_unary(output, "bool.not", value),
-            BoolInstruction::EqualInt { left, right } => {
-                write_integer_binary(output, "bool.equal_int", left, right)
-            }
-            BoolInstruction::NotEqualInt { left, right } => {
-                write_integer_binary(output, "bool.not_equal_int", left, right)
-            }
-            BoolInstruction::LtInt { left, right } => {
-                write_integer_binary(output, "bool.lt_int", left, right)
-            }
-            BoolInstruction::LtEqInt { left, right } => {
-                write_integer_binary(output, "bool.lte_int", left, right);
-            }
-            BoolInstruction::GtInt { left, right } => {
-                write_integer_binary(output, "bool.gt_int", left, right)
-            }
-            BoolInstruction::GtEqInt { left, right } => {
-                write_integer_binary(output, "bool.gte_int", left, right);
-            }
-            BoolInstruction::LtFloat { left, right } => {
-                write_binary(output, "bool.lt_float", left, right);
-            }
-            BoolInstruction::LtEqFloat { left, right } => {
-                write_binary(output, "bool.lte_float", left, right);
-            }
-            BoolInstruction::GtFloat { left, right } => {
-                write_binary(output, "bool.gt_float", left, right);
-            }
-            BoolInstruction::GtEqFloat { left, right } => {
-                write_binary(output, "bool.gte_float", left, right);
-            }
-            BoolInstruction::Equal { left, right } => {
-                write_binary(output, "bool.equal", left, right)
-            }
-            BoolInstruction::NotEqual { left, right } => {
-                write_binary(output, "bool.not_equal", left, right);
-            }
-            BoolInstruction::StringStartsWith { value, prefix } => {
-                output.push_str("bool.string_starts_with ");
-                value.write_local_label(output);
-                output.push_str(" prefix=");
-                output.push_str(&format!("{prefix:?}"));
-            }
-            BoolInstruction::ListLengthEquals { value, length } => {
-                write_length(output, "bool.list_length_equals", value, *length);
-            }
-            BoolInstruction::ListLengthAtLeast { value, length } => {
-                write_length(output, "bool.list_length_at_least", value, *length);
-            }
+            BoolInstruction::Test(test) => test.write_explanation(context),
         }
     }
 }
@@ -211,67 +99,7 @@ impl Emit for BoolInstruction {
                 "graph::BoolInstruction::ListIndex",
                 &[("list", list), ("index", index)],
             ),
-            Self::Not(field_0) => output.call("graph::BoolInstruction::Not", &[field_0]),
-            Self::EqualInt { left, right } => output.structure(
-                "graph::BoolInstruction::EqualInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::NotEqualInt { left, right } => output.structure(
-                "graph::BoolInstruction::NotEqualInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::LtInt { left, right } => output.structure(
-                "graph::BoolInstruction::LtInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::LtEqInt { left, right } => output.structure(
-                "graph::BoolInstruction::LtEqInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::GtInt { left, right } => output.structure(
-                "graph::BoolInstruction::GtInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::GtEqInt { left, right } => output.structure(
-                "graph::BoolInstruction::GtEqInt",
-                &[("left", left), ("right", right)],
-            ),
-            Self::LtFloat { left, right } => output.structure(
-                "graph::BoolInstruction::LtFloat",
-                &[("left", left), ("right", right)],
-            ),
-            Self::LtEqFloat { left, right } => output.structure(
-                "graph::BoolInstruction::LtEqFloat",
-                &[("left", left), ("right", right)],
-            ),
-            Self::GtFloat { left, right } => output.structure(
-                "graph::BoolInstruction::GtFloat",
-                &[("left", left), ("right", right)],
-            ),
-            Self::GtEqFloat { left, right } => output.structure(
-                "graph::BoolInstruction::GtEqFloat",
-                &[("left", left), ("right", right)],
-            ),
-            Self::Equal { left, right } => output.structure(
-                "graph::BoolInstruction::Equal",
-                &[("left", left), ("right", right)],
-            ),
-            Self::NotEqual { left, right } => output.structure(
-                "graph::BoolInstruction::NotEqual",
-                &[("left", left), ("right", right)],
-            ),
-            Self::StringStartsWith { value, prefix } => output.structure(
-                "graph::BoolInstruction::StringStartsWith",
-                &[("value", value), ("prefix", prefix)],
-            ),
-            Self::ListLengthEquals { value, length } => output.structure(
-                "graph::BoolInstruction::ListLengthEquals",
-                &[("value", value), ("length", length)],
-            ),
-            Self::ListLengthAtLeast { value, length } => output.structure(
-                "graph::BoolInstruction::ListLengthAtLeast",
-                &[("value", value), ("length", length)],
-            ),
+            Self::Test(test) => output.call("graph::BoolInstruction::Test", &[test]),
         }
     }
 }
@@ -282,14 +110,11 @@ mod emission_tests {
     use crate::plan::execution::constant::ConstantId;
     use crate::plan::execution::function::BoolFunctionId;
     use crate::plan::execution::graph::{
-        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, CustomLocal, CustomLocalId,
-        FloatLocalId, IntLocalId, IntegerOperand, ListLocal, ParamLocal, StringLocalId,
-        TupleLocalId,
+        BoolFunctionLocalId, BoolListLocalId, BoolLocalId, BoolTest, CustomLocal, CustomLocalId,
+        ParamLocal, TupleLocalId,
     };
     use crate::plan::execution::prepared::rust::Rust;
-    use crate::plan::execution::type_::{
-        BoolListTypeId, CustomTypeId, CustomValueShape, CustomValueShapeId, ListTypeId,
-    };
+    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
     use crate::plan::{HostCallSite, SourceSpan};
 
     #[test]
@@ -381,196 +206,8 @@ data::graph::BoolInstruction::ListIndex {
 }"#.trim_start_matches('\n'),
             ),
             (
-                BoolInstruction::LtInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Immediate(i64::MAX),
-                },
-                "data::graph::BoolInstruction::LtInt {\n    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),\n    right: data::graph::IntegerOperand::Immediate(9223372036854775807),\n}",
-            ),
-            (
-                BoolInstruction::Not(BoolLocalId(2)),
-                "data::graph::BoolInstruction::Not(data::graph::BoolLocalId(2))",
-            ),
-            (
-                BoolInstruction::EqualInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::EqualInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::NotEqualInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::NotEqualInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::LtInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::LtInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::LtEqInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::LtEqInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::GtInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::GtInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::GtEqInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Local(IntLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::GtEqInt {
-    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-    right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::LtFloat {
-                    left: FloatLocalId(2),
-                    right: FloatLocalId(5),
-                },
-                r#"
-data::graph::BoolInstruction::LtFloat {
-    left: data::graph::FloatLocalId(2),
-    right: data::graph::FloatLocalId(5),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::LtEqFloat {
-                    left: FloatLocalId(2),
-                    right: FloatLocalId(5),
-                },
-                r#"
-data::graph::BoolInstruction::LtEqFloat {
-    left: data::graph::FloatLocalId(2),
-    right: data::graph::FloatLocalId(5),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::GtFloat {
-                    left: FloatLocalId(2),
-                    right: FloatLocalId(5),
-                },
-                r#"
-data::graph::BoolInstruction::GtFloat {
-    left: data::graph::FloatLocalId(2),
-    right: data::graph::FloatLocalId(5),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::GtEqFloat {
-                    left: FloatLocalId(2),
-                    right: FloatLocalId(5),
-                },
-                r#"
-data::graph::BoolInstruction::GtEqFloat {
-    left: data::graph::FloatLocalId(2),
-    right: data::graph::FloatLocalId(5),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::Equal {
-                    left: ParamLocal::Bool(BoolLocalId(2)),
-                    right: ParamLocal::Bool(BoolLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::Equal {
-    left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
-    right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::NotEqual {
-                    left: ParamLocal::Bool(BoolLocalId(2)),
-                    right: ParamLocal::Bool(BoolLocalId(5)),
-                },
-                r#"
-data::graph::BoolInstruction::NotEqual {
-    left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
-    right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(5)),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::StringStartsWith {
-                    value: StringLocalId(2),
-                    prefix: "pre".into(),
-                },
-                r#"
-data::graph::BoolInstruction::StringStartsWith {
-    value: data::graph::StringLocalId(2),
-    prefix: data::Text::Static("pre"),
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::ListLengthEquals {
-                    value: ListLocal::Bool {
-                        local: BoolListLocalId(2),
-                        type_id: BoolListTypeId::new(ListTypeId(4)),
-                    },
-                    length: 3,
-                },
-                r#"
-data::graph::BoolInstruction::ListLengthEquals {
-    value: data::graph::ListLocal::Bool {
-        local: data::graph::BoolListLocalId(2),
-        type_id: data::type_::BoolListTypeId {
-            list_type: data::type_::ListTypeId(4),
-        },
-    },
-    length: 3,
-}"#.trim_start_matches('\n'),
-            ),
-            (
-                BoolInstruction::ListLengthAtLeast {
-                    value: ListLocal::Bool {
-                        local: BoolListLocalId(2),
-                        type_id: BoolListTypeId::new(ListTypeId(4)),
-                    },
-                    length: 3,
-                },
-                r#"
-data::graph::BoolInstruction::ListLengthAtLeast {
-    value: data::graph::ListLocal::Bool {
-        local: data::graph::BoolListLocalId(2),
-        type_id: data::type_::BoolListTypeId {
-            list_type: data::type_::ListTypeId(4),
-        },
-    },
-    length: 3,
-}"#.trim_start_matches('\n'),
+                BoolInstruction::Test(BoolTest::Not(BoolLocalId(2))),
+                "data::graph::BoolInstruction::Test(data::graph::BoolTest::Not(data::graph::BoolLocalId(2)))",
             ),
         ];
         for (instruction, expected) in cases {
@@ -583,44 +220,7 @@ data::graph::BoolInstruction::ListLengthAtLeast {
 mod explain_tests {
     use crate::plan::execution::explain;
     use crate::plan::execution::function::BoolFunctionId;
-    use crate::plan::execution::graph::ProfiledInstructionKind;
-
-    #[test]
-    fn writes_bool_instruction_grammar() {
-        let source = r#"
-pub fn main() {
-  let integer = 1
-  let float = 1.0
-  let values = [1]
-  !True
-  && integer < 2
-  && integer <= 2
-  && integer > 0
-  && integer >= 0
-  && float <. 2.0
-  && float <=. 2.0
-  && float >. 0.0
-  && float >=. 0.0
-  && integer == 1
-  && integer != 2
-  && values == [1]
-  && values != [2]
-}
-"#;
-        let expected = concat!(
-            "bool.value True | bool.not %bool#0 | bool.lt_int %int#0 2 | ",
-            "bool.lte_int %int#0 2 | bool.gt_int %int#0 0 | ",
-            "bool.gte_int %int#0 0 | bool.lt_float %float#0 %float#1 | ",
-            "bool.lte_float %float#0 %float#1 | bool.gt_float %float#0 %float#1 | ",
-            "bool.gte_float %float#0 %float#1 | bool.equal_int %int#0 1 | ",
-            "bool.not_equal_int %int#0 2 | bool.equal %list.int#0 %list.int#1 | ",
-            "bool.not_equal %list.int#0 %list.int#1 | ",
-            "bool.value True | bool.value False",
-        );
-
-        assert_explanation(source, expected);
-    }
-
+    use crate::plan::execution::graph::{ProfiledInstructionKind, Terminator};
     #[test]
     fn writes_bool_constants_calls_projections_and_pattern_checks() {
         let source = r#"
@@ -685,18 +285,24 @@ pub fn main() {
     fn assert_explanation(source: &str, expected: &str) {
         explain::assert_rendered(source, expected, |plan, output| {
             let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
-            let mut first = true;
-            for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-                if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
-                    if first {
-                        first = false;
-                    } else {
-                        output.push_str(" | ");
+            let mut parts = Vec::new();
+            for block in graph.blocks() {
+                for instruction in block.instructions() {
+                    if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
+                        let mut part = String::new();
+                        let mut context = explain::ExplainContext::new(plan, &mut part);
+                        context.write(instruction);
+                        parts.push(part);
                     }
-                    let mut context = explain::ExplainContext::new(plan, output);
-                    context.write(instruction);
+                }
+                if let Terminator::TestBranch(branch) = block.terminator() {
+                    let mut part = String::new();
+                    let mut context = explain::ExplainContext::new(plan, &mut part);
+                    context.write(&branch.test);
+                    parts.push(part);
                 }
             }
+            output.push_str(&parts.join(" | "));
         });
     }
 }

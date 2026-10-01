@@ -12,7 +12,7 @@ pub(crate) use block::{
     BitArrayBindingPattern, BitArrayBitsSize, BitArrayEvaluatedSize, BitArrayInstruction,
     BitArrayPattern, BitArrayPatternSegment, BitArrayPatternSize, BitArrayPatternSizeExpr,
     BitArrayPatternValue, BitArraySegment, BitArrayStringPattern, Block, BlockId, BoolBranch,
-    BoolInstruction, CustomInstruction, Echo, Edge, ExternalFunctionCallTarget,
+    BoolInstruction, BoolTest, CustomInstruction, Echo, Edge, ExternalFunctionCallTarget,
     ExternalFunctionInstruction, ExternalFunctionInstructionKind, ExternalFunctionInstructionView,
     ExternalFunctionTarget, ExternalInstruction, ExternalInstructionRef, ExternalInstructionView,
     ExternalListInstruction, ExternalListInstructionView, FloatInstruction, FloatSwitch,
@@ -22,7 +22,8 @@ pub(crate) use block::{
     MatchPatternBinding, MatchPatternList, MatchPatternListTail, NeverCall, NeverCallTarget,
     NilInstruction, ParameterListInstruction, ProfiledBlock, ProfiledInstruction,
     ProfiledInstructionKind, Signedness, SourceStop, SourceStopKind, StringInstruction,
-    StringSwitch, Terminator, TupleInstruction, TypedListInstruction, UtfCodepointInstruction,
+    StringSwitch, Terminator, TestBranch, TupleInstruction, TypedListInstruction,
+    UtfCodepointInstruction,
 };
 pub(crate) use exit::BlockGraphExitId;
 pub(crate) use integer::{IntegerLiteral, IntegerOperand};

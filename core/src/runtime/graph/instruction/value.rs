@@ -1,7 +1,5 @@
-mod integer;
-
-use super::super::RuntimeGraphState;
 use super::super::environment::BlockEnvironment;
+use super::super::{RuntimeGraphState, bool_test, integer};
 use super::CallInputs;
 use crate::StringValue;
 use crate::plan::HostCallSite;
@@ -21,7 +19,6 @@ use crate::plan::execution::type_::ValueType;
 use crate::runtime::InvariantError;
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue,
-    value_refs_equal,
 };
 use crate::runtime::state::list::ListSequence;
 use num_bigint::BigInt;
@@ -642,44 +639,7 @@ where
             state.lists().bool_values(environment.bool_list_ref(*list)),
         )
         .map_or_else(V::Error, V::Ready),
-        I::Not(value) => V::Ready(!environment.bool(*value)),
-        I::EqualInt { left, right } => V::Ready(integer::equal(environment, *left, *right)),
-        I::NotEqualInt { left, right } => V::Ready(!integer::equal(environment, *left, *right)),
-        I::LtInt { left, right } => V::Ready(integer::compare(environment, *left, *right).is_lt()),
-        I::LtEqInt { left, right } => {
-            V::Ready(integer::compare(environment, *left, *right).is_le())
-        }
-        I::GtInt { left, right } => V::Ready(integer::compare(environment, *left, *right).is_gt()),
-        I::GtEqInt { left, right } => {
-            V::Ready(integer::compare(environment, *left, *right).is_ge())
-        }
-        I::LtFloat { left, right } => {
-            V::Ready(environment.float(*left) < environment.float(*right))
-        }
-        I::LtEqFloat { left, right } => {
-            V::Ready(environment.float(*left) <= environment.float(*right))
-        }
-        I::GtFloat { left, right } => {
-            V::Ready(environment.float(*left) > environment.float(*right))
-        }
-        I::GtEqFloat { left, right } => {
-            V::Ready(environment.float(*left) >= environment.float(*right))
-        }
-        I::Equal { left, right } => V::Ready(value_refs_equal(
-            state.lists(),
-            &environment.value_ref(left),
-            &environment.value_ref(right),
-        )),
-        I::NotEqual { left, right } => V::Ready(!value_refs_equal(
-            state.lists(),
-            &environment.value_ref(left),
-            &environment.value_ref(right),
-        )),
-        I::StringStartsWith { value, prefix } => {
-            V::Ready(environment.string(*value).starts_with(prefix.as_str()))
-        }
-        I::ListLengthEquals { value, length } => V::Ready(environment.list_len(value) == *length),
-        I::ListLengthAtLeast { value, length } => V::Ready(environment.list_len(value) >= *length),
+        I::Test(test) => V::Ready(bool_test::evaluate(state, environment, test)),
     }
 }
 

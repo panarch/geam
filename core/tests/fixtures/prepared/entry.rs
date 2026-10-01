@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 9,
+    format: 10,
     program: data::ProgramTables {
         root: data::source::module_id(1),
         modules: data::Storage::Static(&[
@@ -108,19 +108,22 @@ pub fn main() {
                                 blocks: data::Storage::Static(&[
                                     data::graph::BlockHeader {
                                         params: 0..1,
-                                        instructions: 0..1,
-                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
-                                            subject: data::graph::BoolLocalId(0),
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::ListLengthEquals {
+                                                value: data::graph::ListLocal::Int {
+                                                    local: data::graph::IntListLocalId(0),
+                                                    type_id: data::type_::IntListTypeId {
+                                                        list_type: data::type_::ListTypeId(0),
+                                                    },
+                                                },
+                                                length: 0,
+                                            },
                                             true_: data::graph::Edge {
                                                 target: data::graph::BlockId(1),
                                                 args: data::Storage::Static(&[]),
                                                 transfer: data::graph::Transfer {
                                                     families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
                                                         data::graph::FamilyTransfer {
                                                             family: data::graph::StorageFamily::IntList,
                                                             length: 0,
@@ -140,27 +143,29 @@ pub fn main() {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..1,
-                                        instructions: 1..2,
+                                        instructions: 0..1,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..2,
-                                        instructions: 2..3,
-                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
-                                            subject: data::graph::BoolLocalId(0),
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::ListLengthEquals {
+                                                value: data::graph::ListLocal::Int {
+                                                    local: data::graph::IntListLocalId(0),
+                                                    type_id: data::type_::IntListTypeId {
+                                                        list_type: data::type_::ListTypeId(0),
+                                                    },
+                                                },
+                                                length: 1,
+                                            },
                                             true_: data::graph::Edge {
                                                 target: data::graph::BlockId(3),
                                                 args: data::Storage::Static(&[
@@ -172,13 +177,7 @@ pub fn main() {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                             false_: data::graph::Edge {
@@ -192,25 +191,19 @@ pub fn main() {
                                                     }),
                                                 ]),
                                                 transfer: data::graph::Transfer {
-                                                    families: data::Storage::Static(&[
-                                                        data::graph::FamilyTransfer {
-                                                            family: data::graph::StorageFamily::Bool,
-                                                            length: 0,
-                                                            steps: data::Storage::Static(&[]),
-                                                        },
-                                                    ]),
+                                                    families: data::Storage::Static(&[]),
                                                 },
                                             },
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 2..3,
-                                        instructions: 3..4,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 3..4,
-                                        instructions: 4..5,
+                                        instructions: 2..3,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
                                     },
                                 ]),
@@ -255,21 +248,6 @@ pub fn main() {
                                 instructions: data::Storage::Static(&[
                                     data::graph::ProfiledInstruction {
                                         output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                            shape: data::type_::ValueShapeId(4),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::ListLengthEquals {
-                                            value: data::graph::ListLocal::Int {
-                                                local: data::graph::IntListLocalId(0),
-                                                type_id: data::type_::IntListTypeId {
-                                                    list_type: data::type_::ListTypeId(0),
-                                                },
-                                            },
-                                            length: 0,
-                                        }),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
@@ -277,21 +255,6 @@ pub fn main() {
                                             sign: data::Sign::NoSign,
                                             digits: data::Storage::Static(&[]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                            shape: data::type_::ValueShapeId(4),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::ListLengthEquals {
-                                            value: data::graph::ListLocal::Int {
-                                                local: data::graph::IntListLocalId(0),
-                                                type_id: data::type_::IntListTypeId {
-                                                    list_type: data::type_::ListTypeId(0),
-                                                },
-                                            },
-                                            length: 1,
-                                        }),
                                     },
                                     data::graph::ProfiledInstruction {
                                         output: data::graph::ParamSlot {
@@ -692,7 +655,6 @@ pub fn main() {
                 },
                 data::type_::ValueShapeDescriptor::Int,
                 data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(2)),
-                data::type_::ValueShapeDescriptor::Bool,
             ]),
             shape_types: data::Storage::Static(&[
                 data::type_::ValueType::Parameter(data::type_::parameter_id(0)),
@@ -704,7 +666,6 @@ pub fn main() {
                 }),
                 data::type_::ValueType::Int,
                 data::type_::ValueType::List(data::type_::ListTypeId(0)),
-                data::type_::ValueType::Bool,
             ]),
             custom_shapes: data::Storage::Static(&[]),
         },

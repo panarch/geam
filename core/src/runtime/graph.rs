@@ -1,7 +1,9 @@
 mod activation;
 mod bit_array;
+mod bool_test;
 mod environment;
 mod instruction;
+mod integer;
 mod pattern;
 mod terminator;
 

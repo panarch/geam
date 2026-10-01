@@ -246,6 +246,8 @@ mod tests {
         for source in [
             "pub fn main() -> Int { main() }",
             "fn spin() -> Int { spin() } pub fn main() { spin() + 1 }",
+            "pub fn main() -> Int { case 1 < 2 { True -> main() False -> 0 } }",
+            "fn spin(value: Int) { case value >= 0 { True -> spin(value) False -> value } } pub fn main() { spin(1) + 1 }",
         ] {
             let plan = crate::runtime::plan_src(source);
             for budget in [1, 2, 7, 1024] {
