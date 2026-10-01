@@ -260,9 +260,11 @@ pub fn main() {{
                         locals.define(parameter, &types).unwrap();
                     }
                     for instruction in block.instructions() {
-                        if let ProfiledInstructionKind::List(value) = &instruction.kind {
+                        if let ProfiledInstructionKind::List(value) =
+                            &instruction.value().unwrap().kind
+                        {
                             assert_eq!(
-                                context.list(value, &instruction.output, &locals),
+                                context.list(value, &instruction.value().unwrap().output, &locals),
                                 Ok(()),
                                 "{item}"
                             );
@@ -287,7 +289,9 @@ pub fn main() {{
                                 ListInstruction::Function(..) => "function",
                             });
                         }
-                        locals.define(&instruction.output, &types).unwrap();
+                        locals
+                            .define(&instruction.value().unwrap().output, &types)
+                            .unwrap();
                     }
                 }
             }
@@ -370,10 +374,14 @@ pub fn main() {
                 }
                 for instruction in block.instructions() {
                     if let ProfiledInstructionKind::List(ListInstruction::Parameter(_, value)) =
-                        &instruction.kind
+                        &instruction.value().unwrap().kind
                     {
                         assert_eq!(
-                            context.parameter_list(value, &instruction.output, &locals),
+                            context.parameter_list(
+                                value,
+                                &instruction.value().unwrap().output,
+                                &locals
+                            ),
                             Ok(())
                         );
                         match value {
@@ -383,7 +391,9 @@ pub fn main() {
                             _ => {}
                         }
                     }
-                    locals.define(&instruction.output, &types).unwrap();
+                    locals
+                        .define(&instruction.value().unwrap().output, &types)
+                        .unwrap();
                 }
             }
         }
@@ -427,14 +437,16 @@ pub fn main() {
             .unwrap();
         let mut locals = Locals::default();
         for instruction in block.instructions() {
-            locals.define(&instruction.output, &types).unwrap();
+            locals
+                .define(&instruction.value().unwrap().output, &types)
+                .unwrap();
         }
         let lists = block
             .instructions()
             .iter()
-            .filter_map(|instruction| match &instruction.kind {
+            .filter_map(|instruction| match &instruction.value().unwrap().kind {
                 ProfiledInstructionKind::List(ListInstruction::Tuple(storage, _)) => {
-                    Some((*storage, &instruction.output))
+                    Some((*storage, &instruction.value().unwrap().output))
                 }
                 _ => None,
             })
@@ -544,14 +556,16 @@ pub fn main() {
             .unwrap();
         let mut locals = Locals::default();
         for instruction in block.instructions() {
-            locals.define(&instruction.output, &types).unwrap();
+            locals
+                .define(&instruction.value().unwrap().output, &types)
+                .unwrap();
         }
         let (output, storage) = block
             .instructions()
             .iter()
-            .find_map(|instruction| match &instruction.kind {
+            .find_map(|instruction| match &instruction.value().unwrap().kind {
                 ProfiledInstructionKind::List(ListInstruction::Int(id, _)) => {
-                    Some((&instruction.output, *id))
+                    Some((&instruction.value().unwrap().output, *id))
                 }
                 _ => None,
             })

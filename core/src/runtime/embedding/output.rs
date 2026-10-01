@@ -2,11 +2,12 @@ use super::list::EmbeddingList;
 use crate::StringValue;
 use crate::runtime::EvaluatedCustomValue;
 use crate::runtime::evaluated::{EvaluatedExternalValue, EvaluatedValue};
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{ParameterListValueId, StoredListValueId};
 use num_bigint::BigInt;
 
 pub(crate) struct EmbeddingOutput {
-    ints: Vec<BigInt>,
+    ints: Vec<IntegerValue>,
     floats: Vec<f64>,
     strings: Vec<StringValue>,
     bit_arrays: Vec<crate::BitArrayValue>,
@@ -45,7 +46,7 @@ impl EmbeddingOutput {
     }
 
     pub(crate) fn take_int(&mut self) -> BigInt {
-        take_last(&mut self.ints)
+        take_last(&mut self.ints).into_bigint()
     }
 
     pub(crate) fn take_float(&mut self) -> f64 {

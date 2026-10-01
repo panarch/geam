@@ -38,6 +38,7 @@ use crate::runtime::evaluated::{
     EvaluatedListFunction, EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction,
     EvaluatedTupleFunction, EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, ListValueId, NilListValueId,
@@ -48,7 +49,7 @@ use num_bigint::BigInt;
 
 #[derive(Default)]
 struct BlockValues {
-    ints: Vec<BigInt>,
+    ints: Vec<IntegerValue>,
     floats: Vec<f64>,
     strings: Vec<StringValue>,
     bit_arrays: Vec<EvaluatedBitArray>,
@@ -188,15 +189,15 @@ impl BlockEnvironment {
             .into_boxed_slice()
     }
 
-    pub(super) fn push_int(&mut self, value: BigInt) {
+    pub(super) fn push_int(&mut self, value: IntegerValue) {
         self.values.ints.push(value);
     }
 
-    pub(super) fn int(&self, local: IntLocalId) -> BigInt {
+    pub(super) fn int(&self, local: IntLocalId) -> IntegerValue {
         self.values.ints[local.0].clone()
     }
 
-    pub(super) fn int_ref(&self, local: IntLocalId) -> &BigInt {
+    pub(super) fn int_ref(&self, local: IntLocalId) -> &IntegerValue {
         &self.values.ints[local.0]
     }
 
@@ -814,7 +815,7 @@ impl RetainedValues {
         self.values.write_evaluated(value);
     }
 
-    pub(in crate::runtime) fn push_int(&mut self, value: BigInt) {
+    pub(in crate::runtime) fn push_int(&mut self, value: IntegerValue) {
         self.values.ints.push(value);
     }
 
@@ -1070,7 +1071,7 @@ impl RetainedValues {
 
 impl HostCallArguments for RetainedValues {
     fn int(&self, slot: HostIntArgumentSlot) -> BigInt {
-        self.values.ints[slot.index()].clone()
+        self.values.ints[slot.index()].bigint().into_owned()
     }
 
     fn float(&self, slot: HostFloatArgumentSlot) -> f64 {
@@ -1343,7 +1344,10 @@ pub fn main() -> List(Counter) { [] }
             .into(),
         });
 
-        assert_eq!(retained.values.ints, vec![20.into(), 10.into()]);
+        assert_eq!(
+            retained.values.ints,
+            vec![num_bigint::BigInt::from(20), num_bigint::BigInt::from(10)]
+        );
         assert!(retained.values.strings.is_empty());
         assert_eq!(std::ptr::from_ref(&*retained.values), owner);
         assert_eq!(retained.values.ints.as_ptr(), integers);
@@ -1384,12 +1388,15 @@ pub fn main() -> List(Counter) { [] }
                 ParamLocal::Int(IntLocalId(0)),
             ],
         );
-        assert_eq!(retained.values.ints, vec![20.into(), 10.into()]);
+        assert_eq!(
+            retained.values.ints,
+            vec![num_bigint::BigInt::from(20), num_bigint::BigInt::from(10)]
+        );
         assert!(retained.values.strings.is_empty());
 
         let environment = BlockEnvironment::from_retained(retained);
-        assert_eq!(environment.int(IntLocalId(0)), 20.into());
-        assert_eq!(environment.int(IntLocalId(1)), 10.into());
+        assert_eq!(environment.int(IntLocalId(0)), num_bigint::BigInt::from(20));
+        assert_eq!(environment.int(IntLocalId(1)), num_bigint::BigInt::from(10));
     }
 
     #[test]

@@ -5,9 +5,11 @@ use crate::plan::execution::type_::{
 };
 use crate::runtime::evaluated::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedValue};
 use crate::runtime::graph::RetainedValues;
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     CustomListAllocation, ExternalListAllocation, StoredListValueId,
 };
+use std::convert::identity;
 
 pub(crate) struct EmbeddingInput(EvaluatedValue);
 
@@ -79,12 +81,12 @@ impl EmbeddingCustomInput {
 }
 
 macro_rules! scalar_input {
-    ($type:ty, $list_type:ty, $variant:ident, $list:ident) => {
+    ($type:ty, $list_type:ty, $variant:ident, $list:ident, $convert:path) => {
         impl EmbeddingInputValue for $type {
             type ListType = $list_type;
 
             fn into_input(self) -> EmbeddingInput {
-                EmbeddingInput(EvaluatedValue::$variant(self))
+                EmbeddingInput(EvaluatedValue::$variant($convert(self)))
             }
 
             fn into_list(
@@ -92,18 +94,36 @@ macro_rules! scalar_input {
                 values: impl ExactSizeIterator<Item = Self>,
                 storage: &EmbeddingInputStorage,
             ) -> EmbeddingListInput {
-                let values = values.collect();
+                let values = values.map($convert).collect();
                 EmbeddingListInput(storage.lists().$list(type_, values).into())
             }
         }
     };
 }
 
-scalar_input!(num_bigint::BigInt, IntListTypeId, Int, int);
-scalar_input!(f64, FloatListTypeId, Float, float);
-scalar_input!(crate::StringValue, StringListTypeId, String, string);
-scalar_input!(char, UtfCodepointListTypeId, UtfCodepoint, utf_codepoint);
-scalar_input!(bool, BoolListTypeId, Bool, bool);
+scalar_input!(
+    num_bigint::BigInt,
+    IntListTypeId,
+    Int,
+    int,
+    IntegerValue::from
+);
+scalar_input!(f64, FloatListTypeId, Float, float, identity);
+scalar_input!(
+    crate::StringValue,
+    StringListTypeId,
+    String,
+    string,
+    identity
+);
+scalar_input!(
+    char,
+    UtfCodepointListTypeId,
+    UtfCodepoint,
+    utf_codepoint,
+    identity
+);
+scalar_input!(bool, BoolListTypeId, Bool, bool, identity);
 
 impl EmbeddingInputValue for crate::BitArrayValue {
     type ListType = BitArrayListTypeId;

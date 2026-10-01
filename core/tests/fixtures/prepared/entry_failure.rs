@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 9,
+    format: 10,
     program: data::ProgramTables {
         root: data::source::module_id(2),
         modules: data::Storage::Static(&[
@@ -112,20 +112,20 @@ pub fn main() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("before failure"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("prepared main failed"))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[]),

@@ -169,7 +169,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    match instruction.kind() {
+                    match instruction.value().unwrap().kind() {
                         ProfiledInstructionKind::Int(IntInstruction::Call {
                             function,
                             args,
@@ -177,7 +177,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                         }) => {
                             let target = function.resolve(&catalog, &types).unwrap();
                             target
-                                .call(args, instruction.output(), &locals, &types)
+                                .call(args, instruction.value().unwrap().output(), &locals, &types)
                                 .unwrap();
                             assert_eq!(
                                 target.arguments(&[], &locals, &types),
@@ -192,7 +192,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                             );
                             let invalid = ParamSlot {
                                 shape: ValueShapeId(999),
-                                ..instruction.output().clone()
+                                ..instruction.value().unwrap().output().clone()
                             };
                             assert_eq!(
                                 target.call(args, &invalid, &locals, &types),
@@ -201,7 +201,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                             assert_eq!(
                                 target.call(
                                     &[ParamLocal::Int(IntLocalId(999))],
-                                    instruction.output(),
+                                    instruction.value().unwrap().output(),
                                     &locals,
                                     &types
                                 ),
@@ -216,10 +216,22 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                             args,
                             ..
                         }) => {
-                            indirect(function, args, instruction.output(), &locals, &types)
-                                .unwrap();
+                            indirect(
+                                function,
+                                args,
+                                instruction.value().unwrap().output(),
+                                &locals,
+                                &types,
+                            )
+                            .unwrap();
                             assert_eq!(
-                                indirect(function, &[], instruction.output(), &locals, &types),
+                                indirect(
+                                    function,
+                                    &[],
+                                    instruction.value().unwrap().output(),
+                                    &locals,
+                                    &types
+                                ),
                                 Err(CallError::ArgumentCount {
                                     expected: args.len(),
                                     found: 0
@@ -231,7 +243,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                             );
                             let invalid = ParamSlot {
                                 shape: ValueShapeId(999),
-                                ..instruction.output().clone()
+                                ..instruction.value().unwrap().output().clone()
                             };
                             assert_eq!(
                                 indirect(function, args, &invalid, &locals, &types),
@@ -241,7 +253,7 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                                 indirect(
                                     function,
                                     &[ParamLocal::Int(IntLocalId(999))],
-                                    instruction.output(),
+                                    instruction.value().unwrap().output(),
                                     &locals,
                                     &types
                                 ),
@@ -250,14 +262,22 @@ pub fn main() { echo True double(21) + invoke(fn(x) { x + 2 }) }
                                 ))),
                             );
                             assert_eq!(
-                                indirect(&args[0], args, instruction.output(), &locals, &types),
+                                indirect(
+                                    &args[0],
+                                    args,
+                                    instruction.value().unwrap().output(),
+                                    &locals,
+                                    &types
+                                ),
                                 Err(CallError::NotFunction),
                             );
                             indirect_count += 1;
                         }
                         _ => {}
                     }
-                    locals.define(instruction.output(), &types).unwrap();
+                    locals
+                        .define(instruction.value().unwrap().output(), &types)
+                        .unwrap();
                 }
             }
         }

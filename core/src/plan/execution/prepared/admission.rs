@@ -757,7 +757,7 @@ pub fn main() { start(Builder(None)) }
         use crate::plan::execution::function::FunctionTableFamily;
         use crate::plan::execution::graph::{
             IntListLocalId, IntLocalId, ListInstruction, ListLocal, ParamLocal,
-            ProfiledInstructionKind, TupleInstruction, TypedListInstruction,
+            ProfiledInstruction, ProfiledInstructionKind, TupleInstruction, TypedListInstruction,
         };
         use crate::plan::execution::type_::{
             IntListTypeId, ListStorageTypeId, ListTypeId, ValueShapeId, ValueType,
@@ -826,7 +826,7 @@ pub fn main() {
                             .iter()
                             .enumerate()
                             .filter_map(|(index, instruction)| {
-                                match &instruction.kind {
+                                match &instruction.value().unwrap().kind {
                                     ProfiledInstructionKind::List(ListInstruction::Int(
                                         type_id,
                                         TypedListInstruction::Value(items),
@@ -849,7 +849,7 @@ pub fn main() {
                             .iter()
                             .enumerate()
                             .filter_map(|(index, instruction)| {
-                                match &instruction.kind {
+                                match &instruction.value().unwrap().kind {
                                     ProfiledInstructionKind::Tuple(TupleInstruction::Value(
                                         items,
                                     )) => Some((index, items.to_vec())),
@@ -863,7 +863,7 @@ pub fn main() {
                             Vec::new()
                         }
                     );
-                    let child = &mut instructions[3];
+                    let mut child = instructions[3].value().unwrap().clone();
                     assert_eq!(child.output.local, original_child);
                     let alias_type = IntListTypeId {
                         list_type: ListTypeId(artifact.program.list_types.types.len()),
@@ -894,11 +894,14 @@ pub fn main() {
                         });
                         let child_local = child.output.local.clone();
                         if tuple {
-                            instructions[4].kind = ProfiledInstructionKind::Tuple(
+                            let mut tuple_instruction = instructions[4].value().unwrap().clone();
+                            tuple_instruction.kind = ProfiledInstructionKind::Tuple(
                                 TupleInstruction::Value(vec![child_local].into()),
                             );
+                            instructions[4] = ProfiledInstruction::Value(tuple_instruction);
                         }
                     }
+                    instructions[3] = ProfiledInstruction::Value(child);
                 }
                 let artifact = Box::leak(Box::new(artifact));
                 let error = module(artifact, &functions::InfallibleHosts).err();
@@ -929,6 +932,51 @@ pub fn main() {
                 }
             }
         }
+    }
+
+    #[test]
+    fn arithmetic_regions_preserve_scalar_projections_and_list_guards_at_admission() {
+        use crate::plan::execution::graph::ProfiledInstruction;
+
+        let source = r#"
+type Boxed { Boxed(Int) }
+fn calculate(value: Int, pair: #(Int, Bool), boxed: Boxed, items: List(Int)) {
+  let scaled = value * 2 + 1
+  let first = pair.0
+  let negative = -first
+  let Boxed(field) = boxed
+  let assert [head, ..] = items
+  scaled + field + head - negative
+}
+pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("main"))
+            .unwrap();
+        let artifact = Box::leak(Box::new(artifact(bindings.prepare())));
+        let graph = &artifact.program.functions.value_returns.int_functions[1]
+            .body
+            .block_graph;
+        assert_eq!(
+            graph
+                .instructions
+                .iter()
+                .filter_map(|instruction| match instruction {
+                    ProfiledInstruction::IntegerRegion(region) => Some(region.nodes.len()),
+                    ProfiledInstruction::Value(_) => None,
+                })
+                .collect::<Vec<_>>(),
+            [2, 3]
+        );
+        let admitted = plain(artifact).unwrap();
+        assert!(std::ptr::eq(admitted.artifact, artifact));
+        let (execution, _) = admitted.into_execution();
+        assert_eq!(
+            crate::run_main(&execution, &mut Vec::new()).unwrap(),
+            crate::Value::Int(42.into())
+        );
     }
 
     fn artifact(prepared: PreparedModule) -> ModuleArtifact<Infallible> {
@@ -1272,11 +1320,11 @@ pub fn main() {
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 9; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 10; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 9; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 10; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -1390,7 +1438,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 9; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 10; regenerate the prepared program",
                 ),
             ),
             (
@@ -1597,7 +1645,7 @@ pub fn main() {
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 9; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 10; regenerate the prepared program",
                 ),
             ),
             (

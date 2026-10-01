@@ -1768,7 +1768,7 @@ mod tests {
         assert_eq!(block.instructions().len(), 1);
         let instruction = &block.instructions()[0];
         assert_eq!(
-            instruction.output().local(),
+            instruction.value().unwrap().output().local(),
             &ParamLocal::Int(IntLocalId(0))
         );
         assert_eq!(int_literal(instruction), 1.into());
@@ -1779,7 +1779,10 @@ mod tests {
         assert_eq!(block.instructions().len(), 3);
         for (index, instruction) in block.instructions()[..2].iter().enumerate() {
             let output = IntLocalId(index);
-            assert_eq!(instruction.output().local(), &ParamLocal::Int(output));
+            assert_eq!(
+                instruction.value().unwrap().output().local(),
+                &ParamLocal::Int(output)
+            );
             assert_eq!(int_constant(instruction), ConstantId::new(0));
         }
     }
@@ -2111,7 +2114,7 @@ pub fn main() { selected(1) }
     fn int_literal<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
     ) -> BigInt {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::Int(IntInstruction::Value(value)) => value.materialize(),
             _ => panic!("constant fixture should contain an Int literal"),
         }
@@ -2183,7 +2186,7 @@ pub fn main() { selected(1) }
     fn external_function_reference(
         instruction: &ProfiledInstruction<HostedExecutionGraph>,
     ) -> ExternalFunctionId {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::ExternalFunction(instruction) => {
                 match instruction.instruction().kind() {
                     ExternalFunctionInstructionKind::Reference(ExternalFunctionTarget::Value(
@@ -2253,7 +2256,7 @@ pub fn main() { selected(1) }
     fn int_constant<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
     ) -> ConstantId<IntLocalId> {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::Int(IntInstruction::Constant(id)) => *id,
             _ => panic!("constant fixture should reference an Int constant"),
         }
@@ -2262,7 +2265,7 @@ pub fn main() { selected(1) }
     fn string_constant<Graph: ExecutionGraphProfile>(
         instruction: &ProfiledInstruction<Graph>,
     ) -> ConstantId<StringLocalId> {
-        match instruction.kind() {
+        match instruction.value().unwrap().kind() {
             ProfiledInstructionKind::String(
                 crate::plan::execution::graph::StringInstruction::Constant(id),
             ) => *id,

@@ -29,6 +29,13 @@ values.
 Geam public runtime values are intentionally close to Rust values. For example,
 `Float` is exposed as `f64` rather than a custom Gleam float wrapper.
 
+`Int` remains arbitrary precision and crosses the Rust provider and embedding
+boundaries as `BigInt`. Internally, values within the `i64` range stay inline;
+larger values use arbitrary-precision storage. Arithmetic promotes or shrinks
+that private representation without changing the value, equality, ordering,
+hashing, or formatting. Borrowed aggregate readers convert small integers only
+when requested and retain conversions with the immutable value owner.
+
 That means Geam does not currently redefine all floating-point edge behavior:
 
 - Float arithmetic and ordering use Rust `f64` operations unless a narrower

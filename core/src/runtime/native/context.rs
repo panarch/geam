@@ -35,7 +35,7 @@ impl<'call> NativeValues<'call> {
 
     pub fn integer(self, value: BigInt) -> NativeValue {
         NativeValue::from_stored(StoredRuntimeValue::new(
-            EvaluatedValue::Int(value),
+            EvaluatedValue::Int(value.into()),
             self.metadata,
         ))
     }

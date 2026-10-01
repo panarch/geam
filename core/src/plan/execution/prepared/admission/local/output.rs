@@ -410,10 +410,12 @@ pub fn main() {
             .block_graph()
             .blocks()
             .flat_map(|block| block.instructions())
-            .filter_map(|instruction| match &instruction.output().local {
-                ParamLocal::GenericFunction(local) => Some(local),
-                _ => None,
-            })
+            .filter_map(
+                |instruction| match &instruction.value().unwrap().output().local {
+                    ParamLocal::GenericFunction(local) => Some(local),
+                    _ => None,
+                },
+            )
             .collect();
         assert_eq!(locals.len(), 1);
         let local = locals[0];

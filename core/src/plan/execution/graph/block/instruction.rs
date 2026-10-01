@@ -38,11 +38,21 @@ use crate::plan::execution::explain::{Explain, ExplainContext};
 use crate::plan::execution::function::FunctionLabelSource;
 use crate::plan::execution::function::{ExecutionGraphProfile, HostedExecutionGraph};
 use crate::plan::execution::graph::{
-    IntegerOperand, LocalLabel, ParamLocal, ParamSlot, write_local_labels,
+    ArithmeticRegion, IntegerOperand, LocalLabel, ParamLocal, ParamSlot, write_local_labels,
 };
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "scalar instructions remain inline without a separate allocation and indirection for each instruction"
+)]
 #[derive(Clone)]
-pub struct ProfiledInstruction<Graph: ExecutionGraphProfile> {
+pub enum ProfiledInstruction<Graph: ExecutionGraphProfile> {
+    Value(ProfiledValueInstruction<Graph>),
+    IntegerRegion(ArithmeticRegion),
+}
+
+#[derive(Clone)]
+pub struct ProfiledValueInstruction<Graph: ExecutionGraphProfile> {
     pub output: ParamSlot,
     pub kind: ProfiledInstructionKind<Graph>,
 }
@@ -73,21 +83,33 @@ impl<Graph: ExecutionGraphProfile> ProfiledInstruction<Graph> {
         output: ParamSlot,
         kind: ProfiledInstructionKind<Graph>,
     ) -> Self {
-        Self { output, kind }
+        Self::Value(ProfiledValueInstruction { output, kind })
     }
 
+    pub(crate) fn value(&self) -> Option<&ProfiledValueInstruction<Graph>> {
+        match self {
+            Self::Value(value) => Some(value),
+            Self::IntegerRegion(_) => None,
+        }
+    }
+
+    pub(crate) fn outputs(&self) -> impl Iterator<Item = &ParamSlot> {
+        let (single, region) = match self {
+            Self::Value(value) => (Some(&value.output), &[][..]),
+            Self::IntegerRegion(region) => (None, region.outputs.as_ref()),
+        };
+        single
+            .into_iter()
+            .chain(region.iter().map(|output| &output.slot))
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> ProfiledValueInstruction<Graph> {
     pub(crate) fn output(&self) -> &ParamSlot {
         &self.output
     }
-
     pub(crate) fn kind(&self) -> &ProfiledInstructionKind<Graph> {
         &self.kind
-    }
-
-    pub(in crate::plan::execution) fn into_parts(
-        self,
-    ) -> (ParamSlot, ProfiledInstructionKind<Graph>) {
-        (self.output, self.kind)
     }
 }
 
@@ -98,11 +120,16 @@ where
     Graph::ExternalFunctionInstruction: Explain,
 {
     fn write_explanation(&self, context: &mut ExplainContext<'_, '_>) {
-        context.push_str("    ");
-        context.write(self.output());
-        context.push_str(" = ");
-        context.write(self.kind());
-        context.push('\n');
+        match self {
+            Self::Value(value) => {
+                context.push_str("    ");
+                context.write(value.output());
+                context.push_str(" = ");
+                context.write(value.kind());
+                context.push('\n');
+            }
+            Self::IntegerRegion(region) => context.write(region),
+        }
     }
 }
 
@@ -241,10 +268,23 @@ where
     ProfiledInstructionKind<Graph>: Emit,
 {
     fn emit(&self, output: &mut Rust) {
-        let Self { output: slot, kind } = self;
+        match self {
+            Self::Value(value) => output.call("graph::ProfiledInstruction::Value", &[value]),
+            Self::IntegerRegion(value) => {
+                output.call("graph::ProfiledInstruction::IntegerRegion", &[value])
+            }
+        }
+    }
+}
+
+impl<Graph: ExecutionGraphProfile> Emit for ProfiledValueInstruction<Graph>
+where
+    ProfiledInstructionKind<Graph>: Emit,
+{
+    fn emit(&self, output: &mut Rust) {
         output.structure(
-            "graph::ProfiledInstruction",
-            &[("output", slot), ("kind", kind)],
+            "graph::ProfiledValueInstruction",
+            &[("output", &self.output), ("kind", &self.kind)],
         );
     }
 }
@@ -298,6 +338,7 @@ where
 
 #[cfg(test)]
 mod emission_tests {
+    use super::ProfiledValueInstruction;
     use super::{
         BitArrayInstruction, BoolInstruction, CustomInstruction, ExternalFunctionInstruction,
         ExternalFunctionInstructionKind, ExternalFunctionTarget, ExternalInstruction,
@@ -315,6 +356,48 @@ mod emission_tests {
         ExternalListTypeId, ExternalTypeId, FunctionType, IntListTypeId, ListTypeId, ValueShapeId,
         ValueType,
     };
+
+    #[test]
+    fn arithmetic_instruction_emits_its_complete_region() {
+        use crate::plan::execution::graph::{
+            ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, IntLocalId,
+        };
+        let instruction =
+            ProfiledInstruction::<HostedExecutionGraph>::IntegerRegion(ArithmeticRegion {
+                inputs: vec![].into(),
+                nodes: vec![
+                    ArithmeticNode::Negate(ArithmeticOperand::Immediate(0)),
+                    ArithmeticNode::Negate(ArithmeticOperand::Value(0)),
+                ]
+                .into(),
+                outputs: vec![ArithmeticOutput {
+                    value: 1,
+                    slot: ParamSlot::new(ParamLocal::Int(IntLocalId(0)), ValueShapeId(0)),
+                }]
+                .into(),
+                native: true,
+            });
+        assert_eq!(
+            Rust::expression(&instruction),
+            r#"data::graph::ProfiledInstruction::IntegerRegion(data::graph::ArithmeticRegion {
+    inputs: data::Storage::Static(&[]),
+    nodes: data::Storage::Static(&[
+        data::graph::ArithmeticNode::Negate(data::graph::ArithmeticOperand::Immediate(0)),
+        data::graph::ArithmeticNode::Negate(data::graph::ArithmeticOperand::Value(0)),
+    ]),
+    outputs: data::Storage::Static(&[
+        data::graph::ArithmeticOutput {
+            value: 1,
+            slot: data::graph::ParamSlot {
+                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                shape: data::type_::ValueShapeId(0),
+            },
+        },
+    ]),
+    native: true,
+})"#
+        );
+    }
 
     #[test]
     fn emits_each_instruction_family_and_preserves_the_output_slot() {
@@ -496,20 +579,21 @@ data::graph::ExternalFunctionInstruction {
                 format!("data::graph::ProfiledInstructionKind::{family}({expected})")
             );
         }
-        let instruction = ProfiledInstruction::<HostedExecutionGraph> {
-            output: ParamSlot::new(ParamLocal::Bool(BoolLocalId(2)), ValueShapeId(9)),
-            kind: Kind::Bool(BoolInstruction::Value(true)),
-        };
+        let instruction =
+            ProfiledInstruction::<HostedExecutionGraph>::Value(ProfiledValueInstruction {
+                output: ParamSlot::new(ParamLocal::Bool(BoolLocalId(2)), ValueShapeId(9)),
+                kind: Kind::Bool(BoolInstruction::Value(true)),
+            });
         assert_eq!(
             Rust::expression(&instruction),
             r#"
-data::graph::ProfiledInstruction {
+data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
     output: data::graph::ParamSlot {
         local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
         shape: data::type_::ValueShapeId(9),
     },
     kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-}"#
+})"#
             .trim_start_matches('\n')
         );
     }
@@ -621,7 +705,7 @@ pub fn main() { #(Boxed) }
                 .instructions();
             let instruction = &instructions[instructions.len() - 2];
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(instruction.kind());
+            context.write(instruction.value().unwrap().kind());
         });
     }
 }

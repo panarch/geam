@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 9,
+        format: 10,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -160,7 +160,7 @@ pub fn check() {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(0),
@@ -180,7 +180,7 @@ pub fn check() {
                                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     ]),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -265,7 +265,7 @@ pub fn check() {
                                         ]),
                                         params: data::Storage::Static(&[]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::CustomFunction(data::graph::CustomFunctionLocal {
                                                         id: data::graph::CustomFunctionLocalId(0),
@@ -306,7 +306,7 @@ pub fn check() {
                                                         captures: data::Storage::Static(&[]),
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[

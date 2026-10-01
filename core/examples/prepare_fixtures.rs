@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
-        "pub fn main() { 21 * 2 }",
+        include_str!("../tests/fixtures/prepared/arithmetic.gleam"),
     )?;
     let (arithmetic, _) =
         ModuleBuilder::new(arithmetic)?.function(FunctionDeclaration::<(), BigInt>::new("main"))?;

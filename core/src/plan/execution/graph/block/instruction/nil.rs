@@ -264,7 +264,9 @@ pub fn main() {
             let graph = plan.nil_function(NilFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-                if let ProfiledInstructionKind::Nil(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Nil(instruction) =
+                    instruction.value().unwrap().kind()
+                {
                     if first {
                         first = false;
                     } else {

@@ -99,7 +99,7 @@ fn collect_block(
         let mut uses = Vec::<DraftValueRef>::new();
         instruction.uses(&mut uses);
         collect_uses(uses, direct, definitions);
-        definitions.insert(instruction.output().key);
+        definitions.extend(instruction.outputs().map(|output| output.key));
     }
     let mut uses = Vec::<DraftValueRef>::new();
     block.terminator.uses(&mut uses);

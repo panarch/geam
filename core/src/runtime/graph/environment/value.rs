@@ -15,6 +15,7 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedValue,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
@@ -27,7 +28,6 @@ use crate::runtime::{
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction,
 };
-use num_bigint::BigInt;
 use std::convert::Infallible;
 
 pub(in crate::runtime) trait GraphValue: Sync {
@@ -62,7 +62,7 @@ macro_rules! local_value {
     };
 }
 
-local_value!(IntLocalId, BigInt, ints);
+local_value!(IntLocalId, IntegerValue, ints);
 local_value!(FloatLocalId, f64, floats);
 local_value!(StringLocalId, StringValue, strings);
 local_value!(BitArrayLocalId, EvaluatedBitArray, bit_arrays);
@@ -296,7 +296,7 @@ mod tests {
             environment.values.tuples,
             vec![vec![EvaluatedValue::Bool(true)]]
         );
-        assert_eq!(environment.int(IntLocalId(0)), 7.into());
+        assert_eq!(environment.int(IntLocalId(0)), num_bigint::BigInt::from(7));
         NilLocalId(0).take(&mut environment);
         assert_eq!(
             environment.values.tuples,

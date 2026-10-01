@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 9,
+        format: 10,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -124,7 +124,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -133,7 +133,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -166,13 +166,13 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 shape: data::type_::ValueShapeId(10),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("prepared work failed"))),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[]),
@@ -238,7 +238,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -250,7 +250,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -289,7 +289,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -321,8 +321,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     index: 0,
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -334,7 +334,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("app", "<anonymous:7>", data::source::SourceSpan::new(1371, 1394)),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -375,7 +375,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -387,8 +387,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -397,7 +397,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Immediate(1),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -441,7 +441,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -467,8 +467,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         captures: data::Storage::Static(&[]),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(1),
@@ -506,8 +506,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "capture", data::source::SourceSpan::new(974, 1007)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(0),
@@ -535,7 +535,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         },
                                                     ]),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -590,7 +590,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -622,8 +622,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         index: 0,
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(1),
@@ -661,8 +661,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "extend", data::source::SourceSpan::new(1080, 1108)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                         id: data::graph::CustomLocalId(1),
@@ -690,7 +690,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         },
                                                     ]),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -977,7 +977,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(0),
@@ -995,8 +995,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                     site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(113, 129)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(1),
@@ -1017,8 +1017,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                     site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(143, 161)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::External {
                                                         local: data::graph::ExternalListLocalId(0),
@@ -1041,8 +1041,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         },
                                                     ])),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::External {
                                                         local: data::graph::ExternalListLocalId(1),
@@ -1078,8 +1078,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(189, 205)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::ExternalFunction(data::graph::ExternalFunctionLocal {
                                                         id: data::graph::ExternalFunctionLocalId(0),
@@ -1119,8 +1119,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         ]),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::ExternalFunction(data::graph::ExternalFunctionLocal {
                                                         id: data::graph::ExternalFunctionLocalId(1),
@@ -1169,8 +1169,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(227, 255)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(1),
@@ -1193,8 +1193,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     args: data::Storage::Static(&[]),
                                                     site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(227, 257)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::External {
                                                         local: data::graph::ExternalListFunctionLocalId(0),
@@ -1237,8 +1237,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         ]),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::External {
                                                         local: data::graph::ExternalListFunctionLocalId(1),
@@ -1287,8 +1287,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(293, 326)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::External {
                                                         local: data::graph::ExternalListLocalId(0),
@@ -1310,8 +1310,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         site: data::source::HostCallSite::from_static("app", "make", data::source::SourceSpan::new(293, 328)),
                                                     },
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     shape: data::type_::ValueShapeId(0),
@@ -1322,8 +1322,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         2,
                                                     ]),
                                                 })),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -1354,7 +1354,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         ]),
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -1416,7 +1416,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(0),
@@ -1434,8 +1434,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                     site: data::source::HostCallSite::from_static("app", "collect", data::source::SourceSpan::new(476, 486)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::External {
                                                         local: data::graph::ExternalListLocalId(0),
@@ -1462,7 +1462,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         },
                                                     ])),
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -1555,7 +1555,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         ]),
                                         params: data::Storage::Static(&[]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     shape: data::type_::ValueShapeId(0),
@@ -1564,8 +1564,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     sign: data::Sign::NoSign,
                                                     digits: data::Storage::Static(&[]),
                                                 })),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(0),
@@ -1583,8 +1583,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                     site: data::source::HostCallSite::from_static("app", "failure", data::source::SourceSpan::new(642, 655)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -1610,7 +1610,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         captures: data::Storage::Static(&[]),
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -1678,7 +1678,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     shape: data::type_::ValueShapeId(0),
@@ -1689,8 +1689,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         1,
                                                     ]),
                                                 })),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::External(data::graph::ExternalLocal {
                                                         id: data::graph::ExternalLocalId(0),
@@ -1708,8 +1708,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                     site: data::source::HostCallSite::from_static("app", "invoke", data::source::SourceSpan::new(1354, 1367)),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -1752,7 +1752,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         ]),
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[
@@ -1924,7 +1924,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -1956,8 +1956,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     index: 0,
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(1),
@@ -1989,8 +1989,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     index: 0,
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(8),
@@ -2015,8 +2015,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     },
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(2),
@@ -2047,8 +2047,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     ]),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 shape: data::type_::ValueShapeId(8),
@@ -2073,8 +2073,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     },
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Tuple {
                                                     local: data::graph::TupleLocalId(0),
@@ -2089,7 +2089,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             ]))),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -2176,7 +2176,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::External {
                                                     local: data::graph::ExternalListLocalId(0),
@@ -2199,7 +2199,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     },
                                                 ])),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -2387,7 +2387,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             },
                                         ]),
                                         instructions: data::Storage::Static(&[
-                                            data::graph::ProfiledInstruction {
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     shape: data::type_::ValueShapeId(0),
@@ -2396,8 +2396,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                     left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                     right: data::graph::IntegerOperand::Immediate(1),
                                                 }),
-                                            },
-                                            data::graph::ProfiledInstruction {
+                                            }),
+                                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                                 output: data::graph::ParamSlot {
                                                     local: data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(1),
@@ -2428,7 +2428,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         ]),
                                                     },
                                                 }),
-                                            },
+                                            }),
                                         ]),
                                     },
                                     exits: data::Storage::Static(&[

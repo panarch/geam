@@ -33,6 +33,7 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedValue,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListAllocation, CustomListValueId,
     ExternalListAllocation, ExternalListValueId, FloatListValueId, FunctionListValueId,
@@ -40,7 +41,6 @@ use crate::runtime::state::list::{
     ParameterListValueId, StoredListValueId, StringListValueId, TupleListValueId,
     UtfCodepointListValueId,
 };
-use num_bigint::BigInt;
 
 pub(in crate::runtime) enum ListInstructionOutcome<'call, Value, Function, Constant, Error> {
     Ready(Value),
@@ -437,7 +437,7 @@ vector_family!(
     IntFamily,
     IntListTypeId,
     IntLocalId,
-    BigInt,
+    IntegerValue,
     IntListLocalId,
     IntListFunctionId,
     IntListValueId,

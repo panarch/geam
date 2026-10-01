@@ -1,4 +1,5 @@
 mod alignment;
+pub(in crate::plan::execution::lowering::graph) mod arithmetic;
 mod instruction;
 mod integer;
 mod pattern;
@@ -112,6 +113,7 @@ where
     TailCall: Clone,
 {
     integer::use_immediates(&mut graph);
+    arithmetic::form_regions(&mut graph);
     let liveness = GraphLiveness::analyze(graph.graph());
     let order = reachable_blocks(graph.graph());
     let block_ids = order
@@ -200,7 +202,9 @@ fn block_layout(
         .map(|source| values.allocate(source.value(block), context))
         .collect();
     for instruction in &block.instructions {
-        values.allocate(&instruction.output(), context);
+        for output in instruction.outputs() {
+            values.allocate(&output, context);
+        }
     }
     BlockLayout {
         id,
@@ -670,8 +674,11 @@ pub fn main() { choose(True, 10) }
         assert_int_shape(&plan, merge.params()[0].shape());
         assert_eq!(merge.instructions().len(), 1);
         let multiply = &merge.instructions()[0];
-        assert_eq!(multiply.output().local(), &ParamLocal::Int(IntLocalId(1)));
-        assert_int_shape(&plan, multiply.output().shape());
+        assert_eq!(
+            multiply.value().unwrap().output().local(),
+            &ParamLocal::Int(IntLocalId(1))
+        );
+        assert_int_shape(&plan, multiply.value().unwrap().output().shape());
         let (left, right) = int_binary_operands(multiply, IntBinaryOperation::Multiply);
         assert_eq!(
             (Rust::expression(&left), Rust::expression(&right)),
@@ -934,8 +941,11 @@ pub fn main() { loop(1) }
         assert_int_shape(plan, block.params()[0].shape());
         assert_eq!(block.instructions().len(), 1);
         let add = &block.instructions()[0];
-        assert_eq!(add.output().local(), &ParamLocal::Int(IntLocalId(1)));
-        assert_int_shape(plan, add.output().shape());
+        assert_eq!(
+            add.value().unwrap().output().local(),
+            &ParamLocal::Int(IntLocalId(1))
+        );
+        assert_int_shape(plan, add.value().unwrap().output().shape());
         assert!(matches!(
             int_binary_operands(add, IntBinaryOperation::Add),
             (IntegerOperand::Local(IntLocalId(0)), IntegerOperand::Immediate(value)) if value == addend
@@ -971,7 +981,7 @@ pub fn main() { loop(1) }
         instruction: &ProfiledInstruction<Graph>,
         operation: IntBinaryOperation,
     ) -> (IntegerOperand, IntegerOperand) {
-        match (operation, instruction.kind()) {
+        match (operation, instruction.value().unwrap().kind()) {
             (
                 IntBinaryOperation::Add,
                 ProfiledInstructionKind::Int(IntInstruction::Add { left, right }),

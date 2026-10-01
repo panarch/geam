@@ -204,7 +204,7 @@ mod explain_tests {
                 .unwrap()
                 .instructions()[0];
             let mut context = explain::ExplainContext::new(plan, output);
-            context.write(instruction.output());
+            context.write(instruction.value().unwrap().output());
         });
     }
 }

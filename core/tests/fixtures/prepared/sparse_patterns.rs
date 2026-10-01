@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 9,
+    format: 10,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -31,7 +31,7 @@ data::ModuleArtifact {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -49,8 +49,8 @@ data::ModuleArtifact {
                                             },
                                             fields: data::Storage::Static(&[]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -76,8 +76,8 @@ data::ModuleArtifact {
                                                 }),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -95,15 +95,15 @@ data::ModuleArtifact {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(721, 740)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static(":"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -112,8 +112,8 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(0),
                                             right: data::graph::StringLocalId(1),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(2),
@@ -131,8 +131,8 @@ data::ModuleArtifact {
                                             },
                                             fields: data::Storage::Static(&[]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(3)),
                                             shape: data::type_::ValueShapeId(0),
@@ -150,8 +150,8 @@ data::ModuleArtifact {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(755, 768)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(4)),
                                             shape: data::type_::ValueShapeId(0),
@@ -160,15 +160,15 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(2),
                                             right: data::graph::StringLocalId(3),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(5)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static(":"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(6)),
                                             shape: data::type_::ValueShapeId(0),
@@ -177,8 +177,8 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(4),
                                             right: data::graph::StringLocalId(5),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
@@ -189,8 +189,8 @@ data::ModuleArtifact {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(3),
@@ -210,8 +210,8 @@ data::ModuleArtifact {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(7)),
                                             shape: data::type_::ValueShapeId(0),
@@ -229,8 +229,8 @@ data::ModuleArtifact {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(783, 799)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(8)),
                                             shape: data::type_::ValueShapeId(0),
@@ -239,15 +239,15 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(6),
                                             right: data::graph::StringLocalId(7),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(9)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static(":"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(10)),
                                             shape: data::type_::ValueShapeId(0),
@@ -256,8 +256,8 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(8),
                                             right: data::graph::StringLocalId(9),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(4),
@@ -275,15 +275,15 @@ data::ModuleArtifact {
                                             },
                                             fields: data::Storage::Static(&[]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(11)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("fallback"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(12)),
                                             shape: data::type_::ValueShapeId(0),
@@ -302,8 +302,8 @@ data::ModuleArtifact {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(814, 837)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(13)),
                                             shape: data::type_::ValueShapeId(0),
@@ -312,7 +312,7 @@ data::ModuleArtifact {
                                             left: data::graph::StringLocalId(10),
                                             right: data::graph::StringLocalId(12),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -422,7 +422,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -443,15 +443,15 @@ data::ModuleArtifact {
                                             },
                                             index: 0,
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("unnamed"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -466,7 +466,7 @@ data::ModuleArtifact {
                                             },
                                             index: 0,
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -566,14 +566,14 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("empty"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -594,8 +594,8 @@ data::ModuleArtifact {
                                             },
                                             index: 0,
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -610,7 +610,7 @@ data::ModuleArtifact {
                                             },
                                             index: 0,
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -698,20 +698,20 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("missing"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("number"))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -827,7 +827,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -842,7 +842,7 @@ data::ModuleArtifact {
                                             },
                                             index: 0,
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[

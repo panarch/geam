@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 9,
+    format: 10,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -235,13 +235,13 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("prepared stop"))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[]),
@@ -4166,7 +4166,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4175,8 +4175,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4188,8 +4188,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1078, 1094)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4198,8 +4198,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -4208,8 +4208,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
@@ -4221,15 +4221,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1121, 1138)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(2)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4238,8 +4238,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Float(data::graph::FloatLocalId(1)),
                                             right: data::graph::ParamLocal::Float(data::graph::FloatLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
@@ -4248,8 +4248,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             shape: data::type_::ValueShapeId(2),
@@ -4261,15 +4261,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1166, 1180)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4278,8 +4278,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             right: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -4288,8 +4288,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
                                             shape: data::type_::ValueShapeId(3),
@@ -4301,8 +4301,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1211, 1225)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4313,8 +4313,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(2)),
                                             shape: data::type_::ValueShapeId(3),
@@ -4326,8 +4326,8 @@ fn integer_comparisons() {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4336,8 +4336,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
                                             right: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -4352,8 +4352,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -4383,8 +4383,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1256, 1271)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4395,8 +4395,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(2),
@@ -4416,8 +4416,8 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4438,8 +4438,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4448,8 +4448,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4461,15 +4461,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1303, 1317)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4478,8 +4478,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(7),
@@ -4488,8 +4488,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
                                             shape: data::type_::ValueShapeId(7),
@@ -4501,15 +4501,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1346, 1359)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(2)),
                                             shape: data::type_::ValueShapeId(7),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4518,8 +4518,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
                                             right: data::graph::ParamLocal::Nil(data::graph::NilLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -4534,8 +4534,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(1),
@@ -4559,8 +4559,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1387, 1401)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4571,15 +4571,15 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(2),
@@ -4594,8 +4594,8 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4616,8 +4616,8 @@ fn integer_comparisons() {
                                                 ]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             shape: data::type_::ValueShapeId(20),
@@ -4627,8 +4627,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1446, 1457)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(1)),
                                             shape: data::type_::ValueShapeId(20),
@@ -4640,8 +4640,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1437, 1458)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(2)),
                                             shape: data::type_::ValueShapeId(20),
@@ -4651,8 +4651,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1462, 1473)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4661,8 +4661,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(1)),
                                             right: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(2)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -4678,8 +4678,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(1),
@@ -4708,8 +4708,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1495, 1512)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4720,8 +4720,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(2),
@@ -4736,8 +4736,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4756,8 +4756,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(0),
@@ -4773,8 +4773,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(1),
@@ -4803,15 +4803,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1541, 1559)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(2),
@@ -4826,8 +4826,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::FloatLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4846,8 +4846,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(0),
@@ -4863,8 +4863,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(1),
@@ -4893,15 +4893,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1589, 1604)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(2),
@@ -4916,8 +4916,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::StringLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -4936,8 +4936,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(0),
@@ -4953,8 +4953,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(1),
@@ -4983,8 +4983,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1637, 1653)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -4995,8 +4995,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -5008,8 +5008,8 @@ fn integer_comparisons() {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(2),
@@ -5024,8 +5024,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::BitArrayLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5044,8 +5044,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(0),
@@ -5063,8 +5063,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(1),
@@ -5097,8 +5097,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1686, 1701)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -5109,8 +5109,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -5130,8 +5130,8 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(2),
@@ -5154,8 +5154,8 @@ fn integer_comparisons() {
                                                 },
                                             },
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5176,8 +5176,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(0),
@@ -5193,8 +5193,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(1),
@@ -5223,15 +5223,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1735, 1750)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(2),
@@ -5246,8 +5246,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::BoolLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5266,8 +5266,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(0),
@@ -5283,8 +5283,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(1),
@@ -5313,15 +5313,15 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1781, 1795)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(7),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(2),
@@ -5336,8 +5336,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::NilLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5356,8 +5356,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(0),
@@ -5375,8 +5375,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(1),
@@ -5409,8 +5409,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1825, 1840)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -5421,15 +5421,15 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -5444,8 +5444,8 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(2),
@@ -5462,8 +5462,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::TupleLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5484,8 +5484,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(0),
@@ -5503,8 +5503,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(1),
@@ -5537,8 +5537,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1878, 1894)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -5549,8 +5549,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -5565,8 +5565,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(2),
@@ -5583,8 +5583,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::StoredListLocal::Int(data::graph::IntListLocalId(0)),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5605,8 +5605,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Function {
                                                 local: data::graph::FunctionListLocalId(0),
@@ -5624,8 +5624,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Function {
                                                 local: data::graph::FunctionListLocalId(1),
@@ -5658,8 +5658,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1928, 1947)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -5670,8 +5670,8 @@ fn integer_comparisons() {
                                                 41,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -5683,8 +5683,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(1968, 1977)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5693,8 +5693,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             shape: data::type_::ValueShapeId(20),
@@ -5704,8 +5704,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2014, 2025)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(0),
@@ -5720,8 +5720,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::UtfCodepointLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(1),
@@ -5750,8 +5750,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2004, 2027)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(1)),
                                             shape: data::type_::ValueShapeId(20),
@@ -5761,8 +5761,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2032, 2043)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(2),
@@ -5777,8 +5777,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::UtfCodepointLocalId(1),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5797,8 +5797,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(0),
@@ -5814,8 +5814,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(1),
@@ -5844,8 +5844,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2065, 2088)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(2),
@@ -5858,8 +5858,8 @@ fn integer_comparisons() {
                                         kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::UtfCodepoint(data::type_::UtfCodepointListTypeId {
                                             list_type: data::type_::ListTypeId(10),
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5878,8 +5878,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -5897,8 +5897,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(1),
@@ -5931,8 +5931,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2115, 2133)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(2),
@@ -5957,8 +5957,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2137, 2144)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -5979,8 +5979,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(0),
@@ -6004,8 +6004,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(1),
@@ -6050,8 +6050,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2165, 2190)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(2),
@@ -6085,8 +6085,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2194, 2208)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6113,8 +6113,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(0),
@@ -6136,8 +6136,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(1),
@@ -6168,8 +6168,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2230, 2255)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -6179,8 +6179,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2230, 2257)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6189,8 +6189,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::FloatFunction {
                                                 local: data::graph::FloatFunctionLocalId(0),
@@ -6212,8 +6212,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::FloatFunction {
                                                 local: data::graph::FloatFunctionLocalId(1),
@@ -6244,8 +6244,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2284, 2310)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -6255,15 +6255,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2284, 2312)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6272,8 +6272,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             right: data::graph::ParamLocal::Float(data::graph::FloatLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::StringFunction {
                                                 local: data::graph::StringFunctionLocalId(0),
@@ -6295,8 +6295,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::StringFunction {
                                                 local: data::graph::StringFunctionLocalId(1),
@@ -6327,8 +6327,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2340, 2363)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
@@ -6338,15 +6338,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2340, 2365)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6355,8 +6355,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArrayFunction {
                                                 local: data::graph::BitArrayFunctionLocalId(0),
@@ -6378,8 +6378,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArrayFunction {
                                                 local: data::graph::BitArrayFunctionLocalId(1),
@@ -6410,8 +6410,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2396, 2419)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -6421,8 +6421,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2396, 2421)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -6433,8 +6433,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
                                             shape: data::type_::ValueShapeId(3),
@@ -6446,8 +6446,8 @@ fn integer_comparisons() {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6456,8 +6456,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             right: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::CustomFunction(data::graph::CustomFunctionLocal {
                                                 id: data::graph::CustomFunctionLocalId(0),
@@ -6492,8 +6492,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::CustomFunction(data::graph::CustomFunctionLocal {
                                                 id: data::graph::CustomFunctionLocalId(1),
@@ -6551,8 +6551,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2452, 2476)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -6581,8 +6581,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2452, 2478)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -6593,8 +6593,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -6614,8 +6614,8 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6636,8 +6636,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BoolFunction {
                                                 local: data::graph::BoolFunctionLocalId(0),
@@ -6659,8 +6659,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BoolFunction {
                                                 local: data::graph::BoolFunctionLocalId(1),
@@ -6691,8 +6691,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2510, 2533)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6702,15 +6702,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2510, 2535)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6719,8 +6719,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             right: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::NilFunction {
                                                 local: data::graph::NilFunctionLocalId(0),
@@ -6742,8 +6742,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::NilFunction {
                                                 local: data::graph::NilFunctionLocalId(1),
@@ -6774,8 +6774,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2564, 2586)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(7),
@@ -6785,15 +6785,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2564, 2588)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
                                             shape: data::type_::ValueShapeId(7),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6802,8 +6802,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             right: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::TupleFunction {
                                                 local: data::graph::TupleFunctionLocalId(0),
@@ -6831,8 +6831,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::TupleFunction {
                                                 local: data::graph::TupleFunctionLocalId(1),
@@ -6872,8 +6872,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2616, 2639)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -6889,8 +6889,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2616, 2641)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -6901,15 +6901,15 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(1),
@@ -6924,8 +6924,8 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -6946,8 +6946,8 @@ fn integer_comparisons() {
                                                 ]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepointFunction {
                                                 local: data::graph::UtfCodepointFunctionLocalId(0),
@@ -6969,8 +6969,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepointFunction {
                                                 local: data::graph::UtfCodepointFunctionLocalId(1),
@@ -7001,8 +7001,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2677, 2707)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             shape: data::type_::ValueShapeId(20),
@@ -7012,8 +7012,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2677, 2709)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(1)),
                                             shape: data::type_::ValueShapeId(20),
@@ -7023,8 +7023,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2713, 2724)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7033,8 +7033,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             right: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Int {
                                                 local: data::graph::IntListFunctionLocalId(0),
@@ -7064,8 +7064,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Int {
                                                 local: data::graph::IntListFunctionLocalId(1),
@@ -7111,8 +7111,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2745, 2771)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -7138,8 +7138,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2745, 2773)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -7150,8 +7150,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(1),
@@ -7166,8 +7166,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7186,8 +7186,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Float {
                                                 local: data::graph::FloatListFunctionLocalId(0),
@@ -7217,8 +7217,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Float {
                                                 local: data::graph::FloatListFunctionLocalId(1),
@@ -7264,8 +7264,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2802, 2829)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(0),
@@ -7291,15 +7291,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2802, 2831)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(1),
@@ -7314,8 +7314,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::FloatLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7334,8 +7334,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::String {
                                                 local: data::graph::StringListFunctionLocalId(0),
@@ -7365,8 +7365,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::String {
                                                 local: data::graph::StringListFunctionLocalId(1),
@@ -7412,8 +7412,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2861, 2885)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(0),
@@ -7439,15 +7439,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2861, 2887)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(1),
@@ -7462,8 +7462,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::StringLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7482,8 +7482,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::BitArray {
                                                 local: data::graph::BitArrayListFunctionLocalId(0),
@@ -7513,8 +7513,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::BitArray {
                                                 local: data::graph::BitArrayListFunctionLocalId(1),
@@ -7560,8 +7560,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2920, 2945)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(0),
@@ -7587,8 +7587,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2920, 2947)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -7599,8 +7599,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -7612,8 +7612,8 @@ fn integer_comparisons() {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(1),
@@ -7628,8 +7628,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::BitArrayLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7648,8 +7648,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Custom {
                                                 local: data::graph::CustomListFunctionLocalId(0),
@@ -7681,8 +7681,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Custom {
                                                 local: data::graph::CustomListFunctionLocalId(1),
@@ -7731,8 +7731,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2980, 3004)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(0),
@@ -7761,8 +7761,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(2980, 3006)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -7773,8 +7773,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -7794,8 +7794,8 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(1),
@@ -7818,8 +7818,8 @@ fn integer_comparisons() {
                                                 },
                                             },
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7840,8 +7840,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Bool {
                                                 local: data::graph::BoolListFunctionLocalId(0),
@@ -7871,8 +7871,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Bool {
                                                 local: data::graph::BoolListFunctionLocalId(1),
@@ -7918,8 +7918,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3040, 3064)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(0),
@@ -7945,15 +7945,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3040, 3066)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(1),
@@ -7968,8 +7968,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::BoolLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -7988,8 +7988,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Nil {
                                                 local: data::graph::NilListFunctionLocalId(0),
@@ -8019,8 +8019,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Nil {
                                                 local: data::graph::NilListFunctionLocalId(1),
@@ -8066,8 +8066,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3097, 3120)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(0),
@@ -8093,15 +8093,15 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3097, 3122)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(7),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(1),
@@ -8116,8 +8116,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::NilLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -8136,8 +8136,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Tuple {
                                                 local: data::graph::TupleListFunctionLocalId(0),
@@ -8169,8 +8169,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Tuple {
                                                 local: data::graph::TupleListFunctionLocalId(1),
@@ -8219,8 +8219,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3152, 3176)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(0),
@@ -8249,8 +8249,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3152, 3178)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -8261,15 +8261,15 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -8284,8 +8284,8 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(1),
@@ -8302,8 +8302,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::TupleLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -8324,8 +8324,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::List {
                                                 local: data::graph::ListListFunctionLocalId(0),
@@ -8357,8 +8357,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::List {
                                                 local: data::graph::ListListFunctionLocalId(1),
@@ -8407,8 +8407,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3216, 3241)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(0),
@@ -8437,8 +8437,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3216, 3243)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -8449,8 +8449,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -8465,8 +8465,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(1),
@@ -8483,8 +8483,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::StoredListLocal::Int(data::graph::IntListLocalId(0)),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -8505,8 +8505,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListFunctionLocalId(0),
@@ -8536,8 +8536,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListFunctionLocalId(1),
@@ -8583,8 +8583,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3274, 3306)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(0),
@@ -8610,8 +8610,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3274, 3308)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             shape: data::type_::ValueShapeId(20),
@@ -8621,8 +8621,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3313, 3324)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(1),
@@ -8637,8 +8637,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::UtfCodepointLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -8657,8 +8657,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Parameter {
                                                 local: data::graph::ParameterListFunctionLocalId(0),
@@ -8690,8 +8690,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Parameter {
                                                 local: data::graph::ParameterListFunctionLocalId(1),
@@ -8740,8 +8740,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3346, 3373)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -8770,8 +8770,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3346, 3375)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(1),
@@ -8796,8 +8796,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3379, 3386)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -8818,8 +8818,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::ParameterList {
                                                 local: data::graph::ParameterListListFunctionLocalId(0),
@@ -8857,8 +8857,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::ParameterList {
                                                 local: data::graph::ParameterListListFunctionLocalId(1),
@@ -8916,8 +8916,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3407, 3441)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(0),
@@ -8955,8 +8955,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3407, 3443)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(1),
@@ -8990,8 +8990,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3447, 3461)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9018,8 +9018,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Function {
                                                 local: data::graph::FunctionListFunctionLocalId(0),
@@ -9051,8 +9051,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Function {
                                                 local: data::graph::FunctionListFunctionLocalId(1),
@@ -9101,8 +9101,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3485, 3513)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Function {
                                                 local: data::graph::FunctionListLocalId(0),
@@ -9131,8 +9131,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3485, 3515)),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9143,8 +9143,8 @@ fn integer_comparisons() {
                                                 41,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9156,8 +9156,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3536, 3545)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9166,8 +9166,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
                                                 id: data::graph::CoreFunctionFunctionLocalId(0),
@@ -9211,8 +9211,8 @@ fn integer_comparisons() {
                                                 captures: data::Storage::Static(&[]),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
                                                 id: data::graph::CoreFunctionFunctionLocalId(1),
@@ -9305,8 +9305,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3572, 3599)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(0),
@@ -9356,8 +9356,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3572, 3601)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9368,8 +9368,8 @@ fn integer_comparisons() {
                                                 41,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9381,8 +9381,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3572, 3605)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9391,8 +9391,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::GenericFunction(data::graph::GenericFunctionLocal {
                                                 id: data::graph::GenericFunctionLocalId(0),
@@ -9449,8 +9449,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3624, 3633)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
                                                 id: data::graph::NeverFunctionLocalId(0),
@@ -9507,8 +9507,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3635, 3642)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -9571,8 +9571,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9583,8 +9583,8 @@ fn integer_comparisons() {
                                                 20,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(0),
@@ -9613,8 +9613,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3664, 3675)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9625,8 +9625,8 @@ fn integer_comparisons() {
                                                 22,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9638,8 +9638,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3664, 3679)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9648,8 +9648,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9660,8 +9660,8 @@ fn integer_comparisons() {
                                                 8,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9673,8 +9673,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3706, 3718)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9683,8 +9683,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(42),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9693,8 +9693,8 @@ fn integer_comparisons() {
                                             sign: data::Sign::NoSign,
                                             digits: data::Storage::Static(&[]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9705,8 +9705,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -9722,8 +9722,8 @@ fn integer_comparisons() {
                                             data::graph::IntLocalId(0),
                                             data::graph::IntLocalId(1),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(0),
@@ -9748,8 +9748,8 @@ fn integer_comparisons() {
                                                 }),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9760,8 +9760,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(1),
@@ -9776,8 +9776,8 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::IntLocalId(0),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9796,8 +9796,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9806,8 +9806,8 @@ fn integer_comparisons() {
                                             sign: data::Sign::NoSign,
                                             digits: data::Storage::Static(&[]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9818,8 +9818,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -9835,8 +9835,8 @@ fn integer_comparisons() {
                                             data::graph::IntLocalId(0),
                                             data::graph::IntLocalId(1),
                                         ])))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                 id: data::graph::CustomLocalId(1),
@@ -9861,8 +9861,8 @@ fn integer_comparisons() {
                                                 }),
                                             ]),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9883,8 +9883,8 @@ fn integer_comparisons() {
                                                 },
                                             }),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9893,8 +9893,8 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -9904,8 +9904,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "run", data::source::SourceSpan::new(3894, 3915)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9916,7 +9916,7 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -9940,7 +9940,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(0),
@@ -9967,8 +9967,8 @@ fn integer_comparisons() {
                                                 site: data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3956)),
                                             },
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9977,8 +9977,8 @@ fn integer_comparisons() {
                                             sign: data::Sign::NoSign,
                                             digits: data::Storage::Static(&[]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -9990,7 +9990,7 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3959)),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10123,7 +10123,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10132,7 +10132,7 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(1),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10156,7 +10156,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10165,7 +10165,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10258,7 +10258,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10269,8 +10269,8 @@ fn integer_comparisons() {
                                                 42,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10279,7 +10279,7 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(1),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10312,7 +10312,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10321,7 +10321,7 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10354,13 +10354,13 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("prepared stop"))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[]),
@@ -10411,7 +10411,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -10420,7 +10420,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10473,7 +10473,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
@@ -10482,7 +10482,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10535,7 +10535,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -10544,7 +10544,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10644,7 +10644,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -10655,8 +10655,8 @@ fn integer_comparisons() {
                                                 65,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(3),
@@ -10668,7 +10668,7 @@ fn integer_comparisons() {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -10810,7 +10810,7 @@ fn integer_comparisons() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(0),
@@ -10825,7 +10825,7 @@ fn integer_comparisons() {
                                                 index: 0,
                                                 value: ::core::marker::PhantomData,
                                             })),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -10886,7 +10886,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -10895,7 +10895,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -12520,7 +12520,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12532,8 +12532,8 @@ fn integer_comparisons() {
                                                 2147483648,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12545,8 +12545,8 @@ fn integer_comparisons() {
                                                 2147483647,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12555,8 +12555,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Immediate(9223372036854775807),
                                             right: data::graph::IntegerOperand::Immediate(1),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12565,8 +12565,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(1),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12575,8 +12575,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Immediate(-9223372036854775808),
                                             right: data::graph::IntegerOperand::Immediate(-1),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12585,8 +12585,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(-1),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12595,8 +12595,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Immediate(-7),
                                             right: data::graph::IntegerOperand::Immediate(3),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12605,8 +12605,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Immediate(-7),
                                             right: data::graph::IntegerOperand::Immediate(3),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12615,8 +12615,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(0),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12625,8 +12625,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Immediate(0),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12635,8 +12635,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12648,8 +12648,8 @@ fn integer_comparisons() {
                                                 2147483648,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12658,8 +12658,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12671,8 +12671,8 @@ fn integer_comparisons() {
                                                 2147483648,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12681,8 +12681,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12697,8 +12697,8 @@ fn integer_comparisons() {
                                                 1,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12713,8 +12713,8 @@ fn integer_comparisons() {
                                                 1,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -12733,8 +12733,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "integer_comparisons", data::source::SourceSpan::new(4807, 4826)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -12753,22 +12753,22 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "integer_comparisons", data::source::SourceSpan::new(4857, 4880)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("left"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("right"))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -12787,8 +12787,8 @@ fn integer_comparisons() {
                                             ]),
                                             site: data::source::HostCallSite::from_static("example", "integer_comparisons", data::source::SourceSpan::new(4911, 4935)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12797,8 +12797,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12807,8 +12807,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12817,8 +12817,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12827,8 +12827,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12837,8 +12837,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12847,8 +12847,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12857,8 +12857,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12867,8 +12867,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
@@ -12883,8 +12883,8 @@ fn integer_comparisons() {
                                                 1,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -12893,14 +12893,14 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -12953,7 +12953,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                             shape: data::type_::ValueShapeId(7),
@@ -12962,7 +12962,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13021,7 +13021,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -13036,7 +13036,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13069,7 +13069,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -13078,8 +13078,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -13088,8 +13088,8 @@ fn integer_comparisons() {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -13104,7 +13104,7 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                         ]))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13137,7 +13137,7 @@ fn integer_comparisons() {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(6),
@@ -13146,8 +13146,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             shape: data::type_::ValueShapeId(6),
@@ -13156,8 +13156,8 @@ fn integer_comparisons() {
                                             left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -13172,7 +13172,7 @@ fn integer_comparisons() {
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                         ]))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13245,7 +13245,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -13260,7 +13260,7 @@ fn integer_comparisons() {
                                             list_type: data::type_::ListTypeId(11),
                                             item: data::type_::parameter_id(0),
                                         }, data::graph::ParameterListInstruction::Empty)),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13290,7 +13290,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -13308,7 +13308,7 @@ fn integer_comparisons() {
                                             index: 1,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13338,7 +13338,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -13353,7 +13353,7 @@ fn integer_comparisons() {
                                             list_type: data::type_::ListTypeId(14),
                                             item: data::type_::parameter_id(2),
                                         }, data::graph::ParameterListInstruction::Empty)),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13421,7 +13421,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -13437,7 +13437,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13505,7 +13505,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                 local: data::graph::StringListLocalId(0),
@@ -13521,7 +13521,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13589,7 +13589,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                 local: data::graph::BitArrayListLocalId(0),
@@ -13605,7 +13605,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13673,7 +13673,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                             shape: data::type_::ValueShapeId(20),
@@ -13683,8 +13683,8 @@ fn integer_comparisons() {
                                             args: data::Storage::Static(&[]),
                                             site: data::source::HostCallSite::from_static("example", "<anonymous:19>", data::source::SourceSpan::new(3291, 3302)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                                 local: data::graph::UtfCodepointListLocalId(0),
@@ -13699,7 +13699,7 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::UtfCodepointLocalId(0),
                                         ])))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13770,7 +13770,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                 local: data::graph::CustomListLocalId(0),
@@ -13788,7 +13788,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13857,7 +13857,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                                 local: data::graph::FloatListLocalId(0),
@@ -13873,7 +13873,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -13941,7 +13941,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                                 local: data::graph::BoolListLocalId(0),
@@ -13957,7 +13957,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14025,7 +14025,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                                 local: data::graph::NilListLocalId(0),
@@ -14041,7 +14041,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14112,7 +14112,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                                 local: data::graph::TupleListLocalId(0),
@@ -14130,7 +14130,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14210,7 +14210,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -14225,8 +14225,8 @@ fn integer_comparisons() {
                                             list_type: data::type_::ListTypeId(12),
                                             item: data::type_::parameter_id(1),
                                         }, data::graph::ParameterListInstruction::Empty)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(0),
@@ -14249,7 +14249,7 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::ParameterListLocalId(0),
                                         ])))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14282,7 +14282,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(0),
@@ -14306,7 +14306,7 @@ fn integer_comparisons() {
                                             index: 1,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14339,7 +14339,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -14354,8 +14354,8 @@ fn integer_comparisons() {
                                             list_type: data::type_::ListTypeId(15),
                                             item: data::type_::parameter_id(3),
                                         }, data::graph::ParameterListInstruction::Empty)),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                                 local: data::graph::ParameterListListLocalId(0),
@@ -14378,7 +14378,7 @@ fn integer_comparisons() {
                                         }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                             data::graph::ParameterListLocalId(0),
                                         ])))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14449,7 +14449,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                                 local: data::graph::ListListLocalId(0),
@@ -14467,7 +14467,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14538,7 +14538,7 @@ fn integer_comparisons() {
                                 ]),
                                 params: data::Storage::Static(&[]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::List(data::graph::ListLocal::Function {
                                                 local: data::graph::FunctionListLocalId(0),
@@ -14556,7 +14556,7 @@ fn integer_comparisons() {
                                             index: 0,
                                             value: ::core::marker::PhantomData,
                                         }))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -14636,7 +14636,7 @@ fn integer_comparisons() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -14662,7 +14662,7 @@ fn integer_comparisons() {
                                                     value: ::core::marker::PhantomData,
                                                 }),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -14702,7 +14702,7 @@ fn integer_comparisons() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -14733,7 +14733,7 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -14768,7 +14768,7 @@ fn integer_comparisons() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -14791,7 +14791,7 @@ fn integer_comparisons() {
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Int(data::function::IntFunctionId(8))),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -15218,7 +15218,7 @@ fn integer_comparisons() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::GenericFunction(data::graph::GenericFunctionLocal {
                                                     id: data::graph::GenericFunctionLocalId(0),
@@ -15257,7 +15257,7 @@ fn integer_comparisons() {
                                                     ]),
                                                 })),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -15313,7 +15313,7 @@ fn integer_comparisons() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
                                                     id: data::graph::NeverFunctionLocalId(0),
@@ -15347,7 +15347,7 @@ fn integer_comparisons() {
                                                 family: data::function::FunctionReturnFamily::Never,
                                                 kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Never(data::function::NeverFunctionId(0))),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -16249,7 +16249,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16260,7 +16260,7 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16282,13 +16282,13 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                     shape: data::type_::ValueShapeId(2),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16310,7 +16310,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16321,8 +16321,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                     shape: data::type_::ValueShapeId(3),
@@ -16334,7 +16334,7 @@ fn integer_comparisons() {
                                         endianness: data::graph::Endianness::Big,
                                     },
                                 ]))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16356,7 +16356,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16367,8 +16367,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                         id: data::graph::CustomLocalId(0),
@@ -16388,7 +16388,7 @@ fn integer_comparisons() {
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     ]),
                                 }),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16416,13 +16416,13 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                     shape: data::type_::ValueShapeId(1),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16444,13 +16444,13 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     shape: data::type_::ValueShapeId(6),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16472,13 +16472,13 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                     shape: data::type_::ValueShapeId(7),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16500,7 +16500,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16511,15 +16511,15 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     shape: data::type_::ValueShapeId(6),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Tuple {
                                         local: data::graph::TupleLocalId(0),
@@ -16534,7 +16534,7 @@ fn integer_comparisons() {
                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                 ]))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16556,7 +16556,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                         local: data::graph::ParameterListLocalId(0),
@@ -16571,7 +16571,7 @@ fn integer_comparisons() {
                                     list_type: data::type_::ListTypeId(11),
                                     item: data::type_::parameter_id(0),
                                 }, data::graph::ParameterListInstruction::Empty)),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16591,7 +16591,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                         local: data::graph::ParameterListLocalId(0),
@@ -16606,7 +16606,7 @@ fn integer_comparisons() {
                                     list_type: data::type_::ListTypeId(14),
                                     item: data::type_::parameter_id(2),
                                 }, data::graph::ParameterListInstruction::Empty)),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16628,7 +16628,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                         local: data::graph::ParameterListLocalId(0),
@@ -16643,8 +16643,8 @@ fn integer_comparisons() {
                                     list_type: data::type_::ListTypeId(12),
                                     item: data::type_::parameter_id(1),
                                 }, data::graph::ParameterListInstruction::Empty)),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                         local: data::graph::ParameterListListLocalId(0),
@@ -16667,7 +16667,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::ParameterListLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16687,7 +16687,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                         local: data::graph::ParameterListLocalId(0),
@@ -16702,8 +16702,8 @@ fn integer_comparisons() {
                                     list_type: data::type_::ListTypeId(15),
                                     item: data::type_::parameter_id(3),
                                 }, data::graph::ParameterListInstruction::Empty)),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::ParameterList {
                                         local: data::graph::ParameterListListLocalId(0),
@@ -16726,7 +16726,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::ParameterListLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16748,7 +16748,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16759,8 +16759,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                         local: data::graph::IntListLocalId(0),
@@ -16775,7 +16775,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::IntLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16797,14 +16797,14 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                     shape: data::type_::ValueShapeId(2),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("text"))),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                         local: data::graph::StringListLocalId(0),
@@ -16819,7 +16819,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::StringLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16841,7 +16841,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16852,8 +16852,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                     shape: data::type_::ValueShapeId(3),
@@ -16865,8 +16865,8 @@ fn integer_comparisons() {
                                         endianness: data::graph::Endianness::Big,
                                     },
                                 ]))),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                         local: data::graph::BitArrayListLocalId(0),
@@ -16881,7 +16881,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::BitArrayLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16903,7 +16903,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::UtfCodepoint {
                                         local: data::graph::UtfCodepointListLocalId(0),
@@ -16916,7 +16916,7 @@ fn integer_comparisons() {
                                 kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::UtfCodepoint(data::type_::UtfCodepointListTypeId {
                                     list_type: data::type_::ListTypeId(10),
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -16938,7 +16938,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -16949,8 +16949,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                         id: data::graph::CustomLocalId(0),
@@ -16970,8 +16970,8 @@ fn integer_comparisons() {
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     ]),
                                 }),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                         local: data::graph::CustomListLocalId(0),
@@ -16994,7 +16994,7 @@ fn integer_comparisons() {
                                         },
                                     },
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17017,14 +17017,14 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                     shape: data::type_::ValueShapeId(1),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(4609434218613702656))),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Float {
                                         local: data::graph::FloatListLocalId(0),
@@ -17039,7 +17039,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::FloatLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17061,14 +17061,14 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     shape: data::type_::ValueShapeId(6),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Bool {
                                         local: data::graph::BoolListLocalId(0),
@@ -17083,7 +17083,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::BoolLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17105,14 +17105,14 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                     shape: data::type_::ValueShapeId(7),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Nil {
                                         local: data::graph::NilListLocalId(0),
@@ -17127,7 +17127,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::NilLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17149,7 +17149,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -17160,15 +17160,15 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     shape: data::type_::ValueShapeId(6),
                                 },
                                 kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Tuple {
                                         local: data::graph::TupleLocalId(0),
@@ -17183,8 +17183,8 @@ fn integer_comparisons() {
                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                 ]))),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Tuple {
                                         local: data::graph::TupleListLocalId(0),
@@ -17201,7 +17201,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::TupleLocalId(0),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17223,7 +17223,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     shape: data::type_::ValueShapeId(0),
@@ -17234,8 +17234,8 @@ fn integer_comparisons() {
                                         42,
                                     ]),
                                 })),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                         local: data::graph::IntListLocalId(0),
@@ -17250,8 +17250,8 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::IntLocalId(0),
                                 ])))),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::List {
                                         local: data::graph::ListListLocalId(0),
@@ -17268,7 +17268,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::StoredListLocal::Int(data::graph::IntListLocalId(0)),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17290,7 +17290,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::IntFunction {
                                         local: data::graph::IntFunctionLocalId(0),
@@ -17313,8 +17313,8 @@ fn integer_comparisons() {
                                     family: data::function::FunctionReturnFamily::Int,
                                     kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Int(data::function::IntFunctionId(4))),
                                 }),
-                            },
-                            data::graph::ProfiledInstruction {
+                            }),
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::List(data::graph::ListLocal::Function {
                                         local: data::graph::FunctionListLocalId(0),
@@ -17331,7 +17331,7 @@ fn integer_comparisons() {
                                 }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                     data::graph::FunctionLocal::Int(data::graph::IntFunctionLocalId(0)),
                                 ])))),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[
@@ -17353,7 +17353,7 @@ fn integer_comparisons() {
                         ]),
                         params: data::Storage::Static(&[]),
                         instructions: data::Storage::Static(&[
-                            data::graph::ProfiledInstruction {
+                            data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                 output: data::graph::ParamSlot {
                                     local: data::graph::ParamLocal::IntFunction {
                                         local: data::graph::IntFunctionLocalId(0),
@@ -17376,7 +17376,7 @@ fn integer_comparisons() {
                                     family: data::function::FunctionReturnFamily::Int,
                                     kind: data::graph::FunctionInstructionKind::Reference(data::graph::FunctionTarget::Int(data::function::IntFunctionId(4))),
                                 }),
-                            },
+                            }),
                         ]),
                     },
                     returns: data::Storage::Static(&[

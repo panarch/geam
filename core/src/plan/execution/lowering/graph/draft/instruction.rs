@@ -36,6 +36,7 @@ pub(in crate::plan::execution::lowering) enum DraftInstructionKind {
     },
 }
 
+#[derive(Clone)]
 pub(in crate::plan::execution::lowering) enum DraftIntegerOperand {
     Local(DraftInt),
     Immediate(i64),

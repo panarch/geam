@@ -194,7 +194,7 @@ fn owned_factory_requests_preserve_capture_errors_and_service_shutdown() {
         } else {
             let result = host.block_on(domain.drive(call)).unwrap().unwrap();
             assert_eq!(
-                result.map_err(|error| error.to_string()),
+                result.map(BigInt::from).map_err(|error| error.to_string()),
                 if input < 0 {
                     Err("host function app::main.issue failed: invalid capture".into())
                 } else {

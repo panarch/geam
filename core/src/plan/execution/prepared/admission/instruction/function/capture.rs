@@ -349,7 +349,8 @@ pub fn main() {
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    if let ProfiledInstructionKind::Function(value) = instruction.kind()
+                    if let ProfiledInstructionKind::Function(value) =
+                        instruction.value().unwrap().kind()
                         && let FunctionInstructionKind::Closure {
                             target: FunctionTarget::Int(target),
                             captures,
@@ -383,7 +384,9 @@ pub fn main() {
                         );
                         checked += 1;
                     }
-                    locals.define(instruction.output(), &types).unwrap();
+                    locals
+                        .define(instruction.value().unwrap().output(), &types)
+                        .unwrap();
                 }
             }
         }

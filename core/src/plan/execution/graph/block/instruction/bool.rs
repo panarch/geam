@@ -687,7 +687,9 @@ pub fn main() {
             let graph = plan.bool_function(BoolFunctionId(0)).body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-                if let ProfiledInstructionKind::Bool(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Bool(instruction) =
+                    instruction.value().unwrap().kind()
+                {
                     if first {
                         first = false;
                     } else {

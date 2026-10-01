@@ -238,7 +238,9 @@ mod tests {
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
         let result = execution.advance(&plan, &mut state, NonZeroUsize::new(100).unwrap());
-        assert!(matches!(result, Ok(Progress::Complete(value)) if value == 42.into()));
+        assert!(
+            matches!(result, Ok(Progress::Complete(value)) if value == num_bigint::BigInt::from(42))
+        );
     }
 
     #[test]
@@ -299,23 +301,13 @@ pub fn main() {
 }
 "#,
         );
-        // Twelve self tails use entry jumps instead of two additional root
-        // exit/entry steps each: 179 steps, first echo at 12, then fourteen apart.
-        for (budget, turns, echo_turns) in [
-            (
-                1,
-                179,
-                [12, 26, 40, 54, 68, 82, 96, 110, 124, 138, 152, 166],
-            ),
-            (2, 90, [6, 13, 20, 27, 34, 41, 48, 55, 62, 69, 76, 83]),
-            (3, 60, [4, 9, 14, 18, 23, 28, 32, 37, 42, 46, 51, 56]),
-            (7, 26, [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]),
-            (29, 7, [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]),
-            (128, 2, [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2]),
-            (179, 1, [1; 12]),
-            (1024, 1, [1; 12]),
-            (usize::MAX, 1, [1; 12]),
-        ] {
+        // Twelve two-operation tail argument regions each replace two scalar
+        // instructions with one sealed instruction: 167 charged steps. The
+        // first echo is step12 and subsequent echoes are thirteen steps apart.
+        let echo_steps = [12, 25, 38, 51, 64, 77, 90, 103, 116, 129, 142, 155];
+        for budget in [1, 2, 3, 7, 29, 128, 167, 1024, usize::MAX] {
+            let turns = 167_usize.div_ceil(budget);
+            let echo_turns = echo_steps.map(|step: usize| step.div_ceil(budget));
             let trace = trace_int_turns(&plan, NonZeroUsize::new(budget).unwrap());
             assert_eq!(trace.turns, turns, "budget {budget}");
             assert_eq!(trace.result, Ok(162.into()), "budget {budget}");
@@ -584,7 +576,7 @@ pub fn main() { left([1, 2, 3], 0) }
                     continue;
                 }
                 Ok(Progress::Host(invoke)) => match invoke {},
-                Ok(Progress::Complete(value)) => Ok(value),
+                Ok(Progress::Complete(value)) => Ok(value.into_bigint()),
                 Err(error) => Err(error),
             };
             return TurnTrace {

@@ -32,7 +32,7 @@ pub(crate) fn run_embedded_int(
     echo: &mut dyn EchoSink,
 ) -> Result<num_bigint::BigInt, ExecutionError> {
     let mut state = RuntimeState::new(echo);
-    function::run_int(plan, &mut state, function, HostCallOrigin::Entry, inputs)
+    function::run_int(plan, &mut state, function, HostCallOrigin::Entry, inputs).map(Into::into)
 }
 
 pub(crate) fn run_embedded_float(

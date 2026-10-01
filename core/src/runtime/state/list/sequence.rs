@@ -5,37 +5,43 @@ use std::sync::Arc;
 /// Only the first two trees may have equal weights. Prepending either links
 /// those trees under the new item or adds a leaf. A suffix shares descendants,
 /// never a removed ancestor, so it cannot retain an excluded item's payload.
-pub(in crate::runtime) struct ListSequence<Item> {
+/// Optional item read state lives in that same tree node and is shared by
+/// suffixes. Families without read state use the zero-sized default cache.
+pub(in crate::runtime) struct ListSequence<Item, Cache = ()> {
     len: usize,
-    first: Spine<Item>,
+    first: Spine<Item, Cache>,
 }
 
-pub(in crate::runtime) struct ListSequenceIter<'a, Item> {
-    next: &'a Spine<Item>,
-    pending: Vec<&'a Tree<Item>>,
+pub(in crate::runtime) struct ListSequenceIter<'a, Item, Cache = ()> {
+    next: &'a Spine<Item, Cache>,
+    pending: Vec<&'a Tree<Item, Cache>>,
     remaining: usize,
 }
 
-enum Spine<Item> {
+enum Spine<Item, Cache> {
     Empty,
     Node {
         weight: usize,
-        tree: Arc<Tree<Item>>,
-        next: Arc<Spine<Item>>,
+        tree: Arc<Tree<Item, Cache>>,
+        next: Arc<Spine<Item, Cache>>,
     },
 }
 
-enum Tree<Item> {
-    Leaf(Item),
-    Branch(Item, Arc<Tree<Item>>, Arc<Tree<Item>>),
+enum Tree<Item, Cache> {
+    Leaf(Item, Cache),
+    Branch(Item, Cache, Arc<Tree<Item, Cache>>, Arc<Tree<Item, Cache>>),
 }
 
-impl<Item> ListSequence<Item> {
+impl<Item, Cache: Default> ListSequence<Item, Cache> {
     pub(in crate::runtime) fn len(&self) -> usize {
         self.len
     }
 
-    pub(in crate::runtime) fn get(&self, mut index: usize) -> Option<&Item> {
+    pub(in crate::runtime) fn get(&self, index: usize) -> Option<&Item> {
+        self.get_with_cache(index).map(|(item, _)| item)
+    }
+
+    pub(in crate::runtime) fn get_with_cache(&self, mut index: usize) -> Option<(&Item, &Cache)> {
         let mut current = &self.first;
         while let Spine::Node { weight, tree, next } = current {
             if index < *weight {
@@ -79,11 +85,14 @@ impl<Item> ListSequence<Item> {
         Self::default()
     }
 
-    pub(in crate::runtime) fn iter(&self) -> ListSequenceIter<'_, Item> {
+    pub(in crate::runtime) fn iter(&self) -> ListSequenceIter<'_, Item, Cache> {
         self.iter_prefix(self.len)
     }
 
-    pub(in crate::runtime) fn iter_prefix(&self, limit: usize) -> ListSequenceIter<'_, Item> {
+    pub(in crate::runtime) fn iter_prefix(
+        &self,
+        limit: usize,
+    ) -> ListSequenceIter<'_, Item, Cache> {
         let remaining = limit.min(self.len);
         ListSequenceIter {
             next: if remaining == 0 {
@@ -111,13 +120,18 @@ impl<Item> ListSequence<Item> {
         {
             Spine::Node {
                 weight: 1 + first_weight + second_weight,
-                tree: Arc::new(Tree::Branch(item, Arc::clone(first), Arc::clone(second))),
+                tree: Arc::new(Tree::Branch(
+                    item,
+                    Cache::default(),
+                    Arc::clone(first),
+                    Arc::clone(second),
+                )),
                 next: Arc::clone(next),
             }
         } else {
             Spine::Node {
                 weight: 1,
-                tree: Arc::new(Tree::Leaf(item)),
+                tree: Arc::new(Tree::Leaf(item, Cache::default())),
                 next: Arc::new(self.first.clone()),
             }
         };
@@ -125,7 +139,7 @@ impl<Item> ListSequence<Item> {
     }
 }
 
-impl<Item> Default for ListSequence<Item> {
+impl<Item, Cache> Default for ListSequence<Item, Cache> {
     fn default() -> Self {
         Self {
             len: 0,
@@ -134,7 +148,7 @@ impl<Item> Default for ListSequence<Item> {
     }
 }
 
-impl<Item> Clone for ListSequence<Item> {
+impl<Item, Cache> Clone for ListSequence<Item, Cache> {
     fn clone(&self) -> Self {
         Self {
             len: self.len,
@@ -145,29 +159,35 @@ impl<Item> Clone for ListSequence<Item> {
 
 impl<Item> From<Vec<Item>> for ListSequence<Item> {
     fn from(items: Vec<Item>) -> Self {
+        Self::from_items(items)
+    }
+}
+
+impl<Item, Cache: Default> ListSequence<Item, Cache> {
+    pub(in crate::runtime) fn from_items(items: Vec<Item>) -> Self {
         if items.len() < 2 {
             return Self::default().prepend(items);
         }
         let len = items.len();
         // Build the forest before linking its O(log n) spine. Repeated persistent
         // prepending would allocate n temporary spine nodes for this fresh input.
-        let mut trees: Vec<(usize, Arc<Tree<Item>>)> = Vec::new();
+        let mut trees: Vec<(usize, Arc<Tree<Item, Cache>>)> = Vec::new();
         for item in items.into_iter().rev() {
             let (weight, tree) = match trees.pop() {
-                None => (1, Tree::Leaf(item)),
+                None => (1, Tree::Leaf(item, Cache::default())),
                 Some((first_weight, first)) => match trees.pop() {
                     Some((second_weight, second)) if first_weight == second_weight => (
                         1 + first_weight + second_weight,
-                        Tree::Branch(item, first, second),
+                        Tree::Branch(item, Cache::default(), first, second),
                     ),
                     Some(second) => {
                         trees.push(second);
                         trees.push((first_weight, first));
-                        (1, Tree::Leaf(item))
+                        (1, Tree::Leaf(item, Cache::default()))
                     }
                     None => {
                         trees.push((first_weight, first));
-                        (1, Tree::Leaf(item))
+                        (1, Tree::Leaf(item, Cache::default()))
                     }
                 },
             };
@@ -185,7 +205,7 @@ impl<Item> From<Vec<Item>> for ListSequence<Item> {
     }
 }
 
-impl<Item> Clone for Spine<Item> {
+impl<Item, Cache> Clone for Spine<Item, Cache> {
     fn clone(&self) -> Self {
         match self {
             Self::Empty => Self::Empty,
@@ -198,15 +218,15 @@ impl<Item> Clone for Spine<Item> {
     }
 }
 
-impl<Item> Tree<Item> {
-    fn get(&self, mut weight: usize, mut index: usize) -> &Item {
+impl<Item, Cache> Tree<Item, Cache> {
+    fn get(&self, mut weight: usize, mut index: usize) -> (&Item, &Cache) {
         let mut tree = self;
         loop {
             match tree {
-                Self::Leaf(item) => return item,
-                Self::Branch(item, left, right) => {
+                Self::Leaf(item, cache) => return (item, cache),
+                Self::Branch(item, cache, left, right) => {
                     if index == 0 {
-                        return item;
+                        return (item, cache);
                     }
                     index -= 1;
                     weight /= 2;
@@ -227,8 +247,8 @@ impl<Item> Tree<Item> {
         self: &Arc<Self>,
         weight: usize,
         count: usize,
-        next: &Arc<Spine<Item>>,
-    ) -> Spine<Item> {
+        next: &Arc<Spine<Item, Cache>>,
+    ) -> Spine<Item, Cache> {
         if count == 0 {
             return Spine::Node {
                 weight,
@@ -237,8 +257,8 @@ impl<Item> Tree<Item> {
             };
         }
         match self.as_ref() {
-            Self::Leaf(_) => next.as_ref().clone(),
-            Self::Branch(_, left, right) => {
+            Self::Leaf(_, _) => next.as_ref().clone(),
+            Self::Branch(_, _, left, right) => {
                 let half = weight / 2;
                 let count = count - 1;
                 if count < half {
@@ -259,7 +279,7 @@ impl<Item> Tree<Item> {
     }
 }
 
-impl<'a, Item> Iterator for ListSequenceIter<'a, Item> {
+impl<'a, Item, Cache> Iterator for ListSequenceIter<'a, Item, Cache> {
     type Item = &'a Item;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -280,12 +300,12 @@ impl<'a, Item> Iterator for ListSequenceIter<'a, Item> {
             self.next = &Spine::Empty;
             self.pending.clear();
             return Some(match tree {
-                Tree::Leaf(item) | Tree::Branch(item, _, _) => item,
+                Tree::Leaf(item, _) | Tree::Branch(item, _, _, _) => item,
             });
         }
         match tree {
-            Tree::Leaf(item) => Some(item),
-            Tree::Branch(item, left, right) => {
+            Tree::Leaf(item, _) => Some(item),
+            Tree::Branch(item, _, left, right) => {
                 self.pending.push(right);
                 self.pending.push(left);
                 Some(item)
@@ -304,6 +324,48 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::{ptr, thread};
+
+    #[test]
+    fn shared_item_read_state_follows_suffix_identity_and_releases_excluded_items() {
+        use std::sync::OnceLock;
+        struct ReadState(Arc<AtomicUsize>);
+        impl Drop for ReadState {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        let removed = Arc::new(AtomicUsize::new(0));
+        let retained = Arc::new(AtomicUsize::new(0));
+        let original = ListSequence::<usize, OnceLock<ReadState>>::from_items(vec![0, 1, 2, 3]);
+        original
+            .get_with_cache(0)
+            .unwrap()
+            .1
+            .get_or_init(|| ReadState(Arc::clone(&removed)));
+        original
+            .get_with_cache(2)
+            .unwrap()
+            .1
+            .get_or_init(|| ReadState(Arc::clone(&retained)));
+        let suffix = original.suffix(2);
+        let combined = suffix.prepend(vec![9]);
+        assert!(ptr::eq(
+            original.get_with_cache(2).unwrap().1,
+            suffix.get_with_cache(0).unwrap().1
+        ));
+        assert!(ptr::eq(
+            original.get_with_cache(2).unwrap().1,
+            combined.get_with_cache(1).unwrap().1
+        ));
+        assert!(combined.get_with_cache(0).unwrap().1.get().is_none());
+        drop(original);
+        assert_eq!(removed.load(Ordering::Relaxed), 1);
+        assert_eq!(retained.load(Ordering::Relaxed), 0);
+        drop(suffix);
+        assert_eq!(retained.load(Ordering::Relaxed), 0);
+        drop(combined);
+        assert_eq!(retained.load(Ordering::Relaxed), 1);
+    }
 
     #[test]
     fn every_suffix_and_prepend_preserves_order_and_indexed_access() {

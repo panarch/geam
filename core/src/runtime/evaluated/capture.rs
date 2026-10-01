@@ -1,5 +1,5 @@
 use crate::StringValue;
-use num_bigint::BigInt;
+use crate::runtime::integer::IntegerValue;
 
 use super::{EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedValue};
 use super::{
@@ -28,7 +28,7 @@ pub(in crate::runtime) struct EvaluatedCapture {
 pub(in crate::runtime) enum EvaluatedCaptureKind {
     Int {
         local: IntLocalId,
-        value: BigInt,
+        value: IntegerValue,
     },
     Float {
         local: FloatLocalId,
@@ -224,7 +224,7 @@ impl EvaluatedCapture {
         }
     }
 
-    pub(in crate::runtime) fn int(local: IntLocalId, value: BigInt) -> Self {
+    pub(in crate::runtime) fn int(local: IntLocalId, value: IntegerValue) -> Self {
         Self::from_kind(EvaluatedCaptureKind::Int { local, value })
     }
 

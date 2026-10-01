@@ -348,7 +348,9 @@ pub fn main() {
             let graph = function.body().function_body().block_graph();
             let mut first = true;
             for instruction in graph.blocks().flat_map(|block| block.instructions()) {
-                if let ProfiledInstructionKind::Custom(instruction) = instruction.kind() {
+                if let ProfiledInstructionKind::Custom(instruction) =
+                    instruction.value().unwrap().kind()
+                {
                     if first {
                         first = false;
                     } else {

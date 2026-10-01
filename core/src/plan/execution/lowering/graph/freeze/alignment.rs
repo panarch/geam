@@ -222,12 +222,13 @@ impl Transition<'_> {
             }
         }
         for instruction in &self.block.instructions {
-            let output = instruction.output();
-            if let Some(slot) = source.values.any(&output).storage_slot() {
-                values
-                    .entry(slot.family)
-                    .or_default()
-                    .push(Origin::Local(output.key));
+            for output in instruction.outputs() {
+                if let Some(slot) = source.values.any(&output).storage_slot() {
+                    values
+                        .entry(slot.family)
+                        .or_default()
+                        .push(Origin::Local(output.key));
+                }
             }
         }
         let transfer = match self.inputs {

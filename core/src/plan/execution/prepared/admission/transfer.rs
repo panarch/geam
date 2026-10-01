@@ -205,7 +205,7 @@ pub fn main() { swap(10, 20) }
                     block
                         .instructions()
                         .iter()
-                        .map(|instruction| instruction.output()),
+                        .flat_map(|instruction| instruction.outputs()),
                 ) {
                     locals.define(slot, &types).unwrap();
                 }

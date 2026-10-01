@@ -2,14 +2,15 @@ use super::{EvaluatedFunctionRef, EvaluatedValueRef};
 use crate::StringValue;
 use crate::plan::execution::type_::ListTypeId;
 use crate::runtime::RuntimeListStorage;
+use crate::runtime::borrowed::{IntegerReadCell, SharedIntegerReads};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
     EvaluatedValue,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::{
     ListSequenceIter, ParameterListValueId, StoredListValueId, StoredListValueRef,
 };
-use num_bigint::BigInt;
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -29,7 +30,7 @@ pub(in crate::runtime) struct EvaluatedListIter<'value> {
 enum ListItems<'value> {
     Nil(Range<usize>),
     ParameterList(ParameterListValueId, Range<usize>),
-    Int(ListSequenceIter<'value, BigInt>),
+    Int(ListSequenceIter<'value, IntegerValue, IntegerReadCell>),
     String(ListSequenceIter<'value, StringValue>),
     BitArray(ListSequenceIter<'value, EvaluatedBitArray>),
     UtfCodepoint(ListSequenceIter<'value, char>),
@@ -37,7 +38,7 @@ enum ListItems<'value> {
     External(ListSequenceIter<'value, EvaluatedExternalValue>),
     Float(ListSequenceIter<'value, f64>),
     Bool(ListSequenceIter<'value, bool>),
-    Tuple(ListSequenceIter<'value, Vec<EvaluatedValue>>),
+    Tuple(ListSequenceIter<'value, Vec<EvaluatedValue>, SharedIntegerReads>),
     List(ListSequenceIter<'value, StoredListValueId>),
     Function(ListSequenceIter<'value, EvaluatedFunctionValue>),
 }
@@ -223,7 +224,7 @@ mod tests {
         let storage = RuntimeListStorage::default();
         let handle = storage.int(
             plan.int_list_function_id(0).type_id(),
-            (0..600).map(BigInt::from).collect(),
+            (0..600).map(super::IntegerValue::from).collect(),
         );
         let borrowed = EvaluatedListRef::new(StoredListValueRef::Int(&handle));
         for limit in [0, 1, 31, 32, 33, 255, 256, 257, 600, 601] {

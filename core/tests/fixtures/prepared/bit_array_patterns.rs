@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 9,
+    format: 10,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -144,7 +144,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -155,7 +155,7 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -370,7 +370,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(4),
@@ -379,8 +379,8 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(1),
@@ -389,8 +389,8 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -401,7 +401,7 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -546,12 +546,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 4..7,
-                                        instructions: 1..3,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 3..3,
+                                        instructions: 2..2,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -564,12 +564,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 3..4,
+                                        instructions: 2..3,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..7,
-                                        instructions: 4..4,
+                                        instructions: 3..3,
                                         terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                             edge: data::graph::Edge {
                                                 target: data::graph::BlockId(4),
@@ -612,7 +612,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             shape: data::type_::ValueShapeId(4),
@@ -621,28 +621,29 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(10),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
-                                            shape: data::type_::ValueShapeId(1),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                        }),
-                                    },
-                                    data::graph::ProfiledInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
-                                            shape: data::type_::ValueShapeId(1),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(3)),
-                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
-                                        }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::IntegerRegion(data::graph::ArithmeticRegion {
+                                        inputs: data::Storage::Static(&[
+                                            data::graph::IntLocalId(0),
+                                            data::graph::IntLocalId(1),
+                                            data::graph::IntLocalId(2),
+                                        ]),
+                                        nodes: data::Storage::Static(&[
+                                            data::graph::ArithmeticNode::Add(data::graph::ArithmeticOperand::Input(0), data::graph::ArithmeticOperand::Input(1)),
+                                            data::graph::ArithmeticNode::Add(data::graph::ArithmeticOperand::Value(0), data::graph::ArithmeticOperand::Input(2)),
+                                        ]),
+                                        outputs: data::Storage::Static(&[
+                                            data::graph::ArithmeticOutput {
+                                                value: 1,
+                                                slot: data::graph::ParamSlot {
+                                                    local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                    shape: data::type_::ValueShapeId(1),
+                                                },
+                                            },
+                                        ]),
+                                        native: true,
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -653,11 +654,11 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(4)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(3)),
                                 data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
                             ]),
                         },
@@ -907,7 +908,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
@@ -916,8 +917,8 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(100),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
@@ -926,8 +927,8 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Immediate(200),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(1),
@@ -936,8 +937,8 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -948,7 +949,7 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
@@ -1132,7 +1133,7 @@ data::ModuleArtifact {
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
-                                    data::graph::ProfiledInstruction {
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -1151,8 +1152,8 @@ data::ModuleArtifact {
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(1),
@@ -1163,15 +1164,15 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                             shape: data::type_::ValueShapeId(2),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::Value(f64::from_bits(13830554455654793216))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             shape: data::type_::ValueShapeId(1),
@@ -1182,8 +1183,8 @@ data::ModuleArtifact {
                                                 255,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
@@ -1195,8 +1196,8 @@ data::ModuleArtifact {
                                                 endianness: data::graph::Endianness::Big,
                                             },
                                         ]))),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             shape: data::type_::ValueShapeId(1),
@@ -1207,8 +1208,8 @@ data::ModuleArtifact {
                                                 1,
                                             ]),
                                         })),
-                                    },
-                                    data::graph::ProfiledInstruction {
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -1227,7 +1228,7 @@ data::ModuleArtifact {
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                         ]))),
-                                    },
+                                    }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[

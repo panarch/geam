@@ -148,7 +148,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 block
                     .instructions()
                     .iter()
-                    .map(|instruction| &instruction.output)
+                    .flat_map(|instruction| instruction.outputs())
                     .find(|slot| Address::of(&slot.local) == query.place.root)
             });
             let Some(slot) = slot else { return false };
@@ -1316,8 +1316,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             types: &types,
         };
         let root = body.block_graph().instructions.iter().find(|instruction| {
-            matches!(&instruction.output.local, ParamLocal::Tuple { type_, .. } if type_.len() == 4)
-        }).unwrap().output.shape;
+            matches!(&instruction.value().unwrap().output.local, ParamLocal::Tuple { type_, .. } if type_.len() == 4)
+        }).unwrap().value().unwrap().output.shape;
         let int = ValueShapeId(
             common
                 .value_shapes
@@ -1331,11 +1331,11 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             .instructions
             .iter()
             .find(|instruction| {
-                matches!(&instruction.output.local, ParamLocal::Custom(CustomLocal { shape, .. })
+                matches!(&instruction.value().unwrap().output.local, ParamLocal::Custom(CustomLocal { shape, .. })
                 if common.custom_types.types[shape.type_id.index()].type_.name.as_str() == "Choice")
             })
             .unwrap()
-            .output
+            .value().unwrap().output
             .shape;
         for (path, expected) in [
             (

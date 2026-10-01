@@ -3,8 +3,8 @@ use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::IntFunctionId;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::graph::RetainedValues;
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::RuntimeState;
-use num_bigint::BigInt;
 
 pub(in crate::runtime) fn run_int(
     plan: &ExecutionPlan,
@@ -12,7 +12,7 @@ pub(in crate::runtime) fn run_int(
     function: IntFunctionId,
     origin: HostCallOrigin,
     inputs: RetainedValues,
-) -> ExecutionResult<BigInt> {
+) -> ExecutionResult<IntegerValue> {
     run(plan, state, function, origin, inputs)
 }
 

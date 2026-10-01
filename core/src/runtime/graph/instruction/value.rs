@@ -23,8 +23,8 @@ use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomFunction, EvaluatedCustomValue, EvaluatedValue,
     value_refs_equal,
 };
+use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::ListSequence;
-use num_bigint::BigInt;
 
 pub(in crate::runtime) enum InstructionOutcome<'call, Value, Function, Constant, Error> {
     Ready(Value),
@@ -53,7 +53,7 @@ pub(in crate::runtime) fn int<'call, Plan, State>(
     environment: &'call BlockEnvironment,
     instruction: &'call IntInstruction,
     expected: &ValueType,
-) -> InstructionOutcome<'call, BigInt, IntFunctionId, IntLocalId, State::Error>
+) -> InstructionOutcome<'call, IntegerValue, IntFunctionId, IntLocalId, State::Error>
 where
     Plan: RuntimeExecutionPlan,
     State: RuntimeGraphState,
@@ -62,7 +62,7 @@ where
     use IntInstruction as I;
 
     match instruction {
-        I::Value(value) => V::Ready(value.materialize()),
+        I::Value(value) => V::Ready(IntegerValue::from_literal(value)),
         I::Constant(id) => V::Constant(*id),
         I::Call {
             function,
@@ -127,7 +127,7 @@ where
         I::Mult { left, right } => V::Ready(integer::multiply(environment, *left, *right)),
         I::Div { left, right } => V::Ready(integer::divide(environment, *left, *right)),
         I::Remainder { left, right } => V::Ready(integer::remainder(environment, *left, *right)),
-        I::Negate(value) => V::Ready(-environment.int(*value)),
+        I::Negate(value) => V::Ready(environment.int_ref(*value).negate()),
     }
 }
 
@@ -898,11 +898,11 @@ where
     .into())
 }
 
-pub(in crate::runtime) fn list_element<Value: Clone, Error>(
+pub(in crate::runtime) fn list_element<Value: Clone, Error, Cache: Default>(
     plan: &impl RuntimeExecutionPlan,
     item_type: &ValueType,
     index: usize,
-    values: &ListSequence<Value>,
+    values: &ListSequence<Value, Cache>,
 ) -> Result<Value, Error>
 where
     Error: From<InvariantError>,
@@ -954,12 +954,13 @@ mod tests {
         FunctionType, IntExpr, ListExpr, ModulePlan, ReturnBody, ReturnExpr, StringExpr, TupleExpr,
         ValueType, monomorphic_function_instantiation,
     };
+    use crate::runtime::borrowed::{IntegerReadCell, SharedIntegerReads};
+    use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::list::ListSequence;
     use crate::runtime::{
         EvaluatedBitArray, EvaluatedCustomValue, EvaluatedFunctionValue, EvaluatedValue,
         ExecutionError, InvariantError, Value, run_src,
     };
-    use num_bigint::BigInt;
 
     fn string_value(value: &EvaluatedValue) -> Option<StringValue> {
         match value {
@@ -1039,35 +1040,39 @@ mod tests {
     #[test]
     fn every_leaf_list_storage_reports_the_exact_missing_index() {
         let plan = crate::runtime::plan_src("pub type Boxed { Boxed } pub fn main() { Boxed }");
-        assert_missing_list_element::<BigInt>(&plan, ExecutionValueType::Int, ValueType::Int);
-        assert_missing_list_element::<f64>(&plan, ExecutionValueType::Float, ValueType::Float);
-        assert_missing_list_element::<StringValue>(
+        assert_missing_list_element::<IntegerValue, IntegerReadCell>(
+            &plan,
+            ExecutionValueType::Int,
+            ValueType::Int,
+        );
+        assert_missing_list_element::<f64, ()>(&plan, ExecutionValueType::Float, ValueType::Float);
+        assert_missing_list_element::<StringValue, ()>(
             &plan,
             ExecutionValueType::String,
             ValueType::String,
         );
-        assert_missing_list_element::<EvaluatedBitArray>(
+        assert_missing_list_element::<EvaluatedBitArray, ()>(
             &plan,
             ExecutionValueType::BitArray,
             ValueType::BitArray,
         );
-        assert_missing_list_element::<char>(
+        assert_missing_list_element::<char, ()>(
             &plan,
             ExecutionValueType::UtfCodepoint,
             ValueType::UtfCodepoint,
         );
-        assert_missing_list_element::<EvaluatedCustomValue>(
+        assert_missing_list_element::<EvaluatedCustomValue, ()>(
             &plan,
             ExecutionValueType::Custom(plan.custom_constructor_id(0, 0).type_id()),
             ValueType::Custom(boxed_type()),
         );
-        assert_missing_list_element::<bool>(&plan, ExecutionValueType::Bool, ValueType::Bool);
-        assert_missing_list_element::<Vec<EvaluatedValue>>(
+        assert_missing_list_element::<bool, ()>(&plan, ExecutionValueType::Bool, ValueType::Bool);
+        assert_missing_list_element::<Vec<EvaluatedValue>, SharedIntegerReads>(
             &plan,
             ExecutionValueType::Tuple(vec![ExecutionValueType::Int].into()),
             ValueType::Tuple(vec![ValueType::Int]),
         );
-        assert_missing_list_element::<EvaluatedFunctionValue>(
+        assert_missing_list_element::<EvaluatedFunctionValue, ()>(
             &plan,
             ExecutionValueType::Function(crate::plan::execution::type_::FunctionType::new(
                 Vec::new(),
@@ -1088,12 +1093,12 @@ mod tests {
         );
     }
 
-    fn assert_missing_list_element<Value: Clone>(
+    fn assert_missing_list_element<Value: Clone, Cache: Default>(
         plan: &crate::ExecutionPlan,
         planned: ExecutionValueType,
         type_: ValueType,
     ) {
-        let values = &ListSequence::<Value>::default();
+        let values = &ListSequence::<Value, Cache>::default();
         assert_eq!(
             list_element(plan, &planned, 2, values).map(|_| ()),
             Err(ExecutionError::<crate::runtime::PanicValue>::Invariant(

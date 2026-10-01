@@ -28,7 +28,7 @@ pub(super) fn value(
     value: EvaluatedValue,
 ) -> Value {
     match value {
-        EvaluatedValue::Int(value) => Value::Int(value),
+        EvaluatedValue::Int(value) => Value::Int(value.into_bigint()),
         EvaluatedValue::Float(value) => Value::Float(value),
         EvaluatedValue::String(value) => Value::String(value),
         EvaluatedValue::BitArray(value) => Value::BitArray(value.value()),
@@ -102,9 +102,13 @@ fn list(
     value: &StoredListValueId,
 ) -> ListValue {
     match value {
-        StoredListValueId::Int(value) => {
-            ListValue::int(state.int_values(value).iter().cloned().collect())
-        }
+        StoredListValueId::Int(value) => ListValue::int(
+            state
+                .int_values(value)
+                .iter()
+                .map(|value| value.bigint().into_owned())
+                .collect(),
+        ),
         StoredListValueId::String(value) => {
             ListValue::string(state.string_values(value).iter().cloned().collect())
         }
@@ -509,7 +513,9 @@ fn capture(
     value: &EvaluatedCapture,
 ) -> CaptureValue {
     match value.kind() {
-        EvaluatedCaptureKind::Int { local, value } => CaptureValue::int(*local, value.clone()),
+        EvaluatedCaptureKind::Int { local, value } => {
+            CaptureValue::int(*local, value.bigint().into_owned())
+        }
         EvaluatedCaptureKind::Float { local, value } => CaptureValue::float(*local, *value),
         EvaluatedCaptureKind::String { local, value } => {
             CaptureValue::string(*local, value.clone())
@@ -599,7 +605,11 @@ fn list_capture(
         },
         EvaluatedListCapture::Int { local, value } => CaptureListValue::Int {
             local: *local,
-            value: state.int_values(value).iter().cloned().collect(),
+            value: state
+                .int_values(value)
+                .iter()
+                .map(|value| value.bigint().into_owned())
+                .collect(),
         },
         EvaluatedListCapture::String { local, value } => CaptureListValue::String {
             local: *local,

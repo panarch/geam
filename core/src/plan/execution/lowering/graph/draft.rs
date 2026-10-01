@@ -245,6 +245,7 @@ pub(in crate::plan::execution::lowering) struct DraftScope {
 }
 
 pub(in crate::plan::execution::lowering) enum DraftInstruction {
+    IntegerRegion(super::freeze::arithmetic::DraftArithmeticRegion),
     Int {
         output: DraftInt,
         kind: instruction::DraftIntInstruction,
@@ -1348,21 +1349,31 @@ impl DraftInstruction {
         }
     }
 
-    pub(in crate::plan::execution::lowering::graph) fn output(&self) -> DraftValueRef {
-        match self {
-            Self::Int { output, .. } => output.erase(),
-            Self::Float { output, .. } => output.erase(),
-            Self::String { output, .. } => output.erase(),
-            Self::BitArray { output, .. } => output.erase(),
-            Self::UtfCodepoint { output, .. } => output.erase(),
-            Self::Custom { output, .. } => output.erase(),
-            Self::External { output, .. } => output.erase(),
-            Self::Bool { output, .. } => output.erase(),
-            Self::Nil { output, .. } => output.erase(),
-            Self::Tuple { output, .. } => output.erase(),
-            Self::List { output, .. } => output.erase(),
-            Self::Function { output, .. } => output.erase(),
-        }
+    pub(in crate::plan::execution::lowering::graph) fn outputs(
+        &self,
+    ) -> impl Iterator<Item = DraftValueRef> {
+        let single = match self {
+            Self::IntegerRegion(_) => None,
+            Self::Int { output, .. } => Some(output.erase()),
+            Self::Float { output, .. } => Some(output.erase()),
+            Self::String { output, .. } => Some(output.erase()),
+            Self::BitArray { output, .. } => Some(output.erase()),
+            Self::UtfCodepoint { output, .. } => Some(output.erase()),
+            Self::Custom { output, .. } => Some(output.erase()),
+            Self::External { output, .. } => Some(output.erase()),
+            Self::Bool { output, .. } => Some(output.erase()),
+            Self::Nil { output, .. } => Some(output.erase()),
+            Self::Tuple { output, .. } => Some(output.erase()),
+            Self::List { output, .. } => Some(output.erase()),
+            Self::Function { output, .. } => Some(output.erase()),
+        };
+        let region = match self {
+            Self::IntegerRegion(region) => region.outputs.as_slice(),
+            _ => &[],
+        };
+        single
+            .into_iter()
+            .chain(region.iter().map(|(_, output)| output.erase()))
     }
 
     pub(in crate::plan::execution::lowering::graph) fn uses(
@@ -1370,6 +1381,11 @@ impl DraftInstruction {
         values: &mut Vec<impl DraftUse>,
     ) {
         match self {
+            Self::IntegerRegion(region) => {
+                for input in &region.inputs {
+                    values.push(DraftUse::from_value(&input.erase()));
+                }
+            }
             Self::Int { kind, .. } => kind.uses(values),
             Self::Float { kind, .. } => kind.uses(values),
             Self::String { kind, .. } => kind.uses(values),

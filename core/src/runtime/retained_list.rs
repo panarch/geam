@@ -6,7 +6,8 @@ use super::state::list::{
     ListSequence, ListSequenceIter, ListValueId, ParameterListValueId, StoredListValueId,
 };
 use crate::StringValue;
-use num_bigint::BigInt;
+use crate::runtime::borrowed::{IntegerReadCell, SharedIntegerReads};
+use crate::runtime::integer::IntegerValue;
 
 pub(in crate::runtime) struct RetainedList<Handle> {
     value: Handle,
@@ -83,7 +84,7 @@ enum ListRead {
     Empty,
     Nil(usize),
     ParameterList(ParameterListValueId, usize),
-    Int(ListSequence<BigInt>),
+    Int(ListSequence<IntegerValue, IntegerReadCell>),
     String(ListSequence<StringValue>),
     BitArray(ListSequence<EvaluatedBitArray>),
     UtfCodepoint(ListSequence<char>),
@@ -91,7 +92,7 @@ enum ListRead {
     External(ListSequence<EvaluatedExternalValue>),
     Float(ListSequence<f64>),
     Bool(ListSequence<bool>),
-    Tuple(ListSequence<Vec<EvaluatedValue>>),
+    Tuple(ListSequence<Vec<EvaluatedValue>, SharedIntegerReads>),
     List(ListSequence<StoredListValueId>),
     Function(ListSequence<EvaluatedFunctionValue>),
 }
@@ -100,7 +101,7 @@ enum ListReadIter<'a> {
     Empty,
     Nil(std::ops::Range<usize>),
     ParameterList(ParameterListValueId, std::ops::Range<usize>),
-    Int(ListSequenceIter<'a, BigInt>),
+    Int(ListSequenceIter<'a, IntegerValue, IntegerReadCell>),
     String(ListSequenceIter<'a, StringValue>),
     BitArray(ListSequenceIter<'a, EvaluatedBitArray>),
     UtfCodepoint(ListSequenceIter<'a, char>),
@@ -108,7 +109,7 @@ enum ListReadIter<'a> {
     External(ListSequenceIter<'a, EvaluatedExternalValue>),
     Float(ListSequenceIter<'a, f64>),
     Bool(ListSequenceIter<'a, bool>),
-    Tuple(ListSequenceIter<'a, Vec<EvaluatedValue>>),
+    Tuple(ListSequenceIter<'a, Vec<EvaluatedValue>, SharedIntegerReads>),
     List(ListSequenceIter<'a, StoredListValueId>),
     Function(ListSequenceIter<'a, EvaluatedFunctionValue>),
 }

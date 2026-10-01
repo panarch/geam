@@ -480,6 +480,7 @@ mod tests {
     use crate::runtime::graph::RetainedValues;
     use crate::runtime::retained::{RetainedValueInspection, RetainedValueRef};
     use crate::runtime::{HostCallOrigin, RuntimeListStorage, RuntimeState, Value};
+    use num_bigint::BigInt;
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -508,7 +509,7 @@ mod tests {
         let storage = results.storage.as_ref().unwrap();
         assert_eq!(storage.order, []);
         assert_eq!(storage.active, 0);
-        assert_eq!(target.values.ints, [41.into()]);
+        assert_eq!(target.values.ints, [BigInt::from(41)]);
     }
 
     #[test]
@@ -536,14 +537,17 @@ mod tests {
             ]
         );
         results.commit(&[0, 1, 2, 3, 4], &mut target);
-        assert_eq!(target.values.ints, [41.into(), 7.into(), 9.into()]);
+        assert_eq!(
+            target.values.ints,
+            [BigInt::from(41), BigInt::from(7), BigInt::from(9)]
+        );
         assert_eq!(target.values.strings, ["label"]);
         assert_eq!(target.values.tuples, [vec![EvaluatedValue::Int(7.into())]]);
         assert_eq!(target.values.tuples[0].as_ptr(), pointer);
         let storage = results.storage.as_ref().unwrap();
         assert_eq!(storage.order, []);
         assert_eq!(storage.used, []);
-        assert_eq!(storage.values.ints, []);
+        assert!(storage.values.ints.is_empty());
         assert!(storage.values.tuples.is_empty());
     }
 
@@ -573,7 +577,7 @@ mod tests {
             assert_eq!(storage.heap_bytes, bytes);
             assert_eq!(storage.heap_bytes, retained_heap_bytes(storage));
             assert_eq!(storage.high_water, 9);
-            assert_eq!(storage.values.ints, []);
+            assert!(storage.values.ints.is_empty());
             assert_eq!(storage.order, []);
         }
     }

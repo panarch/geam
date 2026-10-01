@@ -1,7 +1,8 @@
 use crate::StringValue;
+use crate::runtime::borrowed::SharedIntegerReads;
+use crate::runtime::integer::IntegerValue;
 use bitvec::order::Msb0;
 use bitvec::vec::BitVec;
-use num_bigint::BigInt;
 
 mod capture;
 mod external;
@@ -35,10 +36,43 @@ pub(in crate::runtime) struct EvaluatedBitArray {
     value: crate::BitArrayValue,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub(in crate::runtime) struct EvaluatedCustomValue {
     constructor: CustomConstructorId,
-    fields: std::sync::Arc<Box<[EvaluatedValue]>>,
+    fields: std::sync::Arc<CustomFields>,
+}
+
+#[derive(Default)]
+struct CustomFields {
+    values: Box<[EvaluatedValue]>,
+    integer_reads: SharedIntegerReads,
+}
+
+impl Clone for CustomFields {
+    fn clone(&self) -> Self {
+        // A copied field allocation has new scalar identities. Shared custom
+        // handles clone the Arc instead and keep this original read owner.
+        Self {
+            values: self.values.clone(),
+            integer_reads: Default::default(),
+        }
+    }
+}
+
+impl std::fmt::Debug for EvaluatedCustomValue {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output
+            .debug_struct("EvaluatedCustomValue")
+            .field("constructor", &self.constructor)
+            .field("fields", &self.fields())
+            .finish()
+    }
+}
+
+impl PartialEq for EvaluatedCustomValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.constructor == other.constructor && self.fields() == other.fields()
+    }
 }
 
 impl EvaluatedBitArray {
@@ -76,7 +110,10 @@ impl EvaluatedCustomValue {
     ) -> Self {
         Self {
             constructor,
-            fields: std::sync::Arc::new(fields),
+            fields: std::sync::Arc::new(CustomFields {
+                values: fields,
+                integer_reads: Default::default(),
+            }),
         }
     }
 
@@ -89,24 +126,28 @@ impl EvaluatedCustomValue {
     }
 
     pub(in crate::runtime) fn fields(&self) -> &[EvaluatedValue] {
-        &self.fields
+        &self.fields.values
+    }
+
+    pub(in crate::runtime) fn integer_reads(&self) -> &SharedIntegerReads {
+        &self.fields.integer_reads
     }
 
     pub(in crate::runtime) fn take_fields(&mut self) -> Box<[EvaluatedValue]> {
-        std::sync::Arc::unwrap_or_clone(std::mem::take(&mut self.fields))
+        std::sync::Arc::unwrap_or_clone(std::mem::take(&mut self.fields)).values
     }
 
     pub(in crate::runtime) fn into_fields(self) -> (CustomConstructorId, Box<[EvaluatedValue]>) {
         (
             self.constructor,
-            std::sync::Arc::unwrap_or_clone(self.fields),
+            std::sync::Arc::unwrap_or_clone(self.fields).values,
         )
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum EvaluatedValue {
-    Int(BigInt),
+    Int(IntegerValue),
     Float(f64),
     String(StringValue),
     BitArray(EvaluatedBitArray),
@@ -189,6 +230,52 @@ mod tests {
     use crate::runtime::state::list::ListValueId;
     use bitvec::order::Msb0;
     use bitvec::view::BitView;
+
+    #[test]
+    fn custom_reads_are_shared_metadata_and_do_not_change_value_identity() {
+        use super::EvaluatedCustomValue;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+        let constructor = CustomConstructorId {
+            type_id: CustomTypeId(0),
+            index: 0,
+        };
+        let value = EvaluatedCustomValue::from_fields(
+            constructor,
+            vec![EvaluatedValue::Int(42.into())].into_boxed_slice(),
+        );
+        let alias = value.clone();
+        let same = EvaluatedCustomValue::from_fields(
+            constructor,
+            vec![EvaluatedValue::Int(42.into())].into_boxed_slice(),
+        );
+        value.integer_reads().get_or_init(Default::default);
+        assert!(std::ptr::eq(value.integer_reads(), alias.integer_reads()));
+        assert!(same.integer_reads().get().is_none());
+        assert_eq!(value, same);
+        let expected = "EvaluatedCustomValue { constructor: CustomConstructorId { type_id: CustomTypeId(0), index: 0 }, fields: [Int(42)] }";
+        assert_eq!(format!("{value:?}"), expected);
+        assert_eq!(format!("{same:?}"), expected);
+        let different = EvaluatedCustomValue::from_fields(
+            constructor,
+            vec![EvaluatedValue::Int(43.into())].into_boxed_slice(),
+        );
+        assert_ne!(value, different);
+        let other = EvaluatedCustomValue::from_fields(
+            CustomConstructorId {
+                index: 1,
+                ..constructor
+            },
+            value.fields().into(),
+        );
+        assert_ne!(value, other);
+        let copied = value.fields.as_ref().clone();
+        assert!(copied.integer_reads.get().is_none());
+        assert_eq!(copied.values, value.fields.values);
+        assert!(!std::ptr::eq(
+            copied.values.as_ptr(),
+            value.fields().as_ptr()
+        ));
+    }
 
     #[test]
     fn evaluated_bit_array_aligns_owned_slices() {

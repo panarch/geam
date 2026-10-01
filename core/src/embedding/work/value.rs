@@ -5,6 +5,7 @@ use crate::host::{
 };
 use crate::runtime::shared::Shared;
 use crate::runtime::{BorrowedValue, EmbeddingList, EvaluatedExternalValue, StoredRuntimeValue};
+
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -81,7 +82,9 @@ pub trait SourceType: crate::embedding::value::EmbeddingValue {
 
 /// The borrowed view of a supported shared completion value.
 pub trait ReadValue: sealed::Value {
-    /// Reading borrows scalar payloads and retains lazy lists or work handles.
+    /// Scalar borrows last for the read callback. Integer views use BigInt;
+    /// cached results retain a requested integer conversion across repeated reads.
+    /// Lists and work handles remain lazy and retain their execution owner.
     type View<'value>;
 }
 
@@ -93,7 +96,11 @@ mod sealed {
 pub(crate) trait SharedValue: ReadValue {
     type Context: Clone + Send;
 
-    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value>;
+    type Read<'value>;
+
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value>;
+
+    fn view<'value>(read: &'value Self::Read<'_>, context: &Self::Context) -> Self::View<'value>;
 }
 
 pub(crate) trait ScopedOutput<Profile: HostProfile>: SourceType {
@@ -195,16 +202,15 @@ impl<Value: SharedValue> Completed<Value> {
         Self { value, context }
     }
 
-    /// Borrows this operation's same cached result on every read.
+    /// Reads this operation's same cached result on every call. Scalar views
+    /// borrow for the callback; requesting a view does not rerun the operation.
     pub fn read<Output>(
         &self,
         read: impl for<'value> FnOnce(Value::View<'value>) -> Output,
     ) -> Output {
         self.value.read(|value| {
-            read(Value::view(
-                BorrowedValue::from_stored(value),
-                &self.context,
-            ))
+            let prepared = Value::prepare(BorrowedValue::from_stored(value));
+            read(Value::view(&prepared, &self.context))
         })
     }
 }
@@ -243,7 +249,10 @@ impl<Value: SharedValue> SharedList<Value> {
         read: impl for<'value> FnOnce(Value::View<'value>) -> Output,
     ) -> Option<Output> {
         self.value.read(|list| {
-            list.read_item(index, |value| read(Value::view(value, &self.context.item)))
+            list.read_item(index, |value| {
+                let prepared = Value::prepare(value);
+                read(Value::view(&prepared, &self.context.item))
+            })
         })
     }
 
@@ -266,14 +275,18 @@ impl<Value: SharedValue> Clone for SharedList<Value> {
 }
 
 macro_rules! scalar {
-    ($type:ty, $view:ty, $method:ident) => {
+    ($type:ty, $view:ty, $prepared:ty, $method:ident, $read:ident => $view_read:expr) => {
         impl ReadValue for $type {
             type View<'value> = $view;
         }
         impl SharedValue for $type {
             type Context = ();
-            fn view<'value>(value: BorrowedValue<'value>, _: &()) -> Self::View<'value> {
+            type Read<'value> = $prepared;
+            fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
                 value.$method()
+            }
+            fn view<'value>($read: &'value Self::Read<'_>, _: &()) -> Self::View<'value> {
+                $view_read
             }
         }
         impl SourceType for $type {
@@ -293,20 +306,22 @@ macro_rules! scalar {
     };
 }
 
-scalar!(super::super::BigInt, &'value super::super::BigInt, int);
-scalar!(f64, f64, float);
+scalar!(super::super::BigInt, &'value super::super::BigInt, crate::runtime::IntegerRead<'value>, int_bigint, read => read.as_ref());
+scalar!(f64, f64, f64, float, read => *read);
 scalar!(
     super::super::StringValue,
     &'value super::super::StringValue,
-    string
+    &'value super::super::StringValue,
+    string, read => *read
 );
 scalar!(
     crate::BitArrayValue,
     &'value crate::BitArrayValue,
-    bit_array
+    &'value crate::BitArrayValue,
+    bit_array, read => *read
 );
-scalar!(char, char, utf_codepoint);
-scalar!(bool, bool, bool);
+scalar!(char, char, char, utf_codepoint, read => *read);
+scalar!(bool, bool, bool, bool, read => *read);
 
 impl ReadValue for () {
     type View<'value> = ();
@@ -314,7 +329,9 @@ impl ReadValue for () {
 
 impl SharedValue for () {
     type Context = ();
-    fn view(_: BorrowedValue<'_>, _: &()) {}
+    type Read<'value> = ();
+    fn prepare<'value>(_: BorrowedValue<'value>) {}
+    fn view(_: &(), _: &()) {}
 }
 
 impl SourceType for () {
@@ -335,8 +352,12 @@ macro_rules! tuple {
         }
         impl<$($type: SharedValue),+> SharedValue for ($($type,)+) {
             type Context = ($($type::Context,)+);
-            fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
-                ($($type::view(value.tuple_item($index), &context.$index),)+)
+            type Read<'value> = ($($type::Read<'value>,)+);
+            fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
+                ($($type::prepare(value.tuple_item($index)),)+)
+            }
+            fn view<'value>(read: &'value Self::Read<'_>, context: &Self::Context) -> Self::View<'value> {
+                ($($type::view(&read.$index, &context.$index),)+)
             }
         }
         impl<$($type: SourceType),+> SourceType for ($($type,)+) {
@@ -366,11 +387,18 @@ impl<Success: SharedValue, Failure: SharedValue> ReadValue for Result<Success, F
 
 impl<Success: SharedValue, Failure: SharedValue> SharedValue for Result<Success, Failure> {
     type Context = (Success::Context, Failure::Context);
-    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
+    type Read<'value> = Result<Success::Read<'value>, Failure::Read<'value>>;
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
         if value.variant() == 0 {
-            Ok(Success::view(value.custom_field(0), &context.0))
+            Ok(Success::prepare(value.custom_field(0)))
         } else {
-            Err(Failure::view(value.custom_field(0), &context.1))
+            Err(Failure::prepare(value.custom_field(0)))
+        }
+    }
+    fn view<'value>(read: &'value Self::Read<'_>, context: &Self::Context) -> Self::View<'value> {
+        match read {
+            Ok(value) => Ok(Success::view(value, &context.0)),
+            Err(value) => Err(Failure::view(value, &context.1)),
         }
     }
 }
@@ -405,12 +433,16 @@ impl<Value: SharedValue> ReadValue for Option<Value> {
 
 impl<Value: SharedValue> SharedValue for Option<Value> {
     type Context = Value::Context;
-    fn view<'value>(value: BorrowedValue<'value>, context: &Self::Context) -> Self::View<'value> {
+    type Read<'value> = Option<Value::Read<'value>>;
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
         if value.variant() == 0 {
-            Some(Value::view(value.custom_field(0), context))
+            Some(Value::prepare(value.custom_field(0)))
         } else {
             None
         }
+    }
+    fn view<'value>(read: &'value Self::Read<'_>, context: &Self::Context) -> Self::View<'value> {
+        read.as_ref().map(|value| Value::view(value, context))
     }
 }
 
@@ -439,9 +471,13 @@ impl<Value: SharedValue> ReadValue for SharedList<Value> {
 
 impl<Value: SharedValue> SharedValue for SharedList<Value> {
     type Context = ListContext<Value>;
-    fn view(value: BorrowedValue<'_>, context: &Self::Context) -> Self {
+    type Read<'value> = BorrowedValue<'value>;
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
+        value
+    }
+    fn view(read: &Self::Read<'_>, context: &Self::Context) -> Self {
         Self {
-            value: Shared::new(EmbeddingList::from_borrowed(value)),
+            value: Shared::new(EmbeddingList::from_borrowed(read)),
             context: context.clone(),
         }
     }
@@ -490,9 +526,13 @@ impl<'scope, Value: SharedValue, Schema: HostExternalSchema> SharedValue
     for Future<'scope, Value, Schema>
 {
     type Context = FutureContext<'scope, Value, Schema>;
-    fn view(value: BorrowedValue<'_>, context: &Self::Context) -> Self {
+    type Read<'value> = BorrowedValue<'value>;
+    fn prepare<'value>(value: BorrowedValue<'value>) -> Self::Read<'value> {
+        value
+    }
+    fn view(read: &Self::Read<'_>, context: &Self::Context) -> Self {
         Self {
-            value: value.external().clone(),
+            value: read.external().clone(),
             context: context.clone(),
         }
     }

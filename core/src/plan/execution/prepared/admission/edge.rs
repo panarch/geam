@@ -119,7 +119,9 @@ mod tests {
                     locals.define(slot, &types).unwrap();
                 }
                 for instruction in block.instructions() {
-                    locals.define(instruction.output(), &types).unwrap();
+                    locals
+                        .define(instruction.value().unwrap().output(), &types)
+                        .unwrap();
                 }
                 if let Terminator::BoolBranch(branch) = block.terminator() {
                     for edge in [&branch.true_, &branch.false_] {

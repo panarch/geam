@@ -41,7 +41,7 @@ macro_rules! scalar {
     };
 }
 
-scalar!(IntFunctionId, num_bigint::BigInt, std::convert::identity);
+scalar!(IntFunctionId, num_bigint::BigInt, Into::into);
 scalar!(FloatFunctionId, f64, std::convert::identity);
 scalar!(StringFunctionId, crate::StringValue, std::convert::identity);
 scalar!(

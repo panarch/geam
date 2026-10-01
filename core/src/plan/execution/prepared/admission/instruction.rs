@@ -1,3 +1,4 @@
+mod arithmetic;
 mod bit_array;
 mod custom;
 mod external;
@@ -15,7 +16,11 @@ use super::type_::{Slot, TypeError, Types};
 use crate::plan::HostCallSite;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantTable};
 use crate::plan::execution::function::ExecutionGraphProfile;
-use crate::plan::execution::graph::{CustomLocal, ParamLocal, ParamSlot, TupleLocalId};
+use crate::plan::execution::graph::{
+    CustomLocal, ExternalFunctionInstructionView, ExternalInstructionView,
+    ExternalListInstructionView, ParamLocal, ParamSlot, ProfiledInstruction,
+    ProfiledInstructionKind, TupleLocalId,
+};
 use crate::plan::execution::type_::{ValueShapeId, ValueType};
 
 pub(super) struct Instructions<'context, 'data, Graph: ExecutionGraphProfile> {
@@ -28,6 +33,7 @@ pub(super) struct Instructions<'context, 'data, Graph: ExecutionGraphProfile> {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum InstructionError {
     Integer(super::literal::IntegerError),
+    Arithmetic(arithmetic::ArithmeticError),
     Type(TypeError),
     Local(LocalError),
     Call(CallError),
@@ -48,10 +54,18 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph>
 where
     Graph::ExternalFunctionId: Target,
     Graph::ExternalListFunctionId: Target,
-    <Graph::ExternalListInstruction as crate::plan::execution::graph::ExternalListInstructionView>::FunctionLocal: Operand,
+    <Graph::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: Operand,
 {
-    pub(super) fn check(&self, instruction: &'data crate::plan::execution::graph::ProfiledInstruction<Graph>, locals: &Locals<'data>) -> Result<(), InstructionError> {
-        use crate::plan::execution::graph::{ProfiledInstructionKind as Kind, ExternalInstructionView, ExternalListInstructionView, ExternalFunctionInstructionView};
+    pub(super) fn check(
+        &self,
+        instruction: &'data ProfiledInstruction<Graph>,
+        locals: &Locals<'data>,
+    ) -> Result<(), InstructionError> {
+        use ProfiledInstructionKind as Kind;
+        let instruction = match instruction {
+            ProfiledInstruction::Value(value) => value,
+            ProfiledInstruction::IntegerRegion(region) => return self.arithmetic(region, locals),
+        };
         let output = &instruction.output;
         match &instruction.kind {
             Kind::Int(value) => self.int(value, output, locals),
@@ -61,8 +75,15 @@ where
             Kind::UtfCodepoint(value) => self.utf_codepoint(value, output, locals),
             Kind::Custom(value) => self.custom(value, output, locals),
             Kind::External(value) => self.external(value.instruction_ref(), output, locals),
-            Kind::ExternalList(value) => self.typed_list(crate::plan::execution::type_::ListStorageTypeId::External(value.type_id()), value.instruction(), output, locals),
-            Kind::ExternalFunction(value) => self.external_function(value.instruction(), output, locals),
+            Kind::ExternalList(value) => self.typed_list(
+                crate::plan::execution::type_::ListStorageTypeId::External(value.type_id()),
+                value.instruction(),
+                output,
+                locals,
+            ),
+            Kind::ExternalFunction(value) => {
+                self.external_function(value.instruction(), output, locals)
+            }
             Kind::Bool(value) => self.bool(value, output, locals),
             Kind::Nil(value) => self.nil(value, output, locals),
             Kind::Tuple(value) => self.tuple(value, output, locals),
@@ -253,6 +274,7 @@ fn local_flow<'data>(
 #[cfg(test)]
 mod tests {
     use super::{InstructionError, Instructions, LocalError, Locals, TypeError, pair, same_type};
+    use crate::plan::execution::function::ValueFunctionEntry;
     use crate::plan::execution::graph::{
         BoolLocalId, IntLocalId, ParamLocal, ParamSlot, TupleLocalId,
     };
@@ -260,6 +282,87 @@ mod tests {
         catalog::Catalog, source::Sources, type_::Types,
     };
     use crate::plan::execution::type_::{ValueShapeDescriptor, ValueShapeId, ValueType};
+
+    #[test]
+    fn hosted_regions_validate_each_input_and_publish_only_their_outputs() {
+        use crate::{
+            HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+            StatelessHostProfile,
+        };
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "main", "native")
+fn native(value: Int) -> Int
+fn calculate(value: Int) { value * 2 + 1 }
+pub fn main() { calculate(native(20)) }
+"#,
+                )],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([HostProviderModule::new(
+                "app", "main",
+            )
+            .unwrap()
+            .with_function("native", std::convert::identity::<crate::embedding::BigInt>)
+            .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = execution.parts_mut();
+        let program = &plan.program;
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &program.functions, &types).unwrap();
+        let sources = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            constants: &common.constants,
+            sources: &sources,
+        };
+        let mut regions = 0;
+        for function in program.functions.value_returns.int_functions.iter() {
+            if let ValueFunctionEntry::Graph(function) = function {
+                for block in function.body().block_graph().blocks() {
+                    let mut locals = Locals::default();
+                    for slot in block.params() {
+                        locals.define(slot, &types).unwrap();
+                    }
+                    for instruction in block.instructions() {
+                        assert_eq!(context.check(instruction, &locals), Ok(()));
+                        regions += usize::from(instruction.value().is_none());
+                        for output in instruction.outputs() {
+                            locals.define(output, &types).unwrap();
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(regions, 1);
+        let host = crate::execution_fixture::TestHost::default();
+        assert_eq!(
+            host.block_on(execution.run_main(&host, &mut (), &mut Vec::new()))
+                .unwrap(),
+            crate::Value::Int(41.into())
+        );
+    }
 
     #[test]
     fn operands_and_container_projections_validate_raw_links_before_execution() {

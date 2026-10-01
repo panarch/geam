@@ -68,9 +68,14 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             if !visited.insert(subject.0) {
                 return false;
             }
-            let Some(instruction) = block.instructions().iter().find(|instruction| {
-                Address::of(&instruction.output.local) == Address::from(subject)
-            }) else {
+            let Some(instruction) = block
+                .instructions()
+                .iter()
+                .filter_map(|instruction| instruction.value())
+                .find(|instruction| {
+                    Address::of(&instruction.output.local) == Address::from(subject)
+                })
+            else {
                 return false;
             };
             let ProfiledInstructionKind::Bool(value) = &instruction.kind else {
@@ -115,6 +120,9 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         block: BlockId,
         instruction: &'data ProfiledInstruction<Graph>,
     ) -> Result<(), GuardError> {
+        let Some(instruction) = instruction.value() else {
+            return Ok(());
+        };
         if let Some(access) = access::instruction(&instruction.kind)?
             && !self.proves(Query {
                 block,
@@ -227,6 +235,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             } else if let Some(instruction) = block
                 .instructions()
                 .iter()
+                .filter_map(|instruction| instruction.value())
                 .find(|instruction| Address::of(&instruction.output.local) == query.place.root)
             {
                 if !query.place.path.is_empty()
@@ -294,9 +303,14 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             if !visited.insert(subject.0) {
                 return Some(required.clone());
             }
-            let Some(instruction) = block.instructions().iter().find(|instruction| {
-                Address::of(&instruction.output.local) == Address::from(subject)
-            }) else {
+            let Some(instruction) = block
+                .instructions()
+                .iter()
+                .filter_map(|instruction| instruction.value())
+                .find(|instruction| {
+                    Address::of(&instruction.output.local) == Address::from(subject)
+                })
+            else {
                 return Some(required.clone());
             };
             let ProfiledInstructionKind::Bool(value) = &instruction.kind else {
@@ -392,6 +406,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 let literal = block
                     .instructions()
                     .iter()
+                    .filter_map(|instruction| instruction.value())
                     .find(|instruction| Address::of(&instruction.output.local) == left)
                     .and_then(|instruction| match origin::instruction(&instruction.kind) {
                         Origin::Text(value) => Some(value),
@@ -465,6 +480,7 @@ mod tests {
         ProfiledInstruction, ProfiledInstructionKind, Query, Requirement, access,
     };
     use crate::plan::Text;
+    use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
     use crate::plan::execution::graph::{
         BlockGraphExitId, BoolBranch, Edge, IntInstruction, IntListLocalId, IntLocalId, Jump,
         ListInstruction, ListLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph,
@@ -507,7 +523,11 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         for (index, block) in blocks.iter().enumerate() {
             for instruction in block.instructions() {
                 guards.check(BlockId(index), instruction).unwrap();
-                count += usize::from(access::instruction(&instruction.kind).unwrap().is_some());
+                count += usize::from(
+                    access::instruction(&instruction.value().unwrap().kind)
+                        .unwrap()
+                        .is_some(),
+                );
             }
         }
         count
@@ -1640,10 +1660,10 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         local: ParamLocal,
         kind: ProfiledInstructionKind<Infallible>,
     ) -> ProfiledInstruction<Infallible> {
-        ProfiledInstruction {
+        ProfiledInstruction::Value(ProfiledValueInstruction {
             output: slot(local),
             kind,
-        }
+        })
     }
 
     fn exit() -> Terminator {

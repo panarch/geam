@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 9,
+        format: 10,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -97,7 +97,7 @@ pub fn check() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -108,8 +108,8 @@ pub fn check() {
                                                     40,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -138,8 +138,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1136, 1158)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -150,8 +150,8 @@ pub fn check() {
                                                     2,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(1),
@@ -176,8 +176,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1178, 1202)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -187,7 +187,7 @@ pub fn check() {
                                                 args: data::Storage::Static(&[]),
                                                 site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1218, 1228)),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -334,7 +334,7 @@ pub fn check() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
                                                     id: data::graph::NeverFunctionLocalId(0),
@@ -381,14 +381,14 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "fail", data::source::SourceSpan::new(897, 916)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 shape: data::type_::ValueShapeId(11),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("before callable"))),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[]),
@@ -439,13 +439,13 @@ pub fn check() {
                                     ]),
                                     params: data::Storage::Static(&[]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 shape: data::type_::ValueShapeId(11),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("before producer"))),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[]),
@@ -484,7 +484,7 @@ pub fn check() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -496,7 +496,7 @@ pub fn check() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("library", "apply", data::source::SourceSpan::new(128, 143)),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -525,7 +525,7 @@ pub fn check() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -534,7 +534,7 @@ pub fn check() {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Immediate(1),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -1739,14 +1739,14 @@ pub fn check() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::BoolFunction {
                                                     local: data::graph::BoolFunctionLocalId(0),
@@ -1771,15 +1771,15 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1261, 1288)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::BoolFunction {
                                                     local: data::graph::BoolFunctionLocalId(1),
@@ -1804,8 +1804,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1319, 1346)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -1816,8 +1816,8 @@ pub fn check() {
                                                     42,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                     local: data::graph::IntListLocalId(0),
@@ -1832,8 +1832,8 @@ pub fn check() {
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::IntLocalId(0),
                                             ])))),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::ListFunction(data::graph::ListFunctionLocal::Int {
                                                     local: data::graph::IntListFunctionLocalId(0),
@@ -1875,8 +1875,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1362, 1389)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::BoolFunction {
                                                     local: data::graph::BoolFunctionLocalId(2),
@@ -1902,8 +1902,8 @@ pub fn check() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::BoolFunction {
                                                     local: data::graph::BoolFunctionLocalId(3),
@@ -1940,8 +1940,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1410, 1449)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -1967,8 +1967,8 @@ pub fn check() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(1),
@@ -2005,8 +2005,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1483, 1520)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(2),
@@ -2043,8 +2043,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1470, 1521)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
                                                     id: data::graph::CoreFunctionFunctionLocalId(0),
@@ -2088,8 +2088,8 @@ pub fn check() {
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::Core(data::graph::CoreFunctionFunctionLocal {
                                                     id: data::graph::CoreFunctionFunctionLocalId(1),
@@ -2182,8 +2182,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1539, 1595)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2193,8 +2193,8 @@ pub fn check() {
                                                 args: data::Storage::Static(&[]),
                                                 site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1600, 1603)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2215,8 +2215,8 @@ pub fn check() {
                                                     },
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2237,8 +2237,8 @@ pub fn check() {
                                                     },
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                     local: data::graph::IntListLocalId(0),
@@ -2264,8 +2264,8 @@ pub fn check() {
                                                 args: data::Storage::Static(&[]),
                                                 site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1631, 1637)),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -2276,8 +2276,8 @@ pub fn check() {
                                                     42,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                     local: data::graph::IntListLocalId(1),
@@ -2292,8 +2292,8 @@ pub fn check() {
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::IntLocalId(0),
                                             ])))),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2312,8 +2312,8 @@ pub fn check() {
                                                     },
                                                 }),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -2324,8 +2324,8 @@ pub fn check() {
                                                     41,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -2337,8 +2337,8 @@ pub fn check() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1659, 1672)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2350,8 +2350,8 @@ pub fn check() {
                                                 ]),
                                                 site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1649, 1673)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -2362,8 +2362,8 @@ pub fn check() {
                                                     42,
                                                 ]),
                                             })),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
@@ -2411,8 +2411,8 @@ pub fn check() {
                                                     site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1677, 1687)),
                                                 },
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 shape: data::type_::ValueShapeId(0),
@@ -2422,8 +2422,8 @@ pub fn check() {
                                                 args: data::Storage::Static(&[]),
                                                 site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1677, 1689)),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2432,21 +2432,21 @@ pub fn check() {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Immediate(42),
                                             }),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
-                                        },
-                                        data::graph::ProfiledInstruction {
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(false)),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
@@ -2475,7 +2475,7 @@ pub fn check() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(3),
@@ -2484,7 +2484,7 @@ pub fn check() {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Immediate(42),
                                             }),
-                                        },
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
