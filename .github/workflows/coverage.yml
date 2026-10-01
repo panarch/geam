@@ -270,6 +270,8 @@ jobs:
             directory: tests/fixtures/charlist_service/provider
           - consumer: dict_service
             directory: tests/fixtures/dict_service/provider
+          - consumer: bytes_tree_service
+            directory: tests/fixtures/bytes_tree_service/provider
 
     steps:
       - name: Checkout

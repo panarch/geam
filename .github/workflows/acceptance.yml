@@ -718,7 +718,7 @@ jobs:
 
 
   charlist-service-consumer:
-    name: Charlist and Dict service consumers
+    name: Charlist, Dict and BytesTree service consumers
     runs-on: ubuntu-latest
 
     steps:
@@ -744,11 +744,13 @@ jobs:
           workspaces: |
             tests/fixtures/charlist_service/provider -> target
             tests/fixtures/dict_service/provider -> target
+            tests/fixtures/bytes_tree_service/provider -> target
 
       - name: Fetch locked consumer dependencies
         run: |
           cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
         run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
@@ -761,6 +763,12 @@ jobs:
 
       - name: Verify Dict fixture source formatting
         run: gleam format --check tests/fixtures/dict_service/project/src
+
+      - name: Verify producer-owned BytesTree inputs through original source
+        run: cargo test --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
+
+      - name: Verify BytesTree fixture source formatting
+        run: gleam format --check tests/fixtures/bytes_tree_service/project/src
 
   external-provider-sdk:
     name: External provider SDK

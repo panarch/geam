@@ -19,6 +19,7 @@ use std::marker::PhantomData;
 mod execution_fixture;
 
 mod bit_array;
+mod bytes_tree;
 mod dict;
 mod dynamic;
 mod dynamic_decode;
@@ -145,12 +146,13 @@ fn register_host_providers<Profile>()
 where
     Profile: GleamStdlibProviderProfile,
 {
-    let registrations: [ProviderRegistration<Profile>; 10] = [
+    let registrations: [ProviderRegistration<Profile>; 11] = [
         dict::host_provider::<Profile>,
         dynamic::host_provider::<Profile>,
         float::host_provider::<Profile>,
         int::host_provider::<Profile>,
         string_tree::host_provider::<Profile>,
+        bytes_tree::host_provider::<Profile>,
         string::host_provider::<Profile>,
         bit_array::host_provider::<Profile>,
         dynamic_decode::host_provider::<Profile>,
@@ -249,6 +251,7 @@ mod tests {
                 "gleam/float",
                 "gleam/int",
                 "gleam/string_tree",
+                "gleam/bytes_tree",
                 "gleam/string",
                 "gleam/bit_array",
                 "gleam/dynamic/decode",

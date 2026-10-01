@@ -72,6 +72,20 @@ impl StringTree {
         output.into()
     }
 
+    pub(super) fn append_bytes(&self, output: &mut Vec<u8>) {
+        let mut pending = vec![std::slice::from_ref(&self.root).iter()];
+        while let Some(children) = pending.last_mut() {
+            let Some(node) = children.next() else {
+                pending.pop();
+                continue;
+            };
+            match &node.kind {
+                StringTreeNodeKind::Text(text) => output.extend_from_slice(text.as_bytes()),
+                StringTreeNodeKind::Sequence(children) => pending.push(children.iter()),
+            }
+        }
+    }
+
     pub fn structurally_equal(&self, other: &Self) -> bool {
         if self.byte_len() != other.byte_len() {
             return false;
@@ -160,6 +174,39 @@ mod tests {
             StringTreeNodeKind::Text(_) => None,
             StringTreeNodeKind::Sequence(children) => Some(children),
         }
+    }
+
+    #[test]
+    fn byte_append_preserves_utf8_order_prefix_and_deep_shared_inputs() {
+        let prefix = StringTree::text("한\0".into());
+        let suffix = StringTree::text("e\u{301}🙂".into());
+        let tree = StringTree::sequence([
+            prefix.clone(),
+            StringTree::sequence([]),
+            suffix.clone(),
+            prefix.clone(),
+        ]);
+        let mut bytes = vec![0, 255];
+        tree.append_bytes(&mut bytes);
+        assert_eq!(
+            bytes,
+            b"\0\xff"
+                .iter()
+                .copied()
+                .chain("한\0e\u{301}🙂한\0".bytes())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(prefix.flatten(), "한\0");
+        assert_eq!(suffix.flatten(), "e\u{301}🙂");
+        let mut deep = StringTree::text("end".into());
+        for _ in 0..20_000 {
+            deep = StringTree::sequence([StringTree::sequence([]), deep]);
+        }
+        let mut output = Vec::new();
+        deep.append_bytes(&mut output);
+        assert_eq!(output, b"end");
+        drop(deep);
+        assert_eq!(output, b"end");
     }
 
     #[test]

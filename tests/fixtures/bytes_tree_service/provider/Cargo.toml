@@ -1,0 +1,21 @@
+[package]
+name = "geam-bytes-tree-service-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "bytes_tree_service_fixture"
+gleam-version = ">= 0.1.0 and < 0.1.1"
+
+[dependencies]
+futures-channel = "0.3.32"
+geam = { path = "../../../..", default-features = false, features = ["provider", "gleam-stdlib"] }
+
+[dev-dependencies]
+camino = "1"
+geam = { path = "../../../..", default-features = false, features = ["embedding"] }
+
+[workspace]
+resolver = "3"

@@ -1,7 +1,8 @@
-//! Producer-owned standard-library value construction for other providers.
+//! Producer-owned standard-library value construction and consumption.
 //!
-//! Services use the calling function's explicit construction permissions. The
-//! caller composes the standard-library component; it does not implement that
-//! component's external storage or binding.
+//! Construction uses the calling function's explicit permissions. Consumption
+//! uses retained typed inputs and explicit owned reads. The caller composes the
+//! standard-library component; it does not implement its storage or binding.
 
+pub use crate::bytes_tree::BytesTreeInput;
 pub use crate::dict::dict_from_entries;
