@@ -194,10 +194,9 @@ fn region(
 mod tests {
     use crate::plan::execution::function::{ExecutionGraphProfile, IntFunctionId};
     use crate::plan::execution::graph::{
-        ArithmeticNode as N, ArithmeticOperand as O, ArithmeticRegion, BoolTest, IntLocalId,
-        IntegerOperand, ParamLocal, ProfiledInstruction, Terminator,
+        ArithmeticNode as N, ArithmeticOperand as O, ArithmeticRegion, IntLocalId, ParamLocal,
+        ProfiledInstruction,
     };
-    use crate::plan::execution::prepared::rust::Rust;
     use crate::runtime::{Value, run_main};
 
     fn arithmetic_region<Graph: ExecutionGraphProfile>(
@@ -302,18 +301,16 @@ pub fn main() { calculate(4, 7) }
                     .collect::<Vec<_>>(),
                 [(1, ParamLocal::Int(IntLocalId(2)))]
             );
-            let Terminator::TestBranch(branch) = entry.terminator() else {
-                panic!("region output should feed a direct test branch");
-            };
+            let explanation = plan.explain().to_string();
+            let branches = explanation
+                .lines()
+                .map(str::trim)
+                .filter(|line| line.starts_with("branch_test "))
+                .collect::<Vec<_>>();
             assert_eq!(
-                Rust::expression(&branch.test),
-                Rust::expression(&BoolTest::LtInt {
-                    left: IntegerOperand::Local(IntLocalId(2)),
-                    right: IntegerOperand::Immediate(20),
-                })
+                branches,
+                ["branch_test bool.lt_int %int#2 20 true=b1(%int#2) false=b2(%int#2)"]
             );
-            assert_eq!(branch.true_.args(), &[ParamLocal::Int(IntLocalId(2))]);
-            assert_eq!(branch.false_.args(), &[ParamLocal::Int(IntLocalId(2))]);
             assert_eq!(
                 run_main(&plan, &mut Vec::new()).unwrap(),
                 Value::Int(expected.parse().unwrap())
