@@ -1,0 +1,7 @@
+name = "guard_constructor_locals"
+version = "1.0.0"
+gleam = ">= 1.18.1"
+
+[dependencies]
+gleam_stdlib = ">= 1.0.3 and < 1.0.4"
+clip = ">= 1.2.2 and < 1.2.3"

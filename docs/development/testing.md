@@ -919,6 +919,7 @@ cargo test --package geam --test binary --locked
 cargo test --package geam --test cross_crate_http --locked
 cargo test --package geam --test provider_examples --locked
 cargo test --package geam --test future_builtins --locked
+cargo test --package geam --test guard_constructor_locals --locked
 cargo test --package geam --test prepared_embedding --locked
 cargo test --package geam --test standalone_distribution --locked
 cargo test --package geam --test standalone_build --locked

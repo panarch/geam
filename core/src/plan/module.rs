@@ -52,10 +52,11 @@ pub(crate) use expression::{
     ExternalExprKind, ExternalFunctionExprKind, FloatBitSize, FloatCaseBranches, FloatExprKind,
     FloatFunctionExprKind, FunctionExprKind, FunctionFunctionExprKind, GenericExpr,
     GenericExprKind, GenericFunctionExpr, GenericFunctionExprKind, IntCaseBranches, IntExprKind,
-    IntFunctionExprKind, ListElements, ListFunctionExprKind, NilExprKind, NilFunctionExprKind,
-    PanicExpr, PanicExprKind, PotentiallyUninhabitedCallArg, StringCaseBranches, StringEncoding,
-    StringExprKind, StringFunctionExprKind, TupleExprKind, TupleFunctionExprKind,
-    TypedFunctionExprKind, UtfCodepointExprKind, UtfCodepointFunctionExprKind,
+    IntFunctionExprKind, ListElementTypeMismatch, ListElements, ListFunctionExprKind, NilExprKind,
+    NilFunctionExprKind, PanicExpr, PanicExprKind, PotentiallyUninhabitedCallArg,
+    StringCaseBranches, StringEncoding, StringExprKind, StringFunctionExprKind, TupleExprKind,
+    TupleFunctionExprKind, TypedFunctionExprKind, UtfCodepointExprKind,
+    UtfCodepointFunctionExprKind,
 };
 pub use expression::{
     BitArrayExpr, BitArrayFunctionExpr, BoolExpr, BoolFunctionExpr, CallArg, CustomExpr,

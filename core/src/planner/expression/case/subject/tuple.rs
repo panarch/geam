@@ -903,6 +903,64 @@ pub fn main() {
     }
 
     #[test]
+    fn plan_tuple_guard_constructor_materializes_only_referenced_binding() {
+        use crate::plan::IntReturn;
+        use crate::planner::support::compile;
+
+        let actual = plan_module(compile(
+            r#"
+pub fn main() {
+  case #(1, 2) {
+    #(left, right) if #(left) == #(1) -> right
+    _ -> 0
+  }
+}
+"#,
+        ))
+        .expect("source should plan");
+        let tuple_type = vec![ValueType::Int, ValueType::Int];
+        let left_binding = let_int_step(
+            0,
+            "left",
+            local_tuple(0, "<case:tuple:0>", tuple_type.clone()).index_int(0),
+        );
+        let right_binding = let_int_step(
+            1,
+            "right",
+            local_tuple(0, "<case:tuple:0>", tuple_type).index_int(1),
+        );
+        let condition = BoolExpr::and(
+            BoolExpr::value(true),
+            BoolExpr::block(
+                vec![left_binding.clone()],
+                BoolExpr::equal(
+                    Expr::from(tuple([local_int(0, "left")])),
+                    Expr::from(tuple([int(1)])),
+                ),
+            ),
+        );
+        let expected = module(
+            "main",
+            function(
+                "main",
+                int_return_block(
+                    [let_tuple_step(0, "<case:tuple:0>", tuple([int(1), int(2)]))],
+                    IntReturn::bool_case(
+                        condition,
+                        int_return_block(
+                            [left_binding, right_binding],
+                            int_return_expr(local_int(1, "right")),
+                        ),
+                        int_return_expr(int(0)),
+                    ),
+                ),
+            ),
+            [],
+        );
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn tuple_case_pattern_supports_literal_leaf_families() {
         assert_eq!(
             super::plan_tuple_case_pattern(

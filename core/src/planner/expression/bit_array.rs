@@ -5,6 +5,7 @@ use crate::plan::{
 use crate::planner::bit_array::{fixed_bit_size, validate_supported_endianness_option};
 use crate::planner::context::PlanContext;
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
+use crate::planner::expression::constant::ValueScope;
 use crate::planner::expression::conversion::expect_expression;
 use gleam_compiler_core::ast::{
     BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, TypedExpr,
@@ -33,10 +34,11 @@ pub(super) fn plan_expression(
 pub(super) fn plan_constant(
     segments: Vec<GleamBitArraySegment<Constant<Arc<Type>>, Arc<Type>>>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<BitArrayExpr, PlanError> {
     let mut planned = Vec::with_capacity(segments.len());
     for segment in segments {
-        let value = super::constant::plan(*segment.value, context)?;
+        let value = scope.plan(*segment.value, context)?;
         let options = plan_options(segment.options, plan_constant_size)?;
         planned.push(plan_segment(
             value,
@@ -349,6 +351,7 @@ mod tests {
         InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
         UnsupportedBitArraySegmentReason,
     };
+    use crate::planner::expression::constant::ValueScope;
     use gleam_compiler_core::ast::{
         BitArrayOption, BitArraySegment as GleamBitArraySegment, Constant, SrcSpan, TypedExpr,
     };
@@ -847,6 +850,7 @@ pub fn main() { 0 }
                     type_: type_::int(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Ok(BitArrayExpr::value(vec![BitArraySegment::Int {
                 value: IntExpr::value(1.into()),
@@ -871,6 +875,7 @@ pub fn main() { 0 }
                     type_: type_::int(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -890,6 +895,7 @@ pub fn main() { 0 }
                     type_: type_::string(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -912,6 +918,7 @@ pub fn main() { 0 }
                     type_: type_::int(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -940,6 +947,7 @@ pub fn main() { 0 }
                     type_: type_::int(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -964,6 +972,7 @@ pub fn main() { 0 }
                     type_: type_::int(),
                 }],
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {

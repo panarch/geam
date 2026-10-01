@@ -1,0 +1,16 @@
+# Do not manually edit this file, it is managed by Gleam.
+#
+# This file locks the dependency versions used, to make your build
+# deterministic and to prevent unexpected versions from being included
+# in your application.
+#
+# You should check this file into your source control repository.
+
+packages = [
+  { name = "clip", version = "1.2.2", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "clip", source = "hex", outer_checksum = "12A01D12B289C078506B1C383F65A916381A2596C7F2CA7051E8A44BF4FC6FC3" },
+  { name = "gleam_stdlib", version = "1.0.3", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "1F543AFBA5D33DA493E6087F4E4C4F20D899411343512686C98A8ABB2963CF22" },
+]
+
+[requirements]
+clip = { version = ">= 1.2.2 and < 1.2.3" }
+gleam_stdlib = { version = ">= 1.0.3 and < 1.0.4" }

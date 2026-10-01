@@ -1,3 +1,4 @@
+use crate::planner::expression::constant;
 use ecow::EcoString;
 use gleam_compiler_core::ast::{
     AssignmentKind, BitArraySize, ClauseGuard, Pattern, Statement, TypedArg, TypedClause,
@@ -245,9 +246,12 @@ impl FreeVariables {
             ClauseGuard::Not { expression, .. } => pending.push(Visit::Guard(expression)),
             ClauseGuard::TupleIndex { tuple, .. } => pending.push(Visit::Guard(tuple)),
             ClauseGuard::FieldAccess { container, .. } => pending.push(Visit::Guard(container)),
-            ClauseGuard::Constant(_)
-            | ClauseGuard::ModuleSelect { .. }
-            | ClauseGuard::Invalid { .. } => {}
+            ClauseGuard::Constant(value) => {
+                for name in constant::guard_locals(value) {
+                    self.record(name, bound);
+                }
+            }
+            ClauseGuard::ModuleSelect { .. } | ClauseGuard::Invalid { .. } => {}
         }
     }
 
@@ -575,6 +579,68 @@ pub fn main() {
 "#,
             ),
             vec!["threshold".to_string()],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_visit_guard_values_in_first_use_order() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub type Boxed(a) { Boxed(a) }
+pub fn main() {
+  let first = "a"
+  let second = "b"
+  let value = 7
+  let tail = [8]
+  fn(expected) {
+    case expected {
+      candidate if Boxed(#(second <> first, [value, ..tail], <<value:size(8)>>, first)) == candidate -> True
+      _ -> False
+    }
+  }
+  Nil
+}
+"#,
+            ),
+            vec!["second", "first", "value", "tail"],
+        );
+    }
+
+    #[test]
+    fn anonymous_free_variables_keep_guard_pattern_and_sibling_scopes() {
+        assert_eq!(
+            anonymous_function_free_variables(
+                r#"
+pub type Boxed(a) { Boxed(a) }
+const fixed = 7
+fn identity(value) { value }
+pub fn main() {
+  let head = 3
+  let outer = 7
+  fn(values, expected_tuple, expected_int) {
+    case values {
+      [head, ..] if Boxed(#(head, fixed, identity)) == expected_tuple -> True
+      _ -> False
+    }
+    case expected_int {
+      candidate if Boxed(outer) == candidate -> True
+      _ -> False
+    }
+    case values {
+      [0, head, ..] | [head, 0, ..] if Boxed(head) == expected_int -> True
+      _ -> False
+    }
+    case expected_int {
+      candidate if Boxed(head) == candidate -> True
+      _ -> False
+    }
+  }
+  Nil
+}
+"#,
+            ),
+            vec!["outer", "head"],
         );
     }
 

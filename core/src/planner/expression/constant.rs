@@ -1,11 +1,12 @@
 use crate::plan::{
-    BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListExpr, NilExpr, StringExpr, TupleExpr,
-    ValueType,
+    BoolExpr, Expr, FloatExpr, FunctionExpr, IntExpr, ListElementTypeMismatch, ListElements,
+    ListExpr, ListSpreadElements, NilExpr, StringExpr, TupleExpr, ValueShape, ValueType,
 };
 use crate::planner::context::{ModuleFunctionTarget, PlanContext};
 use crate::planner::error::{InvalidExpressionShapeKind, InvalidTypedAstReason, PlanError};
 use crate::planner::expression::conversion::expect_expression;
 use crate::planner::expression::record_constructor::ResolvedRecordConstructor;
+use ecow::EcoString;
 use gleam_compiler_core::ast::Constant;
 use gleam_compiler_core::strings::convert_string_escape_chars;
 use gleam_compiler_core::type_::{
@@ -17,6 +18,106 @@ pub(in crate::planner::expression) fn plan(
     literal: Constant<Arc<Type>>,
     context: &PlanContext<'_>,
 ) -> Result<Expr, PlanError> {
+    ValueScope::ModuleConstant.plan(literal, context)
+}
+
+pub(super) fn plan_guard(
+    literal: Constant<Arc<Type>>,
+    context: &PlanContext<'_>,
+) -> Result<Expr, PlanError> {
+    // Bare guard locals use ClauseGuard::Var, not a root Constant::Var.
+    if matches!(literal, Constant::Var { .. }) {
+        return plan(literal, context);
+    }
+    ValueScope::Guard.plan(literal, context)
+}
+
+pub(super) fn guard_locals(literal: &Constant<Arc<Type>>) -> impl Iterator<Item = &EcoString> {
+    // Bare guard locals use ClauseGuard::Var; retain the root constant margin.
+    let mut pending = if matches!(literal, Constant::Var { .. }) {
+        Vec::new()
+    } else {
+        vec![literal]
+    };
+    std::iter::from_fn(move || {
+        // Values do not introduce lexical scopes. Visit children in source order.
+        while let Some(literal) = pending.pop() {
+            match literal {
+                Constant::Var {
+                    name,
+                    constructor: Some(constructor),
+                    ..
+                } if matches!(
+                    constructor.variant,
+                    ValueConstructorVariant::LocalVariable { .. }
+                ) =>
+                {
+                    return Some(name);
+                }
+                Constant::StringConcatenation { left, right, .. } => {
+                    pending.push(right);
+                    pending.push(left);
+                }
+                Constant::Tuple { elements, .. } => pending.extend(elements.iter().rev()),
+                Constant::List { elements, tail, .. } => {
+                    if let Some(tail) = tail {
+                        pending.push(tail);
+                    }
+                    pending.extend(elements.iter().rev());
+                }
+                Constant::Record {
+                    arguments: Some(arguments),
+                    ..
+                } => {
+                    pending.extend(arguments.iter().rev().map(|argument| &argument.value));
+                }
+                Constant::BitArray { segments, .. } => {
+                    pending.extend(segments.iter().rev().map(|segment| segment.value.as_ref()));
+                }
+                Constant::Int { .. }
+                | Constant::Float { .. }
+                | Constant::String { .. }
+                | Constant::Var { .. }
+                | Constant::Record {
+                    arguments: None, ..
+                }
+                | Constant::RecordUpdate { .. }
+                | Constant::Todo { .. }
+                | Constant::Invalid { .. } => {}
+            }
+        }
+        None
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ValueScope {
+    ModuleConstant,
+    Guard,
+}
+
+impl ValueScope {
+    pub(super) fn plan(
+        self,
+        literal: Constant<Arc<Type>>,
+        context: &PlanContext<'_>,
+    ) -> Result<Expr, PlanError> {
+        plan_value(literal, context, self)
+    }
+
+    fn value_shape(self, type_: &Type, context: &PlanContext<'_>) -> Option<ValueShape> {
+        match self {
+            Self::ModuleConstant => context.monomorphic_value_shape(type_),
+            Self::Guard => Some(context.value_shape_in_scope(type_)),
+        }
+    }
+}
+
+fn plan_value(
+    literal: Constant<Arc<Type>>,
+    context: &PlanContext<'_>,
+    scope: ValueScope,
+) -> Result<Expr, PlanError> {
     match literal {
         Constant::Int { int_value, .. } => Ok(Expr::int(IntExpr::value(int_value))),
         Constant::Float { float_value, .. } => {
@@ -26,23 +127,28 @@ pub(in crate::planner::expression) fn plan(
             convert_string_escape_chars(&value),
         ))),
         Constant::StringConcatenation { left, right, .. } => {
-            let left = plan_string(*left, context)?;
-            let right = plan_string(*right, context)?;
+            let left = plan_string(*left, context, scope)?;
+            let right = plan_string(*right, context, scope)?;
 
             Ok(Expr::string(StringExpr::concatenate(left, right)))
         }
         Constant::Tuple {
             elements, type_, ..
-        } => plan_tuple(elements, type_, context),
+        } => plan_tuple(elements, type_, context, scope),
         Constant::List {
             elements,
             tail,
             type_,
             ..
-        } => plan_list(elements, tail.map(|tail| *tail), type_, context),
+        } => plan_list(elements, tail.map(|tail| *tail), type_, context, scope),
         Constant::Var {
             name, constructor, ..
-        } => plan_var(name, constructor.map(|constructor| *constructor), context),
+        } => plan_var(
+            name,
+            constructor.map(|constructor| *constructor),
+            context,
+            scope,
+        ),
         Constant::Record {
             arguments,
             record_constructor,
@@ -51,9 +157,10 @@ pub(in crate::planner::expression) fn plan(
             arguments,
             record_constructor.map(|constructor| *constructor),
             context,
+            scope,
         ),
         Constant::BitArray { segments, .. } => {
-            super::bit_array::plan_constant(segments, context).map(Expr::bit_array)
+            super::bit_array::plan_constant(segments, context, scope).map(Expr::bit_array)
         }
         Constant::RecordUpdate { .. } => Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
@@ -71,36 +178,41 @@ pub(in crate::planner::expression) fn plan(
 fn plan_string(
     literal: Constant<Arc<Type>>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<StringExpr, PlanError> {
-    expect_expression(plan(literal, context)?)
+    expect_expression(scope.plan(literal, context)?)
 }
 
 fn plan_tuple(
     elements: Vec<Constant<Arc<Type>>>,
     type_: Arc<Type>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<Expr, PlanError> {
     let planned_elements = elements
         .into_iter()
-        .map(|element| plan(element, context))
+        .map(|element| scope.plan(element, context))
         .collect::<Result<Vec<_>, _>>()?;
     let actual_type = planned_elements
         .iter()
         .map(Expr::value_type)
         .collect::<Vec<_>>();
-    let actual = context
-        .monomorphic_value_shape(type_.as_ref())
-        .map(|shape| shape.value_type());
-    let expected_type = match actual {
-        Some(ValueType::Tuple(type_)) => type_,
+    let expected_shape = match scope.value_shape(type_.as_ref(), context) {
+        Some(ValueShape::Tuple(shape)) => shape,
         actual => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
-                    kind: InvalidExpressionShapeKind::ConstantTupleType { actual },
+                    kind: InvalidExpressionShapeKind::ConstantTupleType {
+                        actual: actual.as_ref().map(ValueShape::value_type),
+                    },
                 },
             });
         }
     };
+    let expected_type = expected_shape
+        .iter()
+        .map(ValueShape::value_type)
+        .collect::<Vec<_>>();
 
     if expected_type != actual_type {
         return Err(PlanError::InvalidTypedAst {
@@ -113,10 +225,8 @@ fn plan_tuple(
         });
     }
 
-    Ok(Expr::tuple(TupleExpr::value(
-        planned_elements,
-        expected_type,
-    )))
+    let expression = Expr::tuple(TupleExpr::value(planned_elements, expected_type));
+    super::conversion::refine_expression_shape(expression, ValueShape::Tuple(expected_shape))
 }
 
 fn plan_list(
@@ -124,18 +234,20 @@ fn plan_list(
     tail: Option<Constant<Arc<Type>>>,
     type_: Arc<Type>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<Expr, PlanError> {
     let planned_elements = elements
         .into_iter()
-        .map(|element| plan(element, context))
+        .map(|element| scope.plan(element, context))
         .collect::<Result<Vec<_>, _>>()?;
 
     let list_element_type = match type_.list_type() {
         Some(list_element_type) => list_element_type,
         None => {
-            let actual = context
-                .monomorphic_value_shape(type_.as_ref())
-                .map(|shape| shape.value_type());
+            let actual = scope
+                .value_shape(type_.as_ref(), context)
+                .as_ref()
+                .map(ValueShape::value_type);
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantListType { actual },
@@ -143,11 +255,8 @@ fn plan_list(
             });
         }
     };
-    let expected_element_type = match context
-        .monomorphic_value_shape(list_element_type.as_ref())
-        .map(|shape| shape.value_type())
-    {
-        Some(type_) => type_,
+    let expected_item_shape = match scope.value_shape(list_element_type.as_ref(), context) {
+        Some(shape) => shape,
         None => {
             return Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -156,29 +265,40 @@ fn plan_list(
             });
         }
     };
+    let expected_element_type = expected_item_shape.value_type();
 
     let Some(tail) = tail else {
         let list = super::conversion::expect_value_type_result(
             ListExpr::try_value(planned_elements, expected_element_type),
-            |error| (error.expected, error.actual),
+            list_element_types,
         )?;
-        return Ok(Expr::list(list));
+        return super::conversion::refine_expression_shape(
+            Expr::list(list),
+            ValueShape::List(Box::new(expected_item_shape)),
+        );
     };
-    let tail: ListExpr = expect_expression(plan(tail, context)?)?;
+    let tail: ListExpr = expect_expression(scope.plan(tail, context)?)?;
     let elements = super::conversion::expect_value_type_result(
-        crate::plan::ListElements::from_exprs(expected_element_type, planned_elements),
-        |error| (error.expected, error.actual),
+        ListElements::from_exprs(expected_element_type, planned_elements),
+        list_element_types,
     )?;
-    let elements = super::conversion::expect_list_spread(
-        crate::plan::ListSpreadElements::from_parts(elements, tail),
-    )?;
-    Ok(Expr::list(ListExpr::from_spread_elements(elements)))
+    let elements =
+        super::conversion::expect_list_spread(ListSpreadElements::from_parts(elements, tail))?;
+    super::conversion::refine_expression_shape(
+        Expr::list(ListExpr::from_spread_elements(elements)),
+        ValueShape::List(Box::new(expected_item_shape)),
+    )
+}
+
+fn list_element_types(error: ListElementTypeMismatch) -> (ValueType, ValueType) {
+    (error.expected, error.actual)
 }
 
 fn plan_var(
-    name: ecow::EcoString,
+    name: EcoString,
     constructor: Option<ValueConstructor>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
         return Err(PlanError::InvalidTypedAst {
@@ -204,20 +324,33 @@ fn plan_var(
                 module,
                 name,
                 external_erlang.is_some() || external_javascript.is_some(),
-            )
-            .validate_external(context)?;
-            let function = context.module_function(&target)?;
-
-            Ok(Expr::function(FunctionExpr::reference(
-                function.reference(function.signature.identity_instantiation()),
-            )))
+            );
+            match scope {
+                ValueScope::Guard => super::var::plan_function_reference(
+                    target,
+                    context.value_shape_in_scope(constructor.type_.as_ref()),
+                    context,
+                ),
+                ValueScope::ModuleConstant => {
+                    let target = target.validate_external(context)?;
+                    let function = context.module_function(&target)?;
+                    Ok(Expr::function(FunctionExpr::reference(
+                        function.reference(function.signature.identity_instantiation()),
+                    )))
+                }
+            }
         }
-        ValueConstructorVariant::Record { .. } => plan_record_constructor(constructor, context),
-        ValueConstructorVariant::LocalVariable { .. } => Err(PlanError::InvalidTypedAst {
-            reason: InvalidTypedAstReason::ExpressionShape {
-                kind: InvalidExpressionShapeKind::ConstantLocalVariable,
-            },
-        }),
+        ValueConstructorVariant::Record { .. } => {
+            plan_record_constructor(constructor, context, scope)
+        }
+        ValueConstructorVariant::LocalVariable { .. } => match scope {
+            ValueScope::Guard => super::var::plan_local(name, context),
+            ValueScope::ModuleConstant => Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantLocalVariable,
+                },
+            }),
+        },
     }
 }
 
@@ -225,6 +358,7 @@ fn plan_record(
     arguments: Option<Vec<gleam_compiler_core::ast::CallArg<Constant<Arc<Type>>>>>,
     constructor: Option<ValueConstructor>,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<Expr, PlanError> {
     let Some(constructor) = constructor else {
         return Err(PlanError::InvalidTypedAst {
@@ -242,7 +376,7 @@ fn plan_record(
         });
     };
     let Some(arguments) = arguments else {
-        return plan_record_constructor(constructor, context);
+        return plan_record_constructor(constructor, context, scope);
     };
     if arguments.is_empty()
         && matches!(
@@ -256,7 +390,7 @@ fn plan_record(
                 && matches!(name.as_str(), "True" | "False" | "Nil")
         )
     {
-        return plan_record_constructor(constructor, context);
+        return plan_record_constructor(constructor, context, scope);
     }
     let constructor = context.custom_constructor(&constructor)?;
     if arguments.len() != constructor.fields().len() {
@@ -287,7 +421,7 @@ fn plan_record(
                     },
                 });
             }
-            let argument = plan(argument.value, context)?;
+            let argument = scope.plan(argument.value, context)?;
             super::conversion::validate_expression_value_type(
                 field.type_(),
                 &argument.value_type(),
@@ -304,6 +438,7 @@ fn plan_record(
 fn plan_record_constructor(
     constructor: ValueConstructor,
     context: &PlanContext<'_>,
+    scope: ValueScope,
 ) -> Result<Expr, PlanError> {
     let ValueConstructorVariant::Record {
         name,
@@ -328,9 +463,10 @@ fn plan_record_constructor(
                     kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
                         name: name.clone(),
                         arity: usize::from(*arity),
-                        actual: context
-                            .monomorphic_value_shape(constructor.type_.as_ref())
-                            .map(|shape| shape.value_type()),
+                        actual: scope
+                            .value_shape(constructor.type_.as_ref(), context)
+                            .as_ref()
+                            .map(ValueShape::value_type),
                     },
                 },
             }),
@@ -339,7 +475,7 @@ fn plan_record_constructor(
     if module != PRELUDE_MODULE_NAME {
         let _linked_module = context.resolve_module_reference(module, name)?;
     }
-    let Some(shape) = context.monomorphic_value_shape(constructor.type_.as_ref()) else {
+    let Some(shape) = scope.value_shape(constructor.type_.as_ref(), context) else {
         return Err(PlanError::InvalidTypedAst {
             reason: InvalidTypedAstReason::ExpressionShape {
                 kind: InvalidExpressionShapeKind::ConstantRecordConstructorType { actual: None },
@@ -354,7 +490,7 @@ fn plan_record_constructor(
 
 #[cfg(test)]
 mod tests {
-    use super::{plan, plan_record, plan_record_constructor, plan_var};
+    use super::{ValueScope, plan, plan_record, plan_record_constructor, plan_var};
     use crate::plan::{
         ConstantTemplate, ConstantTemplateId, ConstantTemplateSignature, ConstantTemplates,
         ConstantValue, CustomConstructor, CustomConstructorField, CustomConstructorRefinement,
@@ -383,6 +519,179 @@ mod tests {
         self, Deprecation, ValueConstructor, ValueConstructorVariant,
     };
     use std::collections::HashMap;
+
+    #[test]
+    fn plan_guard_generic_tuple_list_spread_preserves_scoped_local_shapes() {
+        use super::plan_guard;
+        use crate::plan::{GenericExpr, ListElements, ListExpr, ListSpreadElements, TupleExpr};
+        use crate::planner::type_parameter::TypeParameterScope;
+
+        // Typed value in: candidate if #(value, [value, ..tail]) == candidate.
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let mut parameters = TypeParameterScope::default();
+        let parameter = parameters.resolve(17);
+        context.set_type_parameters(parameters);
+        let value = context.define_generic_local("value".into(), parameter);
+        let tail = context.define_list_local_shape("tail".into(), ValueShape::Parameter(parameter));
+        let local_value = Constant::Var {
+            location: dummy_span(),
+            module: None,
+            name: "value".into(),
+            constructor: Some(Box::new(ValueConstructor::local_variable(
+                dummy_span(),
+                VariableOrigin::generated(),
+                type_::generic_var(17),
+            ))),
+            type_: type_::generic_var(17),
+        };
+        let input = Constant::Tuple {
+            location: dummy_span(),
+            elements: vec![
+                local_value.clone(),
+                Constant::List {
+                    location: dummy_span(),
+                    elements: vec![local_value],
+                    tail: Some(Box::new(Constant::Var {
+                        location: dummy_span(),
+                        module: None,
+                        name: "tail".into(),
+                        constructor: Some(Box::new(ValueConstructor::local_variable(
+                            dummy_span(),
+                            VariableOrigin::generated(),
+                            type_::list(type_::generic_var(17)),
+                        ))),
+                        type_: type_::list(type_::generic_var(17)),
+                    })),
+                    type_: type_::list(type_::generic_var(17)),
+                },
+            ],
+            type_: type_::tuple(vec![
+                type_::generic_var(17),
+                type_::list(type_::generic_var(17)),
+            ]),
+        };
+        let local = Expr::generic(GenericExpr::local_get(value, "value".into()));
+        let spread = ListSpreadElements::from_parts(
+            ListElements::from_exprs(ValueType::Parameter(parameter), vec![local.clone()])
+                .expect("generic item agrees with its scoped type"),
+            ListExpr::local_get(tail, "tail".into())
+                .with_item_shape(ValueShape::Parameter(parameter)),
+        )
+        .expect("nonempty prefix and tail share a generic item shape");
+        let expected = Expr::tuple(TupleExpr::value(
+            vec![local, Expr::list(ListExpr::from_spread_elements(spread))],
+            vec![
+                ValueType::Parameter(parameter),
+                ValueType::List(Box::new(ValueType::Parameter(parameter))),
+            ],
+        ));
+        assert_eq!(plan_guard(input.clone(), &context), Ok(expected));
+        assert_eq!(
+            plan(input, &context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::ExpressionShape {
+                    kind: InvalidExpressionShapeKind::ConstantLocalVariable
+                },
+            }),
+        );
+    }
+
+    #[test]
+    fn plan_guard_instantiates_generic_function_reference_in_tuple() {
+        use super::plan_guard;
+        use crate::plan::{FunctionExpr, GenericLocal, GenericLocalId};
+        use crate::planner::type_parameter::TypeParameterScope;
+
+        // The frontend constrains this generic reference to fn(Int) -> Int.
+        let mut typed = compile(
+            r#"
+fn identity(value: a) -> a { value }
+const callbacks: #(fn(Int) -> Int) = #(identity)
+pub fn main() { Nil }
+"#,
+        );
+        let input = *typed.definitions.constants.remove(0).value;
+        let mut parameters = TypeParameterScope::default();
+        let parameter = parameters.resolve(0);
+        let signature = FunctionTemplateSignature::new(
+            FunctionTemplateId::new(0),
+            TypeScheme::new(1),
+            FunctionShape::new(
+                vec![ValueShape::Parameter(parameter)],
+                ValueShape::Parameter(parameter),
+            ),
+        );
+        let functions = HashMap::from([(
+            "identity".into(),
+            FunctionInfo {
+                signature: signature.clone(),
+                type_parameters: parameters,
+                return_shape: ValueShape::Parameter(parameter),
+                params: vec![FunctionParam::new(
+                    ParamLocal::generic(GenericLocal::new(GenericLocalId(0), parameter)),
+                    ValueShape::Parameter(parameter),
+                    ParamBinding::Named("value".into()),
+                    None,
+                )],
+                definition_span: dummy_span().into(),
+            },
+        )]);
+        let module = "main".into();
+        let mut anonymous = AnonymousFunctions::default();
+        let context = PlanContext::new(&module, &functions, &mut anonymous);
+        let reference = FunctionReference::new(
+            signature
+                .try_instantiate(vec![ValueShape::Int])
+                .expect("one concrete argument instantiates the identity template"),
+        );
+        let expected = tuple([Expr::function(FunctionExpr::reference(reference))]).into();
+        assert_eq!(plan_guard(input, &context), Ok(expected));
+    }
+
+    #[test]
+    fn reject_margin_guard_list_item_and_spread_type_mismatches() {
+        use super::plan_guard;
+
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        context.define_list_local_shape("tail".into(), ValueShape::String);
+        let tail = Constant::Var {
+            location: dummy_span(),
+            module: None,
+            name: "tail".into(),
+            constructor: Some(Box::new(ValueConstructor::local_variable(
+                dummy_span(),
+                VariableOrigin::generated(),
+                type_::list(type_::string()),
+            ))),
+            type_: type_::list(type_::string()),
+        };
+        let expected = Err(PlanError::InvalidTypedAst {
+            reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
+                expected: ValueType::String,
+                actual: ValueType::Int,
+            },
+        });
+        // Both typed-AST margins must reject the item before constructing a list.
+        for tail in [None, Some(Box::new(tail))] {
+            let input = Constant::List {
+                location: dummy_span(),
+                elements: vec![Constant::Int {
+                    location: dummy_span(),
+                    value: "7".into(),
+                    int_value: 7.into(),
+                }],
+                tail,
+                type_: type_::list(type_::string()),
+            };
+            assert_eq!(plan_guard(input, &context), expected);
+        }
+    }
 
     #[test]
     fn plan_constant_containers_preserve_registered_external_types() {
@@ -777,7 +1086,12 @@ pub fn main() {
         let mut anonymous_functions = AnonymousFunctions::default();
         let context = PlanContext::new(&module_name, &functions, &mut anonymous_functions);
         assert_eq!(
-            plan_var("add_one".into(), Some(constructor), &context),
+            plan_var(
+                "add_one".into(),
+                Some(constructor),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Ok(Expr::function(crate::plan::FunctionExpr::reference(
                 FunctionReference::new(monomorphic_function_instantiation(0, function_shape)),
             ))),
@@ -814,6 +1128,7 @@ pub fn main() {
                 }]),
                 Some(constructor),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Ok(Expr::custom(
                 CustomExpr::try_constructor(
@@ -840,7 +1155,12 @@ pub fn main() {
         let constructor = constant_definition_alias_constructor_mut(&mut function_module).clone();
 
         assert_eq!(
-            plan_var("add_one".into(), Some(constructor.clone()), &context),
+            plan_var(
+                "add_one".into(),
+                Some(constructor.clone()),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "main".into(),
@@ -865,7 +1185,12 @@ pub fn main() {
         let external_constructor =
             constant_definition_alias_constructor_mut(&mut external_function_module).clone();
         assert_eq!(
-            plan_var("add_one".into(), Some(external_constructor), &context),
+            plan_var(
+                "add_one".into(),
+                Some(external_constructor),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "main".into(),
@@ -886,7 +1211,12 @@ pub fn main() {
         );
         let current_constant = main_var_constructor_mut(&mut current_constant_module).clone();
         assert_eq!(
-            plan_var("answer".into(), Some(current_constant), &context),
+            plan_var(
+                "answer".into(),
+                Some(current_constant),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "main".into(),
@@ -900,7 +1230,12 @@ pub fn main() {
         *module_fn_constant_alias_module_mut(&mut external_module) = "other".into();
         let external = constant_definition_alias_constructor_mut(&mut external_module).clone();
         assert_eq!(
-            plan_var("add_one".into(), Some(external), &context),
+            plan_var(
+                "add_one".into(),
+                Some(external),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "other".into(),
@@ -913,7 +1248,7 @@ pub fn main() {
         let mut generic_constructor = record_constructor("Boxed", "main", 0);
         generic_constructor.type_ = type_::generic_var(0);
         assert_eq!(
-            plan_record_constructor(generic_constructor, &context),
+            plan_record_constructor(generic_constructor, &context, ValueScope::ModuleConstant),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantRecordConstructorType {
@@ -1685,19 +2020,34 @@ pub fn main() {
         let mut true_constructor = record_constructor("True", "gleam", 0);
         true_constructor.type_ = type_::bool();
         assert_eq!(
-            plan_record(Some(Vec::new()), Some(true_constructor), &context),
+            plan_record(
+                Some(Vec::new()),
+                Some(true_constructor),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Ok(Expr::bool(crate::plan::BoolExpr::value(true))),
         );
         let mut false_constructor = record_constructor("False", "gleam", 0);
         false_constructor.type_ = type_::bool();
         assert_eq!(
-            plan_record(Some(Vec::new()), Some(false_constructor), &context),
+            plan_record(
+                Some(Vec::new()),
+                Some(false_constructor),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Ok(Expr::bool(crate::plan::BoolExpr::value(false))),
         );
         let mut nil_constructor = record_constructor("Nil", "gleam", 0);
         nil_constructor.type_ = type_::nil();
         assert_eq!(
-            plan_record(Some(Vec::new()), Some(nil_constructor), &context),
+            plan_record(
+                Some(Vec::new()),
+                Some(nil_constructor),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Ok(Expr::nil(crate::plan::NilExpr::value())),
         );
 
@@ -1720,7 +2070,12 @@ pub fn main() {
             implicit: None,
         };
         assert_eq!(
-            plan_record(Some(Vec::new()), Some(result_constructor()), &context,),
+            plan_record(
+                Some(Vec::new()),
+                Some(result_constructor()),
+                &context,
+                ValueScope::ModuleConstant,
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantRecordArgumentCount {
@@ -1735,6 +2090,7 @@ pub fn main() {
                 Some(vec![int_argument(None), int_argument(None)]),
                 Some(result_constructor()),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -1755,6 +2111,7 @@ pub fn main() {
                 Some(vec![int_argument(None), int_argument(None)]),
                 Some(extra_argument_constructor),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
@@ -1773,6 +2130,7 @@ pub fn main() {
                 Some(vec![int_argument(Some("wrong".into()))]),
                 Some(result_constructor()),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -1797,6 +2155,7 @@ pub fn main() {
                 }]),
                 Some(result_constructor()),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionValueTypeMismatch {
@@ -1819,6 +2178,7 @@ pub fn main() {
                 }]),
                 Some(result_constructor()),
                 &context,
+                ValueScope::ModuleConstant,
             ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
@@ -1833,7 +2193,7 @@ pub fn main() {
             type_::int(),
         );
         assert_eq!(
-            plan_record_constructor(local, &context),
+            plan_record_constructor(local, &context, ValueScope::ModuleConstant),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantRecordConstructorKind,
@@ -1841,7 +2201,11 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            plan_record_constructor(record_constructor("External", "other", 0), &context),
+            plan_record_constructor(
+                record_constructor("External", "other", 0),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "other".into(),
@@ -1851,7 +2215,11 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            plan_record_constructor(record_constructor("Ok", "other", 0), &context),
+            plan_record_constructor(
+                record_constructor("Ok", "other", 0),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "other".into(),
@@ -1863,7 +2231,7 @@ pub fn main() {
         let mut unlinked_invalid_shape = record_constructor("External", "other", 0);
         unlinked_invalid_shape.type_ = type_::unbound_var(0);
         assert_eq!(
-            plan_record_constructor(unlinked_invalid_shape, &context),
+            plan_record_constructor(unlinked_invalid_shape, &context, ValueScope::ModuleConstant),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "other".into(),
@@ -1873,7 +2241,11 @@ pub fn main() {
             }),
         );
         assert_eq!(
-            plan_record_constructor(record_constructor("External", "gleam", 1), &context),
+            plan_record_constructor(
+                record_constructor("External", "gleam", 1),
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ExpressionShape {
                     kind: InvalidExpressionShapeKind::ConstantPreludeConstructor {
@@ -1890,7 +2262,11 @@ pub fn main() {
             type_::result(type_::int(), type_::string()),
         );
         assert_eq!(
-            plan_record_constructor(mismatched_result_constructor, &context),
+            plan_record_constructor(
+                mismatched_result_constructor,
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::CustomType {
                     package: "".into(),
@@ -1910,7 +2286,11 @@ pub fn main() {
         conflicting_result_constructor.type_ =
             type_::fn_(vec![type_::int()], conflicting_result_type);
         assert_eq!(
-            plan_record_constructor(conflicting_result_constructor, &context),
+            plan_record_constructor(
+                conflicting_result_constructor,
+                &context,
+                ValueScope::ModuleConstant
+            ),
             Err(PlanError::InvalidTypedAst {
                 reason: InvalidTypedAstReason::ModuleReference {
                     module: "gleam".into(),
