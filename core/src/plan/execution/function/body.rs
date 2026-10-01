@@ -493,13 +493,15 @@ mod explain_tests {
 fn loop(value: Int) {
   case value {
     0 -> 0
-    _ -> loop(value - 1)
+    _ -> next(value - 1)
   }
 }
 
+fn next(value: Int) { loop(value) }
+
 pub fn main() { loop(2) }
 "#;
-        let expected = "return %int#0 | tail int#1 args=[%int#1]";
+        let expected = "return %int#0 | tail int#2 args=[%int#1]";
 
         assert_explanation(source, expected);
     }

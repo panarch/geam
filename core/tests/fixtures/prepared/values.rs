@@ -10223,7 +10223,28 @@ fn integer_comparisons() {
                                     data::graph::BlockHeader {
                                         params: 1..2,
                                         instructions: 1..2,
-                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(0),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 1,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 1,
+                                                                    destination: 0,
+                                                                },
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
                                     },
                                 ]),
                                 params: data::Storage::Static(&[
@@ -10263,29 +10284,6 @@ fn integer_comparisons() {
                             },
                             exits: data::Storage::Static(&[
                                 data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
-                                data::function::FunctionExit::TailCall {
-                                    function: data::source::FunctionCallTarget {
-                                        function: data::function::IntFunctionId(6),
-                                        site: data::source::HostCallSite::from_static("example", "countdown", data::source::SourceSpan::new(475, 495)),
-                                    },
-                                    args: data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                    ]),
-                                    transfer: data::graph::Transfer {
-                                        families: data::Storage::Static(&[
-                                            data::graph::FamilyTransfer {
-                                                family: data::graph::StorageFamily::Int,
-                                                length: 1,
-                                                steps: data::Storage::Static(&[
-                                                    data::graph::TransferStep {
-                                                        source: 1,
-                                                        destination: 0,
-                                                    },
-                                                ]),
-                                            },
-                                        ]),
-                                    },
-                                },
                             ]),
                         },
                     },

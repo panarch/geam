@@ -389,7 +389,12 @@ pub(in crate::plan::execution::lowering) enum DraftFlow<T> {
 pub(in crate::plan::execution::lowering) struct DraftGraphBuilder<Return, TailCall> {
     pub(in crate::plan::execution::lowering) graph: DraftGraph,
     pub(in crate::plan::execution::lowering) returns: Vec<Return>,
-    pub(in crate::plan::execution::lowering) tail_calls: Vec<TailCall>,
+    pub(in crate::plan::execution::lowering) tail_calls: Vec<DraftTailCall<TailCall>>,
+}
+
+pub(in crate::plan::execution::lowering) enum DraftTailCall<Function> {
+    Entry,
+    Function(Function),
 }
 
 pub(in crate::plan::execution::lowering) struct DraftGraph {
@@ -765,7 +770,7 @@ impl<Return, TailCall> DraftGraphBuilder<Return, TailCall> {
     pub(in crate::plan::execution::lowering) fn finish_tail_call(
         &mut self,
         cursor: DraftCursor,
-        function: TailCall,
+        function: DraftTailCall<TailCall>,
         args: Vec<DraftValueRef>,
     ) {
         let index = self.tail_calls.len();

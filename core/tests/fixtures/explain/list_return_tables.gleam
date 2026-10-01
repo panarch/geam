@@ -42,7 +42,7 @@ pub fn main() -> List(Int) {
 // function list.parameter#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.parameter#0 args=[]
+//     jump b0()
 //
 // function list.int#0
 //   entry b0 params=[] captures=[]
@@ -65,59 +65,59 @@ pub fn main() -> List(Int) {
 // function list.int#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.int#1 args=[]
+//     jump b0()
 //
 // function list.string#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.string#0 args=[]
+//     jump b0()
 //
 // function list.bit_array#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.bit_array#0 args=[]
+//     jump b0()
 //
 // function list.utf_codepoint#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.utf_codepoint#0 args=[]
+//     jump b0()
 //
 // function list.custom#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.custom#0 args=[]
+//     jump b0()
 //
 // function list.float#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.float#0 args=[]
+//     jump b0()
 //
 // function list.bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.bool#0 args=[]
+//     jump b0()
 //
 // function list.nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.nil#0 args=[]
+//     jump b0()
 //
 // function list.tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.tuple#0 args=[]
+//     jump b0()
 //
 // function list.parameter_list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.parameter_list#0 args=[]
+//     jump b0()
 //
 // function list.list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.list#0 args=[]
+//     jump b0()
 //
 // function list.function#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.function#0 args=[]
+//     jump b0()

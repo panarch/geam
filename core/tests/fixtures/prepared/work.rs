@@ -2297,7 +2297,47 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                             data::graph::BlockHeader {
                                                 params: 3..5,
                                                 instructions: 0..2,
-                                                terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                                terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                    edge: data::graph::Edge {
+                                                        target: data::graph::BlockId(0),
+                                                        args: data::Storage::Static(&[
+                                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                            data::graph::ParamLocal::IntFunction {
+                                                                local: data::graph::IntFunctionLocalId(1),
+                                                                type_: data::type_::FunctionType {
+                                                                    arguments: data::Storage::Static(&[
+                                                                        data::type_::ValueType::Int,
+                                                                    ]),
+                                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                                },
+                                                            },
+                                                        ]),
+                                                        transfer: data::graph::Transfer {
+                                                            families: data::Storage::Static(&[
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::Int,
+                                                                    length: 1,
+                                                                    steps: data::Storage::Static(&[
+                                                                        data::graph::TransferStep {
+                                                                            source: 1,
+                                                                            destination: 0,
+                                                                        },
+                                                                    ]),
+                                                                },
+                                                                data::graph::FamilyTransfer {
+                                                                    family: data::graph::StorageFamily::IntFunction,
+                                                                    length: 1,
+                                                                    steps: data::Storage::Static(&[
+                                                                        data::graph::TransferStep {
+                                                                            source: 1,
+                                                                            destination: 0,
+                                                                        },
+                                                                    ]),
+                                                                },
+                                                            ]),
+                                                        },
+                                                    },
+                                                }),
                                             },
                                         ]),
                                         params: data::Storage::Static(&[
@@ -2393,48 +2433,6 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     },
                                     exits: data::Storage::Static(&[
                                         data::function::FunctionExit::Return(data::graph::IntFunctionLocalId(0)),
-                                        data::function::FunctionExit::TailCall {
-                                            function: data::source::FunctionCallTarget {
-                                                function: data::function::IntFunctionFunctionId(0),
-                                                site: data::source::HostCallSite::from_static("app", "chain", data::source::SourceSpan::new(863, 914)),
-                                            },
-                                            args: data::Storage::Static(&[
-                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                                data::graph::ParamLocal::IntFunction {
-                                                    local: data::graph::IntFunctionLocalId(1),
-                                                    type_: data::type_::FunctionType {
-                                                        arguments: data::Storage::Static(&[
-                                                            data::type_::ValueType::Int,
-                                                        ]),
-                                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                                    },
-                                                },
-                                            ]),
-                                            transfer: data::graph::Transfer {
-                                                families: data::Storage::Static(&[
-                                                    data::graph::FamilyTransfer {
-                                                        family: data::graph::StorageFamily::Int,
-                                                        length: 1,
-                                                        steps: data::Storage::Static(&[
-                                                            data::graph::TransferStep {
-                                                                source: 1,
-                                                                destination: 0,
-                                                            },
-                                                        ]),
-                                                    },
-                                                    data::graph::FamilyTransfer {
-                                                        family: data::graph::StorageFamily::IntFunction,
-                                                        length: 1,
-                                                        steps: data::Storage::Static(&[
-                                                            data::graph::TransferStep {
-                                                                source: 1,
-                                                                destination: 0,
-                                                            },
-                                                        ]),
-                                                    },
-                                                ]),
-                                            },
-                                        },
                                     ]),
                                 },
                             },

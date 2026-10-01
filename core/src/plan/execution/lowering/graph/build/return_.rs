@@ -1,3 +1,4 @@
+use super::super::draft::DraftTailCall;
 use super::{
     DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftGraphValue, DraftNeverReturn,
 };
@@ -26,7 +27,10 @@ pub(in crate::plan::execution::lowering::graph) fn build_function_graph<
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<DraftTailCall<TailCall>>,
 ) -> Representability<DraftGraphBuilder<DraftReturn, TailCall>>
 where
     DraftReturn: DraftGraphValue,
@@ -67,7 +71,7 @@ pub(in crate::plan::execution::lowering::graph) fn build_never_function_graph<
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<NeverCallTarget>,
+    ) -> Representability<DraftTailCall<NeverCallTarget>>,
 ) -> Representability<DraftGraphBuilder<DraftNeverReturn, NeverCallTarget>> {
     let (mut graph, cursor) = graph_builder(template, context);
     lower_prefix(template.steps(), cursor, &mut graph, context)
@@ -176,7 +180,10 @@ fn lower_return_body<ModuleExpression, ModuleFunction, DraftReturn, TailCall>(
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<DraftTailCall<TailCall>>,
 ) -> Representability<()>
 where
     DraftReturn: DraftGraphValue,
@@ -335,7 +342,10 @@ fn lower_switch<Pattern, Subject, ModuleExpression, ModuleFunction, DraftReturn,
         &mut super::LoweringContext,
     ) -> Representability<DraftFlow<DraftReturn>>,
     lower_function: impl Copy
-    + Fn(&ModuleFunction, &mut super::LoweringContext) -> Representability<TailCall>,
+    + Fn(
+        &ModuleFunction,
+        &mut super::LoweringContext,
+    ) -> Representability<DraftTailCall<TailCall>>,
 ) -> Representability<()>
 where
     Pattern: Clone,
@@ -410,7 +420,7 @@ fn lower_never_return_body<ModuleExpression, ModuleFunction>(
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<NeverCallTarget>,
+    ) -> Representability<DraftTailCall<NeverCallTarget>>,
 ) -> Representability<()> {
     use module::ReturnBodyKind as B;
 
@@ -557,7 +567,7 @@ fn lower_never_switch<Pattern, Subject, ModuleExpression, ModuleFunction>(
     + Fn(
         &ModuleFunction,
         &mut super::LoweringContext,
-    ) -> Representability<NeverCallTarget>,
+    ) -> Representability<DraftTailCall<NeverCallTarget>>,
 ) -> Representability<()>
 where
     Pattern: Clone,
@@ -619,6 +629,7 @@ where
 mod tests {
     use super::super::instruction::DraftIntInstruction;
     use super::super::{DraftCursor, DraftFlow, DraftGraph, DraftGraphBuilder, DraftNeverReturn};
+    use super::DraftTailCall;
     use crate::plan::execution::function::IntFunctionId as ExecutionIntFunctionId;
     use crate::plan::execution::graph::ParamLocal;
     use crate::plan::execution::graph::{BlockId, SourceStopKind, Terminator};
@@ -643,7 +654,7 @@ mod tests {
     fn reject_int_function(
         _function: &FunctionInstantiation,
         _context: &mut crate::plan::execution::lowering::LoweringContext,
-    ) -> Representability<ExecutionIntFunctionId> {
+    ) -> Representability<DraftTailCall<ExecutionIntFunctionId>> {
         Representability::Uninhabited
     }
 
@@ -679,9 +690,12 @@ mod tests {
     fn finish_never_function(
         function: &FunctionInstantiation,
         context: &mut crate::plan::execution::lowering::LoweringContext,
-    ) -> Representability<super::NeverCallTarget> {
+    ) -> Representability<DraftTailCall<super::NeverCallTarget>> {
         context.never_function_id(function).map(|function| {
-            crate::plan::FunctionCallTarget::new(function, crate::plan::HostCallSite::unknown())
+            DraftTailCall::Function(crate::plan::FunctionCallTarget::new(
+                function,
+                crate::plan::HostCallSite::unknown(),
+            ))
         })
     }
 

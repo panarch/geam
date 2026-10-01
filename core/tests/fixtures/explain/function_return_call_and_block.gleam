@@ -81,7 +81,7 @@ pub fn main() -> fn() -> Nil {
 // function function.float#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.float#0 args=[]
+//     jump b0()
 //
 // function function.bit_array#0
 //   entry b0 params=[] captures=[]
@@ -92,7 +92,7 @@ pub fn main() -> fn() -> Nil {
 // function function.bit_array#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.bit_array#1 args=[]
+//     jump b0()
 //
 // function function.utf_codepoint#0
 //   entry b0 params=[] captures=[]
@@ -103,7 +103,7 @@ pub fn main() -> fn() -> Nil {
 // function function.utf_codepoint#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.utf_codepoint#1 args=[]
+//     jump b0()
 //
 // function function.bool#0
 //   entry b0 params=[] captures=[]

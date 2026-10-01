@@ -838,70 +838,72 @@ mod tests {
 
     #[test]
     fn independent_cpu_entries_yield_cancel_and_leave_borrowed_state_with_the_driver() {
-        let (plan, functions) = program(
-            "pub fn main(identity: Int) -> Int { echo identity main(identity) }",
-            LibraryValueType::Int,
-        );
-        let host = ManualHost::default();
-        let mut state = Cell::new(0);
-        let mut stores = Cell::new(());
-        let progress = Arc::new([AtomicUsize::new(0), AtomicUsize::new(0)]);
-        let mut echo = ProgressEcho(Arc::clone(&progress));
-        let domain = Domain::new(
-            plan,
-            &host,
-            &mut state,
-            &mut stores,
-            &mut echo,
-            Default::default(),
-            NonZeroUsize::new(17).unwrap(),
-        );
-        let context = domain.context();
-        let id = *functions.ints[0].function();
-        let mut left = RetainedValues::empty();
-        left.push_int(0.into());
-        let mut right = RetainedValues::empty();
-        right.push_int(1.into());
-        let result = host.finish(domain.drive(async {
-            let mut left = Box::pin(context.call(id, HostCallOrigin::Entry, left));
-            let mut right = Box::pin(context.call(id, HostCallOrigin::Entry, right));
-            poll_fn(|cx| {
-                assert!(left.as_mut().poll(cx).is_pending());
-                assert!(right.as_mut().poll(cx).is_pending());
-                if progress
-                    .iter()
-                    .all(|value| value.load(Ordering::SeqCst) >= 10)
-                {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
-            })
-            .await;
-            drop(left);
-            context
-                .execution
-                .with_state(|state| state.set(42))
-                .await
-                .unwrap();
-            let previous = progress[1].load(Ordering::SeqCst);
-            poll_fn(|cx| {
-                assert!(right.as_mut().poll(cx).is_pending());
-                if progress[1].load(Ordering::SeqCst) > previous + 10 {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
-            })
-            .await;
-            drop(right);
-        }));
-        result.unwrap();
-        assert_eq!(state.get(), 42);
-        assert_eq!(host.started.load(Ordering::SeqCst), 2);
-        assert_eq!(host.released.load(Ordering::SeqCst), 2);
-        assert!(host.workers.lock().is_empty());
-        assert!(progress[0].load(Ordering::SeqCst) < progress[1].load(Ordering::SeqCst));
+        for budget in [1, 17] {
+            let (plan, functions) = program(
+                "pub fn main(identity: Int) -> Int { echo identity main(identity) }",
+                LibraryValueType::Int,
+            );
+            let host = ManualHost::default();
+            let mut state = Cell::new(0);
+            let mut stores = Cell::new(());
+            let progress = Arc::new([AtomicUsize::new(0), AtomicUsize::new(0)]);
+            let mut echo = ProgressEcho(Arc::clone(&progress));
+            let domain = Domain::new(
+                plan,
+                &host,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::new(budget).unwrap(),
+            );
+            let context = domain.context();
+            let id = *functions.ints[0].function();
+            let mut left = RetainedValues::empty();
+            left.push_int(0.into());
+            let mut right = RetainedValues::empty();
+            right.push_int(1.into());
+            let result = host.finish(domain.drive(async {
+                let mut left = Box::pin(context.call(id, HostCallOrigin::Entry, left));
+                let mut right = Box::pin(context.call(id, HostCallOrigin::Entry, right));
+                poll_fn(|cx| {
+                    assert!(left.as_mut().poll(cx).is_pending());
+                    assert!(right.as_mut().poll(cx).is_pending());
+                    if progress
+                        .iter()
+                        .all(|value| value.load(Ordering::SeqCst) >= 10)
+                    {
+                        Poll::Ready(())
+                    } else {
+                        Poll::Pending
+                    }
+                })
+                .await;
+                drop(left);
+                context
+                    .execution
+                    .with_state(|state| state.set(42))
+                    .await
+                    .unwrap();
+                let previous = progress[1].load(Ordering::SeqCst);
+                poll_fn(|cx| {
+                    assert!(right.as_mut().poll(cx).is_pending());
+                    if progress[1].load(Ordering::SeqCst) > previous + 10 {
+                        Poll::Ready(())
+                    } else {
+                        Poll::Pending
+                    }
+                })
+                .await;
+                drop(right);
+            }));
+            result.unwrap();
+            assert_eq!(state.get(), 42);
+            assert_eq!(host.started.load(Ordering::SeqCst), 2);
+            assert_eq!(host.released.load(Ordering::SeqCst), 2);
+            assert!(host.workers.lock().is_empty());
+            assert!(progress[0].load(Ordering::SeqCst) < progress[1].load(Ordering::SeqCst));
+        }
     }
 
     #[test]

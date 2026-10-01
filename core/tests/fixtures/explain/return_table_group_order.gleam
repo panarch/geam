@@ -32,24 +32,24 @@ pub fn main() {
 // function int#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail int#1 args=[]
+//     jump b0()
 //
 // function list.int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail list.int#0 args=[]
+//     jump b0()
 //
 // function function.int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.int#0 args=[]
+//     jump b0()
 //
 // function function.list.int#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.int#0 args=[]
+//     jump b0()
 //
 // function function.function#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.function#0 args=[]
+//     jump b0()
