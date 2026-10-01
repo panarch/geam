@@ -1,9 +1,8 @@
 use super::super::local::Locals;
-use super::local_flow;
-use super::{InstructionError, Instructions, pair, read, same_type};
+use super::{InstructionError, Instructions, bool_test, integer_pair, local_flow, pair, read};
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
-    BoolInstruction, FloatInstruction, IntInstruction, IntegerOperand, NilInstruction, ParamSlot,
+    BoolInstruction, FloatInstruction, IntInstruction, NilInstruction, ParamSlot,
     StringInstruction, TupleInstruction, UtfCodepointInstruction,
 };
 use crate::plan::execution::type_::{ValueShapeDescriptor, ValueType};
@@ -142,27 +141,7 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
                 self.custom_field(source, *index, output, locals)
             }
             BoolInstruction::ListIndex { list, index: _ } => self.list_index(list, output, locals),
-            BoolInstruction::Not(value) => read(value, locals).map(|_| ()),
-            BoolInstruction::EqualInt { left, right }
-            | BoolInstruction::NotEqualInt { left, right }
-            | BoolInstruction::LtInt { left, right }
-            | BoolInstruction::LtEqInt { left, right }
-            | BoolInstruction::GtInt { left, right }
-            | BoolInstruction::GtEqInt { left, right } => integer_pair(left, right, locals),
-            BoolInstruction::LtFloat { left, right }
-            | BoolInstruction::LtEqFloat { left, right }
-            | BoolInstruction::GtFloat { left, right }
-            | BoolInstruction::GtEqFloat { left, right } => pair(left, right, locals),
-            BoolInstruction::Equal { left, right } | BoolInstruction::NotEqual { left, right } => {
-                same_type(left, right, locals)
-            }
-            BoolInstruction::StringStartsWith { value, prefix: _ } => {
-                read(value, locals).map(|_| ())
-            }
-            BoolInstruction::ListLengthEquals { value, length: _ }
-            | BoolInstruction::ListLengthAtLeast { value, length: _ } => {
-                read(value, locals).map(|_| ())
-            }
+            BoolInstruction::Test(test) => bool_test(test, locals),
         }
     }
 
@@ -271,29 +250,13 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
     }
 }
 
-fn integer_pair(
-    left: &IntegerOperand,
-    right: &IntegerOperand,
-    locals: &Locals<'_>,
-) -> Result<(), InstructionError> {
-    for operand in [left, right] {
-        match operand {
-            IntegerOperand::Local(local) => {
-                read(local, locals)?;
-            }
-            IntegerOperand::Immediate(_) => {}
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::super::{catalog::Catalog, local::LocalError, source::Sources, type_::Types};
     use super::{InstructionError, Instructions, IntInstruction, Locals};
     use crate::plan::execution::function::FunctionBodyOwner;
     use crate::plan::execution::graph::{
-        BoolInstruction, IntLocalId, IntegerOperand, ParamLocal, ProfiledInstructionKind,
+        BoolInstruction, BoolTest, IntLocalId, IntegerOperand, ParamLocal, ProfiledInstructionKind,
     };
     use crate::{ExecutionPlan, compile_typed_module, plan_module};
     use std::convert::Infallible;
@@ -515,12 +478,12 @@ pub fn main() {
             ),
         ] {
             for instruction in [
-                BoolInstruction::EqualInt { left, right },
-                BoolInstruction::NotEqualInt { left, right },
-                BoolInstruction::LtInt { left, right },
-                BoolInstruction::LtEqInt { left, right },
-                BoolInstruction::GtInt { left, right },
-                BoolInstruction::GtEqInt { left, right },
+                BoolInstruction::Test(BoolTest::EqualInt { left, right }),
+                BoolInstruction::Test(BoolTest::NotEqualInt { left, right }),
+                BoolInstruction::Test(BoolTest::LtInt { left, right }),
+                BoolInstruction::Test(BoolTest::LtEqInt { left, right }),
+                BoolInstruction::Test(BoolTest::GtInt { left, right }),
+                BoolInstruction::Test(BoolTest::GtEqInt { left, right }),
             ] {
                 assert_eq!(context.bool(&instruction, output, &locals), expected);
             }
@@ -539,10 +502,10 @@ pub fn main() {
         }
         assert_eq!(
             context.bool(
-                &BoolInstruction::EqualInt {
+                &BoolInstruction::Test(BoolTest::EqualInt {
                     left: Immediate(i64::MIN),
                     right: Immediate(i64::MAX)
-                },
+                }),
                 output,
                 &Locals::default()
             ),

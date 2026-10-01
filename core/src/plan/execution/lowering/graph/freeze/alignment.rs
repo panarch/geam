@@ -142,7 +142,8 @@ impl<'draft> Transitions<'draft> {
             };
             match &block.terminator {
                 DraftTerminator::Jump(edge) => add(Inputs::Edge(edge)),
-                DraftTerminator::BoolBranch { true_, false_, .. } => {
+                DraftTerminator::BoolBranch { true_, false_, .. }
+                | DraftTerminator::TestBranch { true_, false_, .. } => {
                     add(Inputs::Edge(true_));
                     add(Inputs::Edge(false_));
                 }

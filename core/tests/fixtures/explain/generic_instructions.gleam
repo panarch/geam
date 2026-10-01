@@ -186,8 +186,7 @@ pub fn main() {
 //   block b0 params=[]
 //     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] empty
 //     %list.parameter_list#0:shape#67(list_type#25) = list.parameter_list[type#25] value elements=[%list.parameter#0]
-//     %bool#0:shape#68(Bool) = bool.list_length_equals %list.parameter_list#0 length=1
-//     branch %bool#0 true=b1(%list.parameter_list#0) false=b2()
+//     branch_test bool.list_length_equals %list.parameter_list#0 length=1 true=b1(%list.parameter_list#0) false=b2()
 //   block b1 params=[%list.parameter_list#0:shape#67(list_type#25)]
 //     %list.parameter#0:shape#25(list_type#6) = list.parameter[type#6] list_index %list.parameter_list#0 index=0
 //     return %list.parameter#0
@@ -237,7 +236,7 @@ pub fn main() {
 //   block b0 params=[]
 //     %list.parameter#0:shape#49(list_type#17) = list.parameter[type#17] empty
 //     %list.parameter_list#0:shape#50(list_type#18) = list.parameter_list[type#18] value elements=[%list.parameter#0]
-//     %tuple#0:shape#69(#(list_type#18)) = tuple.value elements=[%list.parameter_list#0]
+//     %tuple#0:shape#68(#(list_type#18)) = tuple.value elements=[%list.parameter_list#0]
 //     %list.parameter_list#1:shape#50(list_type#18) = list.parameter_list[type#18] tuple_index %tuple#0 index=0
 //     return %list.parameter_list#1
 //
@@ -246,7 +245,7 @@ pub fn main() {
 //   block b0 params=[]
 //     %list.parameter#0:shape#53(list_type#19) = list.parameter[type#19] empty
 //     %list.parameter_list#0:shape#54(list_type#20) = list.parameter_list[type#20] value elements=[%list.parameter#0]
-//     %custom#0:shape#70(custom_type#2) = custom.construct custom_type#2.constructor#0 fields=[%list.parameter_list#0]
+//     %custom#0:shape#69(custom_type#2) = custom.construct custom_type#2.constructor#0 fields=[%list.parameter_list#0]
 //     %list.parameter_list#1:shape#54(list_type#20) = list.parameter_list[type#20] custom_field %custom#0 index=0
 //     return %list.parameter_list#1
 //
@@ -255,10 +254,9 @@ pub fn main() {
 //   block b0 params=[]
 //     %list.parameter#0:shape#57(list_type#21) = list.parameter[type#21] empty
 //     %list.parameter_list#0:shape#58(list_type#22) = list.parameter_list[type#22] value elements=[%list.parameter#0]
-//     %list.list#0:shape#71(list_type#26) = list.list[type#26] value elements=[%list.parameter_list#0]
-//     %bool#0:shape#68(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%list.list#0) false=b2()
-//   block b1 params=[%list.list#0:shape#71(list_type#26)]
+//     %list.list#0:shape#70(list_type#26) = list.list[type#26] value elements=[%list.parameter_list#0]
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%list.list#0) false=b2()
+//   block b1 params=[%list.list#0:shape#70(list_type#26)]
 //     %list.parameter_list#0:shape#58(list_type#22) = list.parameter_list[type#22] list_index %list.list#0 index=0
 //     return %list.parameter_list#0
 //   block b2 params=[]
@@ -271,8 +269,7 @@ pub fn main() {
 //     %list.parameter#0:shape#61(list_type#23) = list.parameter[type#23] empty
 //     %list.parameter#1:shape#61(list_type#23) = list.parameter[type#23] empty
 //     %list.parameter_list#0:shape#62(list_type#24) = list.parameter_list[type#24] value elements=[%list.parameter#0, %list.parameter#1]
-//     %bool#0:shape#68(Bool) = bool.list_length_at_least %list.parameter_list#0 length=1
-//     branch %bool#0 true=b1(%list.parameter_list#0) false=b2()
+//     branch_test bool.list_length_at_least %list.parameter_list#0 length=1 true=b1(%list.parameter_list#0) false=b2()
 //   block b1 params=[%list.parameter_list#0:shape#62(list_type#24)]
 //     %list.parameter_list#1:shape#62(list_type#24) = list.parameter_list[type#24] drop_first %list.parameter_list#0 count=1
 //     return %list.parameter_list#1

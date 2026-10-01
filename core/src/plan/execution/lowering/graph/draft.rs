@@ -1,3 +1,5 @@
+mod bool_test;
+pub(in crate::plan::execution::lowering) use bool_test::DraftBoolTest;
 pub(in crate::plan::execution::lowering::graph) mod instruction;
 pub(in crate::plan::execution::lowering::graph) mod pattern;
 use instruction::DraftInstructionKind;
@@ -304,6 +306,11 @@ pub(in crate::plan::execution::lowering) struct DraftBlock {
 
 pub(in crate::plan::execution::lowering) enum DraftTerminator {
     Jump(DraftEdge),
+    TestBranch {
+        test: DraftBoolTest,
+        true_: DraftEdge,
+        false_: DraftEdge,
+    },
     BoolBranch {
         subject: DraftBool,
         true_: DraftEdge,
@@ -1390,7 +1397,9 @@ impl DraftTerminator {
     pub(in crate::plan::execution::lowering::graph) fn successors(&self) -> Vec<DraftBlockId> {
         match self {
             Self::Jump(edge) => vec![edge.target],
-            Self::BoolBranch { true_, false_, .. } => vec![true_.target, false_.target],
+            Self::BoolBranch { true_, false_, .. } | Self::TestBranch { true_, false_, .. } => {
+                vec![true_.target, false_.target]
+            }
             Self::IntSwitch {
                 clauses, fallback, ..
             } => clauses
@@ -1430,6 +1439,15 @@ impl DraftTerminator {
     ) {
         match self {
             Self::Jump(edge) => edge.uses(values),
+            Self::TestBranch {
+                test,
+                true_,
+                false_,
+            } => {
+                test.uses(values);
+                true_.uses(values);
+                false_.uses(values);
+            }
             Self::BoolBranch {
                 subject,
                 true_,

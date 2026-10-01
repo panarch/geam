@@ -466,6 +466,12 @@ Each block contains ordered typed parameters, instructions, and one terminator.
 Branches, switches, matches, source stops, returns, and tail calls are explicit
 edges or terminators rather than recursive runtime expression or return nodes.
 
+A pure Boolean test used only by the immediately following branch can be stored
+in that branch directly. Value-producing instructions and direct branches share
+the same typed test semantics. Booleans used elsewhere retain their value
+storage. A direct test and its edge selection form one graph step; instruction
+budgets follow the resulting graph rather than the source expression count.
+
 The runtime evaluates a block iteratively. On an edge it consumes the completed
 environment, moves the ordered edge arguments within its typed storage, and
 releases omitted values. Repeated arguments need only the additional copies;

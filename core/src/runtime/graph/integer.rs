@@ -3,7 +3,7 @@ use crate::plan::execution::graph::IntegerOperand;
 use num_bigint::{BigInt, Sign};
 use std::cmp::Ordering;
 
-pub(super) fn add(
+pub(in crate::runtime::graph) fn add(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -20,7 +20,7 @@ pub(super) fn add(
     }
 }
 
-pub(super) fn subtract(
+pub(in crate::runtime::graph) fn subtract(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -37,7 +37,7 @@ pub(super) fn subtract(
     }
 }
 
-pub(super) fn multiply(
+pub(in crate::runtime::graph) fn multiply(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -54,7 +54,7 @@ pub(super) fn multiply(
     }
 }
 
-pub(super) fn divide(
+pub(in crate::runtime::graph) fn divide(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -97,7 +97,7 @@ pub(super) fn divide(
     }
 }
 
-pub(super) fn remainder(
+pub(in crate::runtime::graph) fn remainder(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -140,7 +140,7 @@ pub(super) fn remainder(
     }
 }
 
-pub(super) fn equal(
+pub(in crate::runtime::graph) fn equal(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,
@@ -158,7 +158,7 @@ pub(super) fn equal(
     }
 }
 
-pub(super) fn compare(
+pub(in crate::runtime::graph) fn compare(
     environment: &BlockEnvironment,
     left: IntegerOperand,
     right: IntegerOperand,

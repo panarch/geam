@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 9,
+        format: 10,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -342,9 +342,12 @@ fn integer_comparisons() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 3..7,
-                                            instructions: 0..1,
-                                            terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
-                                                subject: data::graph::BoolLocalId(0),
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::EqualInt {
+                                                    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                    right: data::graph::IntegerOperand::Immediate(0),
+                                                },
                                                 true_: data::graph::Edge {
                                                     target: data::graph::BlockId(2),
                                                     args: data::Storage::Static(&[
@@ -367,11 +370,6 @@ fn integer_comparisons() {
                                                                     },
                                                                 ]),
                                                             },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Bool,
-                                                                length: 0,
-                                                                steps: data::Storage::Static(&[]),
-                                                            },
                                                         ]),
                                                     },
                                                 },
@@ -389,11 +387,6 @@ fn integer_comparisons() {
                                                                 length: 1,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Bool,
-                                                                length: 0,
-                                                                steps: data::Storage::Static(&[]),
-                                                            },
                                                         ]),
                                                     },
                                                 },
@@ -401,12 +394,12 @@ fn integer_comparisons() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 7..8,
-                                            instructions: 1..1,
+                                            instructions: 0..0,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 8..11,
-                                            instructions: 1..1,
+                                            instructions: 0..0,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(4),
@@ -423,7 +416,7 @@ fn integer_comparisons() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 11..14,
-                                            instructions: 1..1,
+                                            instructions: 0..0,
                                             terminator: data::graph::Terminator::Match(data::graph::Match {
                                                 subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 pattern: data::graph::MatchPattern::BitArray(data::graph::BitArrayPattern {
@@ -503,17 +496,17 @@ fn integer_comparisons() {
                                         },
                                         data::graph::BlockHeader {
                                             params: 14..15,
-                                            instructions: 1..3,
+                                            instructions: 0..2,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 15..15,
-                                            instructions: 3..4,
+                                            instructions: 2..3,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
                                         },
                                         data::graph::BlockHeader {
                                             params: 15..18,
-                                            instructions: 4..4,
+                                            instructions: 3..3,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
                                                     target: data::graph::BlockId(4),
@@ -604,16 +597,6 @@ fn integer_comparisons() {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
-                                        data::graph::ProfiledInstruction {
-                                            output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(6),
-                                            },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
-                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                                right: data::graph::IntegerOperand::Immediate(0),
-                                            }),
-                                        },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::BitArrayFunction {
@@ -3688,10 +3671,10 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -3711,10 +3694,10 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -3827,80 +3810,80 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtEqInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtEqInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::LtEqInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::LtEqInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::GtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::GtEqInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::GtInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::GtEqInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::GtEqInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -3923,10 +3906,10 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::EqualInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -4950,20 +4933,20 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::EqualInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::EqualInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::NotEqualInt {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::NotEqualInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -5018,20 +5001,20 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::Equal {
                                                 left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 shape: data::type_::ValueShapeId(6),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::NotEqual {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::NotEqual {
                                                 left: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 right: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {

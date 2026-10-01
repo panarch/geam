@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 9,
+        format: 10,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -1995,7 +1995,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 shape: data::type_::ValueShapeId(8),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::Equal {
                                                 left: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
                                                     type_: data::type_::FunctionType {
@@ -2014,7 +2014,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         return_: data::Storage::Static(&data::type_::ValueType::Int),
                                                     },
                                                 },
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
@@ -2053,7 +2053,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                                 shape: data::type_::ValueShapeId(8),
                                             },
-                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Equal {
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::Equal {
                                                 left: data::graph::ParamLocal::IntFunction {
                                                     local: data::graph::IntFunctionLocalId(0),
                                                     type_: data::type_::FunctionType {
@@ -2072,7 +2072,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                                         return_: data::Storage::Static(&data::type_::ValueType::Int),
                                                     },
                                                 },
-                                            }),
+                                            })),
                                         },
                                         data::graph::ProfiledInstruction {
                                             output: data::graph::ParamSlot {
