@@ -16,7 +16,7 @@ use crate::plan::HostCallSite;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantTable};
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{CustomLocal, ParamLocal, ParamSlot, TupleLocalId};
-use crate::plan::execution::type_::{CustomConstructorRefinement, ValueShapeId, ValueType};
+use crate::plan::execution::type_::{ValueShapeId, ValueType};
 
 pub(super) struct Instructions<'context, 'data, Graph: ExecutionGraphProfile> {
     pub(super) types: &'context Types<'data>,
@@ -167,12 +167,9 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
     ) -> Result<(), InstructionError> {
         let slot = read(source, locals)?;
         let shape = &self.types.shapes.custom_shapes[source.shape.shape_id.0];
-        let type_ = &self.types.customs.types[shape.type_id.index()];
         let mut found = false;
-        for constructor in type_.constructors.iter() {
-            if !locals.allows_constructor(&slot.local, constructor.id.index)
-                || matches!(shape.constructor, CustomConstructorRefinement::Exact(selected) if selected != constructor.id.index)
-            {
+        for constructor in self.types.inhabited_constructors(shape) {
+            if !locals.allows_constructor(&slot.local, constructor.id.index) {
                 continue;
             }
             let field = constructor

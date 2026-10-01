@@ -2,10 +2,11 @@ use geam_core::embedding::{BigInt, BitArrayValue, StringValue};
 use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
-    HostConstructions, HostCustomConstructorDefinition, HostCustomConstructorList,
-    HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
-    HostCustomSchema, HostCustomType, HostCustomTypeArgument, HostFunctionType, HostListType,
-    HostOwnedCompletion, HostProvider, HostProviderModule, HostProviderSet, HostTypeIndex0,
+    HostConstructions, HostCustomConstructorAt, HostCustomConstructorDefinition,
+    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
+    HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema,
+    HostCustomType, HostCustomTypeArgument, HostFunctionType, HostListType, HostOwnedCompletion,
+    HostProvider, HostProviderModule, HostProviderSet, HostTypeIndex0, HostTypeIndexNext,
     HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue, StatelessHostProfile,
 };
 
@@ -66,6 +67,66 @@ type Targets = HostTypeList<Target, HostTypeList<TextTree, HostTypeListEnd>>;
 type IntArgs = HostTypeList<BigInt, HostTypeListEnd>;
 type Callback = HostFunctionType<IntArgs, BigInt>;
 
+struct ResultSchema;
+struct Success;
+struct Failure;
+struct SuccessValue;
+struct FailureReason;
+
+impl HostCustomSchema for ResultSchema {
+    const PACKAGE: &'static str = "";
+    const MODULE: &'static str = "gleam";
+    const NAME: &'static str = "Result";
+    const PARAMETER_COUNT: usize = 2;
+    type Constructors = HostCustomConstructorList<
+        Success,
+        HostCustomConstructorList<Failure, HostCustomConstructorListEnd>,
+    >;
+}
+
+impl HostCustomConstructorDefinition for Success {
+    const NAME: &'static str = "Ok";
+    type Fields = HostCustomFieldList<SuccessValue, HostCustomFieldListEnd>;
+}
+
+impl HostCustomConstructorDefinition for Failure {
+    const NAME: &'static str = "Error";
+    type Fields = HostCustomFieldList<FailureReason, HostCustomFieldListEnd>;
+}
+
+impl HostCustomField for SuccessValue {
+    const LABEL: Option<&'static str> = None;
+    type Type = HostCustomTypeArgument<HostTypeIndex0>;
+}
+
+impl HostCustomField for FailureReason {
+    const LABEL: Option<&'static str> = None;
+    type Type = HostCustomTypeArgument<HostTypeIndexNext<HostTypeIndex0>>;
+}
+
+type NativeResult =
+    HostCustomType<ResultSchema, HostTypeList<Source, HostTypeList<StringValue, HostTypeListEnd>>>;
+type SuccessResult = HostCustomConstructorAt<NativeResult, HostCustomIndex0, Success>;
+type FailureResult =
+    HostCustomConstructorAt<NativeResult, HostCustomIndexNext<HostCustomIndex0>, Failure>;
+type ResultCallback = HostFunctionType<HostTypeListEnd, Source>;
+
+fn success<'call>(
+    call: HostCall<'call, StatelessHostProfile, Provider, NativeResult>,
+    value: HostValue<'call, Source>,
+) -> Result<HostCallCompletion<'call, NativeResult>, HostCallError> {
+    Ok(call.return_custom::<SuccessResult>((value, ())))
+}
+
+fn failure<'call>(
+    call: HostCall<'call, StatelessHostProfile, Provider, NativeResult>,
+    _callback: HostCallable<'call, HostTypeListEnd, Source>,
+) -> Result<HostCallCompletion<'call, NativeResult>, HostCallError> {
+    // Keep the callback's result type without producing its symbolic payload.
+    // This native function returns a failure without invoking the callback.
+    Ok(call.return_custom::<FailureResult>(("caught".into(), ())))
+}
+
 fn equal_native<'call>(
     mut call: NativeCall<'call, StatelessHostProfile, Provider, bool, Targets>,
     source: HostValue<'call, Source>,
@@ -124,6 +185,10 @@ pub fn hosts() -> HostProviderSet {
             "keep_bits",
             keep_bits,
         )
+        .unwrap()
+        .with_scoped_function::<Provider, (Source,), NativeResult, _>("success", success)
+        .unwrap()
+        .with_scoped_function::<Provider, (ResultCallback,), NativeResult, _>("failure", failure)
         .unwrap()])
     .unwrap()
 }

@@ -9,6 +9,27 @@ fn fold(callback: fn(Int) -> Int, initial: Int) -> Int
 @external(erlang, "native", "keep_bits")
 fn keep_bits(value: BitArray) -> BitArray
 
+@external(erlang, "native", "success")
+fn success(value: a) -> Result(a, String)
+
+@external(erlang, "native", "failure")
+fn failure(callback: fn() -> a) -> Result(a, String)
+
+fn rebuild(result: Result(a, String)) -> Result(a, String) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(reason) -> Error(reason)
+  }
+}
+
+pub fn generic_results() {
+  let assert Ok(5) = rebuild(success(5))
+  let assert Error("caught") = rebuild(failure(fn() { 5 }))
+  let assert Error("caught") = rebuild(failure(fn() { panic }))
+  let assert Error("caught") = rebuild(failure(fn() -> Int { panic }))
+  True
+}
+
 pub fn run() {
   let assert True = integer_comparisons()
   let source = Branch([Leaf(<<"one":utf8>>), Branch([Leaf(<<"two":utf8>>)])])

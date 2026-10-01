@@ -87,6 +87,181 @@ mod tests {
     use crate::plan::execution::type_::ValueShapeId;
 
     #[test]
+    fn projections_check_every_inhabited_constructor_and_preserve_local_restrictions() {
+        use crate::plan::TypeParameterId;
+        use crate::plan::execution::graph::{IntLocalId, StringLocalId};
+        use crate::plan::execution::type_::{
+            CustomConstructorRefinement, CustomTypeId, CustomTypeTable, CustomValueShape,
+            CustomValueShapeDescriptor, CustomValueShapeId, TypeMetadata, ValueShapeDescriptor,
+            ValueShapeTable, ValueType,
+        };
+
+        let source = r#"
+pub type Choice(a) { Chosen(a) Refused(String) }
+fn widen(value: Choice(Int)) { value }
+pub fn main() { #(widen(Chosen(42)), widen(Refused("caught"))) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let mut descriptors = common.custom_types.types.to_vec();
+        let concrete = CustomTypeId(
+            descriptors
+                .iter()
+                .position(|descriptor| descriptor.type_.name.as_str() == "Choice")
+                .unwrap(),
+        );
+        let mut shapes = common.value_shapes.shapes.to_vec();
+        let mut shape_types = common.value_shapes.shape_types.to_vec();
+        let mut custom_shapes = common.value_shapes.custom_shapes.to_vec();
+        let integer = ParamSlot {
+            local: ParamLocal::Int(IntLocalId(0)),
+            shape: ValueShapeId(
+                shapes
+                    .iter()
+                    .position(|shape| shape == &ValueShapeDescriptor::Int)
+                    .unwrap(),
+            ),
+        };
+        let string = ParamSlot {
+            local: ParamLocal::String(StringLocalId(0)),
+            shape: ValueShapeId(
+                shapes
+                    .iter()
+                    .position(|shape| shape == &ValueShapeDescriptor::String)
+                    .unwrap(),
+            ),
+        };
+        let parameter = TypeParameterId(0);
+        let parameter_shape = ValueShapeId(shapes.len());
+        shapes.push(ValueShapeDescriptor::Parameter(parameter));
+        shape_types.push(ValueType::Parameter(parameter));
+
+        // A provider seals both constructors even when its callback result is
+        // symbolic. These admitted tables retain that complete nominal schema.
+        let symbolic = CustomTypeId(descriptors.len());
+        let mut descriptor = descriptors[concrete.index()].clone();
+        descriptor.type_.arguments = vec![TypeMetadata::Parameter(parameter)].into();
+        let mut constructors = descriptor.constructors.to_vec();
+        assert_eq!(
+            constructors
+                .iter()
+                .map(|constructor| constructor.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Chosen", "Refused"]
+        );
+        for constructor in &mut constructors {
+            constructor.id.type_id = symbolic;
+        }
+        let mut chosen_fields = constructors[0].fields.to_vec();
+        chosen_fields[0].type_ = ValueType::Parameter(parameter);
+        chosen_fields[0].shape = parameter_shape;
+        constructors[0].fields = chosen_fields.into();
+        descriptor.constructors = constructors.into();
+        descriptors.push(descriptor);
+
+        let mut sources = Vec::new();
+        for (type_id, argument, constructor) in [
+            (symbolic, parameter_shape, CustomConstructorRefinement::Any),
+            (
+                symbolic,
+                parameter_shape,
+                CustomConstructorRefinement::Exact(1),
+            ),
+            (
+                symbolic,
+                parameter_shape,
+                CustomConstructorRefinement::Exact(0),
+            ),
+            (concrete, integer.shape, CustomConstructorRefinement::Any),
+        ] {
+            let shape_id = CustomValueShapeId(custom_shapes.len());
+            custom_shapes.push(CustomValueShapeDescriptor {
+                type_id,
+                arguments: vec![argument].into(),
+                constructor,
+            });
+            let local = CustomLocal {
+                id: CustomLocalId(0),
+                shape: CustomValueShape { type_id, shape_id },
+            };
+            sources.push((
+                ParamSlot {
+                    local: ParamLocal::Custom(local),
+                    shape: ValueShapeId(shapes.len()),
+                },
+                local,
+            ));
+            shapes.push(ValueShapeDescriptor::Custom(shape_id));
+            shape_types.push(ValueType::Custom(type_id));
+        }
+        let customs = CustomTypeTable {
+            types: descriptors.into(),
+            definitions: common.custom_types.definitions.clone(),
+        };
+        let shapes = ValueShapeTable {
+            shapes: shapes.into(),
+            shape_types: shape_types.into(),
+            custom_shapes: custom_shapes.into(),
+        };
+        let types = Types::admit(
+            &common.list_types,
+            &customs,
+            &common.external_types,
+            &shapes,
+        )
+        .unwrap();
+        let catalog =
+            Catalog::admit(&common.function_parameters, &plan.program.functions, &types).unwrap();
+        let source_context = Sources::admit(common.root, &common.modules).unwrap();
+        let context = Instructions {
+            types: &types,
+            catalog: &catalog,
+            sources: &source_context,
+            constants: &common.constants,
+        };
+        for (position, (slot, source)) in sources.iter().enumerate() {
+            let mut locals = Locals::default();
+            locals.define(slot, &types).unwrap();
+            assert_eq!(
+                context.custom_field(source, 0, &string, &locals),
+                match position {
+                    0 | 1 => Ok(()),
+                    2 => Err(InstructionError::CustomField { index: 0 }),
+                    _ => Err(InstructionError::OutputType),
+                }
+            );
+            assert_eq!(
+                context.custom_field(source, 999, &string, &locals),
+                Err(InstructionError::CustomField { index: 999 })
+            );
+            assert_eq!(
+                context.custom_field(source, 0, &integer, &locals),
+                match position {
+                    2 => Err(InstructionError::CustomField { index: 0 }),
+                    _ => Err(InstructionError::OutputType),
+                }
+            );
+            locals.restrict_constructors(&slot.local, vec![0]);
+            assert_eq!(
+                context.custom_field(source, 0, &string, &locals),
+                match position {
+                    3 => Err(InstructionError::OutputType),
+                    _ => Err(InstructionError::CustomField { index: 0 }),
+                }
+            );
+            locals.restrict_constructors(&slot.local, vec![1]);
+            assert_eq!(
+                context.custom_field(source, 0, &string, &locals),
+                match position {
+                    2 => Err(InstructionError::CustomField { index: 0 }),
+                    _ => Ok(()),
+                }
+            );
+        }
+    }
+
+    #[test]
     fn checks_generic_construction_and_projection_without_losing_refinements() {
         let source = r#"
 pub type Choice { First Second }
