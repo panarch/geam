@@ -36,7 +36,7 @@ pub fn main() {
 // function never#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail never#0 args=[]
+//     jump b0()
 //
 // function int#0
 //   entry b0 params=[] captures=[]
@@ -56,44 +56,44 @@ pub fn main() {
 // function int#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail int#1 args=[]
+//     jump b0()
 //
 // function float#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail float#0 args=[]
+//     jump b0()
 //
 // function string#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail string#0 args=[]
+//     jump b0()
 //
 // function bit_array#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail bit_array#0 args=[]
+//     jump b0()
 //
 // function utf_codepoint#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail utf_codepoint#0 args=[]
+//     jump b0()
 //
 // function custom#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail custom#0 args=[]
+//     jump b0()
 //
 // function bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail bool#0 args=[]
+//     jump b0()
 //
 // function nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail nil#0 args=[]
+//     jump b0()
 //
 // function tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail tuple#0 args=[]
+//     jump b0()

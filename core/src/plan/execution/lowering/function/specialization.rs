@@ -2390,6 +2390,7 @@ fn lower_polymorphic_function<Expression, ModuleFunction, Lower>(
     functions: &mut FunctionTableBuilder,
     context: &mut LoweringContext,
 ) where
+    ModuleFunction: graph::ModuleFunctionTarget,
     Lower: PolymorphicFunctionExpression<Expression, ModuleFunction>,
 {
     match context.function_representation(function) {

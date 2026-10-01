@@ -242,6 +242,37 @@ mod tests {
     }
 
     #[test]
+    fn pure_self_loops_yield_at_root_and_nested_entries_without_effects() {
+        for source in [
+            "pub fn main() -> Int { main() }",
+            "fn spin() -> Int { spin() } pub fn main() { spin() + 1 }",
+        ] {
+            let plan = crate::runtime::plan_src(source);
+            for budget in [1, 2, 7, 1024] {
+                let mut execution = Execution::new(
+                    IntFunctionId(0),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                );
+                let mut echo = Vec::new();
+                for _ in 0..8 {
+                    execution = continuing(
+                        execution
+                            .advance(
+                                &plan,
+                                &mut RuntimeState::new(&mut echo),
+                                NonZeroUsize::new(budget).unwrap(),
+                            )
+                            .unwrap(),
+                    );
+                }
+                drop(execution);
+                assert!(echo.is_empty());
+            }
+        }
+    }
+
+    #[test]
     fn bounded_calls_preserve_exact_echo_and_completion_turns() {
         let plan = crate::runtime::plan_src(
             r#"
@@ -268,20 +299,20 @@ pub fn main() {
 }
 "#,
         );
-        // Each of the twelve decrements now uses an immediate: 203 steps,
-        // with the first echo at step 12 and subsequent echoes sixteen apart.
+        // Twelve self tails use entry jumps instead of two additional root
+        // exit/entry steps each: 179 steps, first echo at 12, then fourteen apart.
         for (budget, turns, echo_turns) in [
             (
                 1,
-                203,
-                [12, 28, 44, 60, 76, 92, 108, 124, 140, 156, 172, 188],
+                179,
+                [12, 26, 40, 54, 68, 82, 96, 110, 124, 138, 152, 166],
             ),
-            (2, 102, [6, 14, 22, 30, 38, 46, 54, 62, 70, 78, 86, 94]),
-            (3, 68, [4, 10, 15, 20, 26, 31, 36, 42, 47, 52, 58, 63]),
-            (7, 29, [2, 4, 7, 9, 11, 14, 16, 18, 20, 23, 25, 27]),
-            (29, 7, [1, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7]),
-            (128, 2, [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2]),
-            (203, 1, [1; 12]),
+            (2, 90, [6, 13, 20, 27, 34, 41, 48, 55, 62, 69, 76, 83]),
+            (3, 60, [4, 9, 14, 18, 23, 28, 32, 37, 42, 46, 51, 56]),
+            (7, 26, [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]),
+            (29, 7, [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]),
+            (128, 2, [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2]),
+            (179, 1, [1; 12]),
             (1024, 1, [1; 12]),
             (usize::MAX, 1, [1; 12]),
         ] {

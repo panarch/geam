@@ -623,7 +623,7 @@ mod tests {
     use crate::Value;
     use crate::plan::execution::graph::{SourceStopKind, Terminator};
     use crate::plan::execution::lowering::graph::draft::{
-        DraftGraphBuilder, DraftNeverReturn, DraftScope,
+        DraftGraphBuilder, DraftNeverReturn, DraftScope, DraftTailCall,
     };
     use crate::plan::execution::lowering::graph::{
         DraftCursor, DraftFlow, DraftGraph, DraftValueRef,
@@ -891,7 +891,7 @@ mod tests {
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftNeverReturn, ()>::new(Vec::new(), Vec::new());
-        graph.finish_tail_call(cursor, (), Vec::new());
+        graph.finish_tail_call(cursor, DraftTailCall::Function(()), Vec::new());
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
         source_stop_kind(&lowered.body);
     }

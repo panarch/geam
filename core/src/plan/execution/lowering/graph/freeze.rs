@@ -7,8 +7,8 @@ mod value;
 
 use super::draft::{
     DraftBlock, DraftBlockId, DraftEdge, DraftGraph, DraftGraphBuilder, DraftGraphValue,
-    DraftMatchEdge, DraftMatchEdgeArgument, DraftNeverCallTarget, DraftTerminator, DraftValueRef,
-    LoweredFunctionGraph,
+    DraftMatchEdge, DraftMatchEdgeArgument, DraftNeverCallTarget, DraftTailCall, DraftTerminator,
+    DraftValueRef, LoweredFunctionGraph,
 };
 use super::liveness::GraphLiveness;
 use crate::plan::execution;
@@ -167,6 +167,7 @@ where
             terminator,
             &returns,
             &tail_calls,
+            layouts[&entry].id,
             layout,
             &layouts,
             &mut exits,
@@ -227,7 +228,8 @@ fn reachable_blocks(graph: &DraftGraph) -> Vec<DraftBlockId> {
 fn freeze_terminator<Return, TailCall>(
     terminator: DraftTerminator,
     returns: &[Return],
-    tail_calls: &[TailCall],
+    tail_calls: &[DraftTailCall<TailCall>],
+    entry: execution::graph::BlockId,
     layout: &BlockLayout,
     layouts: &HashMap<DraftBlockId, BlockLayout>,
     exits: &mut Vec<FrozenGraphExit<Return::Frozen, TailCall>>,
@@ -322,15 +324,22 @@ where
             E::Exit(id)
         }
         DraftTerminator::TailCall { function, args } => {
-            let id = execution::graph::BlockGraphExitId::new(exits.len());
             let args = layout.values.any_slice(&args);
             let transfer = transfer::arguments(layout, &args);
-            exits.push(FrozenGraphExit::TailCall {
-                function: tail_calls[function].clone(),
-                args,
-                transfer,
-            });
-            E::Exit(id)
+            match &tail_calls[function] {
+                DraftTailCall::Entry => E::Jump(execution::graph::Jump::new(
+                    execution::graph::Edge::new(entry, args.into_vec(), transfer),
+                )),
+                DraftTailCall::Function(function) => {
+                    let id = execution::graph::BlockGraphExitId::new(exits.len());
+                    exits.push(FrozenGraphExit::TailCall {
+                        function: function.clone(),
+                        args,
+                        transfer,
+                    });
+                    E::Exit(id)
+                }
+            }
         }
         DraftTerminator::SourceStop {
             kind,
@@ -444,8 +453,9 @@ mod tests {
     use super::super::draft::instruction::{
         DraftBoolInstruction, DraftIntInstruction, DraftIntegerOperand,
     };
-    use super::super::draft::{DraftGraphBuilder, DraftInt};
+    use super::super::draft::{DraftGraphBuilder, DraftInt, DraftTailCall};
     use super::freeze;
+    use crate::Value;
     use crate::plan::FunctionCallTarget;
     use crate::plan::execution;
     use crate::plan::execution::ExecutionPlan;
@@ -454,13 +464,15 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockId, BoolLocalId, Edge, IntInstruction, IntLocalId, IntegerOperand,
-        ParamLocal, ProfiledInstruction, ProfiledInstructionKind, Terminator, Transfer,
+        NilLocalId, ParamLocal, ProfiledInstruction, ProfiledInstructionKind, StorageFamily,
+        Terminator, Transfer,
     };
     use crate::plan::execution::lowering::specialization::{
         RepresentationContext, SpecializationKey, StoredValueShape,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::storage::Table;
+    use crate::runtime::run_main;
     use std::collections::{HashMap, HashSet};
     use std::convert::Infallible;
 
@@ -470,6 +482,135 @@ mod tests {
     enum IntBinaryOperation {
         Add,
         Multiply,
+    }
+
+    #[test]
+    fn self_tail_uses_the_entry_layout_and_swap_transfer_without_an_exit() {
+        let plan = execution_plan(
+            r#"
+fn spin(left: Int, right: Int, marker: Nil) -> Int {
+  spin(right, left, marker)
+}
+
+pub fn main() { spin(1, 2, Nil) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        let graph = body.block_graph();
+        assert_eq!(graph.blocks().len(), 1);
+        let edge = jump(graph.block(graph.entry()).terminator());
+        assert_eq!(edge.target(), graph.entry());
+        assert_eq!(
+            edge.args(),
+            &[
+                ParamLocal::Int(IntLocalId(1)),
+                ParamLocal::Int(IntLocalId(0)),
+                ParamLocal::Nil(NilLocalId(0)),
+            ],
+        );
+        assert_eq!(
+            edge.transfer
+                .families
+                .iter()
+                .map(|family| (
+                    family.family,
+                    family.length,
+                    family
+                        .steps
+                        .iter()
+                        .map(|step| (step.source, step.destination))
+                        .collect::<Vec<_>>(),
+                ))
+                .collect::<Vec<_>>(),
+            vec![(StorageFamily::Int, 2, vec![(1, 0)])],
+        );
+        assert!(body.exits.is_empty());
+
+        let main = plan.int_function(IntFunctionId(0)).body();
+        assert_eq!(main.exits.len(), 1);
+        assert_eq!(
+            exit_id(
+                main.block_graph()
+                    .block(main.block_graph().entry())
+                    .terminator()
+            ),
+            BlockGraphExitId::new(0)
+        );
+    }
+
+    #[test]
+    fn generic_self_tails_keep_separate_int_and_string_specializations() {
+        let plan = execution_plan(
+            r#"
+fn repeat(value: value, remaining: Int) -> value {
+  case remaining {
+    0 -> value
+    n -> repeat(value, n - 1)
+  }
+}
+
+pub fn main() { #(repeat(42, 2), repeat("retained", 3)) }
+"#,
+        );
+        let int_body = plan.int_function(IntFunctionId(0)).body();
+        let string_body = plan.program.functions.value_returns.string_functions[0].body();
+        for graph in [int_body.block_graph(), string_body.block_graph()] {
+            assert_eq!(graph.blocks().len(), 3);
+            let edge = jump(graph.block(BlockId::new(2)).terminator());
+            assert_eq!(edge.target(), graph.entry());
+            assert_eq!(edge.args().len(), 2);
+        }
+        assert_eq!(int_body.exits.len(), 1);
+        assert_eq!(string_body.exits.len(), 1);
+        assert_eq!(
+            run_main(&plan, &mut Vec::new()),
+            Ok(Value::Tuple(vec![
+                Value::Int(42.into()),
+                Value::String("retained".into())
+            ]))
+        );
+    }
+
+    #[test]
+    fn self_tail_arguments_evaluate_before_cyclic_and_duplicate_transfer() {
+        let plan = execution_plan(
+            r#"
+fn rotate(left: Int, middle: Int, right: Int, remaining: Int) {
+  case remaining {
+    0 -> #(left, middle, right)
+    _ -> rotate(echo middle, echo right, echo left, remaining - 1)
+  }
+}
+fn duplicate(left: String, right: String, remaining: Int) {
+  case remaining {
+    0 -> #(left, right)
+    _ -> duplicate(left, left, remaining - 1)
+  }
+}
+pub fn main() { #(rotate(1, 2, 3, 2), duplicate("retained", "discarded", 3)) }
+"#,
+        );
+        let mut echo = Vec::new();
+        assert_eq!(
+            run_main(&plan, &mut echo),
+            Ok(Value::Tuple(vec![
+                Value::Tuple(vec![
+                    Value::Int(3.into()),
+                    Value::Int(1.into()),
+                    Value::Int(2.into())
+                ]),
+                Value::Tuple(vec![
+                    Value::String("retained".into()),
+                    Value::String("retained".into())
+                ]),
+            ])),
+        );
+        assert_eq!(
+            echo.iter()
+                .map(|output| output.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["2", "3", "1", "3", "1", "2"],
+        );
     }
 
     #[test]
@@ -665,7 +806,11 @@ pub fn main() {
         draft.finish_return(return_block, return_value);
         let tail_arg =
             draft.int_instruction(&mut tail_call_block, DraftIntInstruction::Value(2.into()));
-        draft.finish_tail_call(tail_call_block, 7, vec![tail_arg.erase()]);
+        draft.finish_tail_call(
+            tail_call_block,
+            DraftTailCall::Function(7),
+            vec![tail_arg.erase()],
+        );
         draft.finish_bool_branch(entry, condition, return_id, tail_call_id);
 
         let lowered = freeze(draft, &mut lowering_context());

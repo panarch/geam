@@ -40,7 +40,7 @@ pub fn main() { choose(False, 0, 0.0, "") }
 //   block b1 params=[%bool#0:shape#0(Bool), %int#0:shape#1(Int), %float#0:shape#2(Float), %string#0:shape#3(String)]
 //     switch.int %int#0 clauses=[1->b2(%bool#0, %int#0, %float#0, %string#0)] fallback=b3(%int#0)
 //   block b2 params=[%bool#0:shape#0(Bool), %int#0:shape#1(Int), %float#0:shape#2(Float), %string#0:shape#3(String)]
-//     tail int#1 args=[%bool#0, %int#0, %float#0, %string#0]
+//     jump b0(%bool#0, %int#0, %float#0, %string#0)
 //   block b3 params=[%int#0:shape#1(Int)]
 //     return %int#0
 //   block b4 params=[%float#0:shape#2(Float), %string#0:shape#3(String)]

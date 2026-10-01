@@ -301,7 +301,9 @@ mod tests {
     use crate::plan::execution::lowering::graph::draft::pattern::{
         DraftMatchPattern, DraftMatchPatternBinding,
     };
-    use crate::plan::execution::lowering::graph::draft::{DraftGraphBuilder, DraftInt};
+    use crate::plan::execution::lowering::graph::draft::{
+        DraftGraphBuilder, DraftInt, DraftTailCall,
+    };
     use crate::plan::execution::lowering::graph::liveness::GraphLiveness;
     use crate::plan::execution::lowering::local::{LocalKey, LocalKind};
     use crate::plan::execution::lowering::specialization::{
@@ -403,7 +405,7 @@ pub fn main() {
         let target_id = target.id();
         draft.finish_tail_call(
             target,
-            0,
+            DraftTailCall::Function(0),
             explicit.iter().chain(&inherited).cloned().collect(),
         );
         draft.finish_jump(entry, target_id, inherited.clone());
@@ -476,7 +478,7 @@ pub fn main() {
                     vec![sum.erase()]
                 }
             };
-            draft.finish_tail_call(success, 0, args);
+            draft.finish_tail_call(success, DraftTailCall::Function(0), args);
             draft.finish_return(failure, inherited.clone());
             draft.finish_match(
                 entry,
@@ -610,7 +612,7 @@ pub fn main() {
             draft.finish_return(failure, DraftInt::from_ref(&inherited[0]));
             draft.finish_tail_call(
                 target,
-                0,
+                DraftTailCall::Function(0),
                 inherited.iter().cloned().chain([binding.clone()]).collect(),
             );
             let mut clauses = Vec::new();

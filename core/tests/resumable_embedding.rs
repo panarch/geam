@@ -128,12 +128,18 @@ fn nested(value: Int, offset: Int) {
   echo value
   value
 }
-pub fn run(offset: Int) {
-  let assert [callback] = [fn(value) { nested(value, offset) }]
-  let result = fold(callback, 40)
-  let assert [result] = [result]
-  result
+fn repeat(offset: Int, remaining: Int, initial: Int) {
+  case remaining {
+    0 -> initial
+    _ -> {
+      let assert [callback] = [fn(value) { nested(value, offset) }]
+      let result = fold(callback, initial)
+      let assert [result] = [result]
+      repeat(offset, remaining - 1, result)
+    }
+  }
 }
+pub fn run(offset: Int) { repeat(offset, 1, 40) }
 "#;
     let typed = compile_typed_host_program(
         "application",
@@ -154,7 +160,7 @@ pub fn run(offset: Int) {
 }
 
 #[test]
-fn ordinary_native_loop_resumes_each_callback_without_source_future_or_replay() {
+fn self_tail_after_native_loop_preserves_callback_effects_without_replay() {
     let (mut module, run) = program();
     let (started, mut events) = mpsc::unbounded();
     let (senders, gates): (Vec<_>, VecDeque<_>) = (0..3).map(|_| oneshot::channel()).unzip();

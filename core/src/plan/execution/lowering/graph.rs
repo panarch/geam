@@ -44,9 +44,14 @@ pub(super) use freeze::FreezeGraphValue;
 pub(super) use profile::{seal_plain_block_graph, seal_plain_runtime_function_id};
 
 use super::LoweringContext;
-use super::specialization::Representability;
-use crate::plan::{execution, module};
+use super::specialization::{Representability, SpecializationKey};
+use crate::plan::{FunctionCallTarget, execution, module};
+use draft::DraftTailCall;
 use std::convert::Infallible;
+
+pub(super) trait ModuleFunctionTarget {
+    fn instantiation(&self) -> &module::FunctionInstantiation;
+}
 
 pub(super) fn lower_function_graph<
     ModuleExpression,
@@ -70,11 +75,18 @@ pub(super) fn lower_function_graph<
     draft::LoweredFunctionGraph<execution::function::FunctionBody<FrozenReturn, TailCall>>,
 >
 where
+    ModuleFunction: ModuleFunctionTarget,
     DraftReturn: draft::DraftGraphValue + freeze::FreezeGraphValue<Frozen = FrozenReturn>,
     TailCall: Clone,
 {
-    build::build_function_graph(template, body, context, lower_expression, lower_function)
-        .map(|graph| freeze::freeze(graph, context))
+    build::build_function_graph(
+        template,
+        body,
+        context,
+        lower_expression,
+        |target, context| lower_tail_call(template, target, context, lower_function),
+    )
+    .map(|graph| freeze::freeze(graph, context))
 }
 
 pub(super) fn lower_never_function_graph<ModuleExpression, ModuleFunction>(
@@ -93,18 +105,27 @@ pub(super) fn lower_never_function_graph<ModuleExpression, ModuleFunction>(
         &ModuleFunction,
         &mut LoweringContext,
     ) -> Representability<
-        crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>,
+        FunctionCallTarget<execution::function::NeverFunctionId>,
     >,
 ) -> Representability<
     draft::LoweredFunctionGraph<
         execution::function::FunctionBody<
             Infallible,
-            crate::plan::FunctionCallTarget<execution::function::NeverFunctionId>,
+            FunctionCallTarget<execution::function::NeverFunctionId>,
         >,
     >,
-> {
-    build::build_never_function_graph(template, body, context, lower_expression, lower_function)
-        .map(|graph| freeze::freeze(graph, context))
+>
+where
+    ModuleFunction: ModuleFunctionTarget,
+{
+    build::build_never_function_graph(
+        template,
+        body,
+        context,
+        lower_expression,
+        |target, context| lower_tail_call(template, target, context, lower_function),
+    )
+    .map(|graph| freeze::freeze(graph, context))
 }
 
 pub(super) fn lower_constant_graph<ModuleExpression, DraftReturn, FrozenReturn>(
@@ -124,4 +145,33 @@ where
 {
     build::build_constant_graph(expression, context, lower_expression)
         .map(|graph| freeze::freeze_constant(graph, shape, context))
+}
+
+fn lower_tail_call<ModuleFunction, TailCall>(
+    template: &module::FunctionTemplate,
+    target: &ModuleFunction,
+    context: &mut LoweringContext,
+    lower_function: impl FnOnce(&ModuleFunction, &mut LoweringContext) -> Representability<TailCall>,
+) -> Representability<DraftTailCall<TailCall>>
+where
+    ModuleFunction: ModuleFunctionTarget,
+{
+    let (target_key, _) =
+        SpecializationKey::from_instantiation(target.instantiation(), &context.substitution);
+    let is_self = template.id() == context.current_specialization.template()
+        && template.entry().captures().is_empty()
+        && target_key == context.current_specialization;
+    lower_function(target, context).map(|function| {
+        if is_self {
+            DraftTailCall::Entry
+        } else {
+            DraftTailCall::Function(function)
+        }
+    })
+}
+
+impl ModuleFunctionTarget for FunctionCallTarget<module::FunctionInstantiation> {
+    fn instantiation(&self) -> &module::FunctionInstantiation {
+        self.function()
+    }
 }

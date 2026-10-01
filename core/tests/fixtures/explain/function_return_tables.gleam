@@ -57,59 +57,59 @@ pub fn main() -> fn() -> Int {
 // function function.int#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.int#1 args=[]
+//     jump b0()
 //
 // function function.float#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.float#0 args=[]
+//     jump b0()
 //
 // function function.string#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.string#0 args=[]
+//     jump b0()
 //
 // function function.bit_array#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.bit_array#0 args=[]
+//     jump b0()
 //
 // function function.utf_codepoint#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.utf_codepoint#0 args=[]
+//     jump b0()
 //
 // function function.custom#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.custom#0 args=[]
+//     jump b0()
 //
 // function function.bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.bool#0 args=[]
+//     jump b0()
 //
 // function function.nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.nil#0 args=[]
+//     jump b0()
 //
 // function function.tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.tuple#0 args=[]
+//     jump b0()
 //
 // function function.generic#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.generic#0 args=[]
+//     jump b0()
 //
 // function function.never#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.never#0 args=[]
+//     jump b0()
 //
 // function function.function#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.function#0 args=[]
+//     jump b0()

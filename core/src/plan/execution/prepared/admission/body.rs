@@ -817,6 +817,8 @@ mod tests {
     fn checks_calls_matches_branches_and_exits_of_real_programs() {
         for source in [
             "fn go(n) { case n { 0 -> 42 _ -> go(n - 1) } } pub fn main() { go(3) }",
+            "pub fn main() -> Int { main() }",
+            "fn spin(left: Int, right: Int, marker: Nil) -> Int { spin(right, left, marker) } pub fn main() { spin(1, 2, Nil) }",
             "fn choose(b, x) { case b { True -> x False -> x + 1 } } pub fn main() { choose(True, 42) }",
             "pub type Box(a) { Box(a) } fn read(b) { let Box(n) = b n } pub fn main() { read(Box(42)) }",
             "fn read(xs) { let assert [x, ..] = xs x } pub fn main() { read([42]) }",

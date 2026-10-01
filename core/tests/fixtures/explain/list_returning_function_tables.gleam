@@ -46,12 +46,12 @@ pub fn main() -> fn() -> List(Int) {
 // function function.list.parameter#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.parameter#0 args=[]
+//     jump b0()
 //
 // function function.list.parameter_list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.parameter_list#0 args=[]
+//     jump b0()
 //
 // function function.list.int#0
 //   entry b0 params=[] captures=[]
@@ -74,54 +74,54 @@ pub fn main() -> fn() -> List(Int) {
 // function function.list.int#1
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.int#1 args=[]
+//     jump b0()
 //
 // function function.list.string#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.string#0 args=[]
+//     jump b0()
 //
 // function function.list.bit_array#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.bit_array#0 args=[]
+//     jump b0()
 //
 // function function.list.utf_codepoint#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.utf_codepoint#0 args=[]
+//     jump b0()
 //
 // function function.list.custom#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.custom#0 args=[]
+//     jump b0()
 //
 // function function.list.float#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.float#0 args=[]
+//     jump b0()
 //
 // function function.list.bool#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.bool#0 args=[]
+//     jump b0()
 //
 // function function.list.nil#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.nil#0 args=[]
+//     jump b0()
 //
 // function function.list.tuple#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.tuple#0 args=[]
+//     jump b0()
 //
 // function function.list.list#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.list#0 args=[]
+//     jump b0()
 //
 // function function.list.function#0
 //   entry b0 params=[] captures=[]
 //   block b0 params=[]
-//     tail function.list.function#0 args=[]
+//     jump b0()
