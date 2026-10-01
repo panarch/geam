@@ -1,5 +1,6 @@
-use super::super::instruction::DraftIntegerOperand;
+use super::super::instruction::{DraftBoolInstruction, DraftIntegerOperand};
 use super::{call_args, custom, expr, function, list, panic_expr, tuple};
+use crate::plan::execution::lowering::graph::draft::DraftBoolTest;
 use crate::plan::execution::lowering::graph::{
     DraftBool, DraftCursor, DraftFlow, DraftGraph, DraftInt,
 };
@@ -262,71 +263,71 @@ fn bool_value_instruction(
         E::Not(value) => bool_expr(value, cursor, graph, context).map(|flow| match flow {
             DraftFlow::Diverged => DraftFlow::Diverged,
             DraftFlow::Value { mut cursor, value } => {
-                let value = graph.bool_instruction(&mut cursor, I::Not(value));
+                let value = graph.bool_instruction(&mut cursor, I::Test(DraftBoolTest::Not(value)));
                 DraftFlow::value(cursor, value)
             }
         }),
         E::LtInt { left, right } => {
             compare_int(left, right, cursor, graph, context, |left, right| {
-                I::LtInt { left, right }
+                I::Test(DraftBoolTest::LtInt { left, right })
             })
         }
         E::LtEqInt { left, right } => {
             compare_int(left, right, cursor, graph, context, |left, right| {
-                I::LtEqInt { left, right }
+                I::Test(DraftBoolTest::LtEqInt { left, right })
             })
         }
         E::GtInt { left, right } => {
             compare_int(left, right, cursor, graph, context, |left, right| {
-                I::GtInt { left, right }
+                I::Test(DraftBoolTest::GtInt { left, right })
             })
         }
         E::GtEqInt { left, right } => {
             compare_int(left, right, cursor, graph, context, |left, right| {
-                I::GtEqInt { left, right }
+                I::Test(DraftBoolTest::GtEqInt { left, right })
             })
         }
         E::LtFloat { left, right } => {
             compare_float(left, right, cursor, graph, context, |left, right| {
-                I::LtFloat { left, right }
+                I::Test(DraftBoolTest::LtFloat { left, right })
             })
         }
         E::LtEqFloat { left, right } => {
             compare_float(left, right, cursor, graph, context, |left, right| {
-                I::LtEqFloat { left, right }
+                I::Test(DraftBoolTest::LtEqFloat { left, right })
             })
         }
         E::GtFloat { left, right } => {
             compare_float(left, right, cursor, graph, context, |left, right| {
-                I::GtFloat { left, right }
+                I::Test(DraftBoolTest::GtFloat { left, right })
             })
         }
         E::GtEqFloat { left, right } => {
             compare_float(left, right, cursor, graph, context, |left, right| {
-                I::GtEqFloat { left, right }
+                I::Test(DraftBoolTest::GtEqFloat { left, right })
             })
         }
         E::Equal { left, right } => {
             compare_values(left, right, cursor, graph, context, |left, right| {
                 if matches!(left.shape(), StoredValueShape::Int) {
-                    I::EqualInt {
+                    I::Test(DraftBoolTest::EqualInt {
                         left: DraftIntegerOperand::Local(DraftInt::from_ref(&left)),
                         right: DraftIntegerOperand::Local(DraftInt::from_ref(&right)),
-                    }
+                    })
                 } else {
-                    I::Equal { left, right }
+                    I::Test(DraftBoolTest::Equal { left, right })
                 }
             })
         }
         E::NotEqual { left, right } => {
             compare_values(left, right, cursor, graph, context, |left, right| {
                 if matches!(left.shape(), StoredValueShape::Int) {
-                    I::NotEqualInt {
+                    I::Test(DraftBoolTest::NotEqualInt {
                         left: DraftIntegerOperand::Local(DraftInt::from_ref(&left)),
                         right: DraftIntegerOperand::Local(DraftInt::from_ref(&right)),
-                    }
+                    })
                 } else {
-                    I::NotEqual { left, right }
+                    I::Test(DraftBoolTest::NotEqual { left, right })
                 }
             })
         }
@@ -336,10 +337,10 @@ fn bool_value_instruction(
                 DraftFlow::Value { mut cursor, value } => {
                     let result = graph.bool_instruction(
                         &mut cursor,
-                        I::StringStartsWith {
+                        I::Test(DraftBoolTest::StringStartsWith {
                             value,
                             prefix: prefix.clone(),
-                        },
+                        }),
                     );
                     DraftFlow::value(cursor, result)
                 }
@@ -524,15 +525,15 @@ fn list_length_paths(
                 };
             }
             let kind = if equals {
-                super::super::instruction::DraftBoolInstruction::ListLengthEquals {
+                DraftBoolInstruction::Test(DraftBoolTest::ListLengthEquals {
                     value: value.clone(),
                     length,
-                }
+                })
             } else {
-                super::super::instruction::DraftBoolInstruction::ListLengthAtLeast {
+                DraftBoolInstruction::Test(DraftBoolTest::ListLengthAtLeast {
                     value: value.clone(),
                     length,
-                }
+                })
             };
             let result = graph.bool_instruction(&mut cursor, kind);
             let scope = cursor.scope().clone();

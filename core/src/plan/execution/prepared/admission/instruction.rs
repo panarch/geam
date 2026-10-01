@@ -15,7 +15,9 @@ use super::type_::{Slot, TypeError, Types};
 use crate::plan::HostCallSite;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantTable};
 use crate::plan::execution::function::ExecutionGraphProfile;
-use crate::plan::execution::graph::{CustomLocal, ParamLocal, ParamSlot, TupleLocalId};
+use crate::plan::execution::graph::{
+    BoolTest, CustomLocal, IntegerOperand, ParamLocal, ParamSlot, TupleLocalId,
+};
 use crate::plan::execution::type_::{ValueShapeId, ValueType};
 
 pub(super) struct Instructions<'context, 'data, Graph: ExecutionGraphProfile> {
@@ -208,6 +210,28 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
     }
 }
 
+pub(super) fn bool_test(test: &BoolTest, locals: &Locals<'_>) -> Result<(), InstructionError> {
+    match test {
+        BoolTest::Not(value) => read(value, locals).map(|_| ()),
+        BoolTest::EqualInt { left, right }
+        | BoolTest::NotEqualInt { left, right }
+        | BoolTest::LtInt { left, right }
+        | BoolTest::LtEqInt { left, right }
+        | BoolTest::GtInt { left, right }
+        | BoolTest::GtEqInt { left, right } => integer_pair(left, right, locals),
+        BoolTest::LtFloat { left, right }
+        | BoolTest::LtEqFloat { left, right }
+        | BoolTest::GtFloat { left, right }
+        | BoolTest::GtEqFloat { left, right } => pair(left, right, locals),
+        BoolTest::Equal { left, right } | BoolTest::NotEqual { left, right } => {
+            same_type(left, right, locals)
+        }
+        BoolTest::StringStartsWith { value, prefix: _ } => read(value, locals).map(|_| ()),
+        BoolTest::ListLengthEquals { value, length: _ }
+        | BoolTest::ListLengthAtLeast { value, length: _ } => read(value, locals).map(|_| ()),
+    }
+}
+
 fn read<'data>(
     value: &dyn Operand,
     locals: &Locals<'data>,
@@ -246,6 +270,22 @@ fn local_flow<'data>(
 ) -> Result<(), InstructionError> {
     if !locals.value(source).flows_to(target, types) {
         return Err(InstructionError::Flow);
+    }
+    Ok(())
+}
+
+fn integer_pair(
+    left: &IntegerOperand,
+    right: &IntegerOperand,
+    locals: &Locals<'_>,
+) -> Result<(), InstructionError> {
+    for operand in [left, right] {
+        match operand {
+            IntegerOperand::Local(local) => {
+                read(local, locals)?;
+            }
+            IntegerOperand::Immediate(_) => {}
+        }
     }
     Ok(())
 }

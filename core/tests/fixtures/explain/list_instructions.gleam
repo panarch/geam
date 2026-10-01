@@ -352,20 +352,17 @@ pub fn main() {
 // function tuple#1
 //   entry b0 params=[%int#0:shape#0(Int), %list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0)] captures=[]
 //   block b0 params=[%int#0:shape#0(Int), %list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%int#0, %list.int#0, %list.list#0, %custom#0, %function.list.int#0) false=b9(%int#0, %list.int#0, %custom#0, %function.list.int#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%int#0, %list.int#0, %list.list#0, %custom#0, %function.list.int#0) false=b9(%int#0, %list.int#0, %custom#0, %function.list.int#0)
 //   block b1 params=[%int#0:shape#0(Int), %list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0)]
 //     %list.int#1:shape#1(list_type#0) = list.int[type#0] list_index %list.list#0 index=0
 //     jump b2(%list.int#1, %int#0, %list.int#0, %custom#0, %function.list.int#0)
 //   block b2 params=[%list.int#0:shape#1(list_type#0), %int#0:shape#0(Int), %list.int#1:shape#1(list_type#0), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.int#1 length=1
-//     branch %bool#0 true=b3(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#0) false=b8(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#0)
+//     branch_test bool.list_length_at_least %list.int#1 length=1 true=b3(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#0) false=b8(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#0)
 //   block b3 params=[%int#0:shape#0(Int), %list.int#0:shape#1(list_type#0), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0), %list.int#1:shape#1(list_type#0)]
 //     %list.int#2:shape#1(list_type#0) = list.int[type#0] drop_first %list.int#0 count=1
 //     jump b4(%list.int#2, %int#0, %list.int#0, %custom#0, %function.list.int#0, %list.int#1)
 //   block b4 params=[%list.int#0:shape#1(list_type#0), %int#0:shape#0(Int), %list.int#1:shape#1(list_type#0), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0), %list.int#2:shape#1(list_type#0)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.int#1 length=1
-//     branch %bool#0 true=b5(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#2, %list.int#0) false=b7(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#2, %list.int#0)
+//     branch_test bool.list_length_at_least %list.int#1 length=1 true=b5(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#2, %list.int#0) false=b7(%int#0, %list.int#1, %custom#0, %function.list.int#0, %list.int#2, %list.int#0)
 //   block b5 params=[%int#0:shape#0(Int), %list.int#0:shape#1(list_type#0), %custom#0:shape#75(custom_type#1), %function.list.int#0:shape#24(fn() -> list_type#0), %list.int#1:shape#1(list_type#0), %list.int#2:shape#1(list_type#0)]
 //     %int#1:shape#0(Int) = int.list_index %list.int#0 index=0
 //     jump b6(%int#1, %int#0, %list.int#0, %custom#0, %function.list.int#0, %list.int#1, %list.int#2)
@@ -398,20 +395,17 @@ pub fn main() {
 // function tuple#2
 //   entry b0 params=[%string#0:shape#2(String), %list.string#0:shape#3(list_type#1), %list.list#0:shape#26(list_type#12), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1)] captures=[]
 //   block b0 params=[%string#0:shape#2(String), %list.string#0:shape#3(list_type#1), %list.list#0:shape#26(list_type#12), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%string#0, %list.string#0, %list.list#0, %custom#0, %function.list.string#0) false=b9(%string#0, %list.string#0, %custom#0, %function.list.string#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%string#0, %list.string#0, %list.list#0, %custom#0, %function.list.string#0) false=b9(%string#0, %list.string#0, %custom#0, %function.list.string#0)
 //   block b1 params=[%string#0:shape#2(String), %list.string#0:shape#3(list_type#1), %list.list#0:shape#26(list_type#12), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1)]
 //     %list.string#1:shape#3(list_type#1) = list.string[type#1] list_index %list.list#0 index=0
 //     jump b2(%list.string#1, %string#0, %list.string#0, %custom#0, %function.list.string#0)
 //   block b2 params=[%list.string#0:shape#3(list_type#1), %string#0:shape#2(String), %list.string#1:shape#3(list_type#1), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.string#1 length=1
-//     branch %bool#0 true=b3(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#0) false=b8(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#0)
+//     branch_test bool.list_length_at_least %list.string#1 length=1 true=b3(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#0) false=b8(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#0)
 //   block b3 params=[%string#0:shape#2(String), %list.string#0:shape#3(list_type#1), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1), %list.string#1:shape#3(list_type#1)]
 //     %list.string#2:shape#3(list_type#1) = list.string[type#1] drop_first %list.string#0 count=1
 //     jump b4(%list.string#2, %string#0, %list.string#0, %custom#0, %function.list.string#0, %list.string#1)
 //   block b4 params=[%list.string#0:shape#3(list_type#1), %string#0:shape#2(String), %list.string#1:shape#3(list_type#1), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1), %list.string#2:shape#3(list_type#1)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.string#1 length=1
-//     branch %bool#0 true=b5(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#2, %list.string#0) false=b7(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#2, %list.string#0)
+//     branch_test bool.list_length_at_least %list.string#1 length=1 true=b5(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#2, %list.string#0) false=b7(%string#0, %list.string#1, %custom#0, %function.list.string#0, %list.string#2, %list.string#0)
 //   block b5 params=[%string#0:shape#2(String), %list.string#0:shape#3(list_type#1), %custom#0:shape#79(custom_type#2), %function.list.string#0:shape#28(fn() -> list_type#1), %list.string#1:shape#3(list_type#1), %list.string#2:shape#3(list_type#1)]
 //     %string#1:shape#2(String) = string.list_index %list.string#0 index=0
 //     jump b6(%string#1, %string#0, %list.string#0, %custom#0, %function.list.string#0, %list.string#1, %list.string#2)
@@ -444,20 +438,17 @@ pub fn main() {
 // function tuple#3
 //   entry b0 params=[%bit_array#0:shape#4(BitArray), %list.bit_array#0:shape#5(list_type#2), %list.list#0:shape#30(list_type#13), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2)] captures=[]
 //   block b0 params=[%bit_array#0:shape#4(BitArray), %list.bit_array#0:shape#5(list_type#2), %list.list#0:shape#30(list_type#13), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%bit_array#0, %list.bit_array#0, %list.list#0, %custom#0, %function.list.bit_array#0) false=b9(%bit_array#0, %list.bit_array#0, %custom#0, %function.list.bit_array#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%bit_array#0, %list.bit_array#0, %list.list#0, %custom#0, %function.list.bit_array#0) false=b9(%bit_array#0, %list.bit_array#0, %custom#0, %function.list.bit_array#0)
 //   block b1 params=[%bit_array#0:shape#4(BitArray), %list.bit_array#0:shape#5(list_type#2), %list.list#0:shape#30(list_type#13), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2)]
 //     %list.bit_array#1:shape#5(list_type#2) = list.bit_array[type#2] list_index %list.list#0 index=0
 //     jump b2(%list.bit_array#1, %bit_array#0, %list.bit_array#0, %custom#0, %function.list.bit_array#0)
 //   block b2 params=[%list.bit_array#0:shape#5(list_type#2), %bit_array#0:shape#4(BitArray), %list.bit_array#1:shape#5(list_type#2), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.bit_array#1 length=1
-//     branch %bool#0 true=b3(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#0) false=b8(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#0)
+//     branch_test bool.list_length_at_least %list.bit_array#1 length=1 true=b3(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#0) false=b8(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#0)
 //   block b3 params=[%bit_array#0:shape#4(BitArray), %list.bit_array#0:shape#5(list_type#2), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2), %list.bit_array#1:shape#5(list_type#2)]
 //     %list.bit_array#2:shape#5(list_type#2) = list.bit_array[type#2] drop_first %list.bit_array#0 count=1
 //     jump b4(%list.bit_array#2, %bit_array#0, %list.bit_array#0, %custom#0, %function.list.bit_array#0, %list.bit_array#1)
 //   block b4 params=[%list.bit_array#0:shape#5(list_type#2), %bit_array#0:shape#4(BitArray), %list.bit_array#1:shape#5(list_type#2), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2), %list.bit_array#2:shape#5(list_type#2)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.bit_array#1 length=1
-//     branch %bool#0 true=b5(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#2, %list.bit_array#0) false=b7(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#2, %list.bit_array#0)
+//     branch_test bool.list_length_at_least %list.bit_array#1 length=1 true=b5(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#2, %list.bit_array#0) false=b7(%bit_array#0, %list.bit_array#1, %custom#0, %function.list.bit_array#0, %list.bit_array#2, %list.bit_array#0)
 //   block b5 params=[%bit_array#0:shape#4(BitArray), %list.bit_array#0:shape#5(list_type#2), %custom#0:shape#84(custom_type#3), %function.list.bit_array#0:shape#32(fn() -> list_type#2), %list.bit_array#1:shape#5(list_type#2), %list.bit_array#2:shape#5(list_type#2)]
 //     %bit_array#1:shape#4(BitArray) = bit_array.list_index %list.bit_array#0 index=0
 //     jump b6(%bit_array#1, %bit_array#0, %list.bit_array#0, %custom#0, %function.list.bit_array#0, %list.bit_array#1, %list.bit_array#2)
@@ -490,20 +481,17 @@ pub fn main() {
 // function tuple#4
 //   entry b0 params=[%utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#0:shape#7(list_type#3), %list.list#0:shape#34(list_type#14), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3)] captures=[]
 //   block b0 params=[%utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#0:shape#7(list_type#3), %list.list#0:shape#34(list_type#14), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%utf_codepoint#0, %list.utf_codepoint#0, %list.list#0, %custom#0, %function.list.utf_codepoint#0) false=b9(%utf_codepoint#0, %list.utf_codepoint#0, %custom#0, %function.list.utf_codepoint#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%utf_codepoint#0, %list.utf_codepoint#0, %list.list#0, %custom#0, %function.list.utf_codepoint#0) false=b9(%utf_codepoint#0, %list.utf_codepoint#0, %custom#0, %function.list.utf_codepoint#0)
 //   block b1 params=[%utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#0:shape#7(list_type#3), %list.list#0:shape#34(list_type#14), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3)]
 //     %list.utf_codepoint#1:shape#7(list_type#3) = list.utf_codepoint[type#3] list_index %list.list#0 index=0
 //     jump b2(%list.utf_codepoint#1, %utf_codepoint#0, %list.utf_codepoint#0, %custom#0, %function.list.utf_codepoint#0)
 //   block b2 params=[%list.utf_codepoint#0:shape#7(list_type#3), %utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#1:shape#7(list_type#3), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.utf_codepoint#1 length=1
-//     branch %bool#0 true=b3(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#0) false=b8(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#0)
+//     branch_test bool.list_length_at_least %list.utf_codepoint#1 length=1 true=b3(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#0) false=b8(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#0)
 //   block b3 params=[%utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#0:shape#7(list_type#3), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3), %list.utf_codepoint#1:shape#7(list_type#3)]
 //     %list.utf_codepoint#2:shape#7(list_type#3) = list.utf_codepoint[type#3] drop_first %list.utf_codepoint#0 count=1
 //     jump b4(%list.utf_codepoint#2, %utf_codepoint#0, %list.utf_codepoint#0, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#1)
 //   block b4 params=[%list.utf_codepoint#0:shape#7(list_type#3), %utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#1:shape#7(list_type#3), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3), %list.utf_codepoint#2:shape#7(list_type#3)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.utf_codepoint#1 length=1
-//     branch %bool#0 true=b5(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#2, %list.utf_codepoint#0) false=b7(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#2, %list.utf_codepoint#0)
+//     branch_test bool.list_length_at_least %list.utf_codepoint#1 length=1 true=b5(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#2, %list.utf_codepoint#0) false=b7(%utf_codepoint#0, %list.utf_codepoint#1, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#2, %list.utf_codepoint#0)
 //   block b5 params=[%utf_codepoint#0:shape#6(UtfCodepoint), %list.utf_codepoint#0:shape#7(list_type#3), %custom#0:shape#89(custom_type#4), %function.list.utf_codepoint#0:shape#36(fn() -> list_type#3), %list.utf_codepoint#1:shape#7(list_type#3), %list.utf_codepoint#2:shape#7(list_type#3)]
 //     %utf_codepoint#1:shape#6(UtfCodepoint) = utf_codepoint.list_index %list.utf_codepoint#0 index=0
 //     jump b6(%utf_codepoint#1, %utf_codepoint#0, %list.utf_codepoint#0, %custom#0, %function.list.utf_codepoint#0, %list.utf_codepoint#1, %list.utf_codepoint#2)
@@ -536,20 +524,17 @@ pub fn main() {
 // function tuple#5
 //   entry b0 params=[%custom#0:shape#8(custom_type#0), %list.custom#0:shape#9(list_type#4), %list.list#0:shape#94(list_type#15), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4)] captures=[]
 //   block b0 params=[%custom#0:shape#8(custom_type#0), %list.custom#0:shape#9(list_type#4), %list.list#0:shape#94(list_type#15), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%custom#0, %list.custom#0, %list.list#0, %custom#1, %function.list.custom#0) false=b9(%custom#0, %list.custom#0, %custom#1, %function.list.custom#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%custom#0, %list.custom#0, %list.list#0, %custom#1, %function.list.custom#0) false=b9(%custom#0, %list.custom#0, %custom#1, %function.list.custom#0)
 //   block b1 params=[%custom#0:shape#8(custom_type#0), %list.custom#0:shape#9(list_type#4), %list.list#0:shape#94(list_type#15), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4)]
 //     %list.custom#1:shape#9(list_type#4) = list.custom[type#4] list_index %list.list#0 index=0
 //     jump b2(%list.custom#1, %custom#0, %list.custom#0, %custom#1, %function.list.custom#0)
 //   block b2 params=[%list.custom#0:shape#9(list_type#4), %custom#0:shape#8(custom_type#0), %list.custom#1:shape#9(list_type#4), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.custom#1 length=1
-//     branch %bool#0 true=b3(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#0) false=b8(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#0)
+//     branch_test bool.list_length_at_least %list.custom#1 length=1 true=b3(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#0) false=b8(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#0)
 //   block b3 params=[%custom#0:shape#8(custom_type#0), %list.custom#0:shape#9(list_type#4), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4), %list.custom#1:shape#9(list_type#4)]
 //     %list.custom#2:shape#9(list_type#4) = list.custom[type#4] drop_first %list.custom#0 count=1
 //     jump b4(%list.custom#2, %custom#0, %list.custom#0, %custom#1, %function.list.custom#0, %list.custom#1)
 //   block b4 params=[%list.custom#0:shape#9(list_type#4), %custom#0:shape#8(custom_type#0), %list.custom#1:shape#9(list_type#4), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4), %list.custom#2:shape#9(list_type#4)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.custom#1 length=1
-//     branch %bool#0 true=b5(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#2, %list.custom#0) false=b7(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#2, %list.custom#0)
+//     branch_test bool.list_length_at_least %list.custom#1 length=1 true=b5(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#2, %list.custom#0) false=b7(%custom#0, %list.custom#1, %custom#1, %function.list.custom#0, %list.custom#2, %list.custom#0)
 //   block b5 params=[%custom#0:shape#8(custom_type#0), %list.custom#0:shape#9(list_type#4), %custom#1:shape#95(custom_type#5), %function.list.custom#0:shape#42(fn() -> list_type#4), %list.custom#1:shape#9(list_type#4), %list.custom#2:shape#9(list_type#4)]
 //     %custom#2:shape#8(custom_type#0) = custom.list_index %list.custom#0 index=0
 //     jump b6(%custom#2, %custom#0, %list.custom#0, %custom#1, %function.list.custom#0, %list.custom#1, %list.custom#2)
@@ -582,20 +567,17 @@ pub fn main() {
 // function tuple#6
 //   entry b0 params=[%float#0:shape#10(Float), %list.float#0:shape#11(list_type#5), %list.list#0:shape#44(list_type#16), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5)] captures=[]
 //   block b0 params=[%float#0:shape#10(Float), %list.float#0:shape#11(list_type#5), %list.list#0:shape#44(list_type#16), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%float#0, %list.float#0, %list.list#0, %custom#0, %function.list.float#0) false=b9(%float#0, %list.float#0, %custom#0, %function.list.float#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%float#0, %list.float#0, %list.list#0, %custom#0, %function.list.float#0) false=b9(%float#0, %list.float#0, %custom#0, %function.list.float#0)
 //   block b1 params=[%float#0:shape#10(Float), %list.float#0:shape#11(list_type#5), %list.list#0:shape#44(list_type#16), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5)]
 //     %list.float#1:shape#11(list_type#5) = list.float[type#5] list_index %list.list#0 index=0
 //     jump b2(%list.float#1, %float#0, %list.float#0, %custom#0, %function.list.float#0)
 //   block b2 params=[%list.float#0:shape#11(list_type#5), %float#0:shape#10(Float), %list.float#1:shape#11(list_type#5), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.float#1 length=1
-//     branch %bool#0 true=b3(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#0) false=b8(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#0)
+//     branch_test bool.list_length_at_least %list.float#1 length=1 true=b3(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#0) false=b8(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#0)
 //   block b3 params=[%float#0:shape#10(Float), %list.float#0:shape#11(list_type#5), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5), %list.float#1:shape#11(list_type#5)]
 //     %list.float#2:shape#11(list_type#5) = list.float[type#5] drop_first %list.float#0 count=1
 //     jump b4(%list.float#2, %float#0, %list.float#0, %custom#0, %function.list.float#0, %list.float#1)
 //   block b4 params=[%list.float#0:shape#11(list_type#5), %float#0:shape#10(Float), %list.float#1:shape#11(list_type#5), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5), %list.float#2:shape#11(list_type#5)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.float#1 length=1
-//     branch %bool#0 true=b5(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#2, %list.float#0) false=b7(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#2, %list.float#0)
+//     branch_test bool.list_length_at_least %list.float#1 length=1 true=b5(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#2, %list.float#0) false=b7(%float#0, %list.float#1, %custom#0, %function.list.float#0, %list.float#2, %list.float#0)
 //   block b5 params=[%float#0:shape#10(Float), %list.float#0:shape#11(list_type#5), %custom#0:shape#100(custom_type#6), %function.list.float#0:shape#46(fn() -> list_type#5), %list.float#1:shape#11(list_type#5), %list.float#2:shape#11(list_type#5)]
 //     %float#1:shape#10(Float) = float.list_index %list.float#0 index=0
 //     jump b6(%float#1, %float#0, %list.float#0, %custom#0, %function.list.float#0, %list.float#1, %list.float#2)
@@ -628,20 +610,17 @@ pub fn main() {
 // function tuple#7
 //   entry b0 params=[%bool#0:shape#12(Bool), %list.bool#0:shape#13(list_type#6), %list.list#0:shape#48(list_type#17), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6)] captures=[]
 //   block b0 params=[%bool#0:shape#12(Bool), %list.bool#0:shape#13(list_type#6), %list.list#0:shape#48(list_type#17), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6)]
-//     %bool#1:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#1 true=b1(%bool#0, %list.bool#0, %list.list#0, %custom#0, %function.list.bool#0) false=b9(%bool#0, %list.bool#0, %custom#0, %function.list.bool#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%bool#0, %list.bool#0, %list.list#0, %custom#0, %function.list.bool#0) false=b9(%bool#0, %list.bool#0, %custom#0, %function.list.bool#0)
 //   block b1 params=[%bool#0:shape#12(Bool), %list.bool#0:shape#13(list_type#6), %list.list#0:shape#48(list_type#17), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6)]
 //     %list.bool#1:shape#13(list_type#6) = list.bool[type#6] list_index %list.list#0 index=0
 //     jump b2(%list.bool#1, %bool#0, %list.bool#0, %custom#0, %function.list.bool#0)
 //   block b2 params=[%list.bool#0:shape#13(list_type#6), %bool#0:shape#12(Bool), %list.bool#1:shape#13(list_type#6), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6)]
-//     %bool#1:shape#12(Bool) = bool.list_length_at_least %list.bool#1 length=1
-//     branch %bool#1 true=b3(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#0) false=b8(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#0)
+//     branch_test bool.list_length_at_least %list.bool#1 length=1 true=b3(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#0) false=b8(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#0)
 //   block b3 params=[%bool#0:shape#12(Bool), %list.bool#0:shape#13(list_type#6), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6), %list.bool#1:shape#13(list_type#6)]
 //     %list.bool#2:shape#13(list_type#6) = list.bool[type#6] drop_first %list.bool#0 count=1
 //     jump b4(%list.bool#2, %bool#0, %list.bool#0, %custom#0, %function.list.bool#0, %list.bool#1)
 //   block b4 params=[%list.bool#0:shape#13(list_type#6), %bool#0:shape#12(Bool), %list.bool#1:shape#13(list_type#6), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6), %list.bool#2:shape#13(list_type#6)]
-//     %bool#1:shape#12(Bool) = bool.list_length_at_least %list.bool#1 length=1
-//     branch %bool#1 true=b5(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#2, %list.bool#0) false=b7(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#2, %list.bool#0)
+//     branch_test bool.list_length_at_least %list.bool#1 length=1 true=b5(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#2, %list.bool#0) false=b7(%bool#0, %list.bool#1, %custom#0, %function.list.bool#0, %list.bool#2, %list.bool#0)
 //   block b5 params=[%bool#0:shape#12(Bool), %list.bool#0:shape#13(list_type#6), %custom#0:shape#105(custom_type#7), %function.list.bool#0:shape#50(fn() -> list_type#6), %list.bool#1:shape#13(list_type#6), %list.bool#2:shape#13(list_type#6)]
 //     %bool#1:shape#12(Bool) = bool.list_index %list.bool#0 index=0
 //     jump b6(%bool#1, %bool#0, %list.bool#0, %custom#0, %function.list.bool#0, %list.bool#1, %list.bool#2)
@@ -674,20 +653,17 @@ pub fn main() {
 // function tuple#8
 //   entry b0 params=[%nil#0:shape#14(Nil), %list.nil#0:shape#15(list_type#7), %list.list#0:shape#52(list_type#18), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7)] captures=[]
 //   block b0 params=[%nil#0:shape#14(Nil), %list.nil#0:shape#15(list_type#7), %list.list#0:shape#52(list_type#18), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%nil#0, %list.nil#0, %list.list#0, %custom#0, %function.list.nil#0) false=b9(%nil#0, %list.nil#0, %custom#0, %function.list.nil#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%nil#0, %list.nil#0, %list.list#0, %custom#0, %function.list.nil#0) false=b9(%nil#0, %list.nil#0, %custom#0, %function.list.nil#0)
 //   block b1 params=[%nil#0:shape#14(Nil), %list.nil#0:shape#15(list_type#7), %list.list#0:shape#52(list_type#18), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7)]
 //     %list.nil#1:shape#15(list_type#7) = list.nil[type#7] list_index %list.list#0 index=0
 //     jump b2(%list.nil#1, %nil#0, %list.nil#0, %custom#0, %function.list.nil#0)
 //   block b2 params=[%list.nil#0:shape#15(list_type#7), %nil#0:shape#14(Nil), %list.nil#1:shape#15(list_type#7), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.nil#1 length=1
-//     branch %bool#0 true=b3(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#0) false=b8(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#0)
+//     branch_test bool.list_length_at_least %list.nil#1 length=1 true=b3(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#0) false=b8(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#0)
 //   block b3 params=[%nil#0:shape#14(Nil), %list.nil#0:shape#15(list_type#7), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7), %list.nil#1:shape#15(list_type#7)]
 //     %list.nil#2:shape#15(list_type#7) = list.nil[type#7] drop_first %list.nil#0 count=1
 //     jump b4(%list.nil#2, %nil#0, %list.nil#0, %custom#0, %function.list.nil#0, %list.nil#1)
 //   block b4 params=[%list.nil#0:shape#15(list_type#7), %nil#0:shape#14(Nil), %list.nil#1:shape#15(list_type#7), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7), %list.nil#2:shape#15(list_type#7)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.nil#1 length=1
-//     branch %bool#0 true=b5(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#2, %list.nil#0) false=b7(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#2, %list.nil#0)
+//     branch_test bool.list_length_at_least %list.nil#1 length=1 true=b5(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#2, %list.nil#0) false=b7(%nil#0, %list.nil#1, %custom#0, %function.list.nil#0, %list.nil#2, %list.nil#0)
 //   block b5 params=[%nil#0:shape#14(Nil), %list.nil#0:shape#15(list_type#7), %custom#0:shape#110(custom_type#8), %function.list.nil#0:shape#54(fn() -> list_type#7), %list.nil#1:shape#15(list_type#7), %list.nil#2:shape#15(list_type#7)]
 //     %nil#1:shape#14(Nil) = nil.list_index %list.nil#0 index=0
 //     jump b6(%nil#1, %nil#0, %list.nil#0, %custom#0, %function.list.nil#0, %list.nil#1, %list.nil#2)
@@ -720,20 +696,17 @@ pub fn main() {
 // function tuple#9
 //   entry b0 params=[%tuple#0:shape#16(#(Int)), %list.tuple#0:shape#17(list_type#8), %list.list#0:shape#56(list_type#19), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8)] captures=[]
 //   block b0 params=[%tuple#0:shape#16(#(Int)), %list.tuple#0:shape#17(list_type#8), %list.list#0:shape#56(list_type#19), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%tuple#0, %list.tuple#0, %list.list#0, %custom#0, %function.list.tuple#0) false=b9(%tuple#0, %list.tuple#0, %custom#0, %function.list.tuple#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%tuple#0, %list.tuple#0, %list.list#0, %custom#0, %function.list.tuple#0) false=b9(%tuple#0, %list.tuple#0, %custom#0, %function.list.tuple#0)
 //   block b1 params=[%tuple#0:shape#16(#(Int)), %list.tuple#0:shape#17(list_type#8), %list.list#0:shape#56(list_type#19), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8)]
 //     %list.tuple#1:shape#17(list_type#8) = list.tuple[type#8] list_index %list.list#0 index=0
 //     jump b2(%list.tuple#1, %tuple#0, %list.tuple#0, %custom#0, %function.list.tuple#0)
 //   block b2 params=[%list.tuple#0:shape#17(list_type#8), %tuple#0:shape#16(#(Int)), %list.tuple#1:shape#17(list_type#8), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.tuple#1 length=1
-//     branch %bool#0 true=b3(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#0) false=b8(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#0)
+//     branch_test bool.list_length_at_least %list.tuple#1 length=1 true=b3(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#0) false=b8(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#0)
 //   block b3 params=[%tuple#0:shape#16(#(Int)), %list.tuple#0:shape#17(list_type#8), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8), %list.tuple#1:shape#17(list_type#8)]
 //     %list.tuple#2:shape#17(list_type#8) = list.tuple[type#8] drop_first %list.tuple#0 count=1
 //     jump b4(%list.tuple#2, %tuple#0, %list.tuple#0, %custom#0, %function.list.tuple#0, %list.tuple#1)
 //   block b4 params=[%list.tuple#0:shape#17(list_type#8), %tuple#0:shape#16(#(Int)), %list.tuple#1:shape#17(list_type#8), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8), %list.tuple#2:shape#17(list_type#8)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.tuple#1 length=1
-//     branch %bool#0 true=b5(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#2, %list.tuple#0) false=b7(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#2, %list.tuple#0)
+//     branch_test bool.list_length_at_least %list.tuple#1 length=1 true=b5(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#2, %list.tuple#0) false=b7(%tuple#0, %list.tuple#1, %custom#0, %function.list.tuple#0, %list.tuple#2, %list.tuple#0)
 //   block b5 params=[%tuple#0:shape#16(#(Int)), %list.tuple#0:shape#17(list_type#8), %custom#0:shape#115(custom_type#9), %function.list.tuple#0:shape#58(fn() -> list_type#8), %list.tuple#1:shape#17(list_type#8), %list.tuple#2:shape#17(list_type#8)]
 //     %tuple#1:shape#16(#(Int)) = tuple.list_index %list.tuple#0 index=0
 //     jump b6(%tuple#1, %tuple#0, %list.tuple#0, %custom#0, %function.list.tuple#0, %list.tuple#1, %list.tuple#2)
@@ -766,20 +739,17 @@ pub fn main() {
 // function tuple#10
 //   entry b0 params=[%list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %list.list#1:shape#60(list_type#20), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9)] captures=[]
 //   block b0 params=[%list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %list.list#1:shape#60(list_type#20), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#1 length=1
-//     branch %bool#0 true=b1(%list.int#0, %list.list#0, %list.list#1, %custom#0, %function.list.list#0) false=b9(%list.int#0, %list.list#0, %custom#0, %function.list.list#0)
+//     branch_test bool.list_length_equals %list.list#1 length=1 true=b1(%list.int#0, %list.list#0, %list.list#1, %custom#0, %function.list.list#0) false=b9(%list.int#0, %list.list#0, %custom#0, %function.list.list#0)
 //   block b1 params=[%list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %list.list#1:shape#60(list_type#20), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9)]
 //     %list.list#2:shape#18(list_type#9) = list.list[type#9] list_index %list.list#1 index=0
 //     jump b2(%list.list#2, %list.int#0, %list.list#0, %custom#0, %function.list.list#0)
 //   block b2 params=[%list.list#0:shape#18(list_type#9), %list.int#0:shape#1(list_type#0), %list.list#1:shape#18(list_type#9), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.list#1 length=1
-//     branch %bool#0 true=b3(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#0) false=b8(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#0)
+//     branch_test bool.list_length_at_least %list.list#1 length=1 true=b3(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#0) false=b8(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#0)
 //   block b3 params=[%list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9), %list.list#1:shape#18(list_type#9)]
 //     %list.list#2:shape#18(list_type#9) = list.list[type#9] drop_first %list.list#0 count=1
 //     jump b4(%list.list#2, %list.int#0, %list.list#0, %custom#0, %function.list.list#0, %list.list#1)
 //   block b4 params=[%list.list#0:shape#18(list_type#9), %list.int#0:shape#1(list_type#0), %list.list#1:shape#18(list_type#9), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9), %list.list#2:shape#18(list_type#9)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.list#1 length=1
-//     branch %bool#0 true=b5(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#2, %list.list#0) false=b7(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#2, %list.list#0)
+//     branch_test bool.list_length_at_least %list.list#1 length=1 true=b5(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#2, %list.list#0) false=b7(%list.int#0, %list.list#1, %custom#0, %function.list.list#0, %list.list#2, %list.list#0)
 //   block b5 params=[%list.int#0:shape#1(list_type#0), %list.list#0:shape#18(list_type#9), %custom#0:shape#120(custom_type#10), %function.list.list#0:shape#62(fn() -> list_type#9), %list.list#1:shape#18(list_type#9), %list.list#2:shape#18(list_type#9)]
 //     %list.int#1:shape#1(list_type#0) = list.int[type#0] list_index %list.list#0 index=0
 //     jump b6(%list.int#1, %list.int#0, %list.list#0, %custom#0, %function.list.list#0, %list.list#1, %list.list#2)
@@ -812,20 +782,17 @@ pub fn main() {
 // function tuple#11
 //   entry b0 params=[%function.int#0:shape#19(fn(Int) -> Int), %list.function#0:shape#20(list_type#10), %list.list#0:shape#64(list_type#21), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10)] captures=[]
 //   block b0 params=[%function.int#0:shape#19(fn(Int) -> Int), %list.function#0:shape#20(list_type#10), %list.list#0:shape#64(list_type#21), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%function.int#0, %list.function#0, %list.list#0, %custom#0, %function.list.function#0) false=b9(%function.int#0, %list.function#0, %custom#0, %function.list.function#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%function.int#0, %list.function#0, %list.list#0, %custom#0, %function.list.function#0) false=b9(%function.int#0, %list.function#0, %custom#0, %function.list.function#0)
 //   block b1 params=[%function.int#0:shape#19(fn(Int) -> Int), %list.function#0:shape#20(list_type#10), %list.list#0:shape#64(list_type#21), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10)]
 //     %list.function#1:shape#20(list_type#10) = list.function[type#10] list_index %list.list#0 index=0
 //     jump b2(%list.function#1, %function.int#0, %list.function#0, %custom#0, %function.list.function#0)
 //   block b2 params=[%list.function#0:shape#20(list_type#10), %function.int#0:shape#19(fn(Int) -> Int), %list.function#1:shape#20(list_type#10), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.function#1 length=1
-//     branch %bool#0 true=b3(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0) false=b8(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0)
+//     branch_test bool.list_length_at_least %list.function#1 length=1 true=b3(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0) false=b8(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0)
 //   block b3 params=[%function.int#0:shape#19(fn(Int) -> Int), %list.function#0:shape#20(list_type#10), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10), %list.function#1:shape#20(list_type#10)]
 //     %list.function#2:shape#20(list_type#10) = list.function[type#10] drop_first %list.function#0 count=1
 //     jump b4(%list.function#2, %function.int#0, %list.function#0, %custom#0, %function.list.function#0, %list.function#1)
 //   block b4 params=[%list.function#0:shape#20(list_type#10), %function.int#0:shape#19(fn(Int) -> Int), %list.function#1:shape#20(list_type#10), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10), %list.function#2:shape#20(list_type#10)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.function#1 length=1
-//     branch %bool#0 true=b5(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0) false=b7(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0)
+//     branch_test bool.list_length_at_least %list.function#1 length=1 true=b5(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0) false=b7(%function.int#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0)
 //   block b5 params=[%function.int#0:shape#19(fn(Int) -> Int), %list.function#0:shape#20(list_type#10), %custom#0:shape#123(custom_type#11), %function.list.function#0:shape#66(fn() -> list_type#10), %list.function#1:shape#20(list_type#10), %list.function#2:shape#20(list_type#10)]
 //     %function.int#1:shape#19(fn(Int) -> Int) = function[Int] list_index %list.function#0 index=0
 //     jump b6(%function.int#1, %function.int#0, %list.function#0, %custom#0, %function.list.function#0, %list.function#1, %list.function#2)
@@ -858,20 +825,17 @@ pub fn main() {
 // function tuple#12
 //   entry b0 params=[%function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#0:shape#22(list_type#11), %list.list#0:shape#128(list_type#22), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11)] captures=[]
 //   block b0 params=[%function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#0:shape#22(list_type#11), %list.list#0:shape#128(list_type#22), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11)]
-//     %bool#0:shape#12(Bool) = bool.list_length_equals %list.list#0 length=1
-//     branch %bool#0 true=b1(%function.custom#0, %list.function#0, %list.list#0, %custom#0, %function.list.function#0) false=b9(%function.custom#0, %list.function#0, %custom#0, %function.list.function#0)
+//     branch_test bool.list_length_equals %list.list#0 length=1 true=b1(%function.custom#0, %list.function#0, %list.list#0, %custom#0, %function.list.function#0) false=b9(%function.custom#0, %list.function#0, %custom#0, %function.list.function#0)
 //   block b1 params=[%function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#0:shape#22(list_type#11), %list.list#0:shape#128(list_type#22), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11)]
 //     %list.function#1:shape#22(list_type#11) = list.function[type#11] list_index %list.list#0 index=0
 //     jump b2(%list.function#1, %function.custom#0, %list.function#0, %custom#0, %function.list.function#0)
 //   block b2 params=[%list.function#0:shape#22(list_type#11), %function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#1:shape#22(list_type#11), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.function#1 length=1
-//     branch %bool#0 true=b3(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0) false=b8(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0)
+//     branch_test bool.list_length_at_least %list.function#1 length=1 true=b3(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0) false=b8(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#0)
 //   block b3 params=[%function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#0:shape#22(list_type#11), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11), %list.function#1:shape#22(list_type#11)]
 //     %list.function#2:shape#22(list_type#11) = list.function[type#11] drop_first %list.function#0 count=1
 //     jump b4(%list.function#2, %function.custom#0, %list.function#0, %custom#0, %function.list.function#0, %list.function#1)
 //   block b4 params=[%list.function#0:shape#22(list_type#11), %function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#1:shape#22(list_type#11), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11), %list.function#2:shape#22(list_type#11)]
-//     %bool#0:shape#12(Bool) = bool.list_length_at_least %list.function#1 length=1
-//     branch %bool#0 true=b5(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0) false=b7(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0)
+//     branch_test bool.list_length_at_least %list.function#1 length=1 true=b5(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0) false=b7(%function.custom#0, %list.function#1, %custom#0, %function.list.function#0, %list.function#2, %list.function#0)
 //   block b5 params=[%function.custom#0:shape#21(fn(Int) -> custom_type#0), %list.function#0:shape#22(list_type#11), %custom#0:shape#129(custom_type#12), %function.list.function#0:shape#72(fn() -> list_type#11), %list.function#1:shape#22(list_type#11), %list.function#2:shape#22(list_type#11)]
 //     %function.custom#1:shape#21(fn(Int) -> custom_type#0) = function[Custom] list_index %list.function#0 index=0
 //     jump b6(%function.custom#1, %function.custom#0, %list.function#0, %custom#0, %function.list.function#0, %list.function#1, %list.function#2)

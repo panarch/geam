@@ -9,7 +9,7 @@ use super::local::Address;
 use super::place::{self, Place, Projection};
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
-    BlockId, BoolInstruction, BoolLocalId, ParamLocal, ProfiledInstruction, ProfiledInstructionKind,
+    BlockId, BoolInstruction, BoolTest, ParamLocal, ProfiledInstruction, ProfiledInstructionKind,
 };
 use length::Length;
 use origin::Origin;
@@ -18,6 +18,11 @@ use std::collections::{HashMap, HashSet};
 
 pub(super) struct Guards<'graph, 'data, Graph: ExecutionGraphProfile> {
     pub(super) blocks: &'graph Blocks<'data, Graph>,
+}
+
+enum Boolean<'data> {
+    Value(bool),
+    Test(&'data BoolTest),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -53,60 +58,78 @@ enum Visit<'data> {
 
 impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
     pub(super) fn contradicts(&self, block_id: BlockId, condition: Condition<'data>) -> bool {
-        let Condition::Bool {
-            mut subject,
-            mut truth,
-        } = condition
-        else {
+        let Some((value, truth)) = self.boolean_value(block_id, condition) else {
             return false;
         };
+        let test = match value {
+            Boolean::Value(value) => return value != truth,
+            Boolean::Test(test) => test,
+        };
+        let (local, requirement) = match test {
+            BoolTest::ListLengthAtLeast { value, length } if !truth => (
+                Address::of(&ParamLocal::List(value.clone())),
+                Requirement::length(*length),
+            ),
+            BoolTest::ListLengthEquals { value, length } if truth => {
+                let Some(length) = length.checked_add(1) else {
+                    return false;
+                };
+                (
+                    Address::of(&ParamLocal::List(value.clone())),
+                    Requirement::length(length),
+                )
+            }
+            BoolTest::StringStartsWith { value, prefix } if !truth => (
+                Address::from(*value),
+                Requirement::Prefix(prefix.as_str().into()),
+            ),
+            _ => return false,
+        };
+        self.proves(Query {
+            block: block_id,
+            place: Place::local(local),
+            requirement,
+        })
+    }
+
+    fn boolean_value(
+        &self,
+        block_id: BlockId,
+        mut condition: Condition<'data>,
+    ) -> Option<(Boolean<'data>, bool)> {
         let Ok(block) = self.blocks.block(block_id) else {
-            return false;
+            return None;
         };
         let mut visited = HashSet::new();
         loop {
-            if !visited.insert(subject.0) {
-                return false;
+            let (test, truth) = match condition {
+                Condition::Test { test, truth } => (test, truth),
+                Condition::Bool { subject, truth } => {
+                    if !visited.insert(subject.0) {
+                        return None;
+                    }
+                    let instruction = block.instructions().iter().find(|instruction| {
+                        Address::of(&instruction.output.local) == Address::from(subject)
+                    })?;
+                    match &instruction.kind {
+                        ProfiledInstructionKind::Bool(BoolInstruction::Value(value)) => {
+                            return Some((Boolean::Value(*value), truth));
+                        }
+                        ProfiledInstructionKind::Bool(BoolInstruction::Test(test)) => (test, truth),
+                        _ => return None,
+                    }
+                }
+                _ => return None,
+            };
+            match test {
+                BoolTest::Not(subject) => {
+                    condition = Condition::Bool {
+                        subject: *subject,
+                        truth: !truth,
+                    }
+                }
+                _ => return Some((Boolean::Test(test), truth)),
             }
-            let Some(instruction) = block.instructions().iter().find(|instruction| {
-                Address::of(&instruction.output.local) == Address::from(subject)
-            }) else {
-                return false;
-            };
-            let ProfiledInstructionKind::Bool(value) = &instruction.kind else {
-                return false;
-            };
-            let (local, requirement) = match value {
-                BoolInstruction::Not(value) => {
-                    subject = *value;
-                    truth = !truth;
-                    continue;
-                }
-                BoolInstruction::Value(value) => return *value != truth,
-                BoolInstruction::ListLengthAtLeast { value, length } if !truth => (
-                    Address::of(&ParamLocal::List(value.clone())),
-                    Requirement::length(*length),
-                ),
-                BoolInstruction::ListLengthEquals { value, length } if truth => {
-                    let Some(length) = length.checked_add(1) else {
-                        return false;
-                    };
-                    (
-                        Address::of(&ParamLocal::List(value.clone())),
-                        Requirement::length(length),
-                    )
-                }
-                BoolInstruction::StringStartsWith { value, prefix } if !truth => (
-                    Address::from(*value),
-                    Requirement::Prefix(prefix.as_str().into()),
-                ),
-                _ => return false,
-            };
-            return self.proves(Query {
-                block: block_id,
-                place: Place::local(local),
-                requirement,
-            });
         }
     }
 
@@ -270,8 +293,8 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 place::pattern_at(&matcher.pattern, path)
                     .is_some_and(|pattern| pattern::establishes(pattern, success, required))
             }
-            Condition::Bool { subject, truth } => {
-                return self.boolean(block, subject, truth, source, required);
+            condition @ (Condition::Bool { .. } | Condition::Test { .. }) => {
+                return self.boolean(block, condition, source, required);
             }
         };
         if proven { None } else { Some(required.clone()) }
@@ -280,81 +303,54 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
     fn boolean(
         &self,
         block: BlockId,
-        mut subject: BoolLocalId,
-        mut truth: bool,
+        condition: Condition<'data>,
         source: &Place,
         required: &Requirement<'data>,
     ) -> Option<Requirement<'data>> {
-        let block_id = block;
-        let Ok(block) = self.blocks.block(block_id) else {
+        let Some((Boolean::Test(test), truth)) = self.boolean_value(block, condition) else {
             return Some(required.clone());
         };
-        let mut visited = HashSet::new();
-        loop {
-            if !visited.insert(subject.0) {
-                return Some(required.clone());
+        match test {
+            BoolTest::StringStartsWith { value, prefix } => {
+                if truth
+                    && self.same_place(block, Address::from(*value), source)
+                    && required.accepts_text(prefix.as_str())
+                {
+                    None
+                } else {
+                    Some(required.clone())
+                }
             }
-            let Some(instruction) = block.instructions().iter().find(|instruction| {
-                Address::of(&instruction.output.local) == Address::from(subject)
-            }) else {
-                return Some(required.clone());
-            };
-            let ProfiledInstructionKind::Bool(value) = &instruction.kind else {
-                return Some(required.clone());
-            };
-            match value {
-                BoolInstruction::Not(value) => {
-                    subject = *value;
-                    truth = !truth;
+            BoolTest::ListLengthEquals { value, length }
+            | BoolTest::ListLengthAtLeast { value, length } => {
+                let Requirement::Length(lengths) = required else {
+                    return Some(required.clone());
+                };
+                if !self.same_place(block, Address::of(&ParamLocal::List(value.clone())), source) {
+                    return Some(required.clone());
                 }
-                BoolInstruction::StringStartsWith { value, prefix } => {
-                    return if truth
-                        && self.same_place(block_id, Address::from(*value), source)
-                        && required.accepts_text(prefix.as_str())
-                    {
-                        None
+                let exact = matches!(test, BoolTest::ListLengthEquals { .. });
+                if truth
+                    && (if exact {
+                        lengths.accepts(*length)
                     } else {
-                        Some(required.clone())
-                    };
+                        *length >= lengths.minimum()
+                    })
+                {
+                    return None;
                 }
-                BoolInstruction::ListLengthEquals { value, length }
-                | BoolInstruction::ListLengthAtLeast { value, length } => {
-                    let Requirement::Length(lengths) = required else {
-                        return Some(required.clone());
-                    };
-                    if !self.same_place(
-                        block_id,
-                        Address::of(&ParamLocal::List(value.clone())),
-                        source,
-                    ) {
-                        return Some(required.clone());
-                    }
-                    let exact = matches!(
-                        &instruction.kind,
-                        ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals { .. })
-                    );
-                    if truth
-                        && (if exact {
-                            lengths.accepts(*length)
-                        } else {
-                            *length >= lengths.minimum()
-                        })
-                    {
-                        return None;
-                    }
-                    let remaining = if !truth && exact {
-                        Requirement::Length(lengths.excluding(*length))
-                    } else {
-                        required.clone()
-                    };
-                    return if remaining.is_empty() {
-                        None
-                    } else {
-                        Some(remaining)
-                    };
+                let remaining = if !truth && exact {
+                    Requirement::Length(lengths.excluding(*length))
+                } else {
+                    required.clone()
+                };
+                if remaining.is_empty() {
+                    None
+                } else {
+                    Some(remaining)
                 }
-                _ => return Some(required.clone()),
             }
+            _ => Some(required.clone()),
         }
     }
 
@@ -461,7 +457,7 @@ impl Requirement<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockId, Blocks, BoolInstruction, BoolLocalId, GuardError, Guards, ParamLocal, Place,
+        BlockId, Blocks, BoolInstruction, GuardError, Guards, ParamLocal, Place,
         ProfiledInstruction, ProfiledInstructionKind, Query, Requirement, access,
     };
     use crate::plan::Text;
@@ -470,6 +466,7 @@ mod tests {
         ListInstruction, ListLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph,
         StringInstruction, StringLocalId, Terminator, Transfer, TypedListInstruction,
     };
+    use crate::plan::execution::graph::{BoolLocalId, BoolTest};
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::{IntListTypeId, ListTypeId, ValueShapeId};
     use std::convert::Infallible;
@@ -517,55 +514,55 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
     fn list_guards_require_the_right_operand_threshold_and_branch() {
         for (predicate, negate, minimum, expected) in [
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 false,
                 2,
                 true,
             ),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 false,
                 3,
                 false,
             ),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(1),
                     length: 2,
-                },
+                }),
                 false,
                 1,
                 false,
             ),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 true,
                 1,
                 false,
             ),
             (
-                BoolInstruction::ListLengthEquals {
+                BoolInstruction::Test(BoolTest::ListLengthEquals {
                     value: list(0),
                     length: 0,
-                },
+                }),
                 true,
                 1,
                 true,
             ),
             (
-                BoolInstruction::ListLengthEquals {
+                BoolInstruction::Test(BoolTest::ListLengthEquals {
                     value: list(0),
                     length: 0,
-                },
+                }),
                 true,
                 2,
                 false,
@@ -609,10 +606,12 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                         vec![slot(ParamLocal::List(list(0)))],
                         vec![instruction(
                             ParamLocal::Bool(BoolLocalId(0)),
-                            ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals {
-                                value: list(0),
-                                length,
-                            }),
+                            ProfiledInstructionKind::Bool(BoolInstruction::Test(
+                                BoolTest::ListLengthEquals {
+                                    value: list(0),
+                                    length,
+                                },
+                            )),
                         )],
                         Terminator::BoolBranch(BoolBranch {
                             subject: BoolLocalId(0),
@@ -664,37 +663,37 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
     fn prefixes_preserve_utf8_boundaries_and_cannot_use_an_unrelated_check() {
         for (predicate, negate, prefix, expected) in [
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("\u{e9}-"),
-                },
+                }),
                 false,
                 "\u{e9}",
                 true,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("pre"),
-                },
+                }),
                 false,
                 "prefix",
                 false,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(1),
                     prefix: Text::Static("pre"),
-                },
+                }),
                 false,
                 "pre",
                 false,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("pre"),
-                },
+                }),
                 true,
                 "pre",
                 false,
@@ -742,7 +741,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         if negate {
             instructions.push(instruction(
                 ParamLocal::Bool(BoolLocalId(1)),
-                ProfiledInstructionKind::Bool(BoolInstruction::Not(BoolLocalId(0))),
+                ProfiledInstructionKind::Bool(BoolInstruction::Test(BoolTest::Not(BoolLocalId(0)))),
             ));
         }
         let edge = |target| Edge {
@@ -1024,18 +1023,24 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                     ),
                     instruction(
                         ParamLocal::Bool(BoolLocalId(1)),
-                        ProfiledInstructionKind::Bool(BoolInstruction::Not(BoolLocalId(1))),
+                        ProfiledInstructionKind::Bool(BoolInstruction::Test(BoolTest::Not(
+                            BoolLocalId(1),
+                        ))),
                     ),
                     instruction(
                         ParamLocal::Bool(BoolLocalId(2)),
-                        ProfiledInstructionKind::Bool(BoolInstruction::Not(BoolLocalId(99))),
+                        ProfiledInstructionKind::Bool(BoolInstruction::Test(BoolTest::Not(
+                            BoolLocalId(99),
+                        ))),
                     ),
                     instruction(
                         ParamLocal::Bool(BoolLocalId(3)),
-                        ProfiledInstructionKind::Bool(BoolInstruction::ListLengthEquals {
-                            value: list(0),
-                            length: 1,
-                        }),
+                        ProfiledInstructionKind::Bool(BoolInstruction::Test(
+                            BoolTest::ListLengthEquals {
+                                value: list(0),
+                                length: 1,
+                            },
+                        )),
                     ),
                 ],
                 exit(),
@@ -1048,8 +1053,10 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             assert_eq!(
                 guards.boolean(
                     BlockId(block),
-                    BoolLocalId(index),
-                    true,
+                    Condition::Bool {
+                        subject: BoolLocalId(index),
+                        truth: true
+                    },
                     &source,
                     &Requirement::length(1),
                 ),
@@ -1066,8 +1073,10 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         assert_eq!(
             guards.boolean(
                 BlockId(0),
-                BoolLocalId(3),
-                true,
+                Condition::Bool {
+                    subject: BoolLocalId(3),
+                    truth: true
+                },
                 &source,
                 &Requirement::Prefix("pre".into()),
             ),
@@ -1271,76 +1280,80 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         let cases = [
             (BoolInstruction::Value(true), false, true),
             (BoolInstruction::Value(true), true, false),
-            (BoolInstruction::Not(BoolLocalId(0)), false, false),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::Not(BoolLocalId(0))),
+                false,
+                false,
+            ),
+            (
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 false,
                 true,
             ),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 3,
-                },
+                }),
                 false,
                 false,
             ),
             (
-                BoolInstruction::ListLengthAtLeast {
+                BoolInstruction::Test(BoolTest::ListLengthAtLeast {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 true,
                 false,
             ),
             (
-                BoolInstruction::ListLengthEquals {
+                BoolInstruction::Test(BoolTest::ListLengthEquals {
                     value: list(0),
                     length: 1,
-                },
+                }),
                 true,
                 true,
             ),
             (
-                BoolInstruction::ListLengthEquals {
+                BoolInstruction::Test(BoolTest::ListLengthEquals {
                     value: list(0),
                     length: 2,
-                },
+                }),
                 true,
                 false,
             ),
             (
-                BoolInstruction::ListLengthEquals {
+                BoolInstruction::Test(BoolTest::ListLengthEquals {
                     value: list(0),
                     length: usize::MAX,
-                },
+                }),
                 true,
                 false,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("pre"),
-                },
+                }),
                 false,
                 true,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("other"),
-                },
+                }),
                 false,
                 false,
             ),
             (
-                BoolInstruction::StringStartsWith {
+                BoolInstruction::Test(BoolTest::StringStartsWith {
                     value: StringLocalId(0),
                     prefix: Text::Static("pre"),
-                },
+                }),
                 true,
                 false,
             ),
@@ -1378,7 +1391,9 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                         ),
                         instruction(
                             ParamLocal::Bool(BoolLocalId(1)),
-                            ProfiledInstructionKind::Bool(BoolInstruction::Not(BoolLocalId(0))),
+                            ProfiledInstructionKind::Bool(BoolInstruction::Test(BoolTest::Not(
+                                BoolLocalId(0),
+                            ))),
                         ),
                     ],
                     exit(),
@@ -1648,5 +1663,120 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
 
     fn exit() -> Terminator {
         Terminator::Exit(BlockGraphExitId(0))
+    }
+}
+
+#[cfg(test)]
+mod direct_test_tests {
+    use super::{Blocks, Guards, Place, Query, Requirement};
+    use crate::plan::execution::graph::{
+        BlockGraphExitId, BlockId, BoolTest, Edge, IntListLocalId, Jump, ListLocal, ParamLocal,
+        ParamSlot, ProfiledBlock, ProfiledBlockGraph, Terminator, TestBranch, Transfer,
+    };
+    use crate::plan::execution::storage::Table;
+    use crate::plan::execution::type_::{IntListTypeId, ListTypeId, ValueShapeId};
+    use std::convert::Infallible;
+
+    #[test]
+    fn direct_length_guards_prove_only_the_selected_operand_and_path() {
+        let list = |index| ListLocal::Int {
+            local: IntListLocalId(index),
+            type_id: IntListTypeId {
+                list_type: ListTypeId(0),
+            },
+        };
+        for (test, minimum, expected) in [
+            (
+                BoolTest::ListLengthAtLeast {
+                    value: list(0),
+                    length: 2,
+                },
+                2,
+                true,
+            ),
+            (
+                BoolTest::ListLengthEquals {
+                    value: list(0),
+                    length: 2,
+                },
+                2,
+                true,
+            ),
+            (
+                BoolTest::ListLengthEquals {
+                    value: list(0),
+                    length: 1,
+                },
+                2,
+                false,
+            ),
+            (
+                BoolTest::ListLengthAtLeast {
+                    value: list(1),
+                    length: 2,
+                },
+                2,
+                false,
+            ),
+        ] {
+            for bypass in [false, true] {
+                let subject = ParamLocal::List(list(0));
+                let edge = |target| {
+                    Edge::new(
+                        BlockId(target),
+                        vec![subject.clone()],
+                        Transfer {
+                            families: Table::Static(&[]),
+                        },
+                    )
+                };
+                let graph = ProfiledBlockGraph::<Infallible>::from_parts(
+                    BlockId(0),
+                    vec![
+                        ProfiledBlock::new(
+                            vec![
+                                ParamSlot::new(subject.clone(), ValueShapeId(0)),
+                                ParamSlot::new(ParamLocal::List(list(1)), ValueShapeId(0)),
+                            ],
+                            Vec::new(),
+                            Terminator::TestBranch(TestBranch {
+                                test: test.clone(),
+                                true_: edge(1),
+                                false_: edge(2),
+                            }),
+                        ),
+                        ProfiledBlock::new(
+                            vec![ParamSlot::new(subject.clone(), ValueShapeId(0))],
+                            Vec::new(),
+                            Terminator::Exit(BlockGraphExitId(0)),
+                        ),
+                        ProfiledBlock::new(
+                            vec![ParamSlot::new(subject.clone(), ValueShapeId(0))],
+                            Vec::new(),
+                            if bypass {
+                                Terminator::Jump(Jump::new(edge(1)))
+                            } else {
+                                Terminator::Exit(BlockGraphExitId(0))
+                            },
+                        ),
+                    ],
+                );
+                let blocks = Blocks::admit(&graph).unwrap();
+                let guards = Guards { blocks: &blocks };
+                assert_eq!(
+                    guards.proves(Query {
+                        block: BlockId(1),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(minimum)
+                    }),
+                    expected && !bypass
+                );
+                assert!(!guards.proves(Query {
+                    block: BlockId(0),
+                    place: Place::local(IntListLocalId(0).into()),
+                    requirement: Requirement::length(minimum)
+                }));
+            }
+        }
     }
 }

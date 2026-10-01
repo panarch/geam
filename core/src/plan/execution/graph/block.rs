@@ -1,4 +1,7 @@
+pub(in crate::plan::execution) mod bool_test;
+mod format;
 use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(crate) use bool_test::BoolTest;
 pub(in crate::plan::execution) mod instruction;
 pub(in crate::plan::execution) mod terminator;
 
@@ -19,7 +22,7 @@ pub(crate) use terminator::{
     FloatSwitch, IntSwitch, Jump, LetAssertPanic, Match, MatchEdge, MatchEdgeArgument,
     MatchIntBindingId, MatchIntPatternBinding, MatchPattern, MatchPatternBinding, MatchPatternList,
     MatchPatternListTail, NeverCall, NeverCallTarget, Signedness, SourceStop, SourceStopKind,
-    StringSwitch, Terminator,
+    StringSwitch, Terminator, TestBranch,
 };
 
 use crate::plan::execution::explain::Explain;

@@ -715,10 +715,10 @@ mod tests {
         String,
     }
 
-    fn bool_branch_targets(terminator: &Terminator) -> (BlockId, BlockId) {
+    fn test_branch_targets(terminator: &Terminator) -> (BlockId, BlockId) {
         match terminator {
-            Terminator::BoolBranch(branch) => (branch.true_().target(), branch.false_().target()),
-            _ => panic!("fixture should contain a Bool branch"),
+            Terminator::TestBranch(branch) => (branch.true_.target(), branch.false_.target()),
+            _ => panic!("fixture should contain a direct test branch"),
         }
     }
 
@@ -1028,7 +1028,7 @@ mod tests {
         );
         let lowered = super::super::super::freeze::freeze(graph, &mut context);
         assert_eq!(lowered.body.block_graph().blocks().len(), 3);
-        let (true_, false_) = bool_branch_targets(
+        let (true_, false_) = test_branch_targets(
             lowered
                 .body
                 .block_graph()
@@ -1273,9 +1273,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "fixture should contain a Bool branch")]
-    fn bool_branch_targets_rejects_the_wrong_fixture_shape() {
-        bool_branch_targets(&Terminator::Exit(
+    #[should_panic(expected = "fixture should contain a direct test branch")]
+    fn test_branch_targets_rejects_the_wrong_fixture_shape() {
+        test_branch_targets(&Terminator::Exit(
             crate::plan::execution::graph::BlockGraphExitId::new(0),
         ));
     }

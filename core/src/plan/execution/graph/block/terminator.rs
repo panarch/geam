@@ -1,4 +1,3 @@
-use crate::plan::execution::prepared::rust::{Emit, Rust};
 pub(in crate::plan::execution) mod branch;
 pub(in crate::plan::execution) mod echo;
 pub(in crate::plan::execution) mod edge;
@@ -9,7 +8,7 @@ pub(in crate::plan::execution) mod never;
 pub(in crate::plan::execution) mod pattern;
 pub(in crate::plan::execution) mod source_stop;
 pub(in crate::plan::execution) mod switch;
-
+pub(in crate::plan::execution) mod test_branch;
 pub(crate) use branch::BoolBranch;
 pub(crate) use echo::Echo;
 pub(crate) use edge::{Edge, MatchEdge, MatchEdgeArgument};
@@ -25,13 +24,16 @@ pub(crate) use pattern::{
 };
 pub(crate) use source_stop::{SourceStop, SourceStopKind};
 pub(crate) use switch::{FloatSwitch, IntSwitch, StringSwitch};
+pub(crate) use test_branch::TestBranch;
 
 use crate::plan::execution::graph::{BlockGraphExitId, BlockGraphExplainContext};
+use crate::plan::execution::prepared::rust::{Emit, Rust};
 
 #[derive(Clone)]
 pub enum Terminator {
     Jump(Jump),
     BoolBranch(BoolBranch),
+    TestBranch(TestBranch),
     IntSwitch(IntSwitch),
     FloatSwitch(FloatSwitch),
     StringSwitch(StringSwitch),
@@ -51,6 +53,7 @@ impl Terminator {
         match self {
             Self::Jump(jump) => context.write(jump),
             Self::BoolBranch(branch) => context.write(branch),
+            Self::TestBranch(branch) => context.write(branch),
             Self::IntSwitch(switch) => context.write(switch),
             Self::FloatSwitch(switch) => context.write(switch),
             Self::StringSwitch(switch) => context.write(switch),
@@ -69,6 +72,7 @@ impl Emit for Terminator {
         match self {
             Self::Jump(field_0) => output.call("graph::Terminator::Jump", &[field_0]),
             Self::BoolBranch(field_0) => output.call("graph::Terminator::BoolBranch", &[field_0]),
+            Self::TestBranch(field_0) => output.call("graph::Terminator::TestBranch", &[field_0]),
             Self::IntSwitch(field_0) => output.call("graph::Terminator::IntSwitch", &[field_0]),
             Self::FloatSwitch(field_0) => output.call("graph::Terminator::FloatSwitch", &[field_0]),
             Self::StringSwitch(field_0) => {
@@ -91,11 +95,11 @@ mod emission_tests {
     use super::{
         BlockGraphExitId, BoolBranch, Echo, Edge, FloatSwitch, IntSwitch, Jump, LetAssertPanic,
         Match, MatchEdge, MatchPattern, NeverCall, NeverCallTarget, Rust, SourceStop,
-        SourceStopKind, StringSwitch, Terminator,
+        SourceStopKind, StringSwitch, Terminator, TestBranch,
     };
     use crate::plan::execution::function::NeverFunctionId;
     use crate::plan::execution::graph::{
-        BlockId, BoolLocalId, FloatLocalId, IntLocalId, ParamLocal, StringLocalId,
+        BlockId, BoolLocalId, BoolTest, FloatLocalId, IntLocalId, ParamLocal, StringLocalId,
     };
     use crate::plan::execution::storage::Table;
     use crate::plan::{EchoSite, HostCallSite, PanicSite, SourceSpan};
@@ -130,6 +134,27 @@ data::graph::Terminator::Jump(data::graph::Jump {
                 r#"
 data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
     subject: data::graph::BoolLocalId(0),
+    true_: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
+    },
+    false_: data::graph::Edge {
+        target: data::graph::BlockId(2),
+        args: data::Storage::Static(&[]),
+        transfer: data::graph::Transfer {
+            families: data::Storage::Static(&[]),
+        },
+    },
+})"#.trim_start_matches('\n'),
+            ),
+            (
+                Terminator::TestBranch(TestBranch::new(BoolTest::Not(BoolLocalId(0)), edge.clone(), edge.clone())),
+                r#"
+data::graph::Terminator::TestBranch(data::graph::TestBranch {
+    test: data::graph::BoolTest::Not(data::graph::BoolLocalId(0)),
     true_: data::graph::Edge {
         target: data::graph::BlockId(2),
         args: data::Storage::Static(&[]),

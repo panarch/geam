@@ -168,22 +168,7 @@ fn bool(value: &BoolInstruction) -> Option<(Address, Projection)> {
         | BoolInstruction::Constant(..)
         | BoolInstruction::Call { .. }
         | BoolInstruction::FunctionCall { .. }
-        | BoolInstruction::Not(..)
-        | BoolInstruction::EqualInt { .. }
-        | BoolInstruction::NotEqualInt { .. }
-        | BoolInstruction::LtInt { .. }
-        | BoolInstruction::LtEqInt { .. }
-        | BoolInstruction::GtInt { .. }
-        | BoolInstruction::GtEqInt { .. }
-        | BoolInstruction::LtFloat { .. }
-        | BoolInstruction::LtEqFloat { .. }
-        | BoolInstruction::GtFloat { .. }
-        | BoolInstruction::GtEqFloat { .. }
-        | BoolInstruction::Equal { .. }
-        | BoolInstruction::NotEqual { .. }
-        | BoolInstruction::StringStartsWith { .. }
-        | BoolInstruction::ListLengthEquals { .. }
-        | BoolInstruction::ListLengthAtLeast { .. } => None,
+        | BoolInstruction::Test(_) => None,
     }
 }
 
