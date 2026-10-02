@@ -2,7 +2,7 @@ use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
 use crate::plan::execution::graph::BlockId;
 use crate::plan::execution::storage::Table;
-use crate::runtime::numeric::NumericKernel;
+use crate::runtime::compiled_numeric::NumericKernel;
 
 /// Compiler-generated implementations, separate from the canonical graph.
 ///
@@ -65,7 +65,7 @@ impl NumericFunctions {
 impl Emit for NumericCheckpoint {
     fn emit(&self, output: &mut Rust) {
         output.structure(
-            "numeric::NumericCheckpoint",
+            "compiled_numeric::NumericCheckpoint",
             &[
                 ("block", &self.block),
                 ("instruction", &self.instruction),
@@ -84,7 +84,7 @@ mod tests {
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
     use crate::plan::execution::graph::BlockId;
     use crate::plan::execution::storage::Table;
-    use crate::runtime::numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
 
     static FUNCTIONS: NumericFunctions = NumericFunctions {
         ints: Table::Static(&[NumericFunction {
@@ -160,7 +160,15 @@ mod tests {
                 ints: 5,
                 bools: 1,
             }),
-            "data::numeric::NumericCheckpoint {\n    block: data::graph::BlockId(2),\n    instruction: 3,\n    ints: 5,\n    bools: 1,\n}"
+            r#"
+data::compiled_numeric::NumericCheckpoint {
+    block: data::graph::BlockId(2),
+    instruction: 3,
+    ints: 5,
+    bools: 1,
+}
+"#
+            .trim_matches('\n')
         );
     }
 }

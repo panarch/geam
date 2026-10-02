@@ -1,5 +1,5 @@
-mod emission;
+mod codegen;
 mod shape;
 
-pub(super) use emission::NumericEmission;
+pub(super) use codegen::NumericCodegen;
 pub(super) use shape::NumericShape;

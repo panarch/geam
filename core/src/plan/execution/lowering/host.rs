@@ -14,12 +14,12 @@ use super::{
     SpecializationOutcome, SpecializationState, try_resolve_specialization_fixed_point,
 };
 use crate::host::{HostFunctionBinding, HostProfile};
+use crate::plan::execution::compiled_numeric::NumericFunctions;
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::host::{
     CallableRegistration, HostBindingTables, HostFunctionTables, HostSpecializationError,
     HostedExecutionProfile,
 };
-use crate::plan::execution::numeric::NumericFunctions;
 use crate::plan::execution::storage::Table;
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::execution::{LibraryFunctionEntries, LibraryNativeConstruction};
@@ -298,7 +298,7 @@ fn assemble_hosted_program(
             value_shapes: Box::new(value_shapes).into(),
         }),
         functions: Box::new(functions).into(),
-        numeric: NumericFunctions::interpreted(),
+        compiled_numeric: NumericFunctions::interpreted(),
     }
 }
 

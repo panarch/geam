@@ -296,11 +296,11 @@ fn numeric_control_flow_matches_preparation_and_compiled_execution() {
 
 #[test]
 fn compiled_numeric_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
-    use data::numeric::{NumericProgress, NumericValues};
+    use data::compiled_numeric::{NumericProgress, NumericValues};
     let target = NUMERIC.entries.ints[0].function;
     let implementation = &NUMERIC
         .program
-        .numeric
+        .compiled_numeric
         .ints
         .iter()
         .find(|function| function.function == target)
@@ -354,7 +354,7 @@ fn compiled_numeric_checkpoints_advance_with_one_step_and_preserve_completed_out
     assert_eq!(budget, 96);
     assert_eq!(
         implementation.checkpoints[7],
-        data::numeric::NumericCheckpoint {
+        data::compiled_numeric::NumericCheckpoint {
             block: data::graph::BlockId(4),
             instruction: 1,
             ints: 4,
@@ -369,11 +369,11 @@ fn compiled_numeric_checkpoints_advance_with_one_step_and_preserve_completed_out
 
 #[test]
 fn discarded_region_outputs_do_not_become_checkpoint_values() {
-    use data::numeric::{NumericProgress, NumericValues};
+    use data::compiled_numeric::{NumericProgress, NumericValues};
     let target = NUMERIC.entries.ints.last().unwrap().function;
     let implementation = &NUMERIC
         .program
-        .numeric
+        .compiled_numeric
         .ints
         .iter()
         .find(|function| function.function == target)
@@ -456,11 +456,11 @@ fn numeric_hosted_and_standalone_artifacts_match_public_preparation_and_admit_ge
         .unwrap();
     let _ = hosted_numeric_functions!(bindings, arithmetic);
     assert_eq!(
-        NUMERIC_HOSTED.module.program.numeric.ints[0].function,
+        NUMERIC_HOSTED.module.program.compiled_numeric.ints[0].function,
         NUMERIC_HOSTED.module.entries.ints[0].function
     );
     assert_eq!(
-        NUMERIC_HOSTED.module.program.numeric.bools[0].function,
+        NUMERIC_HOSTED.module.program.compiled_numeric.bools[0].function,
         NUMERIC_HOSTED.module.entries.bools[0].function
     );
     let typed = compile_typed_host_program(
@@ -486,7 +486,7 @@ fn numeric_hosted_and_standalone_artifacts_match_public_preparation_and_admit_ge
         prepared.emit_rust(),
         include_str!("fixtures/prepared/numeric_entry.rs").trim()
     );
-    assert_eq!(NUMERIC_ENTRY.program.numeric.ints.len(), 1);
+    assert_eq!(NUMERIC_ENTRY.program.compiled_numeric.ints.len(), 1);
     NUMERIC_ENTRY
         .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
         .unwrap();

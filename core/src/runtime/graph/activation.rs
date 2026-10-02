@@ -2,13 +2,14 @@ use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
+use crate::plan::execution::compiled_numeric::NumericImplementation;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionNeverFunctionBody, FunctionBodyOwner,
     FunctionExit,
 };
 use crate::plan::execution::graph::BlockGraphView;
-use crate::plan::execution::numeric::NumericImplementation;
+use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -16,7 +17,6 @@ use crate::runtime::evaluated::{
 };
 use crate::runtime::function::EntryTarget;
 use crate::runtime::integer::IntegerValue;
-use crate::runtime::numeric::{NumericProgress, NumericValues};
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
@@ -45,7 +45,7 @@ pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan>
 
 pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
-    Numeric {
+    CompiledNumeric {
         frame: Frame<'plan, Plan>,
         implementation: &'plan NumericImplementation,
         point: usize,
@@ -154,7 +154,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
     pub(in crate::runtime) fn new(
         graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
-        numeric: Option<&'plan NumericImplementation>,
+        compiled_numeric: Option<&'plan NumericImplementation>,
     ) -> Self {
         Self {
             active: Frame {
@@ -162,7 +162,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(RootExit),
             }
-            .enter(numeric),
+            .enter(compiled_numeric),
         }
     }
 
@@ -177,7 +177,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(frame) => frame.advance(plan, state, storage, remaining)?,
-            Activation::Numeric {
+            Activation::CompiledNumeric {
                 mut frame,
                 implementation,
                 point,
@@ -200,7 +200,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                             frame.position.block = checkpoint.block;
                             frame.position.instruction = checkpoint.instruction;
                             if matches!(progress, NumericProgress::Yield(_)) {
-                                Activation::Numeric {
+                                Activation::CompiledNumeric {
                                     frame,
                                     implementation,
                                     point,
@@ -244,9 +244,12 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
-    fn enter(self, numeric: Option<&'plan NumericImplementation>) -> Activation<'plan, Plan> {
-        match numeric {
-            Some(implementation) => Activation::Numeric {
+    fn enter(
+        self,
+        compiled_numeric: Option<&'plan NumericImplementation>,
+    ) -> Activation<'plan, Plan> {
+        match compiled_numeric {
+            Some(implementation) => Activation::CompiledNumeric {
                 frame: self,
                 implementation,
                 point: implementation.entry,
@@ -441,13 +444,13 @@ where
 {
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
-        let numeric = self.id.numeric(self.plan);
+        let compiled_numeric = self.id.compiled_numeric(self.plan);
         Frame {
             graph,
             position: GraphPosition::new(graph.entry(), inputs),
             exit: self,
         }
-        .enter(numeric)
+        .enter(compiled_numeric)
     }
 }
 
@@ -679,15 +682,15 @@ mod tests {
         Storage, enter_function, enter_never,
     };
     use crate::ExecutionPlan;
+    use crate::plan::execution::compiled_numeric::{NumericCheckpoint, NumericImplementation};
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
         IntFunctionId,
     };
     use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
-    use crate::plan::execution::numeric::{NumericCheckpoint, NumericImplementation};
+    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
-    use crate::runtime::numeric::{NumericProgress, NumericValues};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{
         EvaluatedValue, ExecutableRuntimePlan, HostCallOrigin, RuntimeListStorage, Value,
@@ -927,7 +930,7 @@ mod tests {
         execution: &'run Execution<'plan, Plan>,
     ) -> (&'run Frame<'plan, Plan>, usize) {
         match &execution.active {
-            Activation::Numeric { frame, point, .. } => (frame, *point),
+            Activation::CompiledNumeric { frame, point, .. } => (frame, *point),
             _ => panic!("a Small yield retains generated execution"),
         }
     }
@@ -1010,7 +1013,7 @@ mod tests {
                 let mut position = GraphPosition::new(BlockId(1), values);
                 position.instruction = 1;
                 let execution = Execution {
-                    active: Activation::Numeric {
+                    active: Activation::CompiledNumeric {
                         frame: Frame {
                             graph: body.block_graph().as_view(),
                             position,

@@ -1,10 +1,10 @@
+use crate::plan::execution::compiled_numeric::NumericCheckpoint;
 use crate::plan::execution::function::{ExecutionGraphProfile, FunctionExit, ProfiledFunctionBody};
 use crate::plan::execution::graph::{
     ArithmeticRegion, BlockGraphExitId, BlockGraphView, BlockId, BoolInstruction, BoolLocalId,
     BoolTest, Edge, IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand, ParamLocal,
     ParamSlot, ProfiledInstruction, ProfiledInstructionKind, Terminator,
 };
-use crate::plan::execution::numeric::NumericCheckpoint;
 use std::collections::BTreeSet;
 
 /// Borrowed inspection used only while emitting or admitting prepared data.
@@ -421,7 +421,16 @@ mod tests {
     #[test]
     fn entry_repetition_has_complete_checkpoints_for_region_outputs_without_internal_nodes() {
         let plan = source_plan(
-            "fn walk(n: Int, total: Int) { case n { 0 -> total _ -> walk(n - 1, total + 1) } } pub fn main() { walk(3, 0) }",
+            r#"
+fn walk(n: Int, total: Int) {
+  case n {
+    0 -> total
+    _ -> walk(n - 1, total + 1)
+  }
+}
+
+pub fn main() { walk(3, 0) }
+"#,
         );
         let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         assert!(shape.repeats);
@@ -461,7 +470,20 @@ mod tests {
     #[test]
     fn a_join_is_emitted_once_after_nested_scalar_conditions() {
         let plan = source_plan(
-            "fn choose(value: Int, flag: Bool) { let selected = case flag { True -> value + 1 False -> value - 1 } case selected > 0 { True -> selected False -> 0 } } pub fn main() { choose(7, True) }",
+            r#"
+fn choose(value: Int, flag: Bool) {
+  let selected = case flag {
+    True -> value + 1
+    False -> value - 1
+  }
+  case selected > 0 {
+    True -> selected
+    False -> 0
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
         );
         let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         assert!(!shape.repeats);
@@ -482,15 +504,103 @@ mod tests {
     #[test]
     fn valid_bodies_outside_the_numeric_scope_keep_interpreted_execution() {
         for source in [
-            "fn choose(value: Int) { value + 1 } pub fn main() { choose(7) }",
-            "const offset = 2 fn choose(value: Int, flag: Bool) { case flag { True -> value + offset False -> value } } pub fn main() { choose(7, True) }",
-            "fn other(value: Int) { value + 2 } fn choose(value: Int, flag: Bool) { case flag { True -> other(value) False -> value } } pub fn main() { choose(7, True) }",
-            "fn choose(value: Int, text: String) { case text { \"\" -> value _ -> value + 1 } } pub fn main() { choose(7, \"x\") }",
-            "fn choose(value: Int, flag: Bool) { case flag { True -> 9223372036854775808 False -> value } } pub fn main() { choose(7, True) }",
-            "fn choose(value: Int, flag: Bool) { let result = value * value * value case flag { True -> result False -> 0 } } pub fn main() { choose(7, True) }",
-            "fn choose(left: Bool, right: Bool) { case left == right { True -> 1 False -> 2 } } pub fn main() { choose(True, False) }",
-            "fn invert(value: Bool) { !value } fn choose(value: Bool) { let flag = invert(value) case flag { True -> 1 False -> 2 } } pub fn main() { choose(True) }",
-            "fn choose(left: Bool, right: Bool) { let same = left == right case left { True -> case same { True -> 1 False -> 2 } False -> 3 } } pub fn main() { choose(True, False) }",
+            r#"
+fn choose(value: Int) { value + 1 }
+
+pub fn main() { choose(7) }
+"#,
+            r#"
+const offset = 2
+
+fn choose(value: Int, flag: Bool) {
+  case flag {
+    True -> value + offset
+    False -> value
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
+            r#"
+fn other(value: Int) { value + 2 }
+
+fn choose(value: Int, flag: Bool) {
+  case flag {
+    True -> other(value)
+    False -> value
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
+            r#"
+fn choose(value: Int, text: String) {
+  case text {
+    "" -> value
+    _ -> value + 1
+  }
+}
+
+pub fn main() { choose(7, "x") }
+"#,
+            r#"
+fn choose(value: Int, flag: Bool) {
+  case flag {
+    True -> 9223372036854775808
+    False -> value
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
+            r#"
+fn choose(value: Int, flag: Bool) {
+  let result = value * value * value
+  case flag {
+    True -> result
+    False -> 0
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
+            r#"
+fn choose(left: Bool, right: Bool) {
+  case left == right {
+    True -> 1
+    False -> 2
+  }
+}
+
+pub fn main() { choose(True, False) }
+"#,
+            r#"
+fn invert(value: Bool) { !value }
+
+fn choose(value: Bool) {
+  let flag = invert(value)
+  case flag {
+    True -> 1
+    False -> 2
+  }
+}
+
+pub fn main() { choose(True) }
+"#,
+            r#"
+fn choose(left: Bool, right: Bool) {
+  let same = left == right
+  case left {
+    True -> case same {
+      True -> 1
+      False -> 2
+    }
+    False -> 3
+  }
+}
+
+pub fn main() { choose(True, False) }
+"#,
         ] {
             let plan = source_plan(source);
             assert!(
@@ -503,7 +613,16 @@ mod tests {
     #[test]
     fn incomplete_graphs_and_internal_cycle_margins_cannot_publish_numeric_checkpoints() {
         let plan = source_plan(
-            "fn walk(n: Int, total: Int) { case n { 0 -> total _ -> walk(n - 1, total + 1) } } pub fn main() { walk(3, 0) }",
+            r#"
+fn walk(n: Int, total: Int) {
+  case n {
+    0 -> total
+    _ -> walk(n - 1, total + 1)
+  }
+}
+
+pub fn main() { walk(3, 0) }
+"#,
         );
         let graph = plan
             .int_function(IntFunctionId(1))
@@ -558,7 +677,16 @@ mod tests {
     #[test]
     fn overlapping_branch_bodies_keep_interpreted_execution_instead_of_duplicating_code() {
         let plan = source_plan(
-            "fn choose(value: Int) { case value { 0 -> value + 1 _ -> value - 1 } } pub fn main() { choose(7) }",
+            r#"
+fn choose(value: Int) {
+  case value {
+    0 -> value + 1
+    _ -> value - 1
+  }
+}
+
+pub fn main() { choose(7) }
+"#,
         );
         let graph = plan
             .int_function(IntFunctionId(1))
@@ -624,7 +752,20 @@ mod tests {
         );
 
         let joined = source_plan(
-            "fn choose(value: Int, flag: Bool) { let selected = case flag { True -> value + 1 False -> value - 1 } case selected > 0 { True -> selected False -> 0 } } pub fn main() { choose(7, True) }",
+            r#"
+fn choose(value: Int, flag: Bool) {
+  let selected = case flag {
+    True -> value + 1
+    False -> value - 1
+  }
+  case selected > 0 {
+    True -> selected
+    False -> 0
+  }
+}
+
+pub fn main() { choose(7, True) }
+"#,
         );
         let shape = NumericShape::inspect(joined.int_function(IntFunctionId(1)).body()).unwrap();
         let join = shape.joins[shape.graph.entry().index()].unwrap();
@@ -658,7 +799,19 @@ mod tests {
     #[test]
     fn completed_boolean_values_extend_the_actual_checkpoint_prefix() {
         let plan = source_plan(
-            "fn choose(flag: Bool) { let flag = !flag let flag = !flag let flag = !flag case flag { True -> 7 False -> -7 } } pub fn main() { choose(True) }",
+            r#"
+fn choose(flag: Bool) {
+  let flag = !flag
+  let flag = !flag
+  let flag = !flag
+  case flag {
+    True -> 7
+    False -> -7
+  }
+}
+
+pub fn main() { choose(True) }
+"#,
         );
         let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         // Two completed Not values precede the final Not condition. The
@@ -676,7 +829,20 @@ mod tests {
     #[test]
     fn a_float_computation_inside_an_int_function_remains_interpreted() {
         let plan = source_plan(
-            "fn choose(flag: Bool) { let value = 1.5 case flag { True -> case value >. 0.0 { True -> 1 False -> 2 } False -> 3 } } pub fn main() { choose(True) }",
+            r#"
+fn choose(flag: Bool) {
+  let value = 1.5
+  case flag {
+    True -> case value >. 0.0 {
+      True -> 1
+      False -> 2
+    }
+    False -> 3
+  }
+}
+
+pub fn main() { choose(True) }
+"#,
         );
         assert!(NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none());
     }
@@ -684,7 +850,16 @@ mod tests {
     #[test]
     fn generic_boolean_equality_remains_outside_the_numeric_test_contract() {
         let plan = source_plan(
-            "fn choose(left: Bool, right: Bool) { case left == right { True -> 7 False -> -7 } } pub fn main() { choose(True, False) }",
+            r#"
+fn choose(left: Bool, right: Bool) {
+  case left == right {
+    True -> 7
+    False -> -7
+  }
+}
+
+pub fn main() { choose(True, False) }
+"#,
         );
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
@@ -754,8 +929,16 @@ mod tests {
 
     #[test]
     fn an_effectful_terminator_keeps_its_function_interpreted() {
-        let plan =
-            source_plan("fn choose(value: Int) { echo value value } pub fn main() { choose(7) }");
+        let plan = source_plan(
+            r#"
+fn choose(value: Int) {
+  echo value
+  value
+}
+
+pub fn main() { choose(7) }
+"#,
+        );
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         let terminator = graph.block(graph.entry()).terminator();

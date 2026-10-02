@@ -2638,7 +2638,7 @@ pub fn check() {
                     ]),
                 },
             },
-            numeric: data::numeric::NumericFunctions::interpreted(),
+            compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
             constants: data::constant::ProfiledConstantTable {
                 ints: data::Storage::Static(&[]),
                 strings: data::Storage::Static(&[]),

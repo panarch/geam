@@ -10,11 +10,11 @@ pub(crate) use admission::{AdmittedHostedModule, AdmittedModule};
 pub use entry::{HostedEntryArtifact, PreparedHostedEntry};
 pub use hosted::{HostedModuleArtifact, PreparedHostedModule};
 
+use super::compiled_numeric::NumericFunctions;
 use super::constant::ProfiledConstantTable;
 use super::function::{
     ExecutionProfile, FunctionCatalog, FunctionTables, ProfiledRuntimeFunctionId,
 };
-use super::numeric::NumericFunctions;
 use super::storage::Table;
 use super::type_::{
     CustomTypeTable, ExternalTypeTable, FunctionMetadata, ListTypeTable, ValueShapeTable,
@@ -180,7 +180,7 @@ pub struct ProgramTables<Profile: ExecutionProfile> {
     pub modules: Table<ExecutionModuleContext>,
     pub main: ProfiledRuntimeFunctionId<Profile::Graph>,
     pub functions: FunctionTables<Profile>,
-    pub numeric: NumericFunctions,
+    pub compiled_numeric: NumericFunctions,
     pub constants: ProfiledConstantTable<Profile::Graph>,
     pub function_parameters: FunctionCatalog,
     pub list_types: ListTypeTable,
@@ -224,7 +224,7 @@ impl<Profile: ExecutionProfile> ProgramTables<Profile> {
                 value_shapes: Node::Static(&self.value_shapes),
             }),
             functions: Node::Static(&self.functions),
-            numeric: self.numeric.borrowed(),
+            compiled_numeric: self.compiled_numeric.borrowed(),
         }
     }
 }
@@ -264,8 +264,8 @@ where
                 ("main", main),
                 ("functions", functions.as_ref()),
                 (
-                    "numeric",
-                    &numeric::NumericEmission::new(functions.as_ref()),
+                    "compiled_numeric",
+                    &numeric::NumericCodegen::new(functions.as_ref()),
                 ),
                 ("constants", constants.as_ref()),
                 ("function_parameters", function_parameters.as_ref()),
@@ -293,7 +293,7 @@ mod tests {
         let ExecutionProgram {
             common,
             functions,
-            numeric,
+            compiled_numeric,
         } = plan.program;
         let common = std::sync::Arc::try_unwrap(common).ok().unwrap();
         let functions = owned_table(functions);
@@ -304,7 +304,7 @@ mod tests {
             modules: common.modules,
             main: common.main,
             functions: *functions,
-            numeric,
+            compiled_numeric,
             constants: *constants,
             function_parameters: std::sync::Arc::try_unwrap(common.function_parameters)
                 .ok()

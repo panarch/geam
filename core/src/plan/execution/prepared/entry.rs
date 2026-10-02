@@ -344,7 +344,7 @@ data::HostedEntryArtifact {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
-        numeric: data::numeric::NumericFunctions::interpreted(),
+        compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),

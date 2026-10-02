@@ -2043,2626 +2043,3297 @@ data::ModuleArtifact {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
-        numeric: {
-enum NumericResume {
-Next(usize),
-Exit(data::numeric::NumericProgress),
-}
-fn numeric_int_0(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 8] = [
-|values, budget| NumericResume::Exit(numeric_int_0_entry((values.ints[0], values.ints[1],), values, budget)),
-numeric_int_0_resume_1,
-numeric_int_0_resume_2,
-numeric_int_0_resume_3,
-numeric_int_0_resume_4,
-numeric_int_0_resume_5,
-numeric_int_0_resume_6,
-numeric_int_0_resume_7,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_0_entry(inputs: (i128, i128,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (mut b0_i0, mut b0_i1,) = inputs;
-'repeat: loop {
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-if b0_i0 == 0_i128 {
-let (b1_i0,) = (b0_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0));
-} else {
-let (b2_i0, b2_i1,) = (b0_i0, b0_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-let b2_i2 = if 2_i128 == 0 { 0_i128 } else { b2_i0 % 2_i128 };
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-if b2_i2 == 0_i128 {
-let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-let _r0_n0 = b3_i0 - 1_i128;
-let _r0_n1 = b3_i0 * 3_i128;
-let _r0_n2 = b3_i1 + _r0_n1;
-let _r0_n3 = _r0_n2 + 1_i128;
-let b3_i2 = _r0_n0;
-let b3_i3 = _r0_n3;
-if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) || b3_i3 < i128::from(i64::MIN) || b3_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(5);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(5);
-}
-*budget -= 1;
-{
-(b0_i0, b0_i1,) = (b3_i2, b3_i3,);
-continue 'repeat;
-}
-} else {
-let (b4_i0, b4_i1,) = (b2_i0, b2_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(6);
-}
-*budget -= 1;
-let _r0_n0 = b4_i0 - 1_i128;
-let _r0_n1 = b4_i0 * 2_i128;
-let _r0_n2 = b4_i1 + _r0_n1;
-let _r0_n3 = _r0_n2 - 1_i128;
-let b4_i2 = _r0_n0;
-let b4_i3 = _r0_n3;
-if b4_i2 < i128::from(i64::MIN) || b4_i2 > i128::from(i64::MAX) || b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(7);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(7);
-}
-*budget -= 1;
-{
-(b0_i0, b0_i1,) = (b4_i2, b4_i3,);
-continue 'repeat;
-}
-}
-}
-}
-}
-fn numeric_int_0_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_0_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-let b2_i2 = if 2_i128 == 0 { 0_i128 } else { b2_i0 % 2_i128 };
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-fn numeric_int_0_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-if b2_i2 == 0_i128 {
-let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-} else {
-let (b4_i0, b4_i1,) = (b2_i0, b2_i1,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(6)
-}
-}
-fn numeric_int_0_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-let _r0_n0 = b3_i0 - 1_i128;
-let _r0_n1 = b3_i0 * 3_i128;
-let _r0_n2 = b3_i1 + _r0_n1;
-let _r0_n3 = _r0_n2 + 1_i128;
-let b3_i2 = _r0_n0;
-let b3_i3 = _r0_n3;
-if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) || b3_i3 < i128::from(i64::MIN) || b3_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(5));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(5)
-}
-fn numeric_int_0_resume_5(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0, b3_i1, b3_i2, b3_i3,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(5));
-}
-*budget -= 1;
-{
-let (b0_i0, b0_i1,) = (b3_i2, b3_i3,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(0)
-}
-}
-fn numeric_int_0_resume_6(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(6));
-}
-*budget -= 1;
-let _r0_n0 = b4_i0 - 1_i128;
-let _r0_n1 = b4_i0 * 2_i128;
-let _r0_n2 = b4_i1 + _r0_n1;
-let _r0_n3 = _r0_n2 - 1_i128;
-let b4_i2 = _r0_n0;
-let b4_i3 = _r0_n3;
-if b4_i2 < i128::from(i64::MIN) || b4_i2 > i128::from(i64::MAX) || b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(7));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(7)
-}
-fn numeric_int_0_resume_7(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1, b4_i2, b4_i3,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(7));
-}
-*budget -= 1;
-{
-let (b0_i0, b0_i1,) = (b4_i2, b4_i3,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(0)
-}
-}
-fn numeric_int_1(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 9] = [
-|values, budget| NumericResume::Exit(numeric_int_1_entry((values.ints[0], values.ints[1], values.ints[2], values.bools[0],), values, budget)),
-numeric_int_1_resume_1,
-numeric_int_1_resume_2,
-numeric_int_1_resume_3,
-numeric_int_1_resume_4,
-numeric_int_1_resume_5,
-numeric_int_1_resume_6,
-numeric_int_1_resume_7,
-numeric_int_1_resume_8,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_1_entry(inputs: (i128, i128, i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (mut b0_i0, mut b0_i1, mut b0_i2, mut b0_v0,) = inputs;
-'repeat: loop {
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-if b0_i0 <= 0_i128 {
-let (b1_i0, b1_i1, b1_v0,) = (b0_i1, b0_i2, b0_v0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-if b1_v0 {
-let (b2_i0, b2_i1,) = (b1_i0, b1_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-let b2_i2 = b2_i0 - b2_i1;
-if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(3);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0));
-} else {
-let (b3_i0, b3_i1,) = (b1_i0, b1_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-let b3_i2 = b3_i1 - b3_i0;
-if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(5);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(5);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1));
-}
-} else {
-let (b4_i0, b4_i1, b4_i2, b4_v0,) = (b0_i0, b0_i1, b0_i2, b0_v0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return data::numeric::NumericProgress::Yield(6);
-}
-*budget -= 1;
-let b4_i3 = b4_i0 - 1_i128;
-if b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return data::numeric::NumericProgress::Interpreted(7);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return data::numeric::NumericProgress::Yield(7);
-}
-*budget -= 1;
-let b4_v1 = !b4_v0;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0, b4_v1]);
-return data::numeric::NumericProgress::Yield(8);
-}
-*budget -= 1;
-{
-(b0_i0, b0_i1, b0_i2, b0_v0,) = (b4_i3, b4_i2, b4_i1, b4_v1,);
-continue 'repeat;
-}
-}
-}
-}
-fn numeric_int_1_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1, b1_v0,) = (values.ints[0], values.ints[1], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-if b1_v0 {
-let (b2_i0, b2_i1,) = (b1_i0, b1_i1,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-} else {
-let (b3_i0, b3_i1,) = (b1_i0, b1_i1,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-}
-fn numeric_int_1_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-let b2_i2 = b2_i0 - b2_i1;
-if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(3));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-fn numeric_int_1_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_1_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-let b3_i2 = b3_i1 - b3_i0;
-if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(5));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(5)
-}
-fn numeric_int_1_resume_5(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0, b3_i1, b3_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(5));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_1_resume_6(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1, b4_i2, b4_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(6));
-}
-*budget -= 1;
-let b4_i3 = b4_i0 - 1_i128;
-if b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(7));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-NumericResume::Next(7)
-}
-fn numeric_int_1_resume_7(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1, b4_i2, b4_i3, b4_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(7));
-}
-*budget -= 1;
-let b4_v1 = !b4_v0;
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0, b4_v1]);
-NumericResume::Next(8)
-}
-fn numeric_int_1_resume_8(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1, b4_i2, b4_i3, b4_v0, b4_v1,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3], values.bools[0], values.bools[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0, b4_v1]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(8));
-}
-*budget -= 1;
-{
-let (b0_i0, b0_i1, b0_i2, b0_v0,) = (b4_i3, b4_i2, b4_i1, b4_v1,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-NumericResume::Next(0)
-}
-}
-fn numeric_int_2(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 11] = [
-|values, budget| NumericResume::Exit(numeric_int_2_entry((values.ints[0],), values, budget)),
-numeric_int_2_resume_1,
-numeric_int_2_resume_2,
-numeric_int_2_resume_3,
-numeric_int_2_resume_4,
-numeric_int_2_resume_5,
-numeric_int_2_resume_6,
-numeric_int_2_resume_7,
-numeric_int_2_resume_8,
-numeric_int_2_resume_9,
-numeric_int_2_resume_10,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_2_entry(inputs: (i128,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-let (b2_i0,) = if b0_i0 == 0_i128 {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-let b1_i0 = -3_i128;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-let (b2_i0,) = {
-(b1_i0,)
-}
-;
-(b2_i0,)
-} else if b0_i0 == 1_i128 {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(8);
-}
-*budget -= 1;
-let b5_i0 = 2_i128;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b5_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(9);
-}
-*budget -= 1;
-let (b2_i0,) = {
-(b5_i0,)
-}
-;
-(b2_i0,)
-} else {
-let (b6_i0,) = (b0_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b6_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(10);
-}
-*budget -= 1;
-let (b2_i0,) = {
-(b6_i0,)
-}
-;
-(b2_i0,)
-}
-;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-if b2_i0 > 0_i128 {
-let (b3_i0,) = (b2_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-let b3_i1 = b3_i0 + 42_i128;
-if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(5);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(5);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b4_i0,) = (b2_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(6);
-}
-*budget -= 1;
-let b4_i1 = -b4_i0;
-if b4_i1 < i128::from(i64::MIN) || b4_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(7);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(7);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_2_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-let b1_i0 = -3_i128;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-}
-fn numeric_int_2_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-{
-let (b2_i0,) = (b1_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-}
-fn numeric_int_2_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-if b2_i0 > 0_i128 {
-let (b3_i0,) = (b2_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-} else {
-let (b4_i0,) = (b2_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(6)
-}
-}
-fn numeric_int_2_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-let b3_i1 = b3_i0 + 42_i128;
-if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(5));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(5)
-}
-fn numeric_int_2_resume_5(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(5));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_2_resume_6(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(6));
-}
-*budget -= 1;
-let b4_i1 = -b4_i0;
-if b4_i1 < i128::from(i64::MIN) || b4_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(7));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(7)
-}
-fn numeric_int_2_resume_7(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_i0, b4_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(7));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b4_i0, b4_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_2_resume_8(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(8));
-}
-*budget -= 1;
-let b5_i0 = 2_i128;
-values.ints.clear();
-values.ints.extend_from_slice(&[b5_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(9)
-}
-fn numeric_int_2_resume_9(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b5_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b5_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(9));
-}
-*budget -= 1;
-{
-let (b2_i0,) = (b5_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-}
-fn numeric_int_2_resume_10(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b6_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b6_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(10));
-}
-*budget -= 1;
-{
-let (b2_i0,) = (b6_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-}
-fn numeric_int_3(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 5] = [
-|values, budget| NumericResume::Exit(numeric_int_3_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
-numeric_int_3_resume_1,
-numeric_int_3_resume_2,
-numeric_int_3_resume_3,
-numeric_int_3_resume_4,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_3_entry(inputs: (i128, i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_i1, b0_v0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-let b0_i2 = if b0_i1 == 0 { 0_i128 } else { b0_i0 / b0_i1 };
-if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Interpreted(1);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-let b1_i1 = -b1_i0;
-if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(3);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0,) = (b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_3_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-} else {
-let (b2_i0,) = (b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-}
-fn numeric_int_3_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-let b1_i1 = -b1_i0;
-if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(3));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-fn numeric_int_3_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_3_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_4(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 6] = [
-|values, budget| NumericResume::Exit(numeric_int_4_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
-numeric_int_4_resume_1,
-numeric_int_4_resume_2,
-numeric_int_4_resume_3,
-numeric_int_4_resume_4,
-numeric_int_4_resume_5,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_4_entry(inputs: (i128, i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_i1, b0_v0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-let _r0_n0 = b0_i0 * b0_i1;
-let _r0_n1 = _r0_n0 + b0_i0;
-let _r0_n2 = _r0_n1 - b0_i1;
-let _r0_n3 = -_r0_n2;
-let b0_i2 = _r0_n3;
-if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Interpreted(1);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0, b1_i1,) = (b0_i1, b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-let b1_i2 = if b1_i0 == 0 { 0_i128 } else { b1_i1 / b1_i0 };
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(3);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0, b2_i1,) = (b0_i1, b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-let b2_i2 = if b2_i0 == 0 { 0_i128 } else { b2_i1 % b2_i0 };
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(5);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_4_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0, b1_i1,) = (b0_i1, b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-} else {
-let (b2_i0, b2_i1,) = (b0_i1, b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-}
-fn numeric_int_4_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-let b1_i2 = if b1_i0 == 0 { 0_i128 } else { b1_i1 / b1_i0 };
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(3));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-fn numeric_int_4_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_4_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-let b2_i2 = if b2_i0 == 0 { 0_i128 } else { b2_i1 % b2_i0 };
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(5)
-}
-fn numeric_int_4_resume_5(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(5));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_5(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 5] = [
-|values, budget| NumericResume::Exit(numeric_int_5_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
-numeric_int_5_resume_1,
-numeric_int_5_resume_2,
-numeric_int_5_resume_3,
-numeric_int_5_resume_4,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_5_entry(inputs: (i128, i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_i1, b0_v0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-let _r0_n0 = if b0_i1 == 0 { 0_i128 } else { b0_i0 / b0_i1 };
-let _r0_n1 = if b0_i1 == 0 { 0_i128 } else { b0_i0 % b0_i1 };
-let _r0_n2 = _r0_n0 + _r0_n1;
-let b0_i2 = _r0_n2;
-if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Interpreted(1);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0,) = (b0_i2,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-let b2_i1 = -b2_i0;
-if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(4);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_5_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-} else {
-let (b2_i0,) = (b0_i2,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-}
-fn numeric_int_5_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_5_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-let b2_i1 = -b2_i0;
-if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(4));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-fn numeric_int_5_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_6(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 4] = [
-|values, budget| NumericResume::Exit(numeric_int_6_entry((values.ints[0], values.ints[1],), values, budget)),
-numeric_int_6_resume_1,
-numeric_int_6_resume_2,
-numeric_int_6_resume_3,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_6_entry(inputs: (i128, i128,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_i1,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-if b0_i0 != b0_i1 {
-let (b1_i0, b1_i1,) = (b0_i0, b0_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-let b1_i2 = b1_i0 * b1_i1;
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(2);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0,) = (b0_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_6_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-let b1_i2 = b1_i0 * b1_i1;
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(2));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-}
-fn numeric_int_6_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_6_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_9(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 5] = [
-|values, budget| NumericResume::Exit(numeric_int_9_entry((values.ints[0], values.bools[0],), values, budget)),
-numeric_int_9_resume_1,
-numeric_int_9_resume_2,
-numeric_int_9_resume_3,
-numeric_int_9_resume_4,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_9_entry(inputs: (i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_v0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-let _r0_n0 = b0_i0 + 1_i128;
-let _r0_n1 = _r0_n0 + 2_i128;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0,) = (b0_i0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-let b2_i1 = -b2_i0;
-if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(4);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_9_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b0_i0, b0_v0,) = (values.ints[0], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-if b0_v0 {
-let (b1_i0,) = (b0_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-} else {
-let (b2_i0,) = (b0_i0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(3)
-}
-}
-fn numeric_int_9_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_9_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0,) = (values.ints[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-let b2_i1 = -b2_i0;
-if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(4));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-fn numeric_int_9_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_int_10(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 5] = [
-|values, budget| NumericResume::Exit(numeric_int_10_entry((values.ints[0], values.ints[1],), values, budget)),
-numeric_int_10_resume_1,
-numeric_int_10_resume_2,
-numeric_int_10_resume_3,
-numeric_int_10_resume_4,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_int_10_entry(inputs: (i128, i128,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_i1,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0, b0_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-if b0_i0 >= 0_i128 {
-let (b1_i0, b1_i1,) = (b0_i0, b0_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-let b1_i2 = b1_i0 + b1_i1;
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(2);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0, b2_i1,) = (b0_i0, b0_i1,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-let b2_i2 = b2_i1 - b2_i0;
-if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Interpreted(4);
-}
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-}
-}
-fn numeric_int_10_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-let b1_i2 = b1_i0 + b1_i1;
-if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(2));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(2)
-}
-fn numeric_int_10_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_int_10_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-let b2_i2 = b2_i1 - b2_i0;
-if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(4));
-}
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(4)
-}
-fn numeric_int_10_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_bool_0(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 7] = [
-|values, budget| NumericResume::Exit(numeric_bool_0_entry((values.ints[0], values.bools[0],), values, budget)),
-numeric_bool_0_resume_1,
-numeric_bool_0_resume_2,
-numeric_bool_0_resume_3,
-numeric_bool_0_resume_4,
-numeric_bool_0_resume_5,
-numeric_bool_0_resume_6,
-];
-let mut point = point;
-loop {
-match RESUME[point](values, budget) {
-NumericResume::Next(next) => point = next,
-NumericResume::Exit(progress) => return progress,
-}
-}
-}
-fn numeric_bool_0_entry(inputs: (i128, bool,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
-let (b0_i0, b0_v0,) = inputs;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b0_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b0_v0]);
-return data::numeric::NumericProgress::Yield(0);
-}
-*budget -= 1;
-if b0_i0 < 0_i128 {
-let (b1_v0,) = (b0_v0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0]);
-return data::numeric::NumericProgress::Yield(1);
-}
-*budget -= 1;
-let b1_v1 = !b1_v0;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0, b1_v1]);
-return data::numeric::NumericProgress::Yield(2);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0, b1_v1]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
-} else {
-let (b2_i0, b2_v0,) = (b0_i0, b0_v0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b2_v0]);
-return data::numeric::NumericProgress::Yield(3);
-}
-*budget -= 1;
-if b2_i0 >= 10_i128 {
-let (b3_v0,) = (b2_v0,);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b3_v0]);
-return data::numeric::NumericProgress::Yield(4);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b3_v0]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
-} else {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return data::numeric::NumericProgress::Yield(5);
-}
-*budget -= 1;
-let b4_v0 = false;
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return data::numeric::NumericProgress::Yield(6);
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(2))
-}
-}
-}
-fn numeric_bool_0_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_v0,) = (values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
-}
-*budget -= 1;
-let b1_v1 = !b1_v0;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0, b1_v1]);
-NumericResume::Next(2)
-}
-fn numeric_bool_0_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b1_v0, b1_v1,) = (values.bools[0], values.bools[1],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0, b1_v1]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b1_v0, b1_v1]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
-}
-fn numeric_bool_0_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b2_i0, b2_v0,) = (values.ints[0], values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[b2_i0]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b2_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
-}
-*budget -= 1;
-if b2_i0 >= 10_i128 {
-let (b3_v0,) = (b2_v0,);
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b3_v0]);
-NumericResume::Next(4)
-} else {
-let () = ();
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-NumericResume::Next(5)
-}
-}
-fn numeric_bool_0_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b3_v0,) = (values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b3_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b3_v0]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
-}
-fn numeric_bool_0_resume_5(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let () = ();
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(5));
-}
-*budget -= 1;
-let b4_v0 = false;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-NumericResume::Next(6)
-}
-fn numeric_bool_0_resume_6(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
-let (b4_v0,) = (values.bools[0],);
-if *budget == 0 {
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-return NumericResume::Exit(data::numeric::NumericProgress::Yield(6));
-}
-*budget -= 1;
-values.ints.clear();
-values.ints.extend_from_slice(&[]);
-values.bools.clear();
-values.bools.extend_from_slice(&[b4_v0]);
-NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(2)))
-}
-data::numeric::NumericFunctions {
-ints: data::Storage::Static(&[
-data::numeric::NumericFunction { function: data::function::IntFunctionId(0), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 1,
-        ints: 4,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 1,
-        ints: 4,
-        bools: 0,
-    },
-]), run: numeric_int_0 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(1), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 3,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 2,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 0,
-        ints: 3,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 1,
-        ints: 4,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 2,
-        ints: 4,
-        bools: 2,
-    },
-]), run: numeric_int_1 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(2), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 0,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 1,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 1,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(5),
-        instruction: 0,
-        ints: 0,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(5),
-        instruction: 1,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(6),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-]), run: numeric_int_2 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(3), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 1,
-        ints: 3,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-]), run: numeric_int_3 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(4), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 1,
-        ints: 3,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-]), run: numeric_int_4 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(5), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 1,
-        ints: 3,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 2,
-        bools: 0,
-    },
-]), run: numeric_int_5 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(6), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-]), run: numeric_int_6 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(9), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 1,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 1,
-        ints: 1,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 2,
-        bools: 0,
-    },
-]), run: numeric_int_9 } },
-data::numeric::NumericFunction { function: data::function::IntFunctionId(10), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 2,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 1,
-        ints: 3,
-        bools: 0,
-    },
-]), run: numeric_int_10 } },
-]),
-bools: data::Storage::Static(&[
-data::numeric::NumericFunction { function: data::function::BoolFunctionId(0), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(0),
-        instruction: 0,
-        ints: 1,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 0,
-        ints: 0,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(1),
-        instruction: 1,
-        ints: 0,
-        bools: 2,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(2),
-        instruction: 0,
-        ints: 1,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(3),
-        instruction: 0,
-        ints: 0,
-        bools: 1,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 0,
-        ints: 0,
-        bools: 0,
-    },
-    data::numeric::NumericCheckpoint {
-        block: data::graph::BlockId(4),
-        instruction: 1,
-        ints: 0,
-        bools: 1,
-    },
-]), run: numeric_bool_0 } },
-]),
-}
-},
+        compiled_numeric: {
+
+            enum NumericResume {
+                Next(usize),
+                Exit(data::compiled_numeric::NumericProgress),
+            }
+
+            fn numeric_int_0(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    8
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_0_entry((values.ints[0], values.ints[1],), values, budget)),
+                    numeric_int_0_resume_1,
+                    numeric_int_0_resume_2,
+                    numeric_int_0_resume_3,
+                    numeric_int_0_resume_4,
+                    numeric_int_0_resume_5,
+                    numeric_int_0_resume_6,
+                    numeric_int_0_resume_7,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_0_entry(
+                inputs: (i128, i128,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (mut b0_i0, mut b0_i1,) = inputs;
+                'repeat: loop {
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(0);
+                    }
+                    *budget -= 1;
+                    if b0_i0 == 0_i128 {
+                        let (b1_i0,) = (b0_i1,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b1_i0]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Yield(1);
+                        }
+                        *budget -= 1;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0));
+                    } else {
+                        let (b2_i0, b2_i1,) = (b0_i0, b0_i1,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Yield(2);
+                        }
+                        *budget -= 1;
+                        let b2_i2 = if 2_i128 == 0 { 0_i128 } else { b2_i0 % 2_i128 };
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Yield(3);
+                        }
+                        *budget -= 1;
+                        if b2_i2 == 0_i128 {
+                            let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(4);
+                            }
+                            *budget -= 1;
+                            let _r0_n0 = b3_i0 - 1_i128;
+                            let _r0_n1 = b3_i0 * 3_i128;
+                            let _r0_n2 = b3_i1 + _r0_n1;
+                            let _r0_n3 = _r0_n2 + 1_i128;
+                            let b3_i2 = _r0_n0;
+                            let b3_i3 = _r0_n3;
+                            if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) || b3_i3 < i128::from(i64::MIN) || b3_i3 > i128::from(i64::MAX) {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Interpreted(5);
+                            }
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(5);
+                            }
+                            *budget -= 1;
+                            {
+                                (b0_i0, b0_i1,) = (b3_i2, b3_i3,);
+                                continue 'repeat;
+                            }
+                        } else {
+                            let (b4_i0, b4_i1,) = (b2_i0, b2_i1,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(6);
+                            }
+                            *budget -= 1;
+                            let _r0_n0 = b4_i0 - 1_i128;
+                            let _r0_n1 = b4_i0 * 2_i128;
+                            let _r0_n2 = b4_i1 + _r0_n1;
+                            let _r0_n3 = _r0_n2 - 1_i128;
+                            let b4_i2 = _r0_n0;
+                            let b4_i3 = _r0_n3;
+                            if b4_i2 < i128::from(i64::MIN) || b4_i2 > i128::from(i64::MAX) || b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Interpreted(7);
+                            }
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(7);
+                            }
+                            *budget -= 1;
+                            {
+                                (b0_i0, b0_i1,) = (b4_i2, b4_i3,);
+                                continue 'repeat;
+                            }
+                        }
+                    }
+                }
+            }
+
+            fn numeric_int_0_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_0_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+                let b2_i2 = if 2_i128 == 0 { 0_i128 } else { b2_i0 % 2_i128 };
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(3)
+            }
+
+            fn numeric_int_0_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                if b2_i2 == 0_i128 {
+                    let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(4)
+                } else {
+                    let (b4_i0, b4_i1,) = (b2_i0, b2_i1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(6)
+                }
+            }
+
+            fn numeric_int_0_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+                let _r0_n0 = b3_i0 - 1_i128;
+                let _r0_n1 = b3_i0 * 3_i128;
+                let _r0_n2 = b3_i1 + _r0_n1;
+                let _r0_n3 = _r0_n2 + 1_i128;
+                let b3_i2 = _r0_n0;
+                let b3_i3 = _r0_n3;
+                if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) || b3_i3 < i128::from(i64::MIN) || b3_i3 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(5));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(5)
+            }
+
+            fn numeric_int_0_resume_5(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0, b3_i1, b3_i2, b3_i3,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2, b3_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(5));
+                }
+                *budget -= 1;
+                {
+                    let (b0_i0, b0_i1,) = (b3_i2, b3_i3,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(0)
+                }
+            }
+
+            fn numeric_int_0_resume_6(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(6));
+                }
+                *budget -= 1;
+                let _r0_n0 = b4_i0 - 1_i128;
+                let _r0_n1 = b4_i0 * 2_i128;
+                let _r0_n2 = b4_i1 + _r0_n1;
+                let _r0_n3 = _r0_n2 - 1_i128;
+                let b4_i2 = _r0_n0;
+                let b4_i3 = _r0_n3;
+                if b4_i2 < i128::from(i64::MIN) || b4_i2 > i128::from(i64::MAX) || b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(7));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(7)
+            }
+
+            fn numeric_int_0_resume_7(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1, b4_i2, b4_i3,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(7));
+                }
+                *budget -= 1;
+                {
+                    let (b0_i0, b0_i1,) = (b4_i2, b4_i3,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(0)
+                }
+            }
+
+            fn numeric_int_1(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    9
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_1_entry((values.ints[0], values.ints[1], values.ints[2], values.bools[0],), values, budget)),
+                    numeric_int_1_resume_1,
+                    numeric_int_1_resume_2,
+                    numeric_int_1_resume_3,
+                    numeric_int_1_resume_4,
+                    numeric_int_1_resume_5,
+                    numeric_int_1_resume_6,
+                    numeric_int_1_resume_7,
+                    numeric_int_1_resume_8,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_1_entry(
+                inputs: (i128, i128, i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (mut b0_i0, mut b0_i1, mut b0_i2, mut b0_v0,) = inputs;
+                'repeat: loop {
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b0_v0]);
+                        return data::compiled_numeric::NumericProgress::Yield(0);
+                    }
+                    *budget -= 1;
+                    if b0_i0 <= 0_i128 {
+                        let (b1_i0, b1_i1, b1_v0,) = (b0_i1, b0_i2, b0_v0,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b1_v0]);
+                            return data::compiled_numeric::NumericProgress::Yield(1);
+                        }
+                        *budget -= 1;
+                        if b1_v0 {
+                            let (b2_i0, b2_i1,) = (b1_i0, b1_i1,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(2);
+                            }
+                            *budget -= 1;
+                            let b2_i2 = b2_i0 - b2_i1;
+                            if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Interpreted(3);
+                            }
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(3);
+                            }
+                            *budget -= 1;
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0));
+                        } else {
+                            let (b3_i0, b3_i1,) = (b1_i0, b1_i1,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(4);
+                            }
+                            *budget -= 1;
+                            let b3_i2 = b3_i1 - b3_i0;
+                            if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Interpreted(5);
+                            }
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                return data::compiled_numeric::NumericProgress::Yield(5);
+                            }
+                            *budget -= 1;
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1));
+                        }
+                    } else {
+                        let (b4_i0, b4_i1, b4_i2, b4_v0,) = (b0_i0, b0_i1, b0_i2, b0_v0,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b4_v0]);
+                            return data::compiled_numeric::NumericProgress::Yield(6);
+                        }
+                        *budget -= 1;
+                        let b4_i3 = b4_i0 - 1_i128;
+                        if b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b4_v0]);
+                            return data::compiled_numeric::NumericProgress::Interpreted(7);
+                        }
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b4_v0]);
+                            return data::compiled_numeric::NumericProgress::Yield(7);
+                        }
+                        *budget -= 1;
+                        let b4_v1 = !b4_v0;
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b4_v0, b4_v1]);
+                            return data::compiled_numeric::NumericProgress::Yield(8);
+                        }
+                        *budget -= 1;
+                        {
+                            (b0_i0, b0_i1, b0_i2, b0_v0,) = (b4_i3, b4_i2, b4_i1, b4_v1,);
+                            continue 'repeat;
+                        }
+                    }
+                }
+            }
+
+            fn numeric_int_1_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1, b1_v0,) = (values.ints[0], values.ints[1], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b1_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b1_v0 {
+                    let (b2_i0, b2_i1,) = (b1_i0, b1_i1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(2)
+                } else {
+                    let (b3_i0, b3_i1,) = (b1_i0, b1_i1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(4)
+                }
+            }
+
+            fn numeric_int_1_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+                let b2_i2 = b2_i0 - b2_i1;
+                if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(3));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(3)
+            }
+
+            fn numeric_int_1_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_1_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+                let b3_i2 = b3_i1 - b3_i0;
+                if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(5));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(5)
+            }
+
+            fn numeric_int_1_resume_5(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0, b3_i1, b3_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(5));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_1_resume_6(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1, b4_i2, b4_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b4_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(6));
+                }
+                *budget -= 1;
+                let b4_i3 = b4_i0 - 1_i128;
+                if b4_i3 < i128::from(i64::MIN) || b4_i3 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b4_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(7));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b4_v0]);
+                NumericResume::Next(7)
+            }
+
+            fn numeric_int_1_resume_7(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1, b4_i2, b4_i3, b4_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b4_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(7));
+                }
+                *budget -= 1;
+                let b4_v1 = !b4_v0;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b4_v0, b4_v1]);
+                NumericResume::Next(8)
+            }
+
+            fn numeric_int_1_resume_8(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1, b4_i2, b4_i3, b4_v0, b4_v1,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3], values.bools[0], values.bools[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1, b4_i2, b4_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b4_v0, b4_v1]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(8));
+                }
+                *budget -= 1;
+                {
+                    let (b0_i0, b0_i1, b0_i2, b0_v0,) = (b4_i3, b4_i2, b4_i1, b4_v1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    NumericResume::Next(0)
+                }
+            }
+
+            fn numeric_int_2(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    11
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_2_entry((values.ints[0],), values, budget)),
+                    numeric_int_2_resume_1,
+                    numeric_int_2_resume_2,
+                    numeric_int_2_resume_3,
+                    numeric_int_2_resume_4,
+                    numeric_int_2_resume_5,
+                    numeric_int_2_resume_6,
+                    numeric_int_2_resume_7,
+                    numeric_int_2_resume_8,
+                    numeric_int_2_resume_9,
+                    numeric_int_2_resume_10,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_2_entry(
+                inputs: (i128,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                let (b2_i0,) = if b0_i0 == 0_i128 {
+                    let () = ();
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(1);
+                    }
+                    *budget -= 1;
+                    let b1_i0 = -3_i128;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+                    let (b2_i0,) = {
+                        (b1_i0,)
+                    };
+                    (b2_i0,)
+                } else if b0_i0 == 1_i128 {
+                    let () = ();
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(8);
+                    }
+                    *budget -= 1;
+                    let b5_i0 = 2_i128;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b5_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(9);
+                    }
+                    *budget -= 1;
+                    let (b2_i0,) = {
+                        (b5_i0,)
+                    };
+                    (b2_i0,)
+                } else {
+                    let (b6_i0,) = (b0_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b6_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(10);
+                    }
+                    *budget -= 1;
+                    let (b2_i0,) = {
+                        (b6_i0,)
+                    };
+                    (b2_i0,)
+                };
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return data::compiled_numeric::NumericProgress::Yield(3);
+                }
+                *budget -= 1;
+                if b2_i0 > 0_i128 {
+                    let (b3_i0,) = (b2_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+                    let b3_i1 = b3_i0 + 42_i128;
+                    if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(5);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(5);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b4_i0,) = (b2_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b4_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(6);
+                    }
+                    *budget -= 1;
+                    let b4_i1 = -b4_i0;
+                    if b4_i1 < i128::from(i64::MIN) || b4_i1 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(7);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(7);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_2_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                let b1_i0 = -3_i128;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(2)
+            }
+
+            fn numeric_int_2_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+                {
+                    let (b2_i0,) = (b1_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(3)
+                }
+            }
+
+            fn numeric_int_2_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                if b2_i0 > 0_i128 {
+                    let (b3_i0,) = (b2_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(4)
+                } else {
+                    let (b4_i0,) = (b2_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(6)
+                }
+            }
+
+            fn numeric_int_2_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+                let b3_i1 = b3_i0 + 42_i128;
+                if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(5));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(5)
+            }
+
+            fn numeric_int_2_resume_5(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(5));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_2_resume_6(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(6));
+                }
+                *budget -= 1;
+                let b4_i1 = -b4_i0;
+                if b4_i1 < i128::from(i64::MIN) || b4_i1 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(7));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(7)
+            }
+
+            fn numeric_int_2_resume_7(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_i0, b4_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(7));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0, b4_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_2_resume_8(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(8));
+                }
+                *budget -= 1;
+                let b5_i0 = 2_i128;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b5_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(9)
+            }
+
+            fn numeric_int_2_resume_9(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b5_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b5_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(9));
+                }
+                *budget -= 1;
+                {
+                    let (b2_i0,) = (b5_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(3)
+                }
+            }
+
+            fn numeric_int_2_resume_10(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b6_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b6_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(10));
+                }
+                *budget -= 1;
+                {
+                    let (b2_i0,) = (b6_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(3)
+                }
+            }
+
+            fn numeric_int_3(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    5
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_3_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
+                    numeric_int_3_resume_1,
+                    numeric_int_3_resume_2,
+                    numeric_int_3_resume_3,
+                    numeric_int_3_resume_4,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_3_entry(
+                inputs: (i128, i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_i1, b0_v0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                let b0_i2 = if b0_i1 == 0 { 0_i128 } else { b0_i0 / b0_i1 };
+                if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Interpreted(1);
+                }
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(1);
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+                    let b1_i1 = -b1_i0;
+                    if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(3);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0,) = (b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_3_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(2)
+                } else {
+                    let (b2_i0,) = (b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(4)
+                }
+            }
+
+            fn numeric_int_3_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+                let b1_i1 = -b1_i0;
+                if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(3));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(3)
+            }
+
+            fn numeric_int_3_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_3_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_4(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    6
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_4_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
+                    numeric_int_4_resume_1,
+                    numeric_int_4_resume_2,
+                    numeric_int_4_resume_3,
+                    numeric_int_4_resume_4,
+                    numeric_int_4_resume_5,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_4_entry(
+                inputs: (i128, i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_i1, b0_v0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                let _r0_n0 = b0_i0 * b0_i1;
+                let _r0_n1 = _r0_n0 + b0_i0;
+                let _r0_n2 = _r0_n1 - b0_i1;
+                let _r0_n3 = -_r0_n2;
+                let b0_i2 = _r0_n3;
+                if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Interpreted(1);
+                }
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(1);
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0, b1_i1,) = (b0_i1, b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+                    let b1_i2 = if b1_i0 == 0 { 0_i128 } else { b1_i1 / b1_i0 };
+                    if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(3);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0, b2_i1,) = (b0_i1, b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+                    let b2_i2 = if b2_i0 == 0 { 0_i128 } else { b2_i1 % b2_i0 };
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(5);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_4_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0, b1_i1,) = (b0_i1, b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(2)
+                } else {
+                    let (b2_i0, b2_i1,) = (b0_i1, b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(4)
+                }
+            }
+
+            fn numeric_int_4_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+                let b1_i2 = if b1_i0 == 0 { 0_i128 } else { b1_i1 / b1_i0 };
+                if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(3));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(3)
+            }
+
+            fn numeric_int_4_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_4_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+                let b2_i2 = if b2_i0 == 0 { 0_i128 } else { b2_i1 % b2_i0 };
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(5)
+            }
+
+            fn numeric_int_4_resume_5(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(5));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_5(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    5
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_5_entry((values.ints[0], values.ints[1], values.bools[0],), values, budget)),
+                    numeric_int_5_resume_1,
+                    numeric_int_5_resume_2,
+                    numeric_int_5_resume_3,
+                    numeric_int_5_resume_4,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_5_entry(
+                inputs: (i128, i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_i1, b0_v0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                let _r0_n0 = if b0_i1 == 0 { 0_i128 } else { b0_i0 / b0_i1 };
+                let _r0_n1 = if b0_i1 == 0 { 0_i128 } else { b0_i0 % b0_i1 };
+                let _r0_n2 = _r0_n0 + _r0_n1;
+                let b0_i2 = _r0_n2;
+                if b0_i2 < i128::from(i64::MIN) || b0_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Interpreted(1);
+                }
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(1);
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0,) = (b0_i2,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+                    let b2_i1 = -b2_i0;
+                    if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(4);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_5_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b0_i0, b0_i1, b0_i2, b0_v0,) = (values.ints[0], values.ints[1], values.ints[2], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1, b0_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(2)
+                } else {
+                    let (b2_i0,) = (b0_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(3)
+                }
+            }
+
+            fn numeric_int_5_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_5_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                let b2_i1 = -b2_i0;
+                if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(4));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(4)
+            }
+
+            fn numeric_int_5_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_6(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    4
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_6_entry((values.ints[0], values.ints[1],), values, budget)),
+                    numeric_int_6_resume_1,
+                    numeric_int_6_resume_2,
+                    numeric_int_6_resume_3,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_6_entry(
+                inputs: (i128, i128,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_i1,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                if b0_i0 != b0_i1 {
+                    let (b1_i0, b1_i1,) = (b0_i0, b0_i1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(1);
+                    }
+                    *budget -= 1;
+                    let b1_i2 = b1_i0 * b1_i1;
+                    if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(2);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0,) = (b0_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_6_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                let b1_i2 = b1_i0 * b1_i1;
+                if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(2));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(2)
+            }
+
+            fn numeric_int_6_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_6_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_9(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    5
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_9_entry((values.ints[0], values.bools[0],), values, budget)),
+                    numeric_int_9_resume_1,
+                    numeric_int_9_resume_2,
+                    numeric_int_9_resume_3,
+                    numeric_int_9_resume_4,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_9_entry(
+                inputs: (i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_v0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                let _r0_n0 = b0_i0 + 1_i128;
+                let _r0_n1 = _r0_n0 + 2_i128;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(1);
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0,) = (b0_i0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+                    let b2_i1 = -b2_i0;
+                    if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(4);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_9_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b0_i0, b0_v0,) = (values.ints[0], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b0_v0 {
+                    let (b1_i0,) = (b0_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(2)
+                } else {
+                    let (b2_i0,) = (b0_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(3)
+                }
+            }
+
+            fn numeric_int_9_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_9_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                let b2_i1 = -b2_i0;
+                if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(4));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(4)
+            }
+
+            fn numeric_int_9_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_10(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    5
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_int_10_entry((values.ints[0], values.ints[1],), values, budget)),
+                    numeric_int_10_resume_1,
+                    numeric_int_10_resume_2,
+                    numeric_int_10_resume_3,
+                    numeric_int_10_resume_4,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_int_10_entry(
+                inputs: (i128, i128,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_i1,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0, b0_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                if b0_i0 >= 0_i128 {
+                    let (b1_i0, b1_i1,) = (b0_i0, b0_i1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(1);
+                    }
+                    *budget -= 1;
+                    let b1_i2 = b1_i0 + b1_i1;
+                    if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(2);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0, b2_i1,) = (b0_i0, b0_i1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+                    let b2_i2 = b2_i1 - b2_i0;
+                    if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Interpreted(4);
+                    }
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled_numeric::NumericProgress::Yield(4);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                }
+            }
+
+            fn numeric_int_10_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                let b1_i2 = b1_i0 + b1_i1;
+                if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(2));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(2)
+            }
+
+            fn numeric_int_10_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_10_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                let b2_i2 = b2_i1 - b2_i0;
+                if b2_i2 < i128::from(i64::MIN) || b2_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(4));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Next(4)
+            }
+
+            fn numeric_int_10_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_bool_0(
+                point: usize,
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                    7
+                ] = [
+                    |values, budget| NumericResume::Exit(numeric_bool_0_entry((values.ints[0], values.bools[0],), values, budget)),
+                    numeric_bool_0_resume_1,
+                    numeric_bool_0_resume_2,
+                    numeric_bool_0_resume_3,
+                    numeric_bool_0_resume_4,
+                    numeric_bool_0_resume_5,
+                    numeric_bool_0_resume_6,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        NumericResume::Next(next) => point = next,
+                        NumericResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn numeric_bool_0_entry(
+                inputs: (i128, bool,),
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> data::compiled_numeric::NumericProgress {
+                let (b0_i0, b0_v0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b0_v0]);
+                    return data::compiled_numeric::NumericProgress::Yield(0);
+                }
+                *budget -= 1;
+                if b0_i0 < 0_i128 {
+                    let (b1_v0,) = (b0_v0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b1_v0]);
+                        return data::compiled_numeric::NumericProgress::Yield(1);
+                    }
+                    *budget -= 1;
+                    let b1_v1 = !b1_v0;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b1_v0, b1_v1]);
+                        return data::compiled_numeric::NumericProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b1_v0, b1_v1]);
+                    data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_i0, b2_v0,) = (b0_i0, b0_v0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b2_v0]);
+                        return data::compiled_numeric::NumericProgress::Yield(3);
+                    }
+                    *budget -= 1;
+                    if b2_i0 >= 10_i128 {
+                        let (b3_v0,) = (b2_v0,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b3_v0]);
+                            return data::compiled_numeric::NumericProgress::Yield(4);
+                        }
+                        *budget -= 1;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b3_v0]);
+                        data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                    } else {
+                        let () = ();
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            return data::compiled_numeric::NumericProgress::Yield(5);
+                        }
+                        *budget -= 1;
+                        let b4_v0 = false;
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[b4_v0]);
+                            return data::compiled_numeric::NumericProgress::Yield(6);
+                        }
+                        *budget -= 1;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b4_v0]);
+                        data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(2))
+                    }
+                }
+            }
+
+            fn numeric_bool_0_resume_1(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_v0,) = (values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b1_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                }
+                *budget -= 1;
+                let b1_v1 = !b1_v0;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b1_v0, b1_v1]);
+                NumericResume::Next(2)
+            }
+
+            fn numeric_bool_0_resume_2(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b1_v0, b1_v1,) = (values.bools[0], values.bools[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b1_v0, b1_v1]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b1_v0, b1_v1]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_bool_0_resume_3(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b2_i0, b2_v0,) = (values.ints[0], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b2_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                }
+                *budget -= 1;
+                if b2_i0 >= 10_i128 {
+                    let (b3_v0,) = (b2_v0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b3_v0]);
+                    NumericResume::Next(4)
+                } else {
+                    let () = ();
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    NumericResume::Next(5)
+                }
+            }
+
+            fn numeric_bool_0_resume_4(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b3_v0,) = (values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b3_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b3_v0]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_bool_0_resume_5(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(5));
+                }
+                *budget -= 1;
+                let b4_v0 = false;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b4_v0]);
+                NumericResume::Next(6)
+            }
+
+            fn numeric_bool_0_resume_6(
+                values: &mut data::compiled_numeric::NumericValues,
+                budget: &mut usize,
+            ) -> NumericResume {
+                let (b4_v0,) = (values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b4_v0]);
+                    return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(6));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b4_v0]);
+                NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(2)))
+            }
+            data::compiled_numeric::NumericFunctions {
+                ints: data::Storage::Static(&[
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(0),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_0,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(1),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 2,
+                                    ints: 4,
+                                    bools: 2,
+                                },
+                            ]),
+                            run: numeric_int_1,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(2),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(6),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_2,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(3),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_3,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(4),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_4,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(5),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_5,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(6),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_6,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(9),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_9,
+                        },
+                    },
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::IntFunctionId(10),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                },
+                            ]),
+                            run: numeric_int_10,
+                        },
+                    },
+                ]),
+                bools: data::Storage::Static(&[
+                    data::compiled_numeric::NumericFunction {
+                        function: data::function::BoolFunctionId(0),
+                        implementation: data::compiled_numeric::NumericImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 0,
+                                    bools: 2,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                },
+                                data::compiled_numeric::NumericCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 0,
+                                    bools: 1,
+                                },
+                            ]),
+                            run: numeric_bool_0,
+                        },
+                    },
+                ]),
+            }
+        },
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),

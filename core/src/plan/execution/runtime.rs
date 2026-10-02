@@ -1,3 +1,4 @@
+use super::compiled_numeric::NumericImplementation;
 use super::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use super::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -34,7 +35,6 @@ use super::function::{
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody,
 };
-use super::numeric::NumericImplementation;
 use super::type_::{
     CustomConstructorId, CustomTypeId, CustomTypeTable, ExternalTypeTable, FunctionListTypeId,
     FunctionType, ListListTypeId, ListTypeId, ListTypeTable, TupleListTypeId, ValueShapeId,
@@ -52,12 +52,12 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
-    fn numeric_int_function(&self, id: IntFunctionId) -> Option<&NumericImplementation> {
-        self.program().numeric.int(id)
+    fn compiled_numeric_int_function(&self, id: IntFunctionId) -> Option<&NumericImplementation> {
+        self.program().compiled_numeric.int(id)
     }
 
-    fn numeric_bool_function(&self, id: BoolFunctionId) -> Option<&NumericImplementation> {
-        self.program().numeric.bool(id)
+    fn compiled_numeric_bool_function(&self, id: BoolFunctionId) -> Option<&NumericImplementation> {
+        self.program().compiled_numeric.bool(id)
     }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {

@@ -13,8 +13,18 @@ pub(crate) struct Rust {
 }
 
 impl Rust {
-    pub(in crate::plan::execution::prepared) fn raw(&mut self, source: &str) {
-        self.output.push_str(source);
+    /// Inserts explicitly nested Rust code at the current artifact indentation.
+    pub(in crate::plan::execution::prepared) fn code(&mut self, source: &str) {
+        for (index, line) in source.split('\n').enumerate() {
+            if index != 0 {
+                if line.is_empty() {
+                    self.output.push('\n');
+                } else {
+                    self.newline();
+                }
+            }
+            self.output.push_str(line);
+        }
     }
 
     pub(crate) fn expression<Value: Emit + ?Sized>(value: &Value) -> String {
@@ -288,8 +298,51 @@ impl Emit for crate::plan::ModuleId {
 
 #[cfg(test)]
 mod tests {
-    use super::{PhantomData, Rust, TextBlock};
+    use super::{Emit, PhantomData, Rust, TextBlock};
     use crate::plan::execution::storage::{Node, Table};
+
+    #[test]
+    fn code_keeps_relative_nesting_and_blank_lines_inside_artifact_fields() {
+        struct Implementation;
+
+        impl Emit for Implementation {
+            fn emit(&self, output: &mut Rust) {
+                output.code(
+                    r#"
+{
+    let literal = "} {";
+
+    loop {
+        break;
+    }
+}
+"#
+                    .trim_matches('\n'),
+                );
+            }
+        }
+
+        let mut output = Rust {
+            output: String::new(),
+            indentation: 0,
+        };
+        output.structure("Artifact", &[("implementation", &Implementation)]);
+        assert_eq!(
+            output.output,
+            r#"
+data::Artifact {
+    implementation: {
+        let literal = "} {";
+
+        loop {
+            break;
+        }
+    },
+}
+"#
+            .trim_matches('\n')
+        );
+    }
 
     #[test]
     fn emits_static_expressions_without_owned_constructors() {

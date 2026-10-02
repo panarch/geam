@@ -1,6 +1,6 @@
 use super::BlockEnvironment;
+use crate::runtime::compiled_numeric::NumericValues;
 use crate::runtime::integer::IntegerValue;
-use crate::runtime::numeric::NumericValues;
 
 impl BlockEnvironment {
     pub(in crate::runtime::graph) fn load_numeric(&self, numeric: &mut NumericValues) -> bool {

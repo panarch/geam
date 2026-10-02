@@ -720,7 +720,7 @@ pub fn main() {
                 modules: common.modules,
                 main: common.main,
                 functions: *super::super::super::tests::owned(program.functions),
-                numeric: program.numeric,
+                compiled_numeric: program.compiled_numeric,
                 constants: *super::super::super::tests::owned(common.constants),
                 function_parameters: std::sync::Arc::try_unwrap(common.function_parameters)
                     .ok()

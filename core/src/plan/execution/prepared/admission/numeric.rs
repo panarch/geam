@@ -1,9 +1,9 @@
 use super::super::numeric::NumericShape;
+use crate::plan::execution::compiled_numeric::{NumericFunction, NumericFunctions};
 use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionProfile,
     FunctionTables,
 };
-use crate::plan::execution::numeric::{NumericFunction, NumericFunctions};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct NumericError {
@@ -30,17 +30,17 @@ enum Reason {
 }
 
 pub(super) fn all<Profile: ExecutionProfile>(
-    numeric: &NumericFunctions,
+    compiled_numeric: &NumericFunctions,
     functions: &FunctionTables<Profile>,
 ) -> Result<(), NumericError> {
     targets(
-        &numeric.ints,
+        &compiled_numeric.ints,
         &functions.value_returns.int_functions,
         Family::Int,
         |id| id.0,
     )?;
     targets(
-        &numeric.bools,
+        &compiled_numeric.bools,
         &functions.value_returns.bool_functions,
         Family::Bool,
         |id| id.0,
@@ -99,6 +99,9 @@ mod tests {
     use super::super::tests::{graph_body, owned_mut};
     use super::NumericShape;
     use super::{Family, NumericError, Reason, all, targets};
+    use crate::plan::execution::compiled_numeric::{
+        NumericFunction, NumericFunctions, NumericImplementation,
+    };
     use crate::plan::execution::function::{
         ExecutionIntFunctionBody, IntFunctionId, ValueFunctionEntry,
     };
@@ -106,10 +109,7 @@ mod tests {
     use crate::plan::execution::host::{
         HostFunctionId, HostedExecutionProfile, HostedFunctionTarget,
     };
-    use crate::plan::execution::numeric::{
-        NumericFunction, NumericFunctions, NumericImplementation,
-    };
-    use crate::runtime::numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::marker::PhantomData;
     use std::sync::Arc;

@@ -218,7 +218,7 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
-    numeric::all(&program.numeric, &program.functions).map_err(Error::Numeric)?;
+    numeric::all(&program.compiled_numeric, &program.functions).map_err(Error::Numeric)?;
     hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
     Ok((types, catalog))
@@ -1064,9 +1064,9 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
 
     #[test]
     fn invalid_numeric_links_are_rejected_before_a_plain_binding_owner_is_created() {
+        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
         use crate::plan::execution::function::IntFunctionId;
-        use crate::plan::execution::numeric::{NumericFunction, NumericImplementation};
-        use crate::runtime::numeric::NumericProgress;
+        use crate::runtime::compiled_numeric::NumericProgress;
         let typed =
             crate::compile_typed_module("example", "src/example.gleam", "pub fn main() { 42 }")
                 .unwrap();
@@ -1075,7 +1075,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             .function(FunctionDeclaration::<(), BigInt>::new("main"))
             .unwrap();
         let mut artifact = artifact(bindings.prepare());
-        artifact.program.numeric.ints = vec![NumericFunction {
+        artifact.program.compiled_numeric.ints = vec![NumericFunction {
             function: IntFunctionId(999),
             implementation: NumericImplementation {
                 entry: 0,
@@ -1084,7 +1084,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             },
         }]
         .into();
-        let implementation = &artifact.program.numeric.ints[0].implementation;
+        let implementation = &artifact.program.compiled_numeric.ints[0].implementation;
         assert_eq!(
             (implementation.run)(0, &mut Default::default(), &mut 1),
             NumericProgress::Yield(0)
@@ -1110,7 +1110,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                 modules: common.modules,
                 main: common.main,
                 functions: *functions,
-                numeric: prepared.program.numeric,
+                compiled_numeric: prepared.program.compiled_numeric,
                 constants: *constants,
                 function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                 list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -1323,7 +1323,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        numeric: program.numeric,
+                        compiled_numeric: program.compiled_numeric,
                         constants: *owned(common.constants),
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -1533,15 +1533,15 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
     #[test]
     fn hosted_admission_checks_format_and_native_tables_before_selecting_entries() {
         use crate::plan::SourceSpan;
+        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
         use crate::plan::execution::function::{IntFunctionId, NilFunctionId};
-        use crate::plan::execution::numeric::{NumericFunction, NumericImplementation};
         use crate::plan::execution::prepared::HostedModuleArtifact;
         use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
         use crate::plan::execution::{
             LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
             LibraryListConstructions,
         };
-        use crate::runtime::numeric::NumericProgress;
+        use crate::runtime::compiled_numeric::NumericProgress;
 
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum Change {
@@ -1663,7 +1663,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        numeric: program.numeric,
+                        compiled_numeric: program.compiled_numeric,
                         constants,
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -1739,7 +1739,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     )
                 }
                 Change::Numeric => {
-                    artifact.module.program.numeric.ints = vec![NumericFunction {
+                    artifact.module.program.compiled_numeric.ints = vec![NumericFunction {
                         function: IntFunctionId(99),
                         implementation: NumericImplementation {
                             entry: 0,
@@ -1749,11 +1749,9 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     }]
                     .into();
                     assert_eq!(
-                        (artifact.module.program.numeric.ints[0].implementation.run)(
-                            0,
-                            &mut Default::default(),
-                            &mut 1,
-                        ),
+                        (artifact.module.program.compiled_numeric.ints[0]
+                            .implementation
+                            .run)(0, &mut Default::default(), &mut 1,),
                         NumericProgress::Yield(0)
                     );
                 }
@@ -1827,7 +1825,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    numeric: program.numeric,
+                    compiled_numeric: program.compiled_numeric,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -1956,7 +1954,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    numeric: program.numeric,
+                    compiled_numeric: program.compiled_numeric,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),

@@ -8,9 +8,16 @@ fn generated_checkpoints_resume_long_blocks_without_growing_the_rust_stack() {
     // A long straight block exposes recursive helper chaining after a yield.
     // Generate the artifact in the consumer directory instead of committing
     // thousands of mechanically emitted lines for this regression.
+    let inversions = "  let flag = !flag\n".repeat(500);
     let source = format!(
-        "pub fn choose(flag: Bool) -> Int {{\n{}case flag {{ True -> 7 False -> -7 }}\n}}\n",
-        "let flag = !flag\n".repeat(500),
+        r#"
+pub fn choose(flag: Bool) -> Int {{
+{inversions}  case flag {{
+    True -> 7
+    False -> -7
+  }}
+}}
+"#,
     );
     let typed = geam::compile_typed_module("example", "src/example.gleam", &source).unwrap();
     let (bindings, _) = ModuleBuilder::new(typed)
@@ -27,7 +34,17 @@ fn generated_checkpoints_resume_long_blocks_without_growing_the_rust_stack() {
     fs::write(
         application.join("Cargo.toml"),
         format!(
-            "[package]\nname = 'numeric-checkpoint-consumer'\nversion = '0.1.0'\nedition = '2024'\n[dependencies]\ngeam = {{ version = '={}', default-features = false, features = ['embedding'] }}\n[workspace]\n",
+            r#"
+[package]
+name = 'numeric-checkpoint-consumer'
+version = '0.1.0'
+edition = '2024'
+
+[dependencies]
+geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
+
+[workspace]
+"#,
             env!("CARGO_PKG_VERSION"),
         ),
     )
@@ -51,63 +68,89 @@ fn generated_checkpoints_resume_long_blocks_without_growing_the_rust_stack() {
     fs::write(application.join("src/program.rs"), format!("{artifact}\n")).unwrap();
     fs::write(
         application.join("src/main.rs"),
-        r#"use geam::__prepared_support as data;
-use data::numeric::{NumericProgress, NumericValues};
+        r#"
+use data::compiled_numeric::{NumericProgress, NumericValues};
+use geam::__prepared_support as data;
 use geam::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
 use std::convert::Infallible;
 
 static PROGRAM: data::ModuleArtifact<Infallible> = include!("program.rs");
 
 fn main() {
-    let typed = geam::compile_typed_module("example", "src/example.gleam", include_str!("source.gleam")).unwrap();
-    let (bindings, function) = ModuleBuilder::new(typed).unwrap()
-        .function(FunctionDeclaration::<(bool,), BigInt>::new("choose")).unwrap();
+    let typed =
+        geam::compile_typed_module("example", "src/example.gleam", include_str!("source.gleam"))
+            .unwrap();
+    let (bindings, function) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(bool,), BigInt>::new("choose"))
+        .unwrap();
     let dynamic = bindings.seal();
     let mut bindings = PROGRAM.load().unwrap();
-    let prepared_function = bindings.function(FunctionDeclaration::<(bool,), BigInt>::new("choose")).unwrap();
+    let prepared_function = bindings
+        .function(FunctionDeclaration::<(bool,), BigInt>::new("choose"))
+        .unwrap();
     let prepared = bindings.seal();
-    std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
-        assert_eq!(dynamic.call(&function, (true,), &mut Vec::new()).unwrap(), BigInt::from(7));
-        assert_eq!(prepared.call(&prepared_function, (true,), &mut Vec::new()).unwrap(), BigInt::from(7));
-        let implementation = &PROGRAM.program.numeric.ints[0].implementation;
-        assert_eq!(implementation.checkpoints.len(), 504);
-        for allowance in [1, 1024] {
-            for (flag, expected) in [(true, 7), (false, -7)] {
-                let mut values = NumericValues { ints: vec![], bools: vec![flag] };
-                let mut budget = 1;
-                let first = (implementation.run)(implementation.entry, &mut values, &mut budget);
-                assert_eq!(first, NumericProgress::Yield(1));
-                assert_eq!(budget, 0);
-                assert_eq!(values.bools, [flag, !flag]);
-                let mut point = 1;
-                let mut steps = 1;
-                loop {
-                    let mut budget = allowance;
-                    let progress = (implementation.run)(point, &mut values, &mut budget);
-                    steps += allowance - budget;
-                    assert!(steps <= 502);
-                    match progress {
-                        NumericProgress::Yield(next) => {
-                            assert_eq!(budget, 0);
-                            let checkpoint = implementation.checkpoints[next];
-                            assert_eq!(values.ints.len(), checkpoint.ints);
-                            assert_eq!(values.bools.len(), checkpoint.bools);
-                            point = next;
+    std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            assert_eq!(
+                dynamic.call(&function, (true,), &mut Vec::new()).unwrap(),
+                BigInt::from(7)
+            );
+            assert_eq!(
+                prepared
+                    .call(&prepared_function, (true,), &mut Vec::new())
+                    .unwrap(),
+                BigInt::from(7)
+            );
+            let implementation = &PROGRAM.program.compiled_numeric.ints[0].implementation;
+            assert_eq!(implementation.checkpoints.len(), 504);
+            for allowance in [1, 1024] {
+                for (flag, expected) in [(true, 7), (false, -7)] {
+                    let mut values = NumericValues {
+                        ints: vec![],
+                        bools: vec![flag],
+                    };
+                    let mut budget = 1;
+                    let first =
+                        (implementation.run)(implementation.entry, &mut values, &mut budget);
+                    assert_eq!(first, NumericProgress::Yield(1));
+                    assert_eq!(budget, 0);
+                    assert_eq!(values.bools, [flag, !flag]);
+                    let mut point = 1;
+                    let mut steps = 1;
+                    loop {
+                        let mut budget = allowance;
+                        let progress = (implementation.run)(point, &mut values, &mut budget);
+                        steps += allowance - budget;
+                        assert!(steps <= 502);
+                        match progress {
+                            NumericProgress::Yield(next) => {
+                                assert_eq!(budget, 0);
+                                let checkpoint = implementation.checkpoints[next];
+                                assert_eq!(values.ints.len(), checkpoint.ints);
+                                assert_eq!(values.bools.len(), checkpoint.bools);
+                                point = next;
+                            }
+                            NumericProgress::Complete(_) => {
+                                assert_eq!(values.ints, [expected]);
+                                assert!(values.bools.is_empty());
+                                // The last Not is folded into the condition:
+                                // 499 instructions, branch, literal, return.
+                                assert_eq!(steps, 502);
+                                break;
+                            }
+                            NumericProgress::Interpreted(_) => {
+                                panic!("Boolean fixture stays generated")
+                            }
                         }
-                        NumericProgress::Complete(_) => {
-                            assert_eq!(values.ints, [expected]);
-                            assert!(values.bools.is_empty());
-                            // The last Not is folded into the condition:
-                            // 499 instructions, branch, literal, return.
-                            assert_eq!(steps, 502);
-                            break;
-                        }
-                        NumericProgress::Interpreted(_) => panic!("Boolean fixture stays generated"),
                     }
                 }
             }
-        }
-    }).unwrap().join().unwrap();
+        })
+        .unwrap()
+        .join()
+        .unwrap();
     println!("long checkpoint execution completed");
 }
 "#,
