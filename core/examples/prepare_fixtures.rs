@@ -1,7 +1,8 @@
 use geam_core::embedding::{
-    BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder, StringValue,
+    BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, List, ModuleBuilder,
+    StringValue,
 };
-use geam_core::{ModuleSource, PackageSource};
+use geam_core::{HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry};
 use std::error::Error;
 use std::path::Path;
 
@@ -26,6 +27,87 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
     let (arithmetic, _) =
         ModuleBuilder::new(arithmetic)?.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+
+    let numeric = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/numeric.gleam"),
+    )?;
+    let (mut numeric, _) = ModuleBuilder::new(numeric)?
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "arithmetic",
+        ))?;
+    numeric
+        .function(FunctionDeclaration::<(BigInt, BigInt, bool, BigInt), BigInt>::new("shuffle"))?;
+    numeric.function(FunctionDeclaration::<(BigInt, bool), bool>::new("choice"))?;
+    numeric.function(FunctionDeclaration::<(BigInt,), BigInt>::new("switch"))?;
+    numeric.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "quotient",
+    ))?;
+    numeric.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "operators",
+    ))?;
+    numeric.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "divmod",
+    ))?;
+    numeric.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "product",
+    ))?;
+    numeric.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "captured",
+    ))?;
+    numeric.function(FunctionDeclaration::<
+        (BigInt, BigInt, StringValue),
+        (StringValue, BigInt, List<BigInt>, BigInt),
+    >::new("caller"))?;
+    numeric.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    numeric.function(FunctionDeclaration::<(BigInt, bool), BigInt>::new(
+        "discarded",
+    ))?;
+
+    let hosted_numeric = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("../tests/fixtures/prepared/numeric.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let (mut hosted_numeric, _) =
+        HostedModuleBuilder::new(hosted_numeric)?
+            .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                "arithmetic",
+            ))?;
+    hosted_numeric.function(FunctionDeclaration::<(BigInt, bool), bool>::new("choice"))?;
+    hosted_numeric.function(FunctionDeclaration::<
+        (BigInt, BigInt, StringValue),
+        (StringValue, BigInt, List<BigInt>, BigInt),
+    >::new("caller"))?;
+    hosted_numeric.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    hosted_numeric.function(FunctionDeclaration::<(), BigInt>::new("running"))?;
+
+    let numeric_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/numeric_entry.gleam",
+                include_str!("../tests/fixtures/prepared/numeric_entry.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let numeric_entry =
+        PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(numeric_entry)?)?;
 
     let values = geam_core::compile_typed_program(
         "example",
@@ -116,6 +198,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
+        ("numeric.rs", numeric.prepare().emit_rust()),
+        ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
+        ("numeric_entry.rs", numeric_entry.emit_rust()),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (

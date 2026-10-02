@@ -110,7 +110,9 @@ Then prepare the program:
 geam embedding sync
 ```
 
-Sync generates the typed bindings and the complete execution plan as Rust data.
+Sync generates the typed bindings and the complete execution plan as Rust data,
+including direct Rust implementations of eligible integer and Boolean branches
+and loops. Cargo compiles this prepared source with the application.
 For the same `double` function above, `src/main.rs` becomes:
 
 ```rust

@@ -1,4 +1,7 @@
-pub type Tree(a) { Leaf(a) Branch(List(Tree(a))) }
+pub type Tree(a) {
+  Leaf(a)
+  Branch(List(Tree(a)))
+}
 
 @external(erlang, "native", "equal_native")
 fn equal_native(value: a, target: b) -> Bool
@@ -37,7 +40,15 @@ pub fn run() {
   #(
     equal_native(source, expected),
     equal_native(#(<<"one":utf8>>, [<<"two":utf8>>]), #("one", ["two"])),
-    fold(fn(value) { value + 1 }, 40),
+    fold(
+      fn(value) {
+        case value >= 0 {
+          True -> value + 1
+          False -> value - 1
+        }
+      },
+      40,
+    ),
   )
 }
 
@@ -68,21 +79,22 @@ fn compare(left, right) {
 }
 
 fn integer_comparisons() {
-  let minimum = -9223372036854775808
-  let maximum = 9223372036854775807
-  let assert 9223372036854775808 = maximum + 1
-  let assert -9223372036854775809 = minimum - 1
-  let assert 9223372036854775808 = -9223372036854775808 / -1
+  let minimum = -9_223_372_036_854_775_808
+  let maximum = 9_223_372_036_854_775_807
+  let assert 9_223_372_036_854_775_808 = maximum + 1
+  let assert -9_223_372_036_854_775_809 = minimum - 1
+  let assert 9_223_372_036_854_775_808 = -9_223_372_036_854_775_808 / -1
   let assert 0 = minimum % -1
   let assert -2 = -7 / 3
   let assert -1 = -7 % 3
   let assert 0 = minimum / 0
   let assert 0 = maximum % 0
-  let assert 85070591730234615865843651857942052864 = minimum * minimum
-  let assert True = -9223372036854775809 < minimum
-  let assert True = maximum < 9223372036854775808
-  let wide = 340282366920938463463374607431768211456
-  let negative = -340282366920938463463374607431768211456
+  let assert 85_070_591_730_234_615_865_843_651_857_942_052_864 =
+    minimum * minimum
+  let assert True = -9_223_372_036_854_775_809 < minimum
+  let assert True = maximum < 9_223_372_036_854_775_808
+  let wide = 340_282_366_920_938_463_463_374_607_431_768_211_456
+  let negative = -340_282_366_920_938_463_463_374_607_431_768_211_456
   let assert #(True, False) = compare(wide, wide)
   let assert #(False, True) = compare(negative, wide)
   let assert #(False, True) = compare("left", "right")
@@ -94,6 +106,6 @@ fn integer_comparisons() {
   let assert True = wide >= wide
   let assert False = negative > wide
   let assert False = negative >= wide
-  let assert True = wide == 340282366920938463463374607431768211456
+  let assert True = wide == 340_282_366_920_938_463_463_374_607_431_768_211_456
   True
 }

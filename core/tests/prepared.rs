@@ -1,7 +1,7 @@
 use geam_core::__prepared_support as data;
 use geam_core::embedding::{
-    BigInt, BitArrayValue, CallError, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder,
-    StringValue,
+    BigInt, BitArrayValue, CallError, FunctionDeclaration, HostedModuleBuilder, List,
+    ModuleBuilder, StringValue,
 };
 #[cfg(feature = "tokio")]
 use geam_core::execution::TokioHost;
@@ -12,6 +12,598 @@ use geam_core::{
 use std::convert::Infallible;
 
 static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
+
+static NUMERIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/numeric.rs");
+static NUMERIC_HOSTED: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
+static NUMERIC_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/numeric_entry.rs");
+
+macro_rules! numeric_functions {
+    ($bindings:ident, $arithmetic:expr) => {
+        (
+            $arithmetic,
+            $bindings
+                .function(
+                    FunctionDeclaration::<(BigInt, BigInt, bool, BigInt), BigInt>::new("shuffle"),
+                )
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, bool), bool>::new("choice"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("switch"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+                    "quotient",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+                    "operators",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+                    "divmod",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "product",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "captured",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, BigInt),
+                >::new("caller"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("main"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, bool), BigInt>::new(
+                    "discarded",
+                ))
+                .unwrap(),
+        )
+    };
+}
+
+#[test]
+fn numeric_control_flow_matches_preparation_and_compiled_execution() {
+    let source = include_str!("fixtures/prepared/numeric.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, arithmetic) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "arithmetic",
+        ))
+        .unwrap();
+    let _ = numeric_functions!(bindings, arithmetic);
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/numeric.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, functions) = if prepared {
+            let mut bindings = NUMERIC.load().unwrap();
+            let arithmetic = bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "arithmetic",
+                ))
+                .unwrap();
+            let functions = numeric_functions!(bindings, arithmetic);
+            (bindings.seal(), functions)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, arithmetic) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "arithmetic",
+                ))
+                .unwrap();
+            let functions = numeric_functions!(bindings, arithmetic);
+            (bindings.seal(), functions)
+        };
+        let (
+            arithmetic,
+            shuffle,
+            choice,
+            switch,
+            quotient,
+            operators,
+            divmod,
+            product,
+            captured,
+            caller,
+            main,
+            discarded,
+        ) = functions;
+        let big: BigInt = BigInt::from(1) << 100;
+        for (remaining, total, expected) in [
+            (0, 7.into(), 7.into()),
+            (12, 0.into(), 198.into()),
+            (1, i64::MAX.into(), BigInt::from(i64::MAX) + 1),
+            (0, big.clone(), big.clone()),
+            (12, big.clone(), &big + 198),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &arithmetic,
+                        (BigInt::from(remaining), total),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                expected
+            );
+        }
+        for remaining in [0, 1, 2, 3, 31] {
+            for flag in [false, true] {
+                assert_eq!(
+                    module
+                        .call(
+                            &shuffle,
+                            (remaining.into(), 7.into(), flag, 11.into()),
+                            &mut Vec::new()
+                        )
+                        .unwrap(),
+                    BigInt::from(if flag { -4 } else { 4 })
+                );
+            }
+        }
+        for (value, flag, expected) in [
+            (-1, false, true),
+            (-1, true, false),
+            (0, true, false),
+            (9, true, false),
+            (10, true, true),
+            (10, false, false),
+        ] {
+            assert_eq!(
+                module
+                    .call(&choice, (value.into(), flag), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        for (value, expected) in [
+            (0, 3.into()),
+            (1, 44.into()),
+            (-9, 9.into()),
+            (13, 55.into()),
+            (i64::MAX, BigInt::from(i64::MAX) + 42),
+            (i64::MIN, -BigInt::from(i64::MIN)),
+        ] {
+            assert_eq!(
+                module
+                    .call(&switch, (value.into(),), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        for (left, right, negate, expected) in [
+            (i64::MIN.into(), (-1).into(), false, -BigInt::from(i64::MIN)),
+            (i64::MIN.into(), (-1).into(), true, i64::MIN.into()),
+            (i64::MIN.into(), 1.into(), true, -BigInt::from(i64::MIN)),
+            (7.into(), 0.into(), false, 0.into()),
+            (big.clone(), 1.into(), true, -&big),
+        ] {
+            assert_eq!(
+                module
+                    .call(&quotient, (left, right, negate), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        for (left, right, flag, expected) in [
+            (7, 3, true, -8),
+            (7, 3, false, -1),
+            (-7, 3, true, 10),
+            (-7, 3, false, 1),
+            (7, 0, true, 0),
+            (7, 0, false, 0),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &operators,
+                        (left.into(), right.into(), flag),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                BigInt::from(expected)
+            );
+        }
+        for (left, right, expected) in [(7, 3, 3), (-7, 3, -3), (7, -3, -1), (7, 0, 0)] {
+            for flag in [false, true] {
+                assert_eq!(
+                    module
+                        .call(&divmod, (left.into(), right.into(), flag), &mut Vec::new())
+                        .unwrap(),
+                    BigInt::from(if flag { expected } else { -expected })
+                );
+            }
+        }
+        assert_eq!(
+            module
+                .call(
+                    &divmod,
+                    (i64::MIN.into(), (-1).into(), true),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            -BigInt::from(i64::MIN)
+        );
+        for (left, right, expected) in [
+            (7, 3, 21.into()),
+            (7, 7, 7.into()),
+            (
+                i64::MAX,
+                i64::MIN,
+                BigInt::from(i64::MAX) * BigInt::from(i64::MIN),
+            ),
+        ] {
+            assert_eq!(
+                module
+                    .call(&product, (left.into(), right.into()), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        for value in [-7, 7] {
+            assert_eq!(
+                module
+                    .call(&captured, (value.into(), 3.into()), &mut Vec::new())
+                    .unwrap(),
+                BigInt::from(10)
+            );
+        }
+        for value in [BigInt::from(7), BigInt::from(i64::MAX), big.clone()] {
+            for flag in [true, false] {
+                assert_eq!(
+                    module
+                        .call(&discarded, (value.clone(), flag), &mut Vec::new())
+                        .unwrap(),
+                    if flag { value.clone() } else { -&value }
+                );
+            }
+        }
+        let (text, first, values, last) = module
+            .call(
+                &caller,
+                (7.into(), 12.into(), "retained".into()),
+                &mut Vec::new(),
+            )
+            .unwrap();
+        assert_eq!(text.as_str(), "retained");
+        assert_eq!(first, BigInt::from(205));
+        assert_eq!(values.to_vec(), vec![7.into(), 12.into()]);
+        assert_eq!(last, BigInt::from(19));
+        assert_eq!(
+            module.call(&main, (), &mut Vec::new()).unwrap(),
+            BigInt::from(238)
+        );
+    }
+}
+
+#[test]
+fn compiled_numeric_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
+    use data::compiled_numeric::{NumericProgress, NumericValues};
+    let target = NUMERIC.entries.ints[0].function;
+    let implementation = &NUMERIC
+        .program
+        .compiled_numeric
+        .ints
+        .iter()
+        .find(|function| function.function == target)
+        .unwrap()
+        .implementation;
+    for allowance in [1, 2, 3, 4, 7, 64, 1024] {
+        let mut values = NumericValues {
+            ints: vec![12, 0],
+            bools: vec![],
+        };
+        let mut point = implementation.entry;
+        let mut steps = 0;
+        loop {
+            let mut budget = allowance;
+            let progress = (implementation.run)(point, &mut values, &mut budget);
+            steps += allowance - budget;
+            assert!(
+                steps <= 62,
+                "generated execution must not replay completed steps"
+            );
+            match progress {
+                NumericProgress::Yield(next) => {
+                    assert_eq!(budget, 0);
+                    let checkpoint = implementation.checkpoints[next];
+                    assert_eq!(values.ints.len(), checkpoint.ints);
+                    assert_eq!(values.bools.len(), checkpoint.bools);
+                    point = next;
+                }
+                NumericProgress::Complete(exit) => {
+                    assert_eq!(exit, data::graph::BlockGraphExitId(0));
+                    assert_eq!(values.ints, [198]);
+                    assert!(values.bools.is_empty());
+                    assert_eq!(steps, 62);
+                    break;
+                }
+                NumericProgress::Interpreted(_) => {
+                    panic!("small fixture stays in generated execution")
+                }
+            }
+        }
+    }
+    let mut values = NumericValues {
+        ints: vec![1, i128::from(i64::MAX)],
+        bools: vec![],
+    };
+    let mut budget = 100;
+    assert_eq!(
+        (implementation.run)(implementation.entry, &mut values, &mut budget),
+        NumericProgress::Interpreted(7)
+    );
+    assert_eq!(budget, 96);
+    assert_eq!(
+        implementation.checkpoints[7],
+        data::compiled_numeric::NumericCheckpoint {
+            block: data::graph::BlockId(4),
+            instruction: 1,
+            ints: 4,
+            bools: 0,
+        }
+    );
+    assert_eq!(
+        values.ints,
+        [1, i128::from(i64::MAX), 0, i128::from(i64::MAX) + 1]
+    );
+}
+
+#[test]
+fn discarded_region_outputs_do_not_become_checkpoint_values() {
+    use data::compiled_numeric::{NumericProgress, NumericValues};
+    let target = NUMERIC.entries.ints.last().unwrap().function;
+    let implementation = &NUMERIC
+        .program
+        .compiled_numeric
+        .ints
+        .iter()
+        .find(|function| function.function == target)
+        .unwrap()
+        .implementation;
+    let mut values = NumericValues {
+        ints: vec![i128::from(i64::MAX)],
+        bools: vec![true],
+    };
+    let mut budget = 1;
+    assert_eq!(
+        (implementation.run)(implementation.entry, &mut values, &mut budget),
+        NumericProgress::Yield(1)
+    );
+    assert_eq!(budget, 0);
+    assert_eq!(values.ints, [i128::from(i64::MAX)]);
+    assert_eq!(values.bools, [true]);
+    assert_eq!(implementation.checkpoints[1].ints, 1);
+    assert_eq!(implementation.checkpoints[1].bools, 1);
+}
+
+macro_rules! hosted_numeric_functions {
+    ($bindings:ident, $arithmetic:expr) => {
+        (
+            $arithmetic,
+            $bindings
+                .function(FunctionDeclaration::<(BigInt, bool), bool>::new("choice"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, BigInt),
+                >::new("caller"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("main"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("running"))
+                .unwrap(),
+        )
+    };
+}
+
+#[test]
+fn numeric_hosted_and_standalone_artifacts_match_public_preparation_and_admit_generated_targets() {
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/numeric.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, arithmetic) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "arithmetic",
+        ))
+        .unwrap();
+    let _ = hosted_numeric_functions!(bindings, arithmetic);
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/numeric_hosted.rs").trim()
+    );
+    let mut bindings = NUMERIC_HOSTED
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let arithmetic = bindings
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "arithmetic",
+        ))
+        .unwrap();
+    let _ = hosted_numeric_functions!(bindings, arithmetic);
+    assert_eq!(
+        NUMERIC_HOSTED.module.program.compiled_numeric.ints[0].function,
+        NUMERIC_HOSTED.module.entries.ints[0].function
+    );
+    assert_eq!(
+        NUMERIC_HOSTED.module.program.compiled_numeric.bools[0].function,
+        NUMERIC_HOSTED.module.entries.bools[0].function
+    );
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/numeric_entry.gleam",
+                include_str!("fixtures/prepared/numeric_entry.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let prepared = geam_core::PreparedHostedEntry::try_from_module_plan(
+        geam_core::plan_host_program(typed).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        prepared.emit_rust(),
+        include_str!("fixtures/prepared/numeric_entry.rs").trim()
+    );
+    assert_eq!(NUMERIC_ENTRY.program.compiled_numeric.ints.len(), 1);
+    NUMERIC_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_hosted_calls_keep_scope_cancellation_captures_and_standalone_output() {
+    use std::future::{Future, poll_fn};
+    use std::task::Poll;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, functions) = if prepared {
+            let mut bindings = NUMERIC_HOSTED
+                .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+                .unwrap();
+            let arithmetic = bindings
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "arithmetic",
+                ))
+                .unwrap();
+            let functions = hosted_numeric_functions!(bindings, arithmetic);
+            (bindings.seal(), functions)
+        } else {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        include_str!("fixtures/prepared/numeric.gleam"),
+                    )],
+                )],
+                HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let (mut bindings, arithmetic) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                    "arithmetic",
+                ))
+                .unwrap();
+            let functions = hosted_numeric_functions!(bindings, arithmetic);
+            (bindings.seal().unwrap(), functions)
+        };
+        let (arithmetic, choice, caller, main, running) = functions;
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let mut started = Some(started);
+        let mut outputs = Vec::new();
+        let mut echo = |output: EchoOutput| {
+            outputs.push(output.to_string());
+            if let Some(started) = started.take() {
+                started.send(()).unwrap();
+            }
+        };
+        runtime.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    assert_eq!(
+                        scope
+                            .call(&arithmetic, (12.into(), 0.into()))
+                            .await
+                            .unwrap(),
+                        BigInt::from(198)
+                    );
+                    assert!(scope.call(&choice, ((-1).into(), false)).await.unwrap());
+                    let (text, first, values, last) = scope
+                        .call(&caller, (i64::MAX.into(), 1.into(), "caller".into()))
+                        .await
+                        .unwrap();
+                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(first, BigInt::from(i64::MAX) + 1);
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values.read_item(0, Clone::clone), Some(i64::MAX.into()));
+                    assert_eq!(values.read_item(1, Clone::clone), Some(1.into()));
+                    assert_eq!(last, BigInt::from(i64::MAX) + 1);
+                    let mut pending = Box::pin(scope.call(&running, ()));
+                    let mut ready = Box::pin(ready);
+                    poll_fn(|context| {
+                        if let Poll::Ready(result) = pending.as_mut().poll(context) {
+                            panic!("infinite numeric call returned: {result:?}");
+                        }
+                        ready.as_mut().poll(context)
+                    })
+                    .await
+                    .unwrap();
+                    drop(pending);
+                    assert_eq!(scope.call(&main, ()).await.unwrap(), BigInt::from(238));
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        });
+        assert_eq!(outputs.len(), 1);
+        assert!(outputs[0].ends_with("\"entered\""));
+    }
+    let mut entry = NUMERIC_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let mut echo = Vec::new();
+    runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap();
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["src/numeric_entry.gleam:9\n42"]
+    );
+}
 
 static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/values.rs");
 
@@ -592,7 +1184,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 11; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 12; regenerate the prepared program"
     );
 }
 

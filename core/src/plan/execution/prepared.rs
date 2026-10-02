@@ -2,6 +2,7 @@ mod admission;
 pub mod data;
 mod entry;
 mod hosted;
+mod numeric;
 pub(crate) mod rust;
 
 pub use admission::PreparedError;
@@ -9,6 +10,7 @@ pub(crate) use admission::{AdmittedHostedModule, AdmittedModule};
 pub use entry::{HostedEntryArtifact, PreparedHostedEntry};
 pub use hosted::{HostedModuleArtifact, PreparedHostedModule};
 
+use super::compiled_numeric::NumericFunctions;
 use super::constant::ProfiledConstantTable;
 use super::function::{
     ExecutionProfile, FunctionCatalog, FunctionTables, ProfiledRuntimeFunctionId,
@@ -22,7 +24,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 11;
+const FORMAT_VERSION: u32 = 12;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -178,6 +180,7 @@ pub struct ProgramTables<Profile: ExecutionProfile> {
     pub modules: Table<ExecutionModuleContext>,
     pub main: ProfiledRuntimeFunctionId<Profile::Graph>,
     pub functions: FunctionTables<Profile>,
+    pub compiled_numeric: NumericFunctions,
     pub constants: ProfiledConstantTable<Profile::Graph>,
     pub function_parameters: FunctionCatalog,
     pub list_types: ListTypeTable,
@@ -221,6 +224,7 @@ impl<Profile: ExecutionProfile> ProgramTables<Profile> {
                 value_shapes: Node::Static(&self.value_shapes),
             }),
             functions: Node::Static(&self.functions),
+            compiled_numeric: self.compiled_numeric.borrowed(),
         }
     }
 }
@@ -238,7 +242,9 @@ where
     ProfiledRuntimeFunctionId<Profile::Graph>: Emit,
 {
     fn emit(&self, output: &mut Rust) {
-        let ExecutionProgram { common, functions } = self.program;
+        let ExecutionProgram {
+            common, functions, ..
+        } = self.program;
         let super::ExecutionProgramCommon {
             root,
             modules,
@@ -257,6 +263,10 @@ where
                 ("modules", modules),
                 ("main", main),
                 ("functions", functions.as_ref()),
+                (
+                    "compiled_numeric",
+                    &numeric::NumericCodegen::new(functions.as_ref()),
+                ),
                 ("constants", constants.as_ref()),
                 ("function_parameters", function_parameters.as_ref()),
                 ("list_types", list_types.as_ref()),
@@ -280,7 +290,11 @@ mod tests {
             crate::compile_typed_module("example", "src/example.gleam", "pub fn main() { 21 * 2 }")
                 .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(module).unwrap());
-        let ExecutionProgram { common, functions } = plan.program;
+        let ExecutionProgram {
+            common,
+            functions,
+            compiled_numeric,
+        } = plan.program;
         let common = std::sync::Arc::try_unwrap(common).ok().unwrap();
         let functions = owned_table(functions);
         let constants = owned_table(common.constants);
@@ -290,6 +304,7 @@ mod tests {
             modules: common.modules,
             main: common.main,
             functions: *functions,
+            compiled_numeric,
             constants: *constants,
             function_parameters: std::sync::Arc::try_unwrap(common.function_parameters)
                 .ok()

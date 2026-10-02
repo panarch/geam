@@ -4,6 +4,7 @@ mod drain;
 mod echo;
 mod embedding;
 pub(crate) use embedding::EmbeddingEntry;
+pub(crate) mod compiled_numeric;
 mod entry;
 mod error;
 mod evaluated;

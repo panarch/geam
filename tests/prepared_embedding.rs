@@ -14,6 +14,9 @@ mod workspace_dependencies;
 #[path = "prepared_embedding/guard_constructors.rs"]
 mod guard_constructors;
 
+#[path = "prepared_embedding/numeric.rs"]
+mod numeric;
+
 #[test]
 fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let directory = tempfile::tempdir().unwrap();
