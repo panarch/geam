@@ -381,7 +381,7 @@ mod tests {
                 .body()
                 .block_graph()
                 .as_view();
-            let mut execution = GraphExecution::new(graph, RetainedValues::empty());
+            let mut execution = GraphExecution::new(graph, RetainedValues::empty(), None);
             let mut storage = GraphStorage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
@@ -796,7 +796,7 @@ fn callback() { integer }
             .body()
             .block_graph()
             .as_view();
-        let mut execution = GraphExecution::new(graph, RetainedValues::empty());
+        let mut execution = GraphExecution::new(graph, RetainedValues::empty(), None);
         let mut storage = GraphStorage::new();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);

@@ -72,8 +72,18 @@ application run state, or execute Gleam entries.
 Ordinary Cargo builds compile the generated Rust as existing input. Loading
 validates its format, typed relationships and entry contracts, links the actual
 provider implementations, and seals a fresh module. It neither reopens source
-nor reconstructs the complete owned plan. Dynamic and prepared programs use
-the same evaluator and typed value/ownership contracts.
+nor reconstructs the complete owned plan. Dynamic and prepared programs retain
+the same canonical graph, execution frames, and typed value/ownership contracts.
+
+Prepared source can also contain direct Rust implementations of eligible pure
+integer and Boolean control flow. Cargo compiles those implementations along
+with the graph data. Supported branches and entry loops execute with Rust
+locals; other bodies use the graph evaluator. An initially large integer uses
+the graph evaluator, and a generated calculation that needs a large integer
+resumes it after the completed instruction with its actual values. Budget
+exhaustion resumes at an admitted checkpoint through the existing execution
+owner. This does not introduce runtime compilation or a separate calling,
+cancellation, or ownership contract.
 
 Full native registration contracts must match, including construction and
 callback permissions, not just package versions or public signatures. A mismatch

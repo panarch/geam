@@ -13,7 +13,11 @@ pub(crate) struct Rust {
 }
 
 impl Rust {
-    pub(crate) fn expression(value: &impl Emit) -> String {
+    pub(in crate::plan::execution::prepared) fn raw(&mut self, source: &str) {
+        self.output.push_str(source);
+    }
+
+    pub(crate) fn expression<Value: Emit + ?Sized>(value: &Value) -> String {
         let mut output = Self {
             output: String::new(),
             indentation: 0,

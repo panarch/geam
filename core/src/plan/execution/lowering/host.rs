@@ -19,6 +19,7 @@ use crate::plan::execution::host::{
     CallableRegistration, HostBindingTables, HostFunctionTables, HostSpecializationError,
     HostedExecutionProfile,
 };
+use crate::plan::execution::numeric::NumericFunctions;
 use crate::plan::execution::storage::Table;
 use crate::plan::execution::{ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon};
 use crate::plan::execution::{LibraryFunctionEntries, LibraryNativeConstruction};
@@ -297,6 +298,7 @@ fn assemble_hosted_program(
             value_shapes: Box::new(value_shapes).into(),
         }),
         functions: Box::new(functions).into(),
+        numeric: NumericFunctions::interpreted(),
     }
 }
 

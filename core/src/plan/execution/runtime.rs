@@ -34,6 +34,7 @@ use super::function::{
     ExecutionUtfCodepointFunctionBody, ExecutionUtfCodepointFunctionFunctionBody,
     ExecutionUtfCodepointListFunctionBody,
 };
+use super::numeric::NumericImplementation;
 use super::type_::{
     CustomConstructorId, CustomTypeId, CustomTypeTable, ExternalTypeTable, FunctionListTypeId,
     FunctionType, ListListTypeId, ListTypeId, ListTypeTable, TupleListTypeId, ValueShapeId,
@@ -50,6 +51,14 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     type RunState;
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
+
+    fn numeric_int_function(&self, id: IntFunctionId) -> Option<&NumericImplementation> {
+        self.program().numeric.int(id)
+    }
+
+    fn numeric_bool_function(&self, id: BoolFunctionId) -> Option<&NumericImplementation> {
+        self.program().numeric.bool(id)
+    }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
         RuntimeValueMetadata::new(&self.program().common)

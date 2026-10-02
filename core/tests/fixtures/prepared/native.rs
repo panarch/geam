@@ -1,13 +1,16 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 11,
+        format: 12,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
                 data::program::ExecutionModuleContext {
                     module: data::Text::Static("main"),
                     source_context: Some(data::source::SourceContext::from_static_block("src/main.gleam", r#"
-pub type Tree(a) { Leaf(a) Branch(List(Tree(a))) }
+pub type Tree(a) {
+  Leaf(a)
+  Branch(List(Tree(a)))
+}
 
 @external(erlang, "native", "equal_native")
 fn equal_native(value: a, target: b) -> Bool
@@ -46,7 +49,15 @@ pub fn run() {
   #(
     equal_native(source, expected),
     equal_native(#(<<"one":utf8>>, [<<"two":utf8>>]), #("one", ["two"])),
-    fold(fn(value) { value + 1 }, 40),
+    fold(
+      fn(value) {
+        case value >= 0 {
+          True -> value + 1
+          False -> value - 1
+        }
+      },
+      40,
+    ),
   )
 }
 
@@ -77,21 +88,22 @@ fn compare(left, right) {
 }
 
 fn integer_comparisons() {
-  let minimum = -9223372036854775808
-  let maximum = 9223372036854775807
-  let assert 9223372036854775808 = maximum + 1
-  let assert -9223372036854775809 = minimum - 1
-  let assert 9223372036854775808 = -9223372036854775808 / -1
+  let minimum = -9_223_372_036_854_775_808
+  let maximum = 9_223_372_036_854_775_807
+  let assert 9_223_372_036_854_775_808 = maximum + 1
+  let assert -9_223_372_036_854_775_809 = minimum - 1
+  let assert 9_223_372_036_854_775_808 = -9_223_372_036_854_775_808 / -1
   let assert 0 = minimum % -1
   let assert -2 = -7 / 3
   let assert -1 = -7 % 3
   let assert 0 = minimum / 0
   let assert 0 = maximum % 0
-  let assert 85070591730234615865843651857942052864 = minimum * minimum
-  let assert True = -9223372036854775809 < minimum
-  let assert True = maximum < 9223372036854775808
-  let wide = 340282366920938463463374607431768211456
-  let negative = -340282366920938463463374607431768211456
+  let assert 85_070_591_730_234_615_865_843_651_857_942_052_864 =
+    minimum * minimum
+  let assert True = -9_223_372_036_854_775_809 < minimum
+  let assert True = maximum < 9_223_372_036_854_775_808
+  let wide = 340_282_366_920_938_463_463_374_607_431_768_211_456
+  let negative = -340_282_366_920_938_463_463_374_607_431_768_211_456
   let assert #(True, False) = compare(wide, wide)
   let assert #(False, True) = compare(negative, wide)
   let assert #(False, True) = compare("left", "right")
@@ -103,7 +115,7 @@ fn integer_comparisons() {
   let assert True = wide >= wide
   let assert False = negative > wide
   let assert False = negative >= wide
-  let assert True = wide == 340282366920938463463374607431768211456
+  let assert True = wide == 340_282_366_920_938_463_463_374_607_431_768_211_456
   True
 }
 "#)),
@@ -134,7 +146,7 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::SourceStop(data::graph::SourceStop {
                                                 kind: data::graph::SourceStopKind::Panic,
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "<anonymous:1>", data::source::SourceSpan::new(821, 826)),
+                                                site: data::source::PanicSite::from_static("main", "<anonymous:1>", data::source::SourceSpan::new(825, 830)),
                                             }),
                                         },
                                     ]),
@@ -156,11 +168,52 @@ fn integer_comparisons() {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..1,
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::GtEqInt {
+                                                    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                    right: data::graph::IntegerOperand::Immediate(0),
+                                                },
+                                                true_: data::graph::Edge {
+                                                    target: data::graph::BlockId(1),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                                false_: data::graph::Edge {
+                                                    target: data::graph::BlockId(2),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 1..2,
                                             instructions: 0..1,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
+                                        data::graph::BlockHeader {
+                                            params: 2..3,
+                                            instructions: 1..2,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                        },
                                     ]),
                                     params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
                                         data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             shape: data::type_::ValueShapeId(17),
@@ -177,9 +230,20 @@ fn integer_comparisons() {
                                                 right: data::graph::IntegerOperand::Immediate(1),
                                             }),
                                         }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
+                                            }),
+                                        }),
                                     ]),
                                 },
                                 exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                     data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
                             },
@@ -238,7 +302,7 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::SourceStop(data::graph::SourceStop {
                                                 kind: data::graph::SourceStopKind::Panic,
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "<anonymous:2>", data::source::SourceSpan::new(892, 897)),
+                                                site: data::source::PanicSite::from_static("main", "<anonymous:2>", data::source::SourceSpan::new(896, 901)),
                                             }),
                                         },
                                     ]),
@@ -633,7 +697,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
                                                 function: data::graph::BitArrayFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1706, 1712)),
+                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1818, 1824)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -649,7 +713,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1569, 1588)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1681, 1700)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -661,7 +725,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1696, 1713)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1808, 1825)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
@@ -765,8 +829,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1778, 1788)),
-                                                pattern_span: data::source::SourceSpan::new(1789, 1807),
+                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1890, 1900)),
+                                                pattern_span: data::source::SourceSpan::new(1901, 1919),
                                             }),
                                         },
                                     ]),
@@ -790,7 +854,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1818, 1833)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1930, 1945)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -1469,8 +1533,8 @@ fn integer_comparisons() {
                                                     },
                                                 }),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(833, 843)),
-                                                pattern_span: data::source::SourceSpan::new(844, 859),
+                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(837, 847)),
+                                                pattern_span: data::source::SourceSpan::new(848, 863),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -1485,8 +1549,8 @@ fn integer_comparisons() {
                                                     },
                                                 }),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(769, 779)),
-                                                pattern_span: data::source::SourceSpan::new(780, 795),
+                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(773, 783)),
+                                                pattern_span: data::source::SourceSpan::new(784, 799),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -1501,8 +1565,8 @@ fn integer_comparisons() {
                                                     },
                                                 }),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(709, 719)),
-                                                pattern_span: data::source::SourceSpan::new(720, 735),
+                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(713, 723)),
+                                                pattern_span: data::source::SourceSpan::new(724, 739),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -1517,8 +1581,8 @@ fn integer_comparisons() {
                                                     },
                                                 }),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(668, 678)),
-                                                pattern_span: data::source::SourceSpan::new(679, 684),
+                                                site: data::source::PanicSite::from_static("main", "generic_results", data::source::SourceSpan::new(672, 682)),
+                                                pattern_span: data::source::SourceSpan::new(683, 688),
                                             }),
                                         },
                                     ]),
@@ -1599,7 +1663,7 @@ fn integer_comparisons() {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(695, 705)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(699, 709)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1630,7 +1694,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(687, 706)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(691, 710)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1684,7 +1748,7 @@ fn integer_comparisons() {
                                                         },
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(746, 765)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(750, 769)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1715,7 +1779,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(738, 766)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(742, 770)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1787,7 +1851,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(806, 829)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(810, 833)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1818,7 +1882,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(798, 830)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(802, 834)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1872,7 +1936,7 @@ fn integer_comparisons() {
                                                         },
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(870, 900)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(874, 904)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1903,7 +1967,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(862, 901)),
+                                                site: data::source::HostCallSite::from_static("main", "generic_results", data::source::SourceSpan::new(866, 905)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3021,8 +3085,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3035, 3045)),
-                                                pattern_span: data::source::SourceSpan::new(3046, 3050),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3235, 3245)),
+                                                pattern_span: data::source::SourceSpan::new(3246, 3250),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3031,8 +3095,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2997, 3007)),
-                                                pattern_span: data::source::SourceSpan::new(3008, 3013),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3197, 3207)),
+                                                pattern_span: data::source::SourceSpan::new(3208, 3213),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3041,8 +3105,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2960, 2970)),
-                                                pattern_span: data::source::SourceSpan::new(2971, 2976),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3160, 3170)),
+                                                pattern_span: data::source::SourceSpan::new(3171, 3176),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3051,8 +3115,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2927, 2937)),
-                                                pattern_span: data::source::SourceSpan::new(2938, 2942),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3127, 3137)),
+                                                pattern_span: data::source::SourceSpan::new(3138, 3142),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3061,8 +3125,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2891, 2901)),
-                                                pattern_span: data::source::SourceSpan::new(2902, 2906),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3091, 3101)),
+                                                pattern_span: data::source::SourceSpan::new(3102, 3106),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3071,8 +3135,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2853, 2863)),
-                                                pattern_span: data::source::SourceSpan::new(2864, 2869),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3053, 3063)),
+                                                pattern_span: data::source::SourceSpan::new(3064, 3069),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3081,8 +3145,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2816, 2826)),
-                                                pattern_span: data::source::SourceSpan::new(2827, 2832),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3016, 3026)),
+                                                pattern_span: data::source::SourceSpan::new(3027, 3032),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3091,8 +3155,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2775, 2785)),
-                                                pattern_span: data::source::SourceSpan::new(2786, 2790),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2975, 2985)),
+                                                pattern_span: data::source::SourceSpan::new(2986, 2990),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3101,8 +3165,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2739, 2749)),
-                                                pattern_span: data::source::SourceSpan::new(2750, 2754),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2939, 2949)),
+                                                pattern_span: data::source::SourceSpan::new(2950, 2954),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3117,8 +3181,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2684, 2694)),
-                                                pattern_span: data::source::SourceSpan::new(2695, 2709),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2884, 2894)),
+                                                pattern_span: data::source::SourceSpan::new(2895, 2909),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3133,8 +3197,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2630, 2640)),
-                                                pattern_span: data::source::SourceSpan::new(2641, 2655),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2830, 2840)),
+                                                pattern_span: data::source::SourceSpan::new(2841, 2855),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3149,8 +3213,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2580, 2590)),
-                                                pattern_span: data::source::SourceSpan::new(2591, 2605),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2780, 2790)),
+                                                pattern_span: data::source::SourceSpan::new(2791, 2805),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3159,8 +3223,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2419, 2429)),
-                                                pattern_span: data::source::SourceSpan::new(2430, 2434),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2589, 2599)),
+                                                pattern_span: data::source::SourceSpan::new(2600, 2604),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3169,8 +3233,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2368, 2378)),
-                                                pattern_span: data::source::SourceSpan::new(2379, 2383),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2532, 2542)),
+                                                pattern_span: data::source::SourceSpan::new(2543, 2547),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3179,8 +3243,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2296, 2306)),
-                                                pattern_span: data::source::SourceSpan::new(2307, 2345),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2444, 2454)),
+                                                pattern_span: data::source::SourceSpan::new(2455, 2505),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3189,8 +3253,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2267, 2277)),
-                                                pattern_span: data::source::SourceSpan::new(2278, 2279),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2415, 2425)),
+                                                pattern_span: data::source::SourceSpan::new(2426, 2427),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3199,8 +3263,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2238, 2248)),
-                                                pattern_span: data::source::SourceSpan::new(2249, 2250),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2386, 2396)),
+                                                pattern_span: data::source::SourceSpan::new(2397, 2398),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3209,8 +3273,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2213, 2223)),
-                                                pattern_span: data::source::SourceSpan::new(2224, 2226),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2361, 2371)),
+                                                pattern_span: data::source::SourceSpan::new(2372, 2374),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3219,8 +3283,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2188, 2198)),
-                                                pattern_span: data::source::SourceSpan::new(2199, 2201),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2336, 2346)),
+                                                pattern_span: data::source::SourceSpan::new(2347, 2349),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3229,8 +3293,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2158, 2168)),
-                                                pattern_span: data::source::SourceSpan::new(2169, 2170),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2306, 2316)),
+                                                pattern_span: data::source::SourceSpan::new(2317, 2318),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3239,8 +3303,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2097, 2107)),
-                                                pattern_span: data::source::SourceSpan::new(2108, 2127),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2233, 2243)),
+                                                pattern_span: data::source::SourceSpan::new(2244, 2269),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3249,8 +3313,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2049, 2059)),
-                                                pattern_span: data::source::SourceSpan::new(2060, 2080),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2179, 2189)),
+                                                pattern_span: data::source::SourceSpan::new(2190, 2216),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3259,8 +3323,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2002, 2012)),
-                                                pattern_span: data::source::SourceSpan::new(2013, 2032),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2126, 2136)),
+                                                pattern_span: data::source::SourceSpan::new(2137, 2162),
                                             }),
                                         },
                                     ]),
@@ -3748,7 +3812,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2608, 2627)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2808, 2827)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3768,7 +3832,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2658, 2681)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2858, 2881)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3802,7 +3866,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2712, 2736)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2912, 2936)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3993,8 +4057,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(929, 939)),
-                                                pattern_span: data::source::SourceSpan::new(940, 944),
+                                                site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(933, 943)),
+                                                pattern_span: data::source::SourceSpan::new(944, 948),
                                             }),
                                         },
                                     ]),
@@ -4013,7 +4077,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
                                                 function: data::function::BoolFunctionId(1),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(947, 968)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(951, 972)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4393,7 +4457,7 @@ fn integer_comparisons() {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1118, 1148)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1122, 1152)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4545,7 +4609,7 @@ fn integer_comparisons() {
                                                         ]),
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1154, 1222)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1158, 1226)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4606,7 +4670,7 @@ fn integer_comparisons() {
                                                     },
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1228, 1261)),
+                                                site: data::source::HostCallSite::from_static("main", "run", data::source::SourceSpan::new(1232, 1373)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4699,8 +4763,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(1306, 1316)),
-                                                pattern_span: data::source::SourceSpan::new(1317, 1334),
+                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(1418, 1428)),
+                                                pattern_span: data::source::SourceSpan::new(1429, 1446),
                                             }),
                                         },
                                     ]),
@@ -4792,7 +4856,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1406, 1412)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1518, 1524)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4803,7 +4867,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1415, 1421)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1527, 1533)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4866,7 +4930,7 @@ fn integer_comparisons() {
                                                         ]),
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1374, 1424)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1486, 1536)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4877,7 +4941,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1426, 1432)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1538, 1544)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5087,6 +5151,220 @@ fn integer_comparisons() {
                     function_function_functions: data::Storage::Static(&[]),
                 },
             },
+            numeric: {
+enum NumericResume {
+Next(usize),
+Exit(data::numeric::NumericProgress),
+}
+fn numeric_int_0(point: usize, values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
+const RESUME: [fn(&mut data::numeric::NumericValues, &mut usize) -> NumericResume; 5] = [
+|values, budget| NumericResume::Exit(numeric_int_0_entry((values.ints[0],), values, budget)),
+numeric_int_0_resume_1,
+numeric_int_0_resume_2,
+numeric_int_0_resume_3,
+numeric_int_0_resume_4,
+];
+let mut point = point;
+loop {
+match RESUME[point](values, budget) {
+NumericResume::Next(next) => point = next,
+NumericResume::Exit(progress) => return progress,
+}
+}
+}
+fn numeric_int_0_entry(inputs: (i128,), values: &mut data::numeric::NumericValues, budget: &mut usize) -> data::numeric::NumericProgress {
+let (b0_i0,) = inputs;
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b0_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Yield(0);
+}
+*budget -= 1;
+if b0_i0 >= 0_i128 {
+let (b1_i0,) = (b0_i0,);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Yield(1);
+}
+*budget -= 1;
+let b1_i1 = b1_i0 + 1_i128;
+if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Interpreted(2);
+}
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Yield(2);
+}
+*budget -= 1;
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+} else {
+let (b2_i0,) = (b0_i0,);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Yield(3);
+}
+*budget -= 1;
+let b2_i1 = b2_i0 - 1_i128;
+if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Interpreted(4);
+}
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return data::numeric::NumericProgress::Yield(4);
+}
+*budget -= 1;
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+}
+}
+fn numeric_int_0_resume_1(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
+let (b1_i0,) = (values.ints[0],);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Yield(1));
+}
+*budget -= 1;
+let b1_i1 = b1_i0 + 1_i128;
+if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(2));
+}
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+NumericResume::Next(2)
+}
+fn numeric_int_0_resume_2(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
+let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Yield(2));
+}
+*budget -= 1;
+values.ints.clear();
+values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+}
+fn numeric_int_0_resume_3(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
+let (b2_i0,) = (values.ints[0],);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Yield(3));
+}
+*budget -= 1;
+let b2_i1 = b2_i0 - 1_i128;
+if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Interpreted(4));
+}
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+NumericResume::Next(4)
+}
+fn numeric_int_0_resume_4(values: &mut data::numeric::NumericValues, budget: &mut usize) -> NumericResume {
+let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
+if *budget == 0 {
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+return NumericResume::Exit(data::numeric::NumericProgress::Yield(4));
+}
+*budget -= 1;
+values.ints.clear();
+values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+values.bools.clear();
+values.bools.extend_from_slice(&[]);
+NumericResume::Exit(data::numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+}
+data::numeric::NumericFunctions {
+ints: data::Storage::Static(&[
+data::numeric::NumericFunction { function: data::function::IntFunctionId(0), implementation: data::numeric::NumericImplementation { entry: 0, checkpoints: data::Storage::Static(&[
+    data::numeric::NumericCheckpoint {
+        block: data::graph::BlockId(0),
+        instruction: 0,
+        ints: 1,
+        bools: 0,
+    },
+    data::numeric::NumericCheckpoint {
+        block: data::graph::BlockId(1),
+        instruction: 0,
+        ints: 1,
+        bools: 0,
+    },
+    data::numeric::NumericCheckpoint {
+        block: data::graph::BlockId(1),
+        instruction: 1,
+        ints: 2,
+        bools: 0,
+    },
+    data::numeric::NumericCheckpoint {
+        block: data::graph::BlockId(2),
+        instruction: 0,
+        ints: 1,
+        bools: 0,
+    },
+    data::numeric::NumericCheckpoint {
+        block: data::graph::BlockId(2),
+        instruction: 1,
+        ints: 2,
+        bools: 0,
+    },
+]), run: numeric_int_0 } },
+]),
+bools: data::Storage::Static(&[
+]),
+}
+},
             constants: data::constant::ProfiledConstantTable {
                 ints: data::Storage::Static(&[]),
                 strings: data::Storage::Static(&[]),
@@ -6093,7 +6371,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
+            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(100, 136)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
@@ -6363,7 +6641,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
+            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(100, 136)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
@@ -6632,7 +6910,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "fold", data::source::SourceSpan::new(178, 225)),
+            site: data::source::HostCallSite::from_static("main", "fold", data::source::SourceSpan::new(182, 229)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
@@ -6726,7 +7004,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(96, 132)),
+            site: data::source::HostCallSite::from_static("main", "equal_native", data::source::SourceSpan::new(100, 136)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
@@ -6995,7 +7273,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "keep_bits", data::source::SourceSpan::new(275, 304)),
+            site: data::source::HostCallSite::from_static("main", "keep_bits", data::source::SourceSpan::new(279, 308)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::BitArray,
@@ -7055,7 +7333,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "success", data::source::SourceSpan::new(357, 377)),
+            site: data::source::HostCallSite::from_static("main", "success", data::source::SourceSpan::new(361, 381)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Int,
@@ -7198,7 +7476,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "failure", data::source::SourceSpan::new(439, 470)),
+            site: data::source::HostCallSite::from_static("main", "failure", data::source::SourceSpan::new(443, 474)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
@@ -7362,7 +7640,7 @@ fn integer_comparisons() {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("main", "failure", data::source::SourceSpan::new(439, 470)),
+            site: data::source::HostCallSite::from_static("main", "failure", data::source::SourceSpan::new(443, 474)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {

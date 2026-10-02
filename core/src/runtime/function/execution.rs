@@ -153,17 +153,21 @@ where
                     return Ok(Progress::Host(cancelled));
                 }
                 match function.entry(plan) {
-                    ExecutionFunctionRef::Graph(entry) => Ok(Progress::Continue(Self {
-                        function,
-                        storage,
-                        position: Position::Graph {
-                            body: entry.body(),
-                            execution: GraphExecution::new(
-                                entry.body().function_body().block_graph().as_view(),
-                                inputs,
-                            ),
-                        },
-                    })),
+                    ExecutionFunctionRef::Graph(entry) => {
+                        let numeric = function.numeric(plan);
+                        Ok(Progress::Continue(Self {
+                            function,
+                            storage,
+                            position: Position::Graph {
+                                body: entry.body(),
+                                execution: GraphExecution::new(
+                                    entry.body().function_body().block_graph().as_view(),
+                                    inputs,
+                                    numeric,
+                                ),
+                            },
+                        }))
+                    }
                     ExecutionFunctionRef::Host(target) => Ok(Progress::Host(Plan::map_host(
                         Id::prepare_host(plan, origin, target, inputs),
                         |value| Ok(Progress::Complete(value)),

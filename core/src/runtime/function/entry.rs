@@ -2,6 +2,7 @@ use crate::plan::execution::function::{
     self as function, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
     ExecutionHostTarget, ExecutionNeverHostTarget, FunctionBodyOwner,
 };
+use crate::plan::execution::numeric::NumericImplementation;
 use crate::runtime::error::HostCallOrigin;
 use crate::runtime::graph::GraphValue;
 use crate::runtime::graph::RetainedValues;
@@ -24,6 +25,10 @@ pub(in crate::runtime) trait EntryTarget<Plan: ExecutableRuntimePlan>:
         plan: &'plan Plan,
     ) -> ExecutionFunctionRef<'plan, Self::Body, Self::HostTarget>;
 
+    fn numeric<'plan>(&self, _plan: &'plan Plan) -> Option<&'plan NumericImplementation> {
+        None
+    }
+
     fn prepare_host<'plan>(
         plan: &'plan Plan,
         origin: HostCallOrigin,
@@ -38,7 +43,7 @@ pub(in crate::runtime) trait EntryTarget<Plan: ExecutableRuntimePlan>:
 }
 
 macro_rules! entry_target {
-    ($id:ty, $body:ident, $entry:ident, |$current:ident| $argument:expr, |$previous:pat_param, $target:ident| $next:expr) => {
+    ($id:ty, $body:ident, $entry:ident, |$current:ident| $argument:expr, |$previous:pat_param, $target:ident| $next:expr $(, $numeric:ident)?) => {
         impl<Plan: ExecutableRuntimePlan> EntryTarget<Plan> for $id {
             type Body = function::$body<Plan::Profile>;
             type HostTarget = ExecutionHostTarget<Plan::Profile, Self::Body>;
@@ -50,6 +55,10 @@ macro_rules! entry_target {
                 let $current = self;
                 plan.$entry($argument).as_ref()
             }
+
+            $(fn numeric<'plan>(&self, plan: &'plan Plan) -> Option<&'plan NumericImplementation> {
+                plan.$numeric(*self)
+            })?
 
             fn prepare_host<'plan>(
                 plan: &'plan Plan,
@@ -108,7 +117,8 @@ entry_target!(
     ExecutionIntFunctionBody,
     int_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    numeric_int_function
 );
 entry_target!(
     function::FloatFunctionId,
@@ -157,7 +167,8 @@ entry_target!(
     ExecutionBoolFunctionBody,
     bool_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    numeric_bool_function
 );
 entry_target!(
     function::NilFunctionId,

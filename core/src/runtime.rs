@@ -14,6 +14,7 @@ mod host;
 pub(crate) mod integer;
 mod materialize;
 mod native;
+pub(crate) mod numeric;
 mod profile;
 mod retained_list;
 pub(crate) mod shared;

@@ -7,6 +7,7 @@ use super::{
     resolve_specialization_fixed_point,
 };
 use crate::plan::execution::function as execution_function;
+use crate::plan::execution::numeric::NumericFunctions;
 use crate::plan::execution::{
     ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon, LibraryFunctionEntries,
 };
@@ -155,6 +156,7 @@ fn lower_plain(
             value_shapes: Box::new(lowered.value_shapes).into(),
         }),
         functions: Box::new(lowered.functions).into(),
+        numeric: NumericFunctions::interpreted(),
     };
     (program, entry_ids)
 }

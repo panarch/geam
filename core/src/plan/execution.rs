@@ -6,6 +6,7 @@ pub(crate) mod function;
 pub(crate) mod graph;
 pub(crate) mod host;
 mod lowering;
+pub(crate) mod numeric;
 pub(crate) mod prepared;
 pub(crate) mod runtime;
 mod storage;
@@ -191,6 +192,7 @@ pub(crate) struct HostedProgram<Profile: HostProfile> {
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
     functions: Node<FunctionTables<Profile>>,
+    numeric: numeric::NumericFunctions,
 }
 
 struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {

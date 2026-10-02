@@ -944,7 +944,7 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
         fn evaluate_graph(&self) {
             let body = self.int_function(IntFunctionId(0)).body();
             let mut graph =
-                GraphExecution::new(body.block_graph().as_view(), RetainedValues::empty());
+                GraphExecution::new(body.block_graph().as_view(), RetainedValues::empty(), None);
             let mut storage = GraphStorage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);

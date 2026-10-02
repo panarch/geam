@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 11,
+    format: 12,
     program: data::ProgramTables {
         root: data::source::module_id(2),
         modules: data::Storage::Static(&[
@@ -189,6 +189,7 @@ pub fn main() {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
+        numeric: data::numeric::NumericFunctions::interpreted(),
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),

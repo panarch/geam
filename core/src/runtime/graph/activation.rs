@@ -8,6 +8,7 @@ use crate::plan::execution::function::{
     FunctionExit,
 };
 use crate::plan::execution::graph::BlockGraphView;
+use crate::plan::execution::numeric::NumericImplementation;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -15,6 +16,7 @@ use crate::runtime::evaluated::{
 };
 use crate::runtime::function::EntryTarget;
 use crate::runtime::integer::IntegerValue;
+use crate::runtime::numeric::{NumericProgress, NumericValues};
 use crate::runtime::state::list::{
     BitArrayListValueId, BoolListValueId, CustomListValueId, ExternalListValueId, FloatListValueId,
     FunctionListValueId, IntListValueId, ListListValueId, NilListValueId, ParameterListListValueId,
@@ -32,6 +34,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     pub(super) pool: StoragePool,
     match_results: MatchResults,
     pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
+    numeric: NumericValues,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -42,6 +45,11 @@ pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan>
 
 pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
+    Numeric {
+        frame: Frame<'plan, Plan>,
+        implementation: &'plan NumericImplementation,
+        point: usize,
+    },
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
     Return(Return<'plan, Plan>),
     Complete(CompletedGraph),
@@ -146,13 +154,15 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
     pub(in crate::runtime) fn new(
         graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
+        numeric: Option<&'plan NumericImplementation>,
     ) -> Self {
         Self {
-            active: Activation::Graph(Frame {
+            active: Frame {
                 graph,
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(RootExit),
-            }),
+            }
+            .enter(numeric),
         }
     }
 
@@ -166,62 +176,49 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         storage.returns.domain = Some(state.captures().domain());
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
-            Activation::Graph(mut frame) => loop {
-                let block = frame.graph.block(frame.position.block);
-                let active = if frame.position.instruction < block.instructions().len() {
-                    super::instruction::advance(plan, state, frame, storage, remaining)?
+            Activation::Graph(frame) => frame.advance(plan, state, storage, remaining)?,
+            Activation::Numeric {
+                mut frame,
+                implementation,
+                point,
+            } => {
+                if !frame
+                    .position
+                    .environment
+                    .load_numeric(&mut storage.numeric)
+                {
+                    frame.advance(plan, state, storage, remaining)?
                 } else {
-                    use super::terminator::{GraphAction, NeverCall, terminator_action};
-
-                    match terminator_action(
-                        plan,
-                        state,
-                        frame.position.environment,
-                        block.terminator(),
-                        &mut storage.match_results,
-                    )? {
-                        GraphAction::Continue { block, inputs } => {
-                            frame.position = GraphPosition::new(block, inputs);
-                            if *remaining > 0 {
-                                *remaining -= 1;
-                                continue;
-                            }
-                            break Activation::Graph(frame);
-                        }
-                        GraphAction::Exit { exit, environment } => frame
-                            .exit
-                            .exit(CompletedGraph { exit, environment }, storage)?,
-                        GraphAction::NeverCall {
-                            function,
-                            mut inputs,
-                            site,
-                        } => {
-                            drop(frame.exit);
-                            let function = match function {
-                                NeverCall::Direct(function) => function,
-                                NeverCall::Value { function, captures } => {
-                                    inputs.append_captures(&captures);
-                                    function
+                    // The outer driver already charged the first graph step.
+                    let mut budget = *remaining + 1;
+                    let progress = (implementation.run)(point, &mut storage.numeric, &mut budget);
+                    *remaining = budget;
+                    frame.position.environment.restore_numeric(&storage.numeric);
+                    match progress {
+                        NumericProgress::Yield(point) | NumericProgress::Interpreted(point) => {
+                            let checkpoint = implementation.checkpoints[point];
+                            frame.position.block = checkpoint.block;
+                            frame.position.instruction = checkpoint.instruction;
+                            if matches!(progress, NumericProgress::Yield(_)) {
+                                Activation::Numeric {
+                                    frame,
+                                    implementation,
+                                    point,
                                 }
-                            };
-                            if let Some(cancelled) = plan
-                                .reject_foreign_callable(&inputs, Some(state.captures().domain()))
-                            {
-                                Activation::Host(cancelled)
                             } else {
-                                enter_never(plan, function, HostCallOrigin::source(site), inputs)
+                                Activation::Graph(frame)
                             }
                         }
+                        NumericProgress::Complete(exit) => frame.exit.exit(
+                            CompletedGraph {
+                                exit,
+                                environment: frame.position.environment,
+                            },
+                            storage,
+                        )?,
                     }
-                };
-                match active {
-                    Activation::Graph(next) if *remaining > 0 => {
-                        *remaining -= 1;
-                        frame = next;
-                    }
-                    active => break active,
                 }
-            },
+            }
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -241,11 +238,90 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             pool: StoragePool::default(),
             match_results: MatchResults::default(),
             arithmetic: Default::default(),
+            numeric: Default::default(),
         }
     }
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
+    fn enter(self, numeric: Option<&'plan NumericImplementation>) -> Activation<'plan, Plan> {
+        match numeric {
+            Some(implementation) => Activation::Numeric {
+                frame: self,
+                implementation,
+                point: implementation.entry,
+            },
+            None => Activation::Graph(self),
+        }
+    }
+
+    fn advance(
+        self,
+        plan: &'plan Plan,
+        state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
+        storage: &mut Storage<'plan, Plan>,
+        remaining: &mut usize,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        let mut frame = self;
+        let active = loop {
+            let block = frame.graph.block(frame.position.block);
+            let active = if frame.position.instruction < block.instructions().len() {
+                super::instruction::advance(plan, state, frame, storage, remaining)?
+            } else {
+                use super::terminator::{GraphAction, NeverCall, terminator_action};
+
+                match terminator_action(
+                    plan,
+                    state,
+                    frame.position.environment,
+                    block.terminator(),
+                    &mut storage.match_results,
+                )? {
+                    GraphAction::Continue { block, inputs } => {
+                        frame.position = GraphPosition::new(block, inputs);
+                        if *remaining > 0 {
+                            *remaining -= 1;
+                            continue;
+                        }
+                        break Activation::Graph(frame);
+                    }
+                    GraphAction::Exit { exit, environment } => frame
+                        .exit
+                        .exit(CompletedGraph { exit, environment }, storage)?,
+                    GraphAction::NeverCall {
+                        function,
+                        mut inputs,
+                        site,
+                    } => {
+                        drop(frame.exit);
+                        let function = match function {
+                            NeverCall::Direct(function) => function,
+                            NeverCall::Value { function, captures } => {
+                                inputs.append_captures(&captures);
+                                function
+                            }
+                        };
+                        if let Some(cancelled) =
+                            plan.reject_foreign_callable(&inputs, Some(state.captures().domain()))
+                        {
+                            Activation::Host(cancelled)
+                        } else {
+                            enter_never(plan, function, HostCallOrigin::source(site), inputs)
+                        }
+                    }
+                }
+            };
+            match active {
+                Activation::Graph(next) if *remaining > 0 => {
+                    *remaining -= 1;
+                    frame = next;
+                }
+                active => break active,
+            }
+        };
+        Ok(active)
+    }
+
     pub(super) fn store<Value: ReturnValue>(mut self, value: Value) -> Activation<'plan, Plan> {
         value.push(&mut self.position.environment);
         Activation::Graph(self)
@@ -365,11 +441,13 @@ where
 {
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
-        Activation::Graph(Frame {
+        let numeric = self.id.numeric(self.plan);
+        Frame {
             graph,
             position: GraphPosition::new(graph.entry(), inputs),
             exit: self,
-        })
+        }
+        .enter(numeric)
     }
 }
 
@@ -597,23 +675,463 @@ impl ReturnValue for () {
 #[cfg(test)]
 mod tests {
     use super::{
-        Activation, Execution, Frame, GraphPosition, Progress, RootExit, Storage, enter_function,
-        enter_never,
+        Activation, Execution, Frame, FunctionContinuation, GraphPosition, Progress, RootExit,
+        Storage, enter_function, enter_never,
     };
     use crate::ExecutionPlan;
-    use crate::plan::execution::function::{FunctionExit, IntFunctionId};
+    use crate::plan::execution::function::{
+        ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
+        IntFunctionId,
+    };
+    use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
+    use crate::plan::execution::numeric::{NumericCheckpoint, NumericImplementation};
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
+    use crate::runtime::numeric::{NumericProgress, NumericValues};
     use crate::runtime::state::RuntimeState;
-    use crate::runtime::{EvaluatedValue, HostCallOrigin, RuntimeListStorage, Value};
+    use crate::runtime::{
+        EvaluatedValue, ExecutableRuntimePlan, HostCallOrigin, RuntimeListStorage, Value,
+    };
     use num_bigint::BigInt;
     use std::collections::BTreeSet;
     use std::ptr;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn returned_int(plan: &ExecutionPlan, id: IntFunctionId, completed: CompletedGraph) -> BigInt {
-        let body = plan.int_function(id).body();
+    const NUMERIC_CHOOSE_SOURCE: &str = "fn choose(value: Int, flag: Bool) { case flag { True -> value + 1 False -> value - 1 } } pub fn main() { choose(7, True) }";
+    const CHOOSE_POINTS: &[NumericCheckpoint] = &[
+        NumericCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 1,
+            bools: 1,
+        },
+        NumericCheckpoint {
+            block: BlockId(1),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+        },
+        NumericCheckpoint {
+            block: BlockId(1),
+            instruction: 1,
+            ints: 2,
+            bools: 0,
+        },
+        NumericCheckpoint {
+            block: BlockId(2),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+        },
+        NumericCheckpoint {
+            block: BlockId(2),
+            instruction: 1,
+            ints: 2,
+            bools: 0,
+        },
+    ];
+
+    fn one_step_choose(
+        point: usize,
+        values: &mut NumericValues,
+        budget: &mut usize,
+    ) -> NumericProgress {
+        // This bridge fixture supplies one exact instruction or edge per call;
+        // the emitter's compiled execution is tested by the prepared fixture.
+        assert_eq!(*budget, 1);
+        *budget = 0;
+        match point {
+            0 => {
+                assert_eq!(values.bools, [true]);
+                values.bools.clear();
+                NumericProgress::Yield(1)
+            }
+            1 => {
+                let output = values.ints[0] + 1;
+                values.ints.push(output);
+                if output > i128::from(i64::MAX) {
+                    NumericProgress::Interpreted(2)
+                } else {
+                    NumericProgress::Yield(2)
+                }
+            }
+            2 => NumericProgress::Complete(BlockGraphExitId(0)),
+            _ => panic!("bridge fixture uses only the True branch"),
+        }
+    }
+
+    // Both complete execution profiles consume this same frame protocol.
+    macro_rules! with_numeric_plans {
+        ($plan:ident, $scenario:block) => {{
+            let plain = crate::runtime::plan_src(NUMERIC_CHOOSE_SOURCE);
+            let $plan = &plain;
+            $scenario
+
+            let typed = crate::compile_typed_host_program(
+                "example",
+                "example",
+                [crate::PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [crate::ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        NUMERIC_CHOOSE_SOURCE,
+                    )],
+                )],
+                crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let mut hosted = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let (hosted_plan, _, _) = hosted.parts_mut();
+            let $plan = &**hosted_plan;
+            $scenario
+        }};
+    }
+
+    #[test]
+    fn numeric_activation_preserves_the_existing_frame_and_exact_yield_prefix() {
+        with_numeric_plans!(plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = NumericImplementation {
+                entry: 0,
+                checkpoints: CHOOSE_POINTS.to_vec().into(),
+                run: one_step_choose,
+            };
+            let mut inputs = RetainedValues::empty();
+            inputs.push_int(7_i64.into());
+            inputs.push_bool(true);
+            let mut execution =
+                Execution::new(body.block_graph().as_view(), inputs, Some(&implementation));
+            let mut storage = Storage::new();
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            for (point, instruction, value) in [(1, 0, 7_i64), (2, 1, 8_i64)] {
+                let mut remaining = 0;
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut remaining)
+                        .unwrap(),
+                );
+                assert_eq!(remaining, 0);
+                let (frame, actual) = numeric_frame(&execution);
+                assert_eq!(actual, point);
+                assert_eq!(
+                    (frame.position.block, frame.position.instruction),
+                    (BlockId(1), instruction)
+                );
+                assert_eq!(
+                    frame
+                        .position
+                        .environment
+                        .int(IntLocalId(instruction))
+                        .small(),
+                    Some(value)
+                );
+            }
+            execution = continuing(
+                execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .unwrap(),
+            );
+            assert_eq!(
+                returned_int(
+                    plan,
+                    IntFunctionId(1),
+                    completed(
+                        execution
+                            .advance(plan, &mut state, &mut storage, &mut 0)
+                            .unwrap()
+                    )
+                ),
+                BigInt::from(8)
+            );
+        });
+    }
+
+    #[test]
+    fn a_big_result_resumes_after_the_completed_instruction_and_initial_big_never_calls_rust() {
+        with_numeric_plans!(plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            for initially_big in [false, true] {
+                let implementation = NumericImplementation {
+                    entry: 0,
+                    checkpoints: CHOOSE_POINTS.to_vec().into(),
+                    run: if initially_big {
+                        forbidden_numeric_entry
+                    } else {
+                        one_step_choose
+                    },
+                };
+                let initial: BigInt = if initially_big {
+                    BigInt::from(1) << 100
+                } else {
+                    i64::MAX.into()
+                };
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(initial.clone().into());
+                inputs.push_bool(true);
+                let mut execution =
+                    Execution::new(body.block_graph().as_view(), inputs, Some(&implementation));
+                let mut storage = Storage::new();
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                let frame = active_frame(&execution);
+                assert_eq!(
+                    (frame.position.block, frame.position.instruction),
+                    (BlockId(1), 1)
+                );
+                assert_eq!(
+                    frame
+                        .position
+                        .environment
+                        .int(IntLocalId(1))
+                        .bigint()
+                        .as_ref(),
+                    &(&initial + 1)
+                );
+                loop {
+                    match execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap()
+                    {
+                        Progress::Continue(next) => execution = next,
+                        result => {
+                            assert_eq!(
+                                returned_int(plan, IntFunctionId(1), completed(result)),
+                                initial + 1
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    fn numeric_frame<'run, 'plan, Plan: ExecutableRuntimePlan>(
+        execution: &'run Execution<'plan, Plan>,
+    ) -> (&'run Frame<'plan, Plan>, usize) {
+        match &execution.active {
+            Activation::Numeric { frame, point, .. } => (frame, *point),
+            _ => panic!("a Small yield retains generated execution"),
+        }
+    }
+
+    fn forbidden_numeric_entry(_: usize, _: &mut NumericValues, _: &mut usize) -> NumericProgress {
+        panic!("initial Big must remain interpreted")
+    }
+
+    #[test]
+    #[should_panic(expected = "bridge fixture uses only the True branch")]
+    fn bridge_fixture_rejects_a_checkpoint_outside_its_explicit_branch() {
+        one_step_choose(99, &mut NumericValues::default(), &mut 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "a Small yield retains generated execution")]
+    fn numeric_frame_guard_rejects_an_interpreted_activation() {
+        let plan = crate::runtime::plan_src(NUMERIC_CHOOSE_SOURCE);
+        numeric_frame::<ExecutionPlan>(&Execution::new(
+            plan.int_function(IntFunctionId(1))
+                .body()
+                .block_graph()
+                .as_view(),
+            RetainedValues::empty(),
+            None,
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "initial Big must remain interpreted")]
+    fn initial_big_fixture_guard_rejects_a_generated_call() {
+        forbidden_numeric_entry(0, &mut NumericValues::default(), &mut 1);
+    }
+
+    #[test]
+    fn numeric_and_initial_big_returns_preserve_the_existing_fallible_return_mapper() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        with_numeric_plans!(plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = NumericImplementation {
+                entry: 0,
+                checkpoints: CHOOSE_POINTS.to_vec().into(),
+                run: one_step_choose,
+            };
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for initially_big in [false, true] {
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // This owner fixture exercises the already-fallible return
+                    // adapter, not a new arithmetic or runtime failure domain.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut values = RetainedValues::empty();
+                values.push_int(7_i64.into());
+                values.push_int(if initially_big {
+                    (BigInt::from(1) << 100_usize).into()
+                } else {
+                    8_i64.into()
+                });
+                let mut position = GraphPosition::new(BlockId(1), values);
+                position.instruction = 1;
+                let execution = Execution {
+                    active: Activation::Numeric {
+                        frame: Frame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point: 2,
+                    },
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let error = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .err()
+                    .unwrap();
+                assert_eq!(error, ExecutionError::Invariant(expected.clone()));
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    fn int_body<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        id: IntFunctionId,
+    ) -> &ExecutionIntFunctionBody<Plan::Profile> {
+        match plan.int_function(id).as_ref() {
+            ExecutionFunctionRef::Graph(function) => function.body(),
+            ExecutionFunctionRef::Host(_) => panic!("numeric fixture requires a source graph"),
+        }
+    }
+
+    #[test]
+    fn numeric_fixture_guards_reject_native_entries_and_host_progress() {
+        use crate::{HostProviderModule, HostProviderSet, StatelessHostProfile};
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let called = Arc::new(AtomicUsize::new(0));
+        let observed = called.clone();
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    "@external(erlang, \"native\", \"answer\") fn native_answer() -> Int pub fn main() { native_answer() + 1 }",
+                )],
+            )],
+            HostProviderSet::from_providers([
+                HostProviderModule::<StatelessHostProfile>::new("example", "example")
+                    .unwrap()
+                    .with_function::<(), BigInt, _>("native_answer", move || {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        BigInt::from(42)
+                    })
+                    .unwrap(),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, _, _) = execution.parts_mut();
+        let plan = &**plan;
+        let failure = catch_unwind(AssertUnwindSafe(|| {
+            int_body(plan, IntFunctionId(1));
+        }))
+        .unwrap_err();
+        assert_eq!(
+            *failure.downcast::<&str>().unwrap(),
+            "numeric fixture requires a source graph"
+        );
+        for expect_complete in [false, true] {
+            let failure = catch_unwind(AssertUnwindSafe(|| {
+                let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
+                let mut storage = Storage::new();
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let source = Execution::new(graph, RetainedValues::empty(), None);
+                let suspended = continuing(
+                    source
+                        .advance(plan, &mut state, &mut storage, &mut 100)
+                        .unwrap(),
+                );
+                let host = suspended
+                    .advance(plan, &mut state, &mut storage, &mut 100)
+                    .unwrap();
+                if expect_complete {
+                    completed(host);
+                } else {
+                    continuing(host);
+                }
+            }))
+            .unwrap_err();
+            assert_eq!(
+                *failure.downcast::<&str>().unwrap(),
+                "numeric fixture has no host calls"
+            );
+        }
+        assert_eq!(called.load(Ordering::SeqCst), 0);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        assert_eq!(
+            host.block_on(execution.run_main(&host, &mut (), &mut echo))
+                .unwrap(),
+            crate::Value::Int(43.into())
+        );
+        assert_eq!(called.load(Ordering::SeqCst), 1);
+        assert!(echo.is_empty());
+    }
+
+    fn returned_int<Plan: ExecutableRuntimePlan>(
+        plan: &Plan,
+        id: IntFunctionId,
+        completed: CompletedGraph,
+    ) -> BigInt {
+        let body = int_body(plan, id);
         match body.exit(completed.exit()) {
             FunctionExit::Return(value) => completed.into_value(value).into_bigint(),
             FunctionExit::TailCall { .. } => {
@@ -622,34 +1140,37 @@ mod tests {
         }
     }
 
-    fn continuing(progress: Progress<'_, ExecutionPlan>) -> Execution<'_, ExecutionPlan> {
+    fn continuing<Plan: ExecutableRuntimePlan>(
+        progress: Progress<'_, Plan>,
+    ) -> Execution<'_, Plan> {
         match progress {
             Progress::Continue(next) => next,
             Progress::Complete(_) => panic!("fixture graph must still be running"),
-            Progress::Host(invoke) => match invoke {},
+            Progress::Host(_) => panic!("numeric fixture has no host calls"),
         }
     }
 
-    fn active_frame<'run, 'plan>(
-        execution: &'run Execution<'plan, ExecutionPlan>,
-    ) -> &'run Frame<'plan, ExecutionPlan> {
+    fn active_frame<'run, 'plan, Plan: ExecutableRuntimePlan>(
+        execution: &'run Execution<'plan, Plan>,
+    ) -> &'run Frame<'plan, Plan> {
         match &execution.active {
             Activation::Graph(frame) => frame,
             _ => panic!("fixture activation must be a graph"),
         }
     }
 
-    fn completed(progress: Progress<'_, ExecutionPlan>) -> CompletedGraph {
+    fn completed<Plan: ExecutableRuntimePlan>(progress: Progress<'_, Plan>) -> CompletedGraph {
         match progress {
             Progress::Complete(completed) => completed,
             Progress::Continue(_) => panic!("fixture graph must have completed"),
-            Progress::Host(invoke) => match invoke {},
+            Progress::Host(_) => panic!("numeric fixture has no host calls"),
         }
     }
 
-    fn complete_int_graph(plan: &ExecutionPlan) -> CompletedGraph {
-        let body = plan.int_function(IntFunctionId(0)).body();
-        let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
+    fn complete_int_graph<Plan: ExecutableRuntimePlan>(plan: &Plan) -> CompletedGraph {
+        let body = int_body(plan, IntFunctionId(0));
+        let mut execution =
+            Execution::new(body.block_graph().as_view(), RetainedValues::empty(), None);
         let mut storage = Storage::new();
         let mut echo = Vec::new();
         let mut state = RuntimeState::new(&mut echo);
@@ -659,8 +1180,7 @@ mod tests {
                 .unwrap()
             {
                 Progress::Continue(next) => execution = next,
-                Progress::Complete(completed) => return completed,
-                Progress::Host(invoke) => match invoke {},
+                result => return completed(result),
             }
         }
     }
@@ -690,7 +1210,7 @@ pub fn main() {
             let mut state = RuntimeState::new(&mut echo);
             let mut remaining = budget - 1;
             let execution = continuing(
-                Execution::new(graph, RetainedValues::empty())
+                Execution::new(graph, RetainedValues::empty(), None)
                     .advance(&plan, &mut state, &mut storage, &mut remaining)
                     .unwrap(),
             );
@@ -763,7 +1283,7 @@ pub fn main() {
             for value in inputs {
                 retained.push_evaluated(value);
             }
-            let mut execution = Execution::new(graph, retained);
+            let mut execution = Execution::new(graph, retained, None);
             let mut storage = Storage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
@@ -801,34 +1321,61 @@ pub fn main() {
     }
 
     #[test]
-    #[should_panic(expected = "fixture graph must still be running")]
     fn continuing_rejects_a_completed_source_graph() {
-        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
-        continuing(Progress::Complete(complete_int_graph(&plan)));
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        with_numeric_plans!(plan, {
+            let failure = catch_unwind(AssertUnwindSafe(|| {
+                let finished = Execution {
+                    active: Activation::Complete(complete_int_graph(plan)),
+                };
+                let mut storage = Storage::new();
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                continuing(
+                    finished
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+            }))
+            .unwrap_err();
+            assert_eq!(
+                *failure.downcast::<&str>().unwrap(),
+                "fixture graph must still be running"
+            );
+        });
     }
 
     #[test]
     #[should_panic(expected = "fixture activation must be a graph")]
     fn active_frame_rejects_a_completed_activation() {
         let plan = crate::runtime::plan_src("pub fn main() { 42 }");
-        active_frame(&Execution {
+        active_frame::<ExecutionPlan>(&Execution {
             active: Activation::Complete(complete_int_graph(&plan)),
         });
     }
 
     #[test]
-    #[should_panic(expected = "fixture graph must have completed")]
     fn completed_rejects_a_running_source_graph() {
-        let plan = crate::runtime::plan_src("pub fn main() { 42 }");
-        let graph = plan
-            .int_function(IntFunctionId(0))
-            .body()
-            .block_graph()
-            .as_view();
-        completed(Progress::Continue(Execution::new(
-            graph,
-            RetainedValues::empty(),
-        )));
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        with_numeric_plans!(plan, {
+            let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
+            let failure = catch_unwind(AssertUnwindSafe(|| {
+                let running = Execution::new(graph, RetainedValues::empty(), None);
+                let mut storage = Storage::new();
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                completed(
+                    running
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+            }))
+            .unwrap_err();
+            assert_eq!(
+                *failure.downcast::<&str>().unwrap(),
+                "fixture graph must have completed"
+            );
+        });
     }
 
     #[test]
@@ -857,7 +1404,7 @@ pub fn main() { left(20) + 1 }
                 .block_graph()
                 .as_view();
             let root_instructions = graph.block(graph.entry()).instructions().as_ptr();
-            let mut execution = Execution::new(graph, RetainedValues::empty());
+            let mut execution = Execution::new(graph, RetainedValues::empty(), None);
             let mut storage = Storage::new();
             let mut echo = Vec::new();
             let mut state = RuntimeState::new(&mut echo);
@@ -1049,7 +1596,8 @@ pub fn main() {
 "#,
         );
         let body = plan.int_function(IntFunctionId(0)).body();
-        let mut execution = Execution::new(body.block_graph().as_view(), RetainedValues::empty());
+        let mut execution =
+            Execution::new(body.block_graph().as_view(), RetainedValues::empty(), None);
         let mut storage = Storage::new();
         let mut lists = RuntimeListStorage::default();
         let captures = crate::runtime::CaptureStorage::default();
@@ -1130,7 +1678,7 @@ pub fn main() { count(0) + 1 }
             .spawn(move || {
                 let body = plan.int_function(IntFunctionId(0)).body();
                 let mut execution =
-                    Execution::new(body.block_graph().as_view(), RetainedValues::empty());
+                    Execution::new(body.block_graph().as_view(), RetainedValues::empty(), None);
                 let mut storage = Storage::new();
                 let mut echo = Vec::new();
                 let mut state = RuntimeState::new(&mut echo);

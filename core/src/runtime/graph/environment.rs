@@ -1,5 +1,6 @@
 mod capture;
 mod match_results;
+mod numeric;
 mod pool;
 mod read;
 mod transfer;

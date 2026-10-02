@@ -239,3 +239,9 @@ pub mod source {
         }
     }
 }
+pub mod numeric {
+    pub use crate::plan::execution::numeric::{
+        NumericCheckpoint, NumericFunction, NumericFunctions, NumericImplementation,
+    };
+    pub use crate::runtime::numeric::{NumericKernel, NumericProgress, NumericValues};
+}
