@@ -1,6 +1,7 @@
-use super::{Processes, Receive, RecordReceive, processes};
+use super::{Processes, Receive, RecordReceive, SelectiveReceive, processes};
 use crate::{GleamErlangHostProfile, Pid};
 use geam_core::execution::ExecutionUnit;
+use geam_core::host::native::NativeValues;
 use geam_core::host::{
     HostCall, HostCallContinuation, HostCallError, HostConstruction, HostConstructions,
     HostExecutionContext, HostExecutionError, HostExternal, HostOwnedCompletion, HostProvider,
@@ -93,6 +94,49 @@ where
         deadline: Option<Instant>,
     ) -> Result<Receive<Profile>, HostCallError> {
         Receive::any(&mut self.call, self.unit.id(), deadline)
+    }
+
+    /// Selects with caller-owned state and the producer's native equality context.
+    /// `None` keeps a candidate queued; `Some` consumes only the first match.
+    /// The output cannot borrow the temporary candidate:
+    ///
+    /// ```compile_fail
+    /// use geam_erlang::{GleamErlangHostProfile, service::CurrentProcess};
+    /// use geam_core::{HostProvider, HostType};
+    /// fn borrowed<Profile: GleamErlangHostProfile, Provider: HostProvider<Profile>, Return: HostType>(
+    ///     process: &mut CurrentProcess<'_, Profile, Provider, Return>,
+    /// ) {
+    ///     let _ = process.receive_with(|_, candidate| Some(candidate), None);
+    /// }
+    /// ```
+    ///
+    /// A mutating closure needs `FnMut`, which is outside this read-only interface:
+    ///
+    /// ```compile_fail
+    /// use geam_erlang::{GleamErlangHostProfile, service::CurrentProcess};
+    /// use geam_core::{HostProvider, HostType};
+    /// fn mutable<Profile: GleamErlangHostProfile, Provider: HostProvider<Profile>, Return: HostType>(
+    ///     process: &mut CurrentProcess<'_, Profile, Provider, Return>,
+    /// ) {
+    ///     let mut visits = 0;
+    ///     let _ = process.receive_with(move |_, _| { visits += 1; Some(visits) }, None);
+    /// }
+    /// ```
+    pub fn receive_with<Matcher, Output>(
+        &mut self,
+        matcher: Matcher,
+        deadline: Option<Instant>,
+    ) -> Result<SelectiveReceive<Profile, Matcher, Output>, HostCallError>
+    where
+        Matcher: for<'values, 'candidate> Fn(
+                NativeValues<'values>,
+                &'candidate NativeValue,
+            ) -> Option<Output>
+            + Send
+            + 'static,
+        Output: Send + 'static,
+    {
+        SelectiveReceive::new(&mut self.call, self.unit.id(), matcher, deadline)
     }
 
     pub fn receive_record(

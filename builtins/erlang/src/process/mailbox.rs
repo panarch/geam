@@ -1,5 +1,7 @@
 mod record;
+mod selective;
 pub use record::RecordReceive;
+pub use selective::SelectiveReceive;
 
 use super::schema::Subject;
 use super::{A, Call, Native, receive_deadline};
@@ -39,17 +41,6 @@ enum Filter<Profile: HostProfile> {
     Subject(NativeValue),
     Record(NativeValue, usize),
     Selector(SelectorValue<Profile>),
-}
-
-impl<Profile: HostProfile> Clone for Filter<Profile> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Any => Self::Any,
-            Self::Subject(tag) => Self::Subject(tag.clone()),
-            Self::Record(tag, arity) => Self::Record(tag.clone(), *arity),
-            Self::Selector(selector) => Self::Selector(selector.clone()),
-        }
-    }
 }
 
 struct Selected<Profile: HostProfile> {
@@ -189,7 +180,7 @@ impl<Profile: GleamErlangHostProfile> Receive<Profile> {
             scan,
             timeout,
         } = self;
-        let first = start(context, pid, filter.clone(), scan).await?;
+        let (filter, first) = start(context, pid, filter, scan).await?;
         match timeout {
             Some(timeout) => timed(context, pid, filter, first, timeout).await,
             None => next(context, pid, filter, first).await.map(Some),
@@ -213,7 +204,7 @@ impl<Profile: GleamErlangHostProfile> Receive<Profile> {
             timeout,
         } = self;
         drop(timeout);
-        let first = start(context, pid, filter.clone(), scan).await?;
+        let (filter, first) = start(context, pid, filter, scan).await?;
         next(context, pid, filter, first).await
     }
 }
@@ -223,7 +214,7 @@ async fn start<Profile, Provider, Targets, Matcher>(
     pid: ExecutionUnitId,
     filter: Matcher,
     scan: Scan,
-) -> Result<Step<Matcher::Output>, HostExecutionError>
+) -> Result<(Matcher, Step<Matcher::Output>), HostExecutionError>
 where
     Profile: GleamErlangHostProfile,
     Provider: HostProvider<Profile>,
@@ -237,7 +228,7 @@ where
                     geam_core::HostFailure::new("receive belongs to another process").into(),
                 );
             }
-            check(&mut call, pid, &filter, Cursor::Resume(scan))
+            check(&mut call, pid, &filter, Cursor::Resume(scan)).map(|state| (filter, state))
         })
         .await?
         .map_err(Into::into)
@@ -362,7 +353,7 @@ async fn timed_selected<
 >(
     context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     pid: ExecutionUnitId,
-    filter: Matcher,
+    mut filter: Matcher,
     mut state: Step<Matcher::Output>,
     mut timeout: Sleep,
 ) -> Result<Option<Matcher::Output>, HostExecutionError> {
@@ -372,10 +363,7 @@ async fn timed_selected<
                 return Ok(Some(selected));
             }
             Step::Scanning(scan) => {
-                let filter = filter.clone();
-                state = context
-                    .with_call(move |mut call| check(&mut call, pid, &filter, Cursor::Resume(scan)))
-                    .await??;
+                (filter, state) = advance(context, pid, filter, Cursor::Resume(scan)).await?;
             }
             Step::Waiting(waiter, after) => {
                 // Finish the queued snapshot before considering its timeout,
@@ -386,12 +374,8 @@ async fn timed_selected<
                     }
                     Either::Right((ready, _)) => {
                         ready.map_err(|_| HostExecutionError::Cancelled)?;
-                        let filter = filter.clone();
-                        state = context
-                            .with_call(move |mut call| {
-                                check(&mut call, pid, &filter, Cursor::After(after))
-                            })
-                            .await??;
+                        (filter, state) =
+                            advance(context, pid, filter, Cursor::After(after)).await?;
                     }
                 }
             }
@@ -407,27 +391,41 @@ async fn next_selected<
 >(
     context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     pid: ExecutionUnitId,
-    filter: Matcher,
+    mut filter: Matcher,
     mut state: Step<Matcher::Output>,
 ) -> Result<Matcher::Output, HostExecutionError> {
     loop {
         match state {
             Step::Selected(selected) => return Ok(selected),
             Step::Scanning(scan) => {
-                let filter = filter.clone();
-                state = context
-                    .with_call(move |mut call| check(&mut call, pid, &filter, Cursor::Resume(scan)))
-                    .await??;
+                (filter, state) = advance(context, pid, filter, Cursor::Resume(scan)).await?;
             }
             Step::Waiting(waiter, after) => {
                 waiter.await.map_err(|_| HostExecutionError::Cancelled)?;
-                let filter = filter.clone();
-                state = context
-                    .with_call(move |mut call| check(&mut call, pid, &filter, Cursor::After(after)))
-                    .await??;
+                (filter, state) = advance(context, pid, filter, Cursor::After(after)).await?;
             }
         }
     }
+}
+
+async fn advance<Profile, Provider, Targets, Matcher>(
+    context: &HostExecutionContext<'_, Profile, Provider, Targets>,
+    pid: ExecutionUnitId,
+    filter: Matcher,
+    cursor: Cursor,
+) -> Result<(Matcher, Step<Matcher::Output>), HostExecutionError>
+where
+    Profile: GleamErlangHostProfile,
+    Provider: HostProvider<Profile>,
+    Targets: HostTypeSequence,
+    Matcher: MailboxMatch<Profile>,
+{
+    context
+        .with_call(move |mut call| {
+            check(&mut call, pid, &filter, cursor).map(|state| (filter, state))
+        })
+        .await?
+        .map_err(Into::into)
 }
 
 async fn invoke<
@@ -448,7 +446,7 @@ async fn invoke<
     Ok(value)
 }
 
-trait MailboxMatch<Profile: HostProfile>: Clone + Send + 'static {
+trait MailboxMatch<Profile: HostProfile>: Send + 'static {
     type Output: Send + 'static;
 
     fn select(
@@ -678,9 +676,11 @@ mod tests {
     use super::{A, Call, Native, Selector, Subject, find, record_fields};
     use crate::process::schema::Down;
     use crate::process::{B, C, One};
+    use crate::service::Processes;
     use crate::service::types::NamedSubject;
     use crate::{Component, GleamErlangProfile, GleamErlangRunState, GleamErlangStores};
     use ecow::EcoString;
+    use geam_core::host::native::NativeValues;
     use geam_core::host::{
         HostCallCompletion, HostCallContinuation, HostCallError, HostCustom, HostExternal,
         HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
@@ -693,6 +693,7 @@ mod tests {
     };
     use geam_stdlib::provider_support::GleamResult;
     use num_bigint::BigInt;
+    use std::sync::Arc;
 
     #[test]
     fn dropping_unstarted_receives_preserves_selected_and_unmatched_messages() {
@@ -702,7 +703,7 @@ mod tests {
             let unmatched = call.native_value::<BigInt>(7.into());
             let reply = call.native_value::<BigInt>(42.into());
             let deadline = call.clock().now();
-            let mut processes = crate::service::Processes::new(&mut call);
+            let mut processes = Processes::new(&mut call);
             let unit = processes.current().unwrap();
             processes.send(&unit, unmatched);
             processes.send(
@@ -723,7 +724,7 @@ mod tests {
             tagged: bool,
         ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
             let deadline = call.call().clock().now();
-            let mut processes = crate::service::Processes::new(call.call());
+            let mut processes = Processes::new(call.call());
             let receive = if tagged {
                 processes
                     .receive(NativeValue::symbol("reply"), Some(deadline))
@@ -797,7 +798,7 @@ pub fn main() { prime() #(take(True), take(False)) }
             let eight = call.native_value::<BigInt>(8.into());
             let nine = call.native_value::<BigInt>(9.into());
             let answer = call.native_value::<BigInt>(42.into());
-            let mut processes = crate::service::Processes::new(&mut call);
+            let mut processes = Processes::new(&mut call);
             let current = processes.current().unwrap();
             for value in prefix {
                 processes.send(&current, value);
@@ -819,7 +820,7 @@ pub fn main() { prime() #(take(True), take(False)) }
             record: bool,
         ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
             let zero = call.source::<BigInt>(0.into());
-            let mut processes = crate::service::Processes::new(call.call());
+            let mut processes = Processes::new(call.call());
             let receive = if record {
                 processes
                     .receive_record(NativeValue::symbol("reply"), 1, None)
@@ -890,11 +891,44 @@ pub fn main() {
 
     #[test]
     fn a_retained_receive_cannot_move_to_another_source_invocation() {
+        fn matching(
+            retained: Arc<()>,
+        ) -> impl Fn(NativeValues<'_>, &NativeValue) -> Option<NativeValue> + Send {
+            move |_, message| {
+                assert_eq!(Arc::strong_count(&retained), 1);
+                Some(message.clone())
+            }
+        }
+
         fn wrong_receiver<'call>(
             mut call: Call<'call, GleamErlangProfile, bool>,
             constructions: geam_core::HostConstructions<'call, geam_core::HostTypeListEnd>,
             callback: geam_core::HostCallable<'call, geam_core::HostTypeListEnd, ()>,
         ) -> Result<HostCallContinuation<'call, bool>, HostCallError> {
+            let current = Processes::new(&mut call).current().unwrap();
+            let controls = [None, Some(call.clock().now())].map(|deadline| {
+                Processes::new(&mut call).send(&current, NativeValue::symbol("control"));
+                let alive = Arc::new(());
+                let weak = Arc::downgrade(&alive);
+                let receive = super::SelectiveReceive::new(
+                    &mut call,
+                    current.id(),
+                    matching(alive),
+                    deadline,
+                )
+                .unwrap();
+                (receive, weak)
+            });
+            Processes::new(&mut call).send(&current, NativeValue::symbol("forever control"));
+            let forever_alive = Arc::new(());
+            let forever_weak = Arc::downgrade(&forever_alive);
+            let forever_control = super::SelectiveReceive::new(
+                &mut call,
+                current.id(),
+                matching(forever_alive),
+                None,
+            )
+            .unwrap();
             let child = call.spawn(callback);
             let receive = super::Receive::any(&mut call, child.id(), None).unwrap();
             let forever = super::Receive::any(&mut call, child.id(), None).unwrap();
@@ -914,9 +948,49 @@ pub fn main() {
                 None,
             )
             .unwrap();
-            crate::service::Processes::new(&mut call).kill(&child);
+            let retained = Arc::new(());
+            let failed_capture = Arc::downgrade(&retained);
+            let selected =
+                super::SelectiveReceive::new(&mut call, child.id(), matching(retained), None)
+                    .unwrap();
+            let selected_forever =
+                super::SelectiveReceive::new(&mut call, child.id(), matching(Arc::new(())), None)
+                    .unwrap();
+            Processes::new(&mut call).kill(&child);
+            let closed_capture = Arc::new(());
+            let closed_weak = Arc::downgrade(&closed_capture);
+            let closed =
+                super::SelectiveReceive::new(&mut call, child.id(), matching(closed_capture), None);
+            assert_eq!(
+                closed.err().unwrap().to_string(),
+                "process mailbox is closed"
+            );
+            assert!(closed_weak.upgrade().is_none());
             Ok(call.resume(constructions, move |context| {
                 Box::pin(async move {
+                    for (receive, weak) in controls {
+                        assert_eq!(
+                            receive
+                                .wait(&context)
+                                .await
+                                .unwrap()
+                                .unwrap()
+                                .as_symbol()
+                                .as_deref(),
+                            Some("control")
+                        );
+                        assert!(weak.upgrade().is_none());
+                    }
+                    assert_eq!(
+                        forever_control
+                            .wait_forever(&context)
+                            .await
+                            .unwrap()
+                            .as_symbol()
+                            .as_deref(),
+                        Some("forever control")
+                    );
+                    assert!(forever_weak.upgrade().is_none());
                     assert_eq!(
                         receive.wait(&context).await.err().unwrap().to_string(),
                         "receive belongs to another process"
@@ -936,6 +1010,20 @@ pub fn main() {
                     );
                     assert_eq!(
                         projected_forever
+                            .wait_forever(&context)
+                            .await
+                            .err()
+                            .unwrap()
+                            .to_string(),
+                        "receive belongs to another process"
+                    );
+                    assert_eq!(
+                        selected.wait(&context).await.err().unwrap().to_string(),
+                        "receive belongs to another process"
+                    );
+                    assert!(failed_capture.upgrade().is_none());
+                    assert_eq!(
+                        selected_forever
                             .wait_forever(&context)
                             .await
                             .err()
@@ -980,7 +1068,7 @@ pub fn main() { wrong_receiver(fn() { panic as "cancelled child must never run" 
         let key = call.source::<Key>(key);
         let input = call.source::<BigInt>(input);
         let deadline = call.call().clock().now();
-        let mut processes = crate::service::Processes::new(call.call());
+        let mut processes = Processes::new(call.call());
         let current = processes.current().unwrap();
         processes.send(&current, NativeValue::tuple([key, input]));
         let receive = processes
@@ -1552,7 +1640,7 @@ pub fn check(kind: Int, cancel: Bool) {
             call.execution_state()
                 .terminate(unit.id(), crate::execution::Reason::Killed);
             assert_eq!(
-                crate::service::Processes::new(&mut call)
+                Processes::new(&mut call)
                     .receive_any(None)
                     .err()
                     .unwrap()

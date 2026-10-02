@@ -1,0 +1,5 @@
+name = "selective_receive_service_embedding"
+version = "0.1.0"
+
+[dependencies]
+selective_receive_service_fixture = { path = "../../project" }
