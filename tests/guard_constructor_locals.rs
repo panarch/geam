@@ -11,7 +11,7 @@ mod fixture;
 mod workspace_dependencies;
 
 #[test]
-fn runs_local_guard_values_and_original_clip_opt_and_flag() {
+fn runs_local_guards_multi_subject_patterns_and_complete_original_clip() {
     let directory = tempfile::tempdir().unwrap();
     fixture::copy_project(directory.path());
     let typed = compile_typed_host_project(

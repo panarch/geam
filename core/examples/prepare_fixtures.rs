@@ -130,6 +130,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let multi_subject = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/multi_subject_patterns.gleam"),
+    )?;
+    let (multi_subject, _) = ModuleBuilder::new(multi_subject)?
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
+
     let sparse = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -205,6 +213,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
+        (
+            "multi_subject_patterns.rs",
+            multi_subject.prepare().emit_rust(),
+        ),
         ("sparse_patterns.rs", sparse.prepare().emit_rust()),
         ("bit_array_patterns.rs", bit_arrays.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),

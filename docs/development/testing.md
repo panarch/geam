@@ -320,6 +320,7 @@ cargo fetch --locked
 cargo fetch --manifest-path examples/embedding/callables/Cargo.toml --locked
 cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
 cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
+cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
 cargo test --package geam --test prepared_embedding --locked
 cargo test --package geam --test standalone_build --locked
 ```
@@ -685,7 +686,7 @@ cargo test --package geam --test provider_examples --locked -- --exact otp_servi
 cargo test --package geam --test prepared_embedding --locked -- process_consumers
 ```
 
-The `process_consumers` tests generate both independently locked embeddings
+The `process_consumers` tests generate the independently locked embeddings
 before checking repeated generation, formatting and warnings-denied Clippy,
 dynamic/prepared output, and standalone assembly. Generation must preserve the
 tracked binding content with canonical LF line endings and preserve the Cargo
@@ -706,6 +707,33 @@ cargo llvm-cov --manifest-path examples/provider/process_service/provider/Cargo.
 cargo llvm-cov clean --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --workspace
 cargo llvm-cov --manifest-path tests/fixtures/otp_service/provider/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 ```
+
+## Selective Receive Service Consumer
+
+The independent [selective receive fixture](../../tests/fixtures/selective_receive_service)
+uses ordinary macro authoring and the public Erlang process service. Its original
+Reference producer, retained native capture, source oracle, typed embedding and
+compiled prepared/standalone consumption are documented in its README. Provider
+coverage belongs to this independently locked package; mailbox selection and
+lifecycle remain `geam-erlang` owner obligations.
+
+```sh
+cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
+cargo test --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
+cargo fmt --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all --check
+cargo clippy --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+gleam format --check tests/fixtures/selective_receive_service/project/src
+gleam format --check tests/fixtures/selective_receive_service/embedding/gleam/src
+cargo llvm-cov clean --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --workspace
+cargo llvm-cov --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --no-report --locked
+cargo llvm-cov report --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --package geam-selective-receive-service-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
+```
+
+Workspace formats/lints the provider. Acceptance's value and selective receive
+consumer job runs its source tests and Gleam formatting; the Prepared distribution
+and Standalone build matrices exercise compiled consumers on Linux, macOS and
+Windows. Coverage adds the independent provider to the service-consumer matrix
+and requires fresh 100% lines and full-scope regions.
 
 ## Charlist Service Consumer
 
@@ -782,7 +810,7 @@ cargo llvm-cov report --manifest-path tests/fixtures/dict_service/provider/Cargo
 ```
 
 Workspace owns Rust formatting and Clippy; Acceptance's mandatory Linux
-`Charlist, Dict and BytesTree service consumers` job owns original-source tests
+`Value and selective receive service consumers` job owns original-source tests
 and Gleam formatting. Coverage includes `dict_service` in the service-consumer
 matrix. Its fresh 100% line/full-region denominator is the fixture provider
 package, independently of Geam's production dependencies. This fixture proves

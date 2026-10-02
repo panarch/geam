@@ -29,15 +29,6 @@ struct RecordFields<Output> {
     project: fn(&NativeValue) -> Option<Output>,
 }
 
-impl<Output> Clone for RecordFields<Output> {
-    fn clone(&self) -> Self {
-        Self {
-            tag: self.tag.clone(),
-            project: self.project,
-        }
-    }
-}
-
 impl<Profile: HostProfile, Output: Send + 'static> MailboxMatch<Profile> for RecordFields<Output> {
     type Output = Output;
 
@@ -81,10 +72,10 @@ impl<Profile: GleamErlangHostProfile, Output: Send + 'static> RecordReceive<Prof
         self,
         context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     ) -> Result<Option<Output>, HostExecutionError> {
-        let first = start(context, self.pid, self.filter.clone(), self.scan).await?;
+        let (filter, first) = start(context, self.pid, self.filter, self.scan).await?;
         match self.timeout {
-            Some(timeout) => timed_selected(context, self.pid, self.filter, first, timeout).await,
-            None => next_selected(context, self.pid, self.filter, first)
+            Some(timeout) => timed_selected(context, self.pid, filter, first, timeout).await,
+            None => next_selected(context, self.pid, filter, first)
                 .await
                 .map(Some),
         }
@@ -96,8 +87,8 @@ impl<Profile: GleamErlangHostProfile, Output: Send + 'static> RecordReceive<Prof
         context: &HostExecutionContext<'_, Profile, Provider, Targets>,
     ) -> Result<Output, HostExecutionError> {
         drop(self.timeout);
-        let first = start(context, self.pid, self.filter.clone(), self.scan).await?;
-        next_selected(context, self.pid, self.filter, first).await
+        let (filter, first) = start(context, self.pid, self.filter, self.scan).await?;
+        next_selected(context, self.pid, filter, first).await
     }
 }
 

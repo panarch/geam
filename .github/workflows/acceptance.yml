@@ -421,6 +421,7 @@ jobs:
         run: |
           cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
         run: cargo test --package geam --test prepared_embedding --locked
@@ -719,7 +720,7 @@ jobs:
 
 
   charlist-service-consumer:
-    name: Charlist, Dict and BytesTree service consumers
+    name: Value and selective receive service consumers
     runs-on: ubuntu-latest
 
     steps:
@@ -746,12 +747,14 @@ jobs:
             tests/fixtures/charlist_service/provider -> target
             tests/fixtures/dict_service/provider -> target
             tests/fixtures/bytes_tree_service/provider -> target
+            tests/fixtures/selective_receive_service/provider -> target
 
       - name: Fetch locked consumer dependencies
         run: |
           cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
         run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
@@ -770,6 +773,14 @@ jobs:
 
       - name: Verify BytesTree fixture source formatting
         run: gleam format --check tests/fixtures/bytes_tree_service/project/src
+
+      - name: Verify selective receive through original producer identities
+        run: cargo test --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
+
+      - name: Verify selective receive fixture source formatting
+        run: |
+          gleam format --check tests/fixtures/selective_receive_service/project/src
+          gleam format --check tests/fixtures/selective_receive_service/embedding/gleam/src
 
   external-provider-sdk:
     name: External provider SDK

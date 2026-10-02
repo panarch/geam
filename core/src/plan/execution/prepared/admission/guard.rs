@@ -132,6 +132,21 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         })
     }
 
+    pub(super) fn excludes(&self, block: BlockId, condition: Condition<'data>) -> bool {
+        match condition {
+            Condition::Bool { truth, .. }
+            | Condition::Test { truth, .. }
+            | Condition::Match { success: truth, .. } => {
+                self.contradictions.contains(&(block, truth))
+            }
+            _ => false,
+        }
+    }
+
+    pub(super) fn exclude(&mut self, block: BlockId, truth: bool) -> bool {
+        self.contradictions.insert((block, truth))
+    }
+
     fn boolean_value(
         &self,
         block_id: BlockId,
@@ -251,10 +266,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                 for input in inputs {
                     // Incoming conditions refer to the source block's sole
                     // terminator, so its selected truth identifies the edge.
-                    if let Condition::Bool { truth, .. } | Condition::Test { truth, .. } =
-                        input.condition
-                        && self.contradictions.contains(&(input.block, truth))
-                    {
+                    if self.excludes(input.block, input.condition) {
                         continue;
                     }
                     match input.value {

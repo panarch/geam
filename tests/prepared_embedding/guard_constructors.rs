@@ -6,7 +6,7 @@ use std::path::Path;
 mod fixture;
 
 #[test]
-fn guard_locals_and_original_clip_run_dynamic_and_relocated_prepared() {
+fn guard_locals_multi_subject_patterns_and_original_clip_run_dynamic_and_relocated_prepared() {
     let directory = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(directory.path()).unwrap();
     let application = root.join("application");

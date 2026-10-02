@@ -272,6 +272,8 @@ jobs:
             directory: tests/fixtures/dict_service/provider
           - consumer: bytes_tree_service
             directory: tests/fixtures/bytes_tree_service/provider
+          - consumer: selective_receive_service
+            directory: tests/fixtures/selective_receive_service/provider
 
     steps:
       - name: Checkout

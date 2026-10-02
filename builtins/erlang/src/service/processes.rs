@@ -1,10 +1,11 @@
-use super::{Receive, pid_value};
+use super::{Receive, SelectiveReceive, pid_value};
 use crate::execution::{Destination, Message, Reason, ReferenceId};
 use crate::{
     Component, GleamErlangHostProfile, Name as HostName, NameSchema, Pid as HostPid, PidSchema,
 };
 use ecow::EcoString;
 use geam_core::execution::ExecutionUnit;
+use geam_core::host::native::NativeValues;
 use geam_core::host::{
     HostCall, HostCallError, HostConstruction, HostCustom, HostExternal, HostProvider, HostType,
     HostTypeList, HostTypeListEnd,
@@ -204,6 +205,8 @@ where
     }
 
     /// Receives a complete tuple with a matching tag and number of fields.
+    ///
+    /// See [`Self::receive_with`] for a caller-defined selection rule.
     pub fn receive_record(
         &mut self,
         tag: NativeValue,
@@ -212,6 +215,26 @@ where
     ) -> Result<Receive<Profile>, HostCallError> {
         let current = self.current()?;
         Receive::record(self.call, current.id(), tag, arity, deadline)
+    }
+
+    /// Selects the first match without moving rejected messages in the queue.
+    /// Captured state is owned and `Send`; it need not be `Clone` or `Sync`.
+    pub fn receive_with<Matcher, Output>(
+        &mut self,
+        matcher: Matcher,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<SelectiveReceive<Profile, Matcher, Output>, HostCallError>
+    where
+        Matcher: for<'values, 'candidate> Fn(
+                NativeValues<'values>,
+                &'candidate NativeValue,
+            ) -> Option<Output>
+            + Send
+            + 'static,
+        Output: Send + 'static,
+    {
+        self.current()
+            .and_then(|current| SelectiveReceive::new(self.call, current.id(), matcher, deadline))
     }
 }
 
