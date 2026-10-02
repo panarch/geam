@@ -144,6 +144,60 @@ These operations retain the original receiver and release the active call
 borrow before waiting. The selected `NativeValue` can be returned as a producer
 `Dynamic` or restored at its exact source type with `Call::restore_native`.
 
+For selection that depends on caller state, use `ProcessCall::receive_with`.
+`Processes::receive_with` and `CurrentProcess::receive_with` provide the same
+operation for typed registrations. The returned `SelectiveReceive` owns a
+`Send + 'static` Rust `Fn` matcher and returns `Send + 'static` output. Neither
+the matcher nor the output needs `Clone` or `Sync`. The candidate and
+`geam::host::native::NativeValues` are borrowed only during one synchronous
+inspection; the returned output must own anything it retains.
+
+Prepare the matcher inside an ordinary async call's bounded request, then wait
+after releasing that active call. For example, with `identity` already an owned
+`NativeValue` from the producer's retained source value:
+
+```rust
+use geam::gleam_erlang::service::ProcessCall;
+use std::time::Duration;
+
+let receive = call.with_call(move |call| {
+    call.receive_with(move |values, message| {
+        let candidate_identity = message.index(1)?;
+        values.equal(&identity, &candidate_identity).then(|| message.clone())
+    }, Some(Duration::ZERO))
+}).await??;
+let selected = receive.wait_in(call).await?;
+```
+
+The [selective receive fixture](../../tests/fixtures/selective_receive_service)
+shows the complete component, service metadata, public retention and original
+Reference restoration. It captures a native view obtained through
+`Call::store_dynamic(...).native_view()` under a generated retained payload
+owner. Other providers may use their own producer-owned native handles.
+Equality uses `NativeValues::equal`, including opaque source identities; a
+label, hash or allocation address does not establish that identity.
+
+`None` keeps a candidate at its original queue position. `Some(output)` removes
+only the first match. One matcher may recognize several tags, preserving their
+combined FIFO and the relative order of all rejected messages. A scan yields
+after at most 64 candidates. The queued snapshot precedes even a zero timeout;
+later arrivals and host deadlines follow the existing receive ordering.
+`wait_forever_in`/`wait_forever` discard the prepared deadline.
+
+Keep matching bounded and read-only. The API supplies no mutable host state,
+I/O or source callback invocation capability. `Fn` cannot prohibit arbitrary
+Rust interior mutation or I/O, so this remains a caller responsibility. A
+matcher must not await or reconstruct the mailbox by draining and reinserting
+messages. This is single-message selection, not atomic batch transfer; an I/O
+provider owns any delivery quiescing and transfer protocol.
+
+The receive remains bound to its original process and execution domain. Dropping
+an unstarted receive releases its captured state and consumes nothing. Match,
+timeout, error, cancellation and scope shutdown release state through the
+existing request/continuation cleanup. The mailbox does not retain a matcher as
+a hidden owner. Independently retained output and native aliases keep their own
+lifetimes. Cancellation does not roll back a message already selected.
+
 The [process provider example](../../examples/provider/process_service) and the
 [OTP integration fixture](../../tests/fixtures/otp_service) exercise external
 consumers. The latter checks pinned upstream source and retained callbacks; it

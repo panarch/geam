@@ -44,6 +44,7 @@ fn builds_and_relocates_complete_applications_without_development_inputs() {
     assert_eq!(fs::read_dir(&deployed_root).unwrap().count(), 2);
 
     include_bytes_tree_consumer(fixture.path());
+    include_selective_receive_consumer(fixture.path());
 
     let guards = fixture.path().join("guard_constructor_locals");
     guard_constructor_fixture::copy_project(&guards);
@@ -73,7 +74,11 @@ fn builds_and_relocates_complete_applications_without_development_inputs() {
             ],
         ));
     }
-    for path in ["../future/provider", "../bytes_tree/provider"] {
+    for path in [
+        "../future/provider",
+        "../bytes_tree/provider",
+        "../selective_receive/provider",
+    ] {
         checked(&mut geam(&project, &["provider", "add", "--path", path]));
     }
     fs::write(project.join("src/ordinary.gleam"), ordinary).unwrap();
@@ -85,11 +90,13 @@ import gleam/erlang/process
 import gleam/io
 import guard_constructor_locals
 import ordinary
+import selective_receive_service_fixture
 import standalone_future/native
 import standalone_future/protected
 
 pub fn main() {
   bytes_tree_service_fixture.main()
+  selective_receive_service_fixture.main()
   ordinary.main()
   let assert Ok(5) = protected.protect(fn() { 5 })
   let assert Error("caught") = protected.protect(fn() { panic })
@@ -187,7 +194,7 @@ pub fn main() {
         arguments
     };
     let expected = format!(
-        "initialized\narguments:{arguments:?}\n\"count:3/count:4\"\n{}\n{}\nguard locals and original clip opt/flag: ok\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
+        "initialized\narguments:{arguments:?}\ncaller identity and mixed tags preserve mailbox order\n\"count:3/count:4\"\n{}\n{}\nguard locals and original clip opt/flag: ok\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
         deployed_root.join("priv/standalone_fixture").display(),
         deployed_root.join("priv/pure_labels").display()
     );
@@ -213,7 +220,7 @@ pub fn main() {
     assert!(!reconfigured.status.success());
     assert_eq!(
         reconfigured.stdout,
-        format!("initialized\narguments:{arguments:?}\nstate-drop:0\n").as_bytes()
+        format!("initialized\narguments:{arguments:?}\ncaller identity and mixed tags preserve mailbox order\nstate-drop:0\n").as_bytes()
     );
     assert_eq!(
         reconfigured.stderr,
@@ -384,7 +391,7 @@ fn assert_application_stdout(actual: &[u8], expected: &str, directory: &Path) {
     let directory = directory.canonicalize().unwrap();
     for (index, (actual, expected)) in actual.into_iter().zip(expected).enumerate() {
         // Only the two resource fields may differ in filesystem path spelling.
-        if matches!(index, 3 | 4) {
+        if matches!(index, 4 | 5) {
             let suffix = Path::new(expected).strip_prefix(&directory).unwrap();
             let mut base = PathBuf::from(actual);
             assert!(
@@ -416,12 +423,12 @@ fn application_stdout_checks_resource_locations_without_rewriting_other_output()
 
     for resource in ["priv/standalone_fixture", "configuration/custom assets"] {
         let expected = format!(
-            "initialized\narguments:[\\\\?\\literal]\nvalue\n{}\n{}\ncomplete\n",
+            "initialized\narguments:[\\\\?\\literal]\ncaller identity and mixed tags preserve mailbox order\nvalue\n{}\n{}\ncomplete\n",
             root.join(resource).display(),
             root.join("priv/pure_labels").display(),
         );
         let actual = format!(
-            "initialized\narguments:[\\\\?\\literal]\nvalue\n{}\n{}\ncomplete\n",
+            "initialized\narguments:[\\\\?\\literal]\ncaller identity and mixed tags preserve mailbox order\nvalue\n{}\n{}\ncomplete\n",
             reported_root.join(resource).display(),
             reported_root.join("priv/pure_labels").display(),
         );
@@ -702,6 +709,26 @@ fn include_bytes_tree_consumer(root: &Path) {
             .args(["deps", "download"])
             .current_dir(project),
     );
+}
+
+fn include_selective_receive_consumer(root: &Path) {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = repository.join("tests/fixtures/selective_receive_service");
+    let consumer = root.join("selective_receive");
+    for directory in ["project", "provider"] {
+        copy_directory(&source.join(directory), &consumer.join(directory));
+    }
+    let gleam = root.join("project/gleam.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&gleam).unwrap().parse().unwrap();
+    manifest["dependencies"].as_table_mut().unwrap().insert(
+        "selective_receive_service_fixture".into(),
+        toml::toml! { path = "../selective_receive/project" }.into(),
+    );
+    fs::write(gleam, toml::to_string(&manifest).unwrap()).unwrap();
+    let cargo = consumer.join("provider/Cargo.toml");
+    let mut manifest: toml::Table = fs::read_to_string(&cargo).unwrap().parse().unwrap();
+    manifest["patch"]["crates-io"]["geam"]["path"] = repository.to_str().unwrap().into();
+    fs::write(cargo, toml::to_string(&manifest).unwrap()).unwrap();
 }
 
 fn fixture() -> tempfile::TempDir {

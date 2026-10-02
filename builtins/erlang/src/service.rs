@@ -10,7 +10,7 @@ pub mod selectors;
 mod subject;
 pub mod types;
 mod values;
-pub use crate::process::mailbox::{Receive, RecordReceive};
+pub use crate::process::mailbox::{Receive, RecordReceive, SelectiveReceive};
 pub use current::{CurrentProcess, with_current_process};
 pub use name::Name;
 pub use native::{cancel_timer, demonitor};
@@ -23,7 +23,9 @@ pub use values::{charlist_from_string, charlist_string, native_rules, new_refere
 pub(crate) use values::{fresh_name, subject_parts};
 
 use crate::GleamErlangHostProfile;
+use geam_core::host::native::NativeValues;
 use geam_core::host::{HostCall, HostCallError, HostProvider, HostType};
+use geam_core::provider::advanced::NativeValue;
 use geam_core::provider::{
     Call, ProviderActiveCall, ProviderFactoryBindings, ProviderValue, ProviderValueContext, Value,
 };
@@ -79,6 +81,22 @@ pub trait ProcessCall {
         &mut self,
         timeout: Option<std::time::Duration>,
     ) -> Result<Receive<Self::Profile>, HostCallError>;
+
+    /// Selects with an owned matcher, using this call's host clock for timeout.
+    /// Rejected candidates remain at their original positions and relative order.
+    fn receive_with<Matcher, Output>(
+        &mut self,
+        matcher: Matcher,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<SelectiveReceive<Self::Profile, Matcher, Output>, HostCallError>
+    where
+        Matcher: for<'values, 'candidate> Fn(
+                NativeValues<'values>,
+                &'candidate NativeValue,
+            ) -> Option<Output>
+            + Send
+            + 'static,
+        Output: Send + 'static;
 }
 
 impl<'call, Profile, Provider, Return, Bindings> ProcessCall
@@ -179,6 +197,25 @@ where
         let deadline = receive_timeout(call, timeout)?;
         Processes::new(call).receive_any(deadline)
     }
+
+    fn receive_with<Matcher, Output>(
+        &mut self,
+        matcher: Matcher,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<SelectiveReceive<Profile, Matcher, Output>, HostCallError>
+    where
+        Matcher: for<'values, 'candidate> Fn(
+                NativeValues<'values>,
+                &'candidate NativeValue,
+            ) -> Option<Output>
+            + Send
+            + 'static,
+        Output: Send + 'static,
+    {
+        let call = self.host_call();
+        let deadline = receive_timeout(call, timeout)?;
+        Processes::new(call).receive_with(matcher, deadline)
+    }
 }
 
 fn receive_timeout<Profile, Provider, Return>(
@@ -197,6 +234,11 @@ where
             })
         })
         .transpose()
+}
+
+#[cfg(test)]
+fn copy_message(_: NativeValues<'_>, message: &NativeValue) -> Option<NativeValue> {
+    Some(message.clone())
 }
 
 #[cfg(test)]
@@ -281,6 +323,13 @@ pub fn main() { check() }
                 .to_string(),
             "timeout exceeds the host clock range"
         );
+        assert_eq!(
+            call.receive_with(super::copy_message, Some(Duration::MAX))
+                .err()
+                .unwrap()
+                .to_string(),
+            "timeout exceeds the host clock range"
+        );
         call.send(&current, message);
         let host = call.host_call();
         let tag = host.native_value::<BigInt>(7.into());
@@ -289,12 +338,17 @@ pub fn main() { check() }
             &current.execution_unit(),
             geam_core::provider::advanced::NativeValue::tuple([tag, payload]),
         );
+        let control = host.native_value::<BigInt>(77.into());
+        super::Processes::new(host).send(&current.execution_unit(), control);
         let tag = Value::<BigInt, geam_core::provider::ProviderValueContext<BigInt>>::from_host(
             host,
             7.into(),
         );
         let selected = call.receive_tagged(tag, None).unwrap();
         let receive = call.receive_any(None).unwrap();
+        let owned = call
+            .receive_with(super::copy_message, Some(Duration::ZERO))
+            .unwrap();
         Ok(call.into_host_call().resume(constructions, move |context| {
             Box::pin(async move {
                 assert_eq!(
@@ -303,6 +357,10 @@ pub fn main() { check() }
                 );
                 let message = receive.wait(&context).await.unwrap().unwrap();
                 assert_eq!(message.as_int(), Some(42.into()));
+                assert_eq!(
+                    owned.wait(&context).await.unwrap().unwrap().as_int(),
+                    Some(77.into())
+                );
                 Ok(HostOwnedCompletion::new(|call, _| {
                     Ok(call.return_value(42.into()))
                 }))
@@ -650,6 +708,10 @@ mod domain_tests {
                 for error in [
                     process.receive_any(None).err().unwrap(),
                     process
+                        .receive_with(super::copy_message, None)
+                        .err()
+                        .unwrap(),
+                    process
                         .receive_record_with(NativeValue::symbol("EXIT"), exit_reason, None)
                         .err()
                         .unwrap(),
@@ -707,6 +769,7 @@ mod domain_tests {
                 assert_eq!(with_current_process(context.execution(), checked_identity).await.err().unwrap().to_string(), "native operation requires a source invocation");
                 context.execution().with_constructions(move |mut host, constructions| {
                     assert!(host.execution_unit().is_none());
+                    assert_eq!(Processes::new(&mut host).receive_with(super::copy_message, None).err().unwrap().to_string(), "native operation requires a source invocation");
                     let pid = super::pid_value(&mut host, constructions.at::<HostTypeIndex0>(), target.execution_unit());
                     let tag = host.construct_external_with_binding::<Component<Profile>, DynamicSchema, HostTypeListEnd>(constructions.at::<Index4>(), geam_stdlib::Dynamic::from_native(NativeValue::symbol("reply")));
                     let subject = host.construct_custom::<OrdinarySubject<BigInt>>(constructions.at::<Index3>(), (pid, (tag, ())));

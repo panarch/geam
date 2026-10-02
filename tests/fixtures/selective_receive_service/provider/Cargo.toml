@@ -1,0 +1,28 @@
+[package]
+name = "geam-selective-receive-service-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 2
+gleam-package = "selective_receive_service_fixture"
+gleam-version = ">= 0.1.0 and < 0.1.1"
+component = "plain"
+execution-service = false
+requires-services = ["gleam_erlang"]
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider", "gleam-erlang"] }
+
+[dev-dependencies]
+camino = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "time"] }
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "tokio"] }
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"

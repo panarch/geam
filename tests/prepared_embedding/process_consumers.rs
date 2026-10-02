@@ -8,6 +8,7 @@ fn process_service_runs_dynamic_and_relocated_prepared() {
         "examples/provider/process_service",
         "process-service-embedding",
         b"named service replied: 42, 17\nrequest timeout and unavailable name handled\nworker stopped and name released\n",
+        1,
     );
 }
 
@@ -17,10 +18,21 @@ fn original_otp_runs_dynamic_and_relocated_prepared() {
         "tests/fixtures/otp_service",
         "otp-service-embedding",
         b"original actor: state, suspend, resume\noriginal static child: retained callback in supervisor\noriginal factory: two typed callbacks, named and pid handles\n",
+        1,
     );
 }
 
-fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
+#[test]
+fn selective_receive_runs_dynamic_and_relocated_prepared() {
+    verify_consumer(
+        "tests/fixtures/selective_receive_service",
+        "selective-receive-service-embedding",
+        b"caller identity and mixed tags preserve mailbox order\n",
+        2,
+    );
+}
+
+fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_calls: usize) {
     let directory = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(directory.path()).unwrap();
     let repository = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -93,7 +105,7 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
         "warnings",
     ]));
     let output = checked(command("cargo", &application).args(["run", "--quiet", "--locked"]));
-    assert_eq!(output.stdout, expected.repeat(2));
+    assert_eq!(output.stdout, expected.repeat(2 * embedding_calls));
     assert!(output.stderr.is_empty());
 
     let deploy = root.join("deployment");
@@ -144,7 +156,7 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8]) {
     }
     for _ in 0..2 {
         let output = checked(command(&binary, &deploy).arg("--prepared").env("PATH", ""));
-        assert_eq!(output.stdout, expected);
+        assert_eq!(output.stdout, expected.repeat(embedding_calls));
         assert!(output.stderr.is_empty());
         let output = checked(command(&standalone, &deploy).env("PATH", ""));
         assert_eq!(output.stdout, expected);
