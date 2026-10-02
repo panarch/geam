@@ -194,7 +194,7 @@ pub fn main() {
         arguments
     };
     let expected = format!(
-        "initialized\narguments:{arguments:?}\ncaller identity and mixed tags preserve mailbox order\n\"count:3/count:4\"\n{}\n{}\nguard locals and original clip opt/flag: ok\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
+        "initialized\narguments:{arguments:?}\ncaller identity and mixed tags preserve mailbox order\n\"count:3/count:4\"\n{}\n{}\nguard locals, multi-subject patterns and original clip: ok\ntimer-pending\ntimer-complete\nstate:1\nstate-drop:1\n",
         deployed_root.join("priv/standalone_fixture").display(),
         deployed_root.join("priv/pure_labels").display()
     );
