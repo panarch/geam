@@ -18,6 +18,9 @@ static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/va
 static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/nested_patterns.rs");
 
+static MULTI_SUBJECT_PATTERNS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/multi_subject_patterns.rs");
+
 static SPARSE_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/sparse_patterns.rs");
 
@@ -96,6 +99,40 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
                 assert!(echo.is_empty());
             }
         }
+    }
+}
+
+#[test]
+fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
+    let source = include_str!("fixtures/prepared/multi_subject_patterns.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/multi_subject_patterns.rs").trim()
+    );
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, main) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    let module = bindings.seal();
+    let mut echo = Vec::new();
+    assert_eq!(module.call(&main, (), &mut echo).unwrap().as_str(), "value");
+    assert!(echo.is_empty());
+
+    let mut bindings = MULTI_SUBJECT_PATTERNS.load().unwrap();
+    let main = bindings
+        .function(FunctionDeclaration::<(), StringValue>::new("main"))
+        .unwrap();
+    let module = bindings.seal();
+    for _ in 0..2 {
+        let mut echo = Vec::new();
+        assert_eq!(module.call(&main, (), &mut echo).unwrap().as_str(), "value");
+        assert!(echo.is_empty());
     }
 }
 

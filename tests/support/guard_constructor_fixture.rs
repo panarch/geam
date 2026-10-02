@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const OUTPUT: &[u8] = b"guard locals and original clip opt/flag: ok\n";
+pub const OUTPUT: &[u8] = b"guard locals, multi-subject patterns and original clip: ok\n";
 
 pub fn project_root() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))

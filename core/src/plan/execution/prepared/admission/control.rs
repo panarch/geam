@@ -5,7 +5,10 @@ use super::local::{Address, Locals};
 use super::place::{self, Place, Projection};
 use super::type_::Types;
 use crate::plan::execution::function::ExecutionGraphProfile;
-use crate::plan::execution::graph::{BlockId, MatchPattern, ParamLocal, ParamSlot};
+use crate::plan::execution::graph::{
+    BlockId, BoolInstruction, BoolLocalId, BoolTest, MatchPattern, ParamLocal, ParamSlot,
+    ProfiledInstructionKind, Terminator,
+};
 use crate::plan::execution::type_::custom::FieldRefinement;
 use crate::plan::execution::type_::{
     CustomConstructorRefinement, ValueShapeDescriptor, ValueShapeId,
@@ -19,16 +22,17 @@ pub(super) struct Control<'graph, 'data, Graph: ExecutionGraphProfile> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConstructorFact {
+enum Fact {
     Is(usize),
     IsNot(usize),
+    Boolean(bool),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Query {
     block: BlockId,
     place: Place,
-    fact: ConstructorFact,
+    fact: Fact,
     assumptions: Vec<Assumption>,
 }
 
@@ -55,10 +59,81 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         blocks: &'graph Blocks<'data, Graph>,
         types: &'graph Types<'data>,
     ) -> Control<'graph, 'data, Graph> {
-        Control {
+        let mut control = Control {
             blocks,
             types,
             guards: Guards::new(blocks),
+        };
+        // Only previously established exclusions participate in each proof.
+        // Share the finite closure with length/prefix checks in this body.
+        loop {
+            let mut changed = false;
+            for (index, block) in blocks.iter().enumerate() {
+                for truth in [false, true] {
+                    let condition = match block.terminator() {
+                        Terminator::Match(matcher) => Condition::Match {
+                            matcher,
+                            success: truth,
+                        },
+                        Terminator::BoolBranch(branch) => Condition::Bool {
+                            subject: branch.subject,
+                            truth,
+                        },
+                        Terminator::TestBranch(branch) => Condition::Test {
+                            test: &branch.test,
+                            truth,
+                        },
+                        _ => continue,
+                    };
+                    let id = BlockId(index);
+                    if !control.guards.excludes(id, condition) && control.contradicts(id, condition)
+                    {
+                        changed |= control.guards.exclude(id, truth);
+                    }
+                }
+            }
+            if !changed {
+                return control;
+            }
+        }
+    }
+
+    fn contradicts(&self, block: BlockId, condition: Condition<'data>) -> bool {
+        if self.guards.contradicts(block, condition) {
+            return true;
+        }
+        if let Some((subject, value)) = self.boolean_condition(block, condition) {
+            return self.proves(block, &ParamLocal::Bool(subject), Fact::Boolean(!value));
+        }
+        match condition {
+            Condition::Match { matcher, success } => {
+                if success {
+                    let fact = match unaliased(&matcher.pattern) {
+                        Some(MatchPattern::Custom { constructor, .. }) => {
+                            Fact::IsNot(constructor.index)
+                        }
+                        Some(MatchPattern::Bool(value)) => Fact::Boolean(!value),
+                        _ => return false,
+                    };
+                    return self.proves(block, &matcher.subject, fact);
+                }
+                let mut requirements = Vec::new();
+                if pattern_requirements(
+                    block,
+                    &matcher.pattern,
+                    Place::local(Address::of(&matcher.subject)),
+                    &[],
+                    &mut requirements,
+                )
+                .is_none()
+                {
+                    return false;
+                }
+                requirements
+                    .into_iter()
+                    .all(|query| self.proves_query(query))
+            }
+            _ => false,
         }
     }
 
@@ -92,12 +167,12 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         let mut possible = Vec::new();
         for constructor in type_.constructors.iter() {
             let index = constructor.id.index;
-            if self.proves(block, &slot.local, ConstructorFact::Is(index)) {
+            if self.proves(block, &slot.local, Fact::Is(index)) {
                 locals.set_constructor(&slot.local, index);
                 locals.restrict_constructors(&slot.local, vec![index]);
                 return;
             }
-            if !self.proves(block, &slot.local, ConstructorFact::IsNot(index)) {
+            if !self.proves(block, &slot.local, Fact::IsNot(index)) {
                 possible.push(index);
             }
         }
@@ -111,13 +186,17 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
 
     // Every incoming path must establish the fact. Constructor exclusions prove
     // an exact variant only against the original declaration, not a sparse subset.
-    fn proves(&self, block: BlockId, local: &'data ParamLocal, fact: ConstructorFact) -> bool {
-        let mut pending = vec![Visit::Enter(Query {
+    fn proves(&self, block: BlockId, local: &ParamLocal, fact: Fact) -> bool {
+        self.proves_query(Query {
             block,
             place: Place::local(Address::of(local)),
             fact,
             assumptions: Vec::new(),
-        })];
+        })
+    }
+
+    fn proves_query(&self, query: Query) -> bool {
+        let mut pending = vec![Visit::Enter(query)];
         let mut active = HashMap::new();
         let mut complete = HashSet::new();
         while let Some(visit) = pending.pop() {
@@ -175,7 +254,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     continue;
                 }
                 let type_ = &self.types.customs.types[shape.type_id.index()];
-                if let ConstructorFact::Is(index) = query.fact
+                if let Fact::Is(index) = query.fact
                     && type_.constructors.len() == type_.constructor_count
                     && type_
                         .constructors
@@ -189,12 +268,48 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                             .filter(|constructor| constructor.id.index != index)
                             .map(|constructor| {
                                 Visit::Enter(Query {
-                                    fact: ConstructorFact::IsNot(constructor.id.index),
+                                    fact: Fact::IsNot(constructor.id.index),
                                     ..query.clone()
                                 })
                             }),
                     );
                     continue;
+                }
+            }
+            if let Fact::Boolean(expected) = query.fact
+                && query.place.path.is_empty()
+                && let Some(instruction) = block
+                    .instructions()
+                    .iter()
+                    .filter_map(|instruction| instruction.value())
+                    .find(|instruction| Address::of(&instruction.output.local) == query.place.root)
+                && let ProfiledInstructionKind::Bool(instruction) = &instruction.kind
+            {
+                match instruction {
+                    BoolInstruction::Value(value) => {
+                        if *value != expected {
+                            return false;
+                        }
+                        continue;
+                    }
+                    BoolInstruction::Test(test) => {
+                        let Some((subject, value)) = self.boolean_condition(
+                            query.block,
+                            Condition::Test {
+                                test,
+                                truth: expected,
+                            },
+                        ) else {
+                            return false;
+                        };
+                        pending.push(Visit::Enter(Query {
+                            place: Place::local(Address::from(subject)),
+                            fact: Fact::Boolean(value),
+                            ..query
+                        }));
+                        continue;
+                    }
+                    _ => return false,
                 }
             }
             let Some(index) = parameter else { return false };
@@ -205,7 +320,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 return false;
             };
             for input in inputs {
-                if self.guards.contradicts(input.block, input.condition) {
+                if self.guards.excludes(input.block, input.condition) {
                     continue;
                 }
                 let mut source = query.clone();
@@ -292,7 +407,68 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         block: BlockId,
         condition: Condition<'data>,
         source: &Place,
-        fact: ConstructorFact,
+        fact: Fact,
+        assumptions: &[Assumption],
+    ) -> Option<Vec<Query>> {
+        if let Fact::Boolean(expected) = fact
+            && let Some((subject, value)) = self.boolean_condition(block, condition)
+        {
+            return Place::local(Address::from(subject))
+                .normalize(block, self.blocks)
+                .is_some_and(|place| place == *source && value == expected)
+                .then(Vec::new);
+        }
+        self.match_condition(block, condition, source, fact, assumptions)
+    }
+
+    fn boolean_condition(
+        &self,
+        block: BlockId,
+        condition: Condition<'data>,
+    ) -> Option<(BoolLocalId, bool)> {
+        let (test, truth) = match condition {
+            Condition::Bool { subject, truth } => return Some((subject, truth)),
+            Condition::Test { test, truth } => (test, truth),
+            _ => return None,
+        };
+        match test {
+            BoolTest::Not(subject) => Some((*subject, !truth)),
+            BoolTest::Equal {
+                left: ParamLocal::Bool(left),
+                right: ParamLocal::Bool(right),
+            } => {
+                let block = self.blocks.find_block(block)?;
+                let literal = |local: BoolLocalId| {
+                    block
+                        .instructions()
+                        .iter()
+                        .filter_map(|instruction| instruction.value())
+                        .find(|instruction| {
+                            Address::of(&instruction.output.local) == Address::from(local)
+                        })
+                        .and_then(|instruction| match &instruction.kind {
+                            ProfiledInstructionKind::Bool(BoolInstruction::Value(value)) => {
+                                Some(*value)
+                            }
+                            _ => None,
+                        })
+                };
+                if let Some(value) = literal(*left) {
+                    Some((*right, value == truth))
+                } else {
+                    literal(*right).map(|value| (*left, value == truth))
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn match_condition(
+        &self,
+        block: BlockId,
+        condition: Condition<'data>,
+        source: &Place,
+        fact: Fact,
         assumptions: &[Assumption],
     ) -> Option<Vec<Query>> {
         let Condition::Match { matcher, success } = condition else {
@@ -330,7 +506,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                     requirements.push(Query {
                         block,
                         place: parent.clone(),
-                        fact: ConstructorFact::Is(constructor.index),
+                        fact: Fact::Is(constructor.index),
                         assumptions: assumptions.to_vec(),
                     });
                     (index, fields)
@@ -349,7 +525,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             return Some(requirements);
         }
         let (constructor, fields) = custom(pattern)?;
-        if fact != ConstructorFact::IsNot(constructor) {
+        if fact != Fact::IsNot(constructor) {
             return None;
         }
         let mut assumptions = assumptions.to_vec();
@@ -387,27 +563,40 @@ impl Query {
     }
 }
 
-impl ConstructorFact {
+impl Fact {
     fn holds(self, constructor: usize) -> bool {
         match self {
             Self::Is(expected) => constructor == expected,
             Self::IsNot(excluded) => constructor != excluded,
+            Self::Boolean(_) => false,
         }
     }
 }
 
-fn match_proves(pattern: &MatchPattern, success: bool, fact: ConstructorFact) -> bool {
+fn match_proves(pattern: &MatchPattern, success: bool, fact: Fact) -> bool {
+    if let Fact::Boolean(expected) = fact {
+        return matches!(unaliased(pattern), Some(MatchPattern::Bool(value)) if (*value == expected) == success);
+    }
     let Some((index, fields)) = custom(pattern) else {
         return false;
     };
     if success {
         return fact.holds(index);
     }
-    matches!(fact, ConstructorFact::IsNot(excluded) if excluded == index)
-        && fields.iter().all(irrefutable)
+    matches!(fact, Fact::IsNot(excluded) if excluded == index) && fields.iter().all(irrefutable)
 }
 
 fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
+    match unaliased(pattern)? {
+        MatchPattern::Custom {
+            constructor,
+            fields,
+        } => Some((constructor.index, fields)),
+        _ => None,
+    }
+}
+
+fn unaliased(pattern: &MatchPattern) -> Option<&MatchPattern> {
     let mut current = pattern;
     let mut visited = HashSet::new();
     loop {
@@ -415,12 +604,8 @@ fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
             return None;
         }
         match current {
-            MatchPattern::Custom {
-                constructor,
-                fields,
-            } => return Some((constructor.index, fields)),
             MatchPattern::Alias { pattern, .. } => current = pattern,
-            _ => return None,
+            _ => return Some(current),
         }
     }
 }
@@ -479,6 +664,15 @@ fn pattern_requirements(
         pending.push(PatternVisit::Leave(key));
         let (fields, custom) = match pattern {
             MatchPattern::Bind(_) | MatchPattern::Discard => continue,
+            MatchPattern::Bool(value) => {
+                requirements.push(Query {
+                    block,
+                    place,
+                    fact: Fact::Boolean(*value),
+                    assumptions,
+                });
+                continue;
+            }
             MatchPattern::Alias { pattern, .. } => {
                 pending.push(PatternVisit::Enter(pattern, place, assumptions));
                 continue;
@@ -491,7 +685,7 @@ fn pattern_requirements(
                 requirements.push(Query {
                     block,
                     place: place.clone(),
-                    fact: ConstructorFact::Is(constructor.index),
+                    fact: Fact::Is(constructor.index),
                     assumptions: assumptions.to_vec(),
                 });
                 assumptions.push(Assumption {
@@ -518,9 +712,8 @@ fn pattern_requirements(
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockId, Blocks, ConstructorFact, Control, CustomConstructorRefinement, Locals,
-        MatchPattern, ParamLocal, ParamSlot, Types, ValueShapeDescriptor, irrefutable,
-        match_proves,
+        BlockId, Blocks, Control, CustomConstructorRefinement, Fact, Locals, MatchPattern,
+        ParamLocal, ParamSlot, Types, ValueShapeDescriptor, irrefutable, match_proves,
     };
     use crate::plan::execution::graph::{
         BlockGraphExitId, Edge, Jump, Match, MatchEdge, MatchEdgeArgument, MatchPatternBinding,
@@ -529,6 +722,411 @@ mod tests {
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::CustomConstructorId;
     use std::convert::Infallible;
+
+    #[test]
+    fn branch_exclusions_require_facts_about_the_same_tuple_projection() {
+        use super::Condition;
+        use crate::plan::execution::graph::{
+            BlockHeader, BoolInstruction, CustomInstruction, ProfiledInstruction,
+            ProfiledInstructionKind,
+        };
+
+        for (source, candidate, expected) in [
+            (
+                r#"
+pub type Option(a) { Some(a) None }
+pub type Repeat { NoRepeat ManyRepeat Many1Repeat }
+fn read(repeat: Repeat, other: Repeat, default: Option(String)) -> String {
+  case repeat, other, default {
+    ManyRepeat, _, _ -> "many"
+    Many1Repeat, _, _ -> "many1"
+    NoRepeat, _, None -> "required"
+    NoRepeat, _, Some(value) -> value
+  }
+}
+pub fn main() { read(NoRepeat, ManyRepeat, Some("value")) }
+"#,
+                4,
+                vec![(0, false), (2, false), (4, true), (5, false)],
+            ),
+            (
+                r#"
+pub type Option(a) { Some(a) None }
+fn read(selected: Bool, other: Bool, default: Option(String)) -> String {
+  case selected, other, default {
+    True, _, _ -> "selected"
+    False, _, None -> "required"
+    False, _, Some(value) -> value
+  }
+}
+pub fn main() { read(False, True, Some("value")) }
+"#,
+                2,
+                vec![(0, false), (2, true), (3, false)],
+            ),
+        ] {
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let common = &plan.program.common;
+            let types = Types::admit(
+                &common.list_types,
+                &common.custom_types,
+                &common.external_types,
+                &common.value_shapes,
+            )
+            .unwrap();
+            let original = plan.program.functions.value_returns.string_functions[1]
+                .body()
+                .block_graph();
+            for changed_projection in [false, true] {
+                let mut graph = ProfiledBlockGraph::<Infallible> {
+                    entry: original.entry,
+                    blocks: original
+                        .blocks
+                        .iter()
+                        .map(|block| BlockHeader {
+                            params: block.params.clone(),
+                            instructions: block.instructions.clone(),
+                            terminator: block.terminator.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
+                    params: original.params.to_vec().into(),
+                    instructions: original.instructions.to_vec().into(),
+                };
+                if changed_projection {
+                    let mut instructions = graph.instructions.to_vec();
+                    for instruction in
+                        &mut instructions[graph.blocks[candidate].instructions.clone()]
+                    {
+                        if let ProfiledInstruction::Value(instruction) = instruction
+                            && let ProfiledInstructionKind::Bool(BoolInstruction::TupleIndex {
+                                index,
+                                ..
+                            })
+                            | ProfiledInstructionKind::Custom(CustomInstruction::TupleIndex {
+                                index,
+                                ..
+                            }) = &mut instruction.kind
+                        {
+                            *index = 1;
+                        }
+                    }
+                    graph.instructions = instructions.into();
+                }
+                let blocks = Blocks::admit(&graph).unwrap();
+                let control = Control::new(&blocks, &types);
+                let exclusions = blocks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, block)| {
+                        let condition = match block.terminator() {
+                            Terminator::Match(matcher) => Condition::Match {
+                                matcher,
+                                success: false,
+                            },
+                            Terminator::TestBranch(branch) => Condition::Test {
+                                test: &branch.test,
+                                truth: false,
+                            },
+                            _ => return None,
+                        };
+                        Some((index, control.guards.excludes(BlockId(index), condition)))
+                    })
+                    .collect::<Vec<_>>();
+                let expected = expected
+                    .iter()
+                    .map(|(index, excluded)| (*index, *excluded && !changed_projection))
+                    .collect::<Vec<_>>();
+                assert_eq!(exclusions, expected, "{source}");
+            }
+        }
+    }
+
+    #[test]
+    fn boolean_conditions_use_only_local_literals_and_keep_unknown_values() {
+        use super::Condition;
+        use crate::plan::execution::graph::{
+            BoolInstruction, BoolLocalId, ProfiledInstructionKind,
+        };
+
+        let source = r#"
+fn identity(value: Bool) { value }
+fn read(left: Bool, right: Bool) {
+  #(True == left, right == False, left == right, identity(left))
+}
+pub fn main() { read(False, True) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan.program.functions.value_returns.tuple_functions[1]
+            .body()
+            .block_graph();
+        let blocks = Blocks::admit(graph).unwrap();
+        let control = Control::new(&blocks, &types);
+        let comparisons = blocks
+            .block(graph.entry)
+            .unwrap()
+            .instructions()
+            .iter()
+            .filter_map(|instruction| instruction.value())
+            .filter_map(|instruction| match &instruction.kind {
+                ProfiledInstructionKind::Bool(BoolInstruction::Test(test)) => {
+                    Some((&instruction.output.local, test))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(comparisons.len(), 3);
+        let called = blocks
+            .block(graph.entry)
+            .unwrap()
+            .instructions()
+            .iter()
+            .filter_map(|instruction| instruction.value())
+            .find(|instruction| {
+                matches!(
+                    instruction.kind,
+                    ProfiledInstructionKind::Bool(BoolInstruction::Call { .. })
+                )
+            })
+            .unwrap();
+        for truth in [false, true] {
+            for ((local, test), expected) in comparisons.iter().zip([
+                Some((BoolLocalId(0), truth)),
+                Some((BoolLocalId(1), !truth)),
+                None,
+            ]) {
+                assert_eq!(
+                    control.boolean_condition(graph.entry, Condition::Test { test, truth }),
+                    expected
+                );
+                assert_eq!(
+                    control.boolean_condition(BlockId(usize::MAX), Condition::Test { test, truth }),
+                    None
+                );
+                assert!(!control.proves(graph.entry, local, Fact::Boolean(truth)));
+            }
+            assert!(!control.proves(graph.entry, &called.output.local, Fact::Boolean(truth)));
+            assert!(!Fact::Boolean(truth).holds(0));
+        }
+        assert!(control.contradicts(
+            graph.entry,
+            Condition::Bool {
+                subject: BoolLocalId(2),
+                truth: false,
+            }
+        ));
+        assert!(!control.contradicts(
+            graph.entry,
+            Condition::Bool {
+                subject: BoolLocalId(0),
+                truth: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn boolean_loops_need_entry_evidence_and_cannot_hide_a_changing_value() {
+        use super::{Condition, Fact};
+        use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
+        use crate::plan::execution::graph::{
+            BoolBranch, BoolInstruction, BoolLocalId, BoolTest, ProfiledInstruction,
+            ProfiledInstructionKind,
+        };
+        use crate::plan::execution::type_::ValueShapeId;
+
+        let typed =
+            crate::compile_typed_module("example", "src/example.gleam", "pub fn main() { True }")
+                .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let shape = ValueShapeId(
+            common
+                .value_shapes
+                .shapes
+                .iter()
+                .position(|shape| *shape == ValueShapeDescriptor::Bool)
+                .unwrap(),
+        );
+        let input = ParamSlot::new(ParamLocal::Bool(BoolLocalId(0)), shape);
+        for (initial, flip, expected) in [
+            (None, false, (false, false)),
+            (Some(false), false, (true, false)),
+            (Some(true), false, (false, true)),
+            (Some(true), true, (false, false)),
+        ] {
+            for matching in [false, true] {
+                let (params, instructions) = if let Some(value) = initial {
+                    (
+                        Vec::new(),
+                        vec![ProfiledInstruction::Value(ProfiledValueInstruction {
+                            output: input.clone(),
+                            kind: ProfiledInstructionKind::Bool(BoolInstruction::Value(value)),
+                        })],
+                    )
+                } else {
+                    (vec![input.clone()], Vec::new())
+                };
+                let loop_instructions = if flip {
+                    vec![ProfiledInstruction::Value(ProfiledValueInstruction {
+                        output: ParamSlot::new(ParamLocal::Bool(BoolLocalId(1)), shape),
+                        kind: ProfiledInstructionKind::Bool(BoolInstruction::Test(BoolTest::Not(
+                            BoolLocalId(0),
+                        ))),
+                    })]
+                } else {
+                    Vec::new()
+                };
+                let back = if flip { BoolLocalId(1) } else { BoolLocalId(0) };
+                let transfer = Transfer {
+                    families: Table::Static(&[]),
+                };
+                let graph = ProfiledBlockGraph::<Infallible>::from_parts(
+                    BlockId(0),
+                    vec![
+                        ProfiledBlock::new(
+                            params,
+                            instructions,
+                            Terminator::Jump(Jump {
+                                edge: Edge::new(
+                                    BlockId(1),
+                                    vec![input.local.clone()],
+                                    transfer.clone(),
+                                ),
+                            }),
+                        ),
+                        ProfiledBlock::new(
+                            vec![input.clone()],
+                            loop_instructions,
+                            if matching {
+                                Terminator::Match(Match {
+                                    subject: input.local.clone(),
+                                    pattern: MatchPattern::Bool(true),
+                                    success: MatchEdge {
+                                        target: BlockId(1),
+                                        args: vec![MatchEdgeArgument::Value(ParamLocal::Bool(
+                                            back,
+                                        ))]
+                                        .into(),
+                                        bindings: Vec::new().into(),
+                                        transfer: transfer.clone(),
+                                    },
+                                    failure: Edge::new(BlockId(2), Vec::new(), transfer),
+                                })
+                            } else {
+                                Terminator::BoolBranch(BoolBranch {
+                                    subject: BoolLocalId(0),
+                                    true_: Edge::new(
+                                        BlockId(1),
+                                        vec![ParamLocal::Bool(back)],
+                                        transfer.clone(),
+                                    ),
+                                    false_: Edge::new(BlockId(2), Vec::new(), transfer),
+                                })
+                            },
+                        ),
+                        ProfiledBlock::new(
+                            Vec::new(),
+                            Vec::new(),
+                            Terminator::Exit(BlockGraphExitId(0)),
+                        ),
+                    ],
+                );
+                let blocks = Blocks::admit(&graph).unwrap();
+                let control = Control::new(&blocks, &types);
+                assert_eq!(
+                    (
+                        control.guards.excludes(
+                            BlockId(1),
+                            Condition::Bool {
+                                subject: BoolLocalId(0),
+                                truth: true
+                            }
+                        ),
+                        control.guards.excludes(
+                            BlockId(1),
+                            Condition::Bool {
+                                subject: BoolLocalId(0),
+                                truth: false
+                            }
+                        ),
+                    ),
+                    expected
+                );
+                assert_eq!(
+                    control.proves(BlockId(1), &input.local, Fact::Boolean(true)),
+                    expected.1
+                );
+                assert_eq!(
+                    control.proves(BlockId(1), &input.local, Fact::Boolean(false)),
+                    expected.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn boolean_patterns_keep_exact_truth_and_parent_projection_obligations() {
+        use super::{Place, Projection, pattern_requirements};
+        use crate::plan::execution::graph::TupleLocalId;
+
+        for value in [false, true] {
+            let pattern = MatchPattern::Alias {
+                pattern: Box::new(MatchPattern::Bool(value)).into(),
+                binding: MatchPatternBinding::new(0),
+            };
+            for success in [false, true] {
+                assert!(match_proves(
+                    &pattern,
+                    success,
+                    Fact::Boolean(value == success)
+                ));
+                assert!(!match_proves(
+                    &pattern,
+                    success,
+                    Fact::Boolean(value != success)
+                ));
+            }
+            let mut requirements = Vec::new();
+            assert_eq!(
+                pattern_requirements(
+                    BlockId(0),
+                    &MatchPattern::Tuple(vec![pattern].into()),
+                    Place::local(TupleLocalId(0).into()),
+                    &[],
+                    &mut requirements,
+                ),
+                Some(())
+            );
+            assert_eq!(requirements.len(), 1);
+            assert_eq!(
+                requirements[0].place,
+                Place {
+                    root: TupleLocalId(0).into(),
+                    path: vec![Projection::Tuple(0)],
+                }
+            );
+            assert!(requirements[0].fact == Fact::Boolean(value));
+            assert!(requirements[0].assumptions.is_empty());
+        }
+    }
 
     #[test]
     fn conditional_exclusions_reuse_parent_hypotheses_and_reject_unknown_fields() {
@@ -583,12 +1181,12 @@ pub fn main() { inspect(Error("failed")) }
                     success: false,
                 },
                 &subject,
-                ConstructorFact::IsNot(0),
+                Fact::IsNot(0),
                 std::slice::from_ref(&parent),
             )
             .unwrap();
         assert_eq!(obligations.len(), 1);
-        assert!(obligations[0].fact == ConstructorFact::Is(0));
+        assert!(obligations[0].fact == Fact::Is(0));
         assert_eq!(obligations[0].assumptions.len(), 1);
         assert!(obligations[0].assumptions[0] == parent);
 
@@ -599,7 +1197,7 @@ pub fn main() { inspect(Error("failed")) }
                     type_id: crate::plan::execution::type_::CustomTypeId(0),
                     index: 0,
                 },
-                fields: vec![MatchPattern::Bool(true)].into(),
+                fields: vec![MatchPattern::String("literal".into())].into(),
             },
         ] {
             matcher.pattern = pattern;
@@ -612,7 +1210,7 @@ pub fn main() { inspect(Error("failed")) }
                             success: false
                         },
                         &subject,
-                        ConstructorFact::IsNot(0),
+                        Fact::IsNot(0),
                         &[],
                     )
                     .is_none()
@@ -697,7 +1295,7 @@ pub fn main() { inspect(Error("failed")) }
                     path
                 }
             );
-            assert!(query.fact == ConstructorFact::Is(constructor));
+            assert!(query.fact == Fact::Is(constructor));
             assert_eq!(
                 query
                     .assumptions
@@ -711,7 +1309,7 @@ pub fn main() { inspect(Error("failed")) }
             pattern: Node::Static(&CYCLE),
             binding: MatchPatternBinding { index: 0 },
         };
-        for unknown in [&MatchPattern::Bool(true), &CYCLE] {
+        for unknown in [&MatchPattern::String("literal".into()), &CYCLE] {
             assert_eq!(
                 pattern_requirements(
                     BlockId(4),
@@ -791,14 +1389,8 @@ pub fn main() { inspect(Error("failed")) }
                 ProfiledBlockGraph::from_parts(graph.entry, bodies);
             let blocks = Blocks::admit(&raw).unwrap();
             let control = Control::new(&blocks, &types);
-            assert_eq!(
-                control.proves(BlockId(4), source, ConstructorFact::IsNot(0)),
-                expected
-            );
-            assert_eq!(
-                control.proves(BlockId(4), source, ConstructorFact::Is(1)),
-                expected
-            );
+            assert_eq!(control.proves(BlockId(4), source, Fact::IsNot(0)), expected);
+            assert_eq!(control.proves(BlockId(4), source, Fact::Is(1)), expected);
         }
     }
 
@@ -862,23 +1454,23 @@ pub fn main() {{ read(0, First(42)) }}
                 let control = Control::new(&blocks, &types);
                 let parameter = &blocks.block(BlockId(1)).unwrap().params()[0];
                 assert_eq!(
-                    control.proves(BlockId(1), &parameter.local, ConstructorFact::Is(0)),
+                    control.proves(BlockId(1), &parameter.local, Fact::Is(0)),
                     !bypass
                 );
                 assert_eq!(
-                    control.proves(BlockId(1), &parameter.local, ConstructorFact::IsNot(1)),
+                    control.proves(BlockId(1), &parameter.local, Fact::IsNot(1)),
                     !bypass
                 );
-                assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
+                assert!(!control.proves(BlockId(0), &slot.local, Fact::Is(0)));
                 assert_eq!(
-                    control.proves(BlockId(2), &slot.local, ConstructorFact::Is(1)),
+                    control.proves(BlockId(2), &slot.local, Fact::Is(1)),
                     complete,
                 );
-                assert!(!control.proves(BlockId(99), &slot.local, ConstructorFact::Is(0)));
+                assert!(!control.proves(BlockId(99), &slot.local, Fact::Is(0)));
                 assert!(!control.proves(
                     BlockId(1),
                     &ParamLocal::Int(crate::plan::execution::graph::IntLocalId(99)),
-                    ConstructorFact::Is(0)
+                    Fact::Is(0)
                 ));
                 let mut locals = Locals::default();
                 locals.define(parameter, &types).unwrap();
@@ -1049,7 +1641,7 @@ pub fn main() { #(widen(First(42)), Second(7)) }
             );
             let blocks = Blocks::admit(&graph).unwrap();
             let control = Control::new(&blocks, &types);
-            assert!(!control.proves(BlockId(1), &slot.local, ConstructorFact::IsNot(1)));
+            assert!(!control.proves(BlockId(1), &slot.local, Fact::IsNot(1)));
         }
     }
 
@@ -1173,9 +1765,9 @@ pub fn main() { #(widen(First(42)), Second(7)) }
         );
         let blocks = Blocks::admit(&graph).unwrap();
         let control = Control::new(&blocks, &types);
-        assert!(control.proves(BlockId(4), &slot.local, ConstructorFact::IsNot(1)));
-        assert!(control.proves(BlockId(4), &slot.local, ConstructorFact::Is(0)));
-        assert!(!control.proves(BlockId(0), &slot.local, ConstructorFact::Is(0)));
+        assert!(control.proves(BlockId(4), &slot.local, Fact::IsNot(1)));
+        assert!(control.proves(BlockId(4), &slot.local, Fact::Is(0)));
+        assert!(!control.proves(BlockId(0), &slot.local, Fact::Is(0)));
     }
 
     fn branch_graph(
@@ -1273,10 +1865,7 @@ pub fn main() { #(widen(First(42)), Second(7)) }
                 }]
                 .into(),
             };
-            assert_eq!(
-                match_proves(&pattern, false, ConstructorFact::IsNot(7)),
-                excluded
-            );
+            assert_eq!(match_proves(&pattern, false, Fact::IsNot(7)), excluded);
         }
     }
 
@@ -1502,7 +2091,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                     success: false,
                 },
                 &source,
-                ConstructorFact::IsNot(3),
+                Fact::IsNot(3),
                 &[],
             );
             assert_eq!(requirements.is_some(), expected);
@@ -1511,7 +2100,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                 for query in requirements {
                     assert_eq!(query.block, BlockId(0));
                     assert_eq!(query.place, Place::local(TupleLocalId(0).into()));
-                    assert!(query.fact == ConstructorFact::Is(7));
+                    assert!(query.fact == Fact::Is(7));
                 }
             }
             assert!(
@@ -1523,7 +2112,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                             success: true
                         },
                         &source,
-                        ConstructorFact::Is(3),
+                        Fact::Is(3),
                         &[],
                     )
                     .is_some()
@@ -1547,7 +2136,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                                 root: TupleLocalId(root).into(),
                                 path
                             },
-                            ConstructorFact::IsNot(3),
+                            Fact::IsNot(3),
                             &[],
                         )
                         .is_none()
@@ -1595,7 +2184,7 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                         root: TupleLocalId(0).into(),
                         path: vec![Projection::Tuple(0)]
                     },
-                    ConstructorFact::IsNot(3),
+                    Fact::IsNot(3),
                     &[],
                 )
                 .is_none()
@@ -1627,25 +2216,18 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                 constructor,
                 fields: vec![field].into(),
             };
-            assert!(match_proves(&pattern, true, ConstructorFact::Is(7)));
-            assert!(match_proves(&pattern, true, ConstructorFact::IsNot(0)));
-            assert!(!match_proves(&pattern, true, ConstructorFact::Is(0)));
-            assert_eq!(
-                match_proves(&pattern, false, ConstructorFact::IsNot(7)),
-                excluded
-            );
-            assert!(!match_proves(&pattern, false, ConstructorFact::Is(0)));
-            assert!(!match_proves(&pattern, false, ConstructorFact::IsNot(0)));
+            assert!(match_proves(&pattern, true, Fact::Is(7)));
+            assert!(match_proves(&pattern, true, Fact::IsNot(0)));
+            assert!(!match_proves(&pattern, true, Fact::Is(0)));
+            assert_eq!(match_proves(&pattern, false, Fact::IsNot(7)), excluded);
+            assert!(!match_proves(&pattern, false, Fact::Is(0)));
+            assert!(!match_proves(&pattern, false, Fact::IsNot(0)));
         }
         static RECURSIVE: MatchPattern = MatchPattern::Alias {
             pattern: Node::Static(&RECURSIVE),
             binding: MatchPatternBinding { index: 0 },
         };
-        assert!(!match_proves(&RECURSIVE, true, ConstructorFact::Is(0)));
-        assert!(!match_proves(
-            &MatchPattern::Discard,
-            false,
-            ConstructorFact::IsNot(0)
-        ));
+        assert!(!match_proves(&RECURSIVE, true, Fact::Is(0)));
+        assert!(!match_proves(&MatchPattern::Discard, false, Fact::IsNot(0)));
     }
 }

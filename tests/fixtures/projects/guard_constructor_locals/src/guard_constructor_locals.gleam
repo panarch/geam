@@ -1,7 +1,9 @@
 import clip/flag
 import clip/opt
+import clip_contracts
 import gleam/io
 import gleam/option.{type Option, None, Some}
+import multi_subject_patterns
 
 pub type Pair {
   Pair(left: Int, right: Int)
@@ -215,5 +217,7 @@ pub fn clip_cases() {
 pub fn main() {
   general_cases()
   clip_cases()
-  io.println("guard locals and original clip opt/flag: ok")
+  let assert "value" = multi_subject_patterns.main()
+  clip_contracts.main()
+  io.println("guard locals, multi-subject patterns and original clip: ok")
 }
