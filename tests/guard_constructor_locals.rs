@@ -33,7 +33,7 @@ fn runs_local_guards_multi_subject_patterns_and_complete_original_clip() {
 }
 
 #[test]
-fn typed_embedding_reuses_generic_guard_and_capture_entries() {
+fn typed_embedding_reuses_generic_guards_captures_and_nested_remainder_bindings() {
     let typed = compile_typed_host_project(
         Utf8PathBuf::from_path_buf(fixture::project_root()).unwrap(),
         "guard_constructor_locals",
@@ -55,6 +55,16 @@ fn typed_embedding_reuses_generic_guard_and_capture_entries() {
     let captured = bindings
         .function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
             "captured_match",
+        ))
+        .unwrap();
+    let remainder_bool = bindings
+        .function(FunctionDeclaration::<(bool, bool), bool>::new(
+            "remainder_bool",
+        ))
+        .unwrap();
+    let remainder_custom = bindings
+        .function(FunctionDeclaration::<(bool, bool), bool>::new(
+            "remainder_custom",
         ))
         .unwrap();
     let arithmetic = bindings
@@ -91,6 +101,11 @@ fn typed_embedding_reuses_generic_guard_and_capture_entries() {
                             .call(&captured, (value.into(), expected.into()))
                             .await?,
                     );
+                }
+                for function in [&remainder_bool, &remainder_custom] {
+                    for input in [(true, false), (false, false), (true, true), (true, false)] {
+                        results.push(scope.call(function, input).await?);
+                    }
                 }
                 for (value, offset, expected) in [
                     ("9223372036854775807", "1", "9223372036854775807"),
@@ -129,8 +144,8 @@ fn typed_embedding_reuses_generic_guard_and_capture_entries() {
     assert_eq!(
         actual,
         [
-            true, false, true, true, true, false, true, false, true, true, true, true, false, true,
-            true,
+            true, false, true, true, true, false, true, false, true, true, false, false, true,
+            true, false, false, true, true, true, true, false, true, true,
         ]
     );
     assert!(echo.is_empty());
