@@ -1,8 +1,6 @@
 use data::compiled::bit_array::BitArrayValues;
-use data::compiled::numeric::NumericValues;
 use data::compiled::{
     BitArrayImplementation, CompiledFunction, CompiledImplementation, CompiledProgress,
-    NumericImplementation,
 };
 use geam_core::__prepared_support as data;
 use geam_core::embedding::{
@@ -23,6 +21,526 @@ static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepare
 static NUMERIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/numeric.rs");
 static NUMERIC_HOSTED: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
 static NUMERIC_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/numeric_entry.rs");
+static NUMERIC_SWITCH: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/numeric_switch.rs");
+static INT_LIST: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/int_list.rs");
+static INT_LIST_HOSTED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/int_list_hosted.rs");
+static INT_LIST_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/int_list_entry.rs");
+
+macro_rules! int_list_functions {
+    ($bindings:ident, $count:expr) => {
+        (
+            $count,
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "asserted",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, List<BigInt>, BigInt),
+                    BigInt,
+                >::new("equal_walk"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>,), BigInt>::new(
+                    "prefix",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, List<BigInt>, bool),
+                    bool,
+                >::new("same"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, List<BigInt>, BigInt),
+                    BigInt,
+                >::new("shuffle"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, List<BigInt>, BigInt),
+                    BigInt,
+                >::new("duplicate"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "captured",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>,), BigInt>::new("stop"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("main"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>,), BigInt>::new("late"))
+                .unwrap(),
+        )
+    };
+}
+
+#[test]
+fn int_list_generated_execution_preserves_patterns_big_values_edges_and_captures() {
+    use geam_core::{PanicDetails, PanicKind, Value};
+    let source = include_str!("fixtures/prepared/int_list.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, count) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+            "count",
+        ))
+        .unwrap();
+    let _ = int_list_functions!(bindings, count);
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/int_list.rs").trim()
+    );
+    // Every directly exposed pure reader and the capturing closure has a
+    // real generated implementation. Caller functions containing calls do not.
+    assert_eq!(
+        INT_LIST
+            .program
+            .compiled
+            .ints
+            .iter()
+            .map(|target| target.function.0)
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4, 5, 7, 9, 10]
+    );
+    assert!(INT_LIST.program.compiled.ints.iter().all(|target| matches!(
+        target.implementation,
+        data::compiled::CompiledImplementation::IntList(_)
+    )));
+    assert_eq!(INT_LIST.program.compiled.bools.len(), 1);
+    for prepared in [false, true] {
+        let (module, functions) = if prepared {
+            let mut bindings = INT_LIST.load().unwrap();
+            let count = bindings
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "count",
+                ))
+                .unwrap();
+            let functions = int_list_functions!(bindings, count);
+            (bindings.seal(), functions)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, count) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "count",
+                ))
+                .unwrap();
+            let functions = int_list_functions!(bindings, count);
+            (bindings.seal(), functions)
+        };
+        let (
+            count,
+            asserted,
+            equal_walk,
+            prefix,
+            same,
+            shuffle,
+            duplicate,
+            captured,
+            stop,
+            main,
+            late,
+        ) = functions;
+        let big: BigInt = BigInt::from(1) << 180;
+        for values in [
+            vec![],
+            vec![1.into()],
+            vec![1.into(), 0.into(), 1.into()],
+            vec![big.clone(), 1.into(), (-1).into()],
+        ] {
+            let ones = values
+                .iter()
+                .filter(|value| **value == BigInt::from(1))
+                .count();
+            for total in [BigInt::from(3), i64::MAX.into(), big.clone()] {
+                let expected = &total + BigInt::from(ones);
+                for function in [&count, &asserted] {
+                    assert_eq!(
+                        module
+                            .call(function, (values.clone(), total.clone()), &mut Vec::new())
+                            .unwrap(),
+                        expected
+                    );
+                }
+                assert_eq!(
+                    module
+                        .call(
+                            &equal_walk,
+                            (values.clone(), Vec::<BigInt>::new(), total),
+                            &mut Vec::new()
+                        )
+                        .unwrap(),
+                    expected
+                );
+            }
+        }
+        assert_eq!(
+            module
+                .call(
+                    &equal_walk,
+                    (
+                        vec![1.into(), 0.into(), 1.into()],
+                        vec![0.into(), 1.into()],
+                        2.into()
+                    ),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            BigInt::from(3)
+        );
+        for (left, right, steps, expected) in [(7, 2, 0, 5), (7, 2, 1, -5), (7, 2, 64, 5)] {
+            assert_eq!(
+                module
+                    .call(
+                        &shuffle,
+                        (
+                            vec![BigInt::from(left)],
+                            vec![BigInt::from(right)],
+                            BigInt::from(steps)
+                        ),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                BigInt::from(expected)
+            );
+        }
+        assert_eq!(
+            module
+                .call(
+                    &duplicate,
+                    (vec![BigInt::from(7)], vec![BigInt::from(2)], 2.into()),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            BigInt::from(7)
+        );
+        for head in [BigInt::from(5), big.clone()] {
+            assert_eq!(
+                module
+                    .call(&captured, (vec![head.clone()], 10.into()), &mut Vec::new())
+                    .unwrap(),
+                head + 13
+            );
+        }
+        for first in [BigInt::from(5), big.clone()] {
+            assert_eq!(
+                module
+                    .call(
+                        &prefix,
+                        (vec![
+                            0.into(),
+                            first.clone(),
+                            big.clone(),
+                            7.into(),
+                            9.into()
+                        ],),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                first + 7
+            );
+        }
+        assert_eq!(
+            module
+                .call(
+                    &late,
+                    (vec![5.into(), 2.into(), 9.into()],),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            BigInt::from(8)
+        );
+        for head in [BigInt::from(5), big.clone()] {
+            let values = vec![head, 9.into(), 1.into()];
+            let error = module
+                .call(&late, (values.clone(),), &mut Vec::new())
+                .unwrap_err()
+                .into_materialized();
+            let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                panic!("late source mismatch");
+            };
+            assert_eq!(panic.kind(), PanicKind::LetAssert);
+            assert_eq!(panic.site().function(), "late");
+            assert!(
+                matches!(panic.details(), Some(PanicDetails::LetAssert { value: Value::List(actual), .. }) if actual == &geam_core::ListValue::int(values.clone()))
+            );
+        }
+        for negate in [false, true] {
+            for (left, right, expected) in [
+                (
+                    vec![big.clone(), 1.into()],
+                    vec![big.clone(), 1.into()],
+                    true,
+                ),
+                (vec![], vec![big.clone()], false),
+                (vec![big.clone()], vec![BigInt::from(3)], false),
+            ] {
+                assert_eq!(
+                    module
+                        .call(&same, (left, right, negate), &mut Vec::new())
+                        .unwrap(),
+                    expected != negate
+                );
+            }
+        }
+        for values in [
+            vec![],
+            vec![0.into()],
+            vec![1.into(), 2.into(), 3.into(), 4.into()],
+            vec![0.into(), 2.into(), 3.into()],
+        ] {
+            let error = module
+                .call(&prefix, (values.clone(),), &mut Vec::new())
+                .unwrap_err()
+                .into_materialized();
+            let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                panic!("source let assert");
+            };
+            assert_eq!(panic.kind(), PanicKind::LetAssert);
+            assert_eq!(panic.site().module(), "example");
+            assert_eq!(panic.site().function(), "prefix");
+            assert!(
+                matches!(panic.details(), Some(PanicDetails::LetAssert { value: Value::List(actual), .. }) if actual == &geam_core::ListValue::int(values.clone()))
+            );
+        }
+        let error = module
+            .call(&stop, (Vec::<BigInt>::new(),), &mut Vec::new())
+            .unwrap_err()
+            .into_materialized();
+        let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+            panic!("source panic");
+        };
+        assert_eq!(panic.kind(), PanicKind::Panic);
+        assert_eq!(panic.site().function(), "stop");
+        assert_eq!(
+            module.call(&main, (), &mut Vec::new()).unwrap(),
+            BigInt::from(12)
+        );
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_int_list_standalone_entry_uses_the_same_compiled_links() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut entry = INT_LIST_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let mut echo = Vec::new();
+    runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap();
+    assert!(echo.is_empty());
+    assert_eq!(INT_LIST_ENTRY.program.compiled.ints.len(), 3);
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_int_list_calls_keep_other_caller_values_and_release_abandoned_execution() {
+    use geam_core::{ListValue, PanicDetails, PanicKind, Value};
+    use std::future::{Future, poll_fn};
+    use std::task::Poll;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, caller, running) = if prepared {
+            let mut bindings = INT_LIST_HOSTED
+                .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+                .unwrap();
+            let caller = bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, BigInt),
+                >::new("caller"))
+                .unwrap();
+            let running = bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("running"))
+                .unwrap();
+            (bindings.seal(), caller, running)
+        } else {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        include_str!("fixtures/prepared/int_list.gleam"),
+                    )],
+                )],
+                HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let (mut bindings, caller) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, BigInt),
+                >::new("caller"))
+                .unwrap();
+            let running = bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("running"))
+                .unwrap();
+            (bindings.seal().unwrap(), caller, running)
+        };
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let mut started = Some(started);
+        let mut outputs = Vec::new();
+        let mut echo = |output: EchoOutput| {
+            outputs.push(output.to_string());
+            if let Some(started) = started.take() {
+                started.send(()).unwrap();
+            }
+        };
+        runtime.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    let (text, count, values, captured) = scope
+                        .call(
+                            &caller,
+                            (
+                                vec![1.into(), 0.into(), 1.into()],
+                                5.into(),
+                                "caller".into(),
+                            ),
+                        )
+                        .await
+                        .unwrap();
+                    let big: BigInt = BigInt::from(1) << 180;
+                    let (big_text, big_count, big_values, big_captured) = scope
+                        .call(
+                            &caller,
+                            (vec![big.clone(), 1.into()], big.clone(), "big".into()),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(big_text.as_str(), "big");
+                    assert_eq!(big_count, &big + 1);
+                    assert_eq!(big_values.read_item(0, Clone::clone), Some(big.clone()));
+                    assert_eq!(big_captured, &big * 2 + 3);
+                    let (_, long_count, _, long_captured) = scope
+                        .call(
+                            &caller,
+                            (vec![BigInt::from(1); 4000], 0.into(), "long".into()),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(long_count, BigInt::from(4000));
+                    assert_eq!(long_captured, BigInt::from(4));
+                    let error = scope
+                        .call(&caller, (Vec::<BigInt>::new(), 0.into(), "empty".into()))
+                        .await
+                        .err()
+                        .expect("captured list pattern must fail")
+                        .into_materialized();
+                    let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                        panic!("captured list pattern must fail");
+                    };
+                    assert_eq!(panic.kind(), PanicKind::LetAssert);
+                    assert_eq!(panic.site().module(), "example");
+                    assert!(matches!(
+                        panic.details(),
+                        Some(PanicDetails::LetAssert {
+                            value: Value::List(actual),
+                            ..
+                        }) if actual == &ListValue::int(vec![])
+                    ));
+
+                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(count, BigInt::from(7));
+                    assert_eq!(captured, BigInt::from(9));
+                    assert_eq!(values.len(), 3);
+                    let first = values
+                        .read_item(0, |value| std::ptr::from_ref(value).addr())
+                        .unwrap();
+                    assert_eq!(
+                        values.read_item(0, |value| std::ptr::from_ref(value).addr()),
+                        Some(first)
+                    );
+                    assert_eq!(values.read_item(1, Clone::clone), Some(0.into()));
+                    let mut pending = Box::pin(scope.call(&running, ()));
+                    let mut ready = Box::pin(ready);
+                    poll_fn(|context| {
+                        if let Poll::Ready(result) = pending.as_mut().poll(context) {
+                            panic!("infinite list call returned: {result:?}");
+                        }
+                        ready.as_mut().poll(context)
+                    })
+                    .await
+                    .unwrap();
+                    drop(pending);
+                    assert_eq!(
+                        scope
+                            .call(&caller, (vec![1.into()], 0.into(), "after".into()))
+                            .await
+                            .unwrap()
+                            .1,
+                        BigInt::from(1)
+                    );
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        });
+        assert_eq!(outputs.len(), 1);
+        assert!(outputs[0].ends_with("\"entered-list\""));
+    }
+}
+
+#[test]
+fn generated_int_list_hosted_artifact_matches_public_preparation() {
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/int_list.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<
+            (List<BigInt>, BigInt, StringValue),
+            (StringValue, BigInt, List<BigInt>, BigInt),
+        >::new("caller"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), BigInt>::new("running"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/int_list_hosted.rs").trim()
+    );
+}
+
 static BIT_ARRAY_LOOPS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/bit_array_loops.rs");
 static BIT_ARRAY_ENTRY: data::HostedEntryArtifact =
@@ -574,6 +1092,105 @@ macro_rules! numeric_functions {
 }
 
 #[test]
+fn numeric_switch_resumes_after_its_prefix_and_preserves_every_selected_arm() {
+    use data::compiled::numeric::NumericValues;
+
+    let source = include_str!("fixtures/prepared/numeric_switch.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/numeric_switch.rs").trim()
+    );
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, direct_choose) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    let direct = bindings.seal();
+    let mut bindings = NUMERIC_SWITCH.load().unwrap();
+    let compiled_choose = bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    let compiled = bindings.seal();
+    let big: BigInt = BigInt::from(1) << 100;
+    for (input, expected) in [
+        ((-1).into(), 1.into()),
+        (0.into(), 3.into()),
+        (3.into(), 7.into()),
+        (i64::MAX.into(), BigInt::from(i64::MAX) + 4),
+        (big.clone(), big + 4),
+    ] {
+        assert_eq!(
+            direct
+                .call(&direct_choose, (input.clone(),), &mut Vec::new())
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            compiled
+                .call(&compiled_choose, (input,), &mut Vec::new())
+                .unwrap(),
+            expected
+        );
+    }
+
+    assert_eq!(NUMERIC_SWITCH.program.compiled.ints.len(), 1);
+    let kernels = NUMERIC_SWITCH
+        .program
+        .compiled
+        .ints
+        .iter()
+        .filter_map(|target| match &target.implementation {
+            CompiledImplementation::Numeric(kernel) => Some(kernel),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(kernels.len(), 1);
+    let kernel = kernels[0];
+    for (input, selected, target, result, exit) in
+        [(-1, 0, 2, 1, 0), (0, 1, 4, 3, 1), (3, 4, 6, 7, 2)]
+    {
+        let mut values = NumericValues {
+            ints: vec![input],
+            bools: vec![],
+        };
+        let mut budget = 1;
+        assert_eq!(
+            (kernel.run)(0, &mut values, &mut budget),
+            CompiledProgress::Yield(1)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [input, selected]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(1, &mut values, &mut budget),
+            CompiledProgress::Yield(target)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(target, &mut values, &mut budget),
+            CompiledProgress::Yield(target + 1)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected, result]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(target + 1, &mut values, &mut budget),
+            CompiledProgress::Complete(data::graph::BlockGraphExitId(exit))
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected, result]);
+        assert!(values.bools.is_empty());
+    }
+}
+
+#[test]
 fn numeric_control_flow_matches_preparation_and_compiled_execution() {
     let source = include_str!("fixtures/prepared/numeric.gleam");
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
@@ -794,17 +1411,20 @@ fn numeric_control_flow_matches_preparation_and_compiled_execution() {
 
 #[test]
 fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
+    use data::compiled::CompiledProgress;
+    use data::compiled::numeric::NumericValues;
     let target = NUMERIC.entries.ints[0].function;
-    let implementation = numeric_fixture(
-        &NUMERIC
-            .program
-            .compiled
-            .ints
-            .iter()
-            .find(|function| function.function == target)
-            .unwrap()
-            .implementation,
-    );
+    let implementation = &NUMERIC
+        .program
+        .compiled
+        .ints
+        .iter()
+        .find(|function| function.function == target)
+        .unwrap()
+        .implementation;
+    let data::compiled::CompiledImplementation::Numeric(implementation) = implementation else {
+        panic!("numeric target");
+    };
     for allowance in [1, 2, 3, 4, 7, 64, 1024] {
         let mut values = NumericValues {
             ints: vec![12, 0],
@@ -859,6 +1479,7 @@ fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
             ints: 4,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         }
     );
     assert_eq!(
@@ -869,17 +1490,20 @@ fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
 
 #[test]
 fn discarded_region_outputs_do_not_become_checkpoint_values() {
+    use data::compiled::CompiledProgress;
+    use data::compiled::numeric::NumericValues;
     let target = NUMERIC.entries.ints.last().unwrap().function;
-    let implementation = numeric_fixture(
-        &NUMERIC
-            .program
-            .compiled
-            .ints
-            .iter()
-            .find(|function| function.function == target)
-            .unwrap()
-            .implementation,
-    );
+    let implementation = &NUMERIC
+        .program
+        .compiled
+        .ints
+        .iter()
+        .find(|function| function.function == target)
+        .unwrap()
+        .implementation;
+    let data::compiled::CompiledImplementation::Numeric(implementation) = implementation else {
+        panic!("numeric target");
+    };
     let mut values = NumericValues {
         ints: vec![i128::from(i64::MAX)],
         bools: vec![true],
@@ -1061,6 +1685,14 @@ fn generated_hosted_calls_keep_scope_cancellation_captures_and_standalone_output
                             .unwrap(),
                         BigInt::from(198)
                     );
+                    let big: BigInt = BigInt::from(1) << 180;
+                    assert_eq!(
+                        scope
+                            .call(&arithmetic, (12.into(), big.clone()))
+                            .await
+                            .unwrap(),
+                        &big + 198
+                    );
                     assert!(scope.call(&choice, ((-1).into(), false)).await.unwrap());
                     let (text, first, values, last) = scope
                         .call(&caller, (i64::MAX.into(), 1.into(), "caller".into()))
@@ -1230,7 +1862,7 @@ fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
 }
 
 #[test]
-fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
+fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_results() {
     let source = include_str!("fixtures/prepared/nested_patterns.gleam");
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, _) = ModuleBuilder::new(typed)
@@ -1685,7 +2317,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 13; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 14; regenerate the prepared program"
     );
 }
 
@@ -2392,6 +3024,11 @@ fn native_data_matches_preparation_output() {
     bindings
         .function(FunctionDeclaration::<(), bool>::new("generic_results"))
         .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+            "list_callback",
+        ))
+        .unwrap();
     assert_eq!(
         bindings.prepare().unwrap().emit_rust(),
         include_str!("fixtures/prepared/native.rs").trim()
@@ -2614,12 +3251,17 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
         .unwrap();
     let host = TokioHost::new(runtime.handle().clone());
     for prepared in [false, true] {
-        let (mut module, run) = if prepared {
+        let (mut module, run, callback) = if prepared {
             let mut bindings = NATIVE.load(native_provider::hosts()).unwrap();
             let run = bindings
                 .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
                 .unwrap();
-            (bindings.seal(), run)
+            let callback = bindings
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "list_callback",
+                ))
+                .unwrap();
+            (bindings.seal(), run, callback)
         } else {
             let program = compile_typed_host_program(
                 "application",
@@ -2636,16 +3278,31 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
                 native_provider::hosts(),
             )
             .unwrap();
-            let (bindings, run) = HostedModuleBuilder::new(program)
+            let (mut bindings, run) = HostedModuleBuilder::new(program)
                 .unwrap()
                 .function(FunctionDeclaration::<(), (bool, bool, BigInt)>::new("run"))
                 .unwrap();
-            (bindings.seal().unwrap(), run)
+            let callback = bindings
+                .function(FunctionDeclaration::<(List<BigInt>, BigInt), BigInt>::new(
+                    "list_callback",
+                ))
+                .unwrap();
+            (bindings.seal().unwrap(), run, callback)
         };
         let mut echo = Vec::new();
         let value = runtime
             .block_on(
                 module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    let big: BigInt = BigInt::from(1) << 180;
+                    for head in [BigInt::from(7), big] {
+                        assert_eq!(
+                            scope
+                                .call(&callback, (vec![head.clone(), 2.into()], 10.into()))
+                                .await
+                                .unwrap(),
+                            head * 3 + 10
+                        );
+                    }
                     scope.call(&run, ()).await.unwrap()
                 }),
             )
@@ -3201,18 +3858,5 @@ fn embedding_constructs_failure_only_callables_from_value_declarations() {
             error.to_string(),
             "host function support::support/private.stop failed: callable stopped"
         );
-    }
-}
-
-#[test]
-#[should_panic(expected = "expected scalar fixture")]
-fn numeric_fixture_guard_rejects_a_bit_array_kernel() {
-    numeric_fixture(&BIT_ARRAY_LOOPS.program.compiled.ints[0].implementation);
-}
-
-fn numeric_fixture(implementation: &CompiledImplementation) -> &NumericImplementation {
-    match implementation {
-        CompiledImplementation::Numeric(value) => value,
-        CompiledImplementation::BitArray(_) => panic!("expected scalar fixture"),
     }
 }

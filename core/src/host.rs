@@ -64,6 +64,11 @@ pub use type_::{
     HostNominalCustomField, HostSchemaType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
     HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
 };
+#[doc(hidden)]
+pub use type_::{
+    HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
+    HostCustomIndexLeft, HostCustomIndexRight,
+};
 pub use value::{
     HostCallCompletion, HostCallable, HostCustom, HostExternal, HostList, HostTuple, HostValue,
 };

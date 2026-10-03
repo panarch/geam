@@ -1,9 +1,10 @@
 mod bit_array;
+mod int_list;
 pub(super) mod shape;
 
 use self::shape::{
-    CompiledBoolean, CompiledInstruction, CompiledTerminator, CompiledTest, KernelKind,
-    NumericComparison, NumericInteger, NumericOperation,
+    CompiledBoolean, CompiledEdge, CompiledInstruction, CompiledTerminator, CompiledTest,
+    KernelKind, NumericComparison, NumericInteger, NumericOperation,
 };
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{
@@ -11,10 +12,12 @@ use crate::plan::execution::function::{
     FunctionBodyOwner, FunctionTables,
 };
 use crate::plan::execution::graph::{
-    ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, Edge, IntegerOperand, ParamLocal,
+    ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, IntegerOperand, ListLocal,
+    MatchEdgeArgument, ParamLocal, StorageFamily,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
 pub(super) use shape::CompiledShape;
+use std::collections::BTreeSet;
 
 pub(in crate::plan::execution::prepared) struct CompiledCodegen<'program, Profile: ExecutionProfile>
 {
@@ -151,48 +154,61 @@ enum CompiledResume {
 impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     fn write_code(&self, source: &mut Code) {
         let name = &self.name;
-        let values_type = self.values_type();
         let checkpoints = self.shape.checkpoints.len();
+        let values = self.shape.kind.values();
+        let operations = self.shape.kind.operations_parameter();
+        let argument = self.shape.kind.operations_argument();
+        let resume_operations = self.shape.kind.operations_type();
         source.open(&format!(
             r#"
 fn {name}(
     point: usize,
-    values: &mut {values_type},
-    budget: &mut usize,
+    values: &mut {values},
+    {operations}budget: &mut usize,
 ) -> data::compiled::CompiledProgress {{
 "#
         ));
         source.open(&format!(
             r#"
 const RESUME: [
-    fn(&mut {values_type}, &mut usize) -> CompiledResume;
+    fn(&mut {values}, {resume_operations}&mut usize) -> CompiledResume;
     {checkpoints}
 ] = [
 "#
         ));
         for (index, point) in self.shape.checkpoints.iter().enumerate() {
             if index == self.entry() {
-                let inputs = checkpoint_inputs(*point);
-                source.push_str(&format!(
-                    "|values, budget| CompiledResume::Exit({}_entry({inputs}, values, budget)),\n",
-                    self.name
-                ));
+                if self.shape.kind != KernelKind::IntList {
+                    let inputs = checkpoint_inputs(*point);
+                    source.push_str(&format!(
+                        "|values, budget| CompiledResume::Exit({}_entry({inputs}, values, budget)),\n",
+                        self.name
+                    ));
+                } else {
+                    source.open("|values, _lists, budget| {\n");
+                    let inputs = self.take_inputs(source, *point);
+                    source.push_str(&format!(
+                        "CompiledResume::Exit({}_entry({inputs}, values, _lists, budget))\n",
+                        self.name
+                    ));
+                    source.close("},\n");
+                }
             } else {
                 source.push_str(&format!("{},\n", self.resume_name(index)));
             }
         }
         source.close("];\n");
-        source.push_str(
+        source.push_str(&format!(
             r#"
 let mut point = point;
-loop {
-    match RESUME[point](values, budget) {
+loop {{
+    match RESUME[point](values{argument}, budget) {{
         CompiledResume::Next(next) => point = next,
         CompiledResume::Exit(progress) => return progress,
-    }
-}
+    }}
+}}
 "#,
-        );
+        ));
         source.close("}\n");
         let entry = self.shape.checkpoints[self.entry()];
         self.signature(source, &format!("{}_entry", self.name), entry);
@@ -220,18 +236,20 @@ loop {
             source.open(&format!(
                 r#"
 fn {name}(
-    values: &mut {values_type},
-    budget: &mut usize,
+    values: &mut {values},
+    {operations}budget: &mut usize,
 ) -> CompiledResume {{
 "#
             ));
+            let inputs = self.take_inputs(source, *point);
             source.push_str(&format!(
                 "let {} = {};\n",
                 self.locals(*point, false),
-                checkpoint_inputs(*point)
+                inputs
             ));
             let block = self.shape.block(point.block);
-            if point.instruction == block.instructions.len()
+            if self.shape.kind == KernelKind::BitArray
+                && point.instruction == block.instructions.len()
                 && matches!(block.terminator, CompiledTerminator::Interpreted)
             {
                 source.push_str("let _ = budget;\n");
@@ -239,8 +257,10 @@ fn {name}(
                 source.close("}\n");
                 continue;
             }
-            self.tick(source, index, ProgressOutput::Resume);
+            self.ready(source, index, ProgressOutput::Resume);
             if let Some(instruction) = block.instructions.get(point.instruction) {
+                self.preflight(source, index, instruction, ProgressOutput::Resume);
+                source.push_str("*budget -= 1;\n");
                 self.instruction(source, *point, instruction);
                 let next = self.shape.checkpoints[index + 1];
                 self.big_exit(
@@ -253,6 +273,13 @@ fn {name}(
                 self.save(source, next);
                 source.push_str(&format!("CompiledResume::Next({})\n", index + 1));
             } else {
+                self.preflight_terminator(source, index, &block.terminator);
+                if !matches!(
+                    block.terminator,
+                    CompiledTerminator::Interpreted | CompiledTerminator::Match(_)
+                ) {
+                    source.push_str("*budget -= 1;\n");
+                }
                 self.resume_terminator(source, *point, &block.terminator);
             }
             source.close("}\n");
@@ -270,6 +297,7 @@ fn {name}(
         let implementation = match self.shape.kind {
             KernelKind::Numeric => "Numeric",
             KernelKind::BitArray => "BitArray",
+            KernelKind::IntList => "IntList",
         };
         source.open(&format!(
             "implementation: data::compiled::CompiledImplementation::{implementation}(data::compiled::{implementation}Implementation {{\n"
@@ -289,30 +317,27 @@ fn {name}(
         self.shape.start(self.shape.graph.entry())
     }
 
-    fn values_type(&self) -> &'static str {
-        if self.shape.kind == KernelKind::BitArray {
-            "data::compiled::bit_array::BitArrayValues"
-        } else {
-            "data::compiled::numeric::NumericValues"
-        }
-    }
-
     fn signature(&self, source: &mut Code, name: &str, point: CompiledCheckpoint) {
-        let values_type = self.values_type();
         let types = tuple(
             std::iter::repeat_n("i128".to_owned(), point.ints)
                 .chain(std::iter::repeat_n("bool".to_owned(), point.bools))
                 .chain(std::iter::repeat_n(
                     "data::compiled::bit_array::BitArrayRange".to_owned(),
                     point.bit_arrays,
+                ))
+                .chain(std::iter::repeat_n(
+                    "data::compiled::int_list::IntList".to_owned(),
+                    point.int_lists,
                 )),
         );
+        let values = self.shape.kind.values();
+        let operations = self.shape.kind.operations_parameter();
         source.open(&format!(
             r#"
 fn {name}(
     inputs: {types},
-    values: &mut {values_type},
-    budget: &mut usize,
+    values: &mut {values},
+    {operations}budget: &mut usize,
 ) -> data::compiled::CompiledProgress {{
 "#
         ));
@@ -327,6 +352,10 @@ fn {name}(
                 .chain(
                     (0..point.bit_arrays)
                         .map(|index| format!("{prefix}b{}_b{index}", point.block.0)),
+                )
+                .chain(
+                    (0..point.int_lists)
+                        .map(|index| format!("{prefix}b{}_l{index}", point.block.0)),
                 ),
         )
     }
@@ -336,13 +365,129 @@ fn {name}(
     }
 
     fn tick(&self, source: &mut Code, index: usize, output: ProgressOutput) {
+        self.ready(source, index, output);
+        source.push_str("*budget -= 1;\n");
+    }
+
+    fn take_inputs(&self, source: &mut Code, point: CompiledCheckpoint) -> String {
+        // Reverse removal always removes the last remaining handle. Each
+        // actual prefix moves once; no cloning or front-removal shifts.
+        for index in (0..point.int_lists).rev() {
+            source.push_str(&format!(
+                "let _list{index} = values.int_lists.remove({index});\n"
+            ));
+        }
+        tuple(
+            (0..point.ints)
+                .map(|index| format!("values.ints[{index}]"))
+                .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
+                .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]")))
+                .chain((0..point.int_lists).map(|index| format!("_list{index}"))),
+        )
+    }
+
+    fn edge_inputs(&self, source: &mut Code, from: BlockId, edge: CompiledEdge<'_>) -> String {
+        let parameters = self.shape.graph.block(edge.target()).params();
+        let inputs = match edge {
+            CompiledEdge::Ordinary(edge) => edge
+                .args()
+                .iter()
+                .filter_map(|local| local_expression(from, local))
+                .collect::<Vec<_>>(),
+            CompiledEdge::Match(edge) => edge
+                .args()
+                .iter()
+                .zip(parameters)
+                .filter_map(|(argument, parameter)| match argument {
+                    MatchEdgeArgument::Value(local) => local_expression(from, local),
+                    MatchEdgeArgument::Binding(index) => {
+                        if let CompiledTerminator::Match(view) = &self.shape.block(from).terminator
+                            && view
+                                .lists
+                                .iter()
+                                .any(|&(binding, tail)| binding == *index && tail.is_none())
+                        {
+                            return local_expression(from, view.matcher.subject());
+                        }
+                        parameter
+                            .local()
+                            .storage_slot()
+                            .map(|slot| (slot.family, format!("m{index}")))
+                    }
+                })
+                .collect(),
+        };
+        let ints = inputs
+            .iter()
+            .filter(|(family, _)| *family == StorageFamily::Int)
+            .map(|(_, expression)| expression.clone());
+        let bools = inputs
+            .iter()
+            .filter(|(family, _)| *family == StorageFamily::Bool)
+            .map(|(_, expression)| expression.clone());
+        let mut lists = inputs
+            .iter()
+            .filter(|(family, _)| *family == StorageFamily::IntList)
+            .map(|(_, expression)| expression.clone())
+            .collect::<Vec<_>>();
+        if self.shape.kind != KernelKind::IntList {
+            let bits = inputs
+                .iter()
+                .filter(|(family, _)| *family == StorageFamily::BitArray)
+                .map(|(_, expression)| expression.clone());
+            return tuple(ints.chain(bools).chain(bits));
+        }
+        let mut uses = BTreeSet::new();
+        // The last edge use moves the handle; preceding uses retain it.
+        for expression in lists.iter_mut().rev() {
+            if !uses.insert(expression.clone()) {
+                *expression = format!("{expression}.clone()");
+            }
+        }
+        let inputs = tuple(ints.chain(bools).chain(lists));
+        let point = self.shape.checkpoints
+            [self.shape.start(from) + self.shape.block(from).instructions.len()];
+        let omits_list =
+            (0..point.int_lists).any(|index| !uses.contains(&format!("b{}_l{index}", from.0)));
+        if !omits_list {
+            return inputs;
+        }
+        source.push_str(&format!("let _next = {inputs};\n"));
+        for index in 0..point.int_lists {
+            let name = format!("b{}_l{index}", from.0);
+            if !uses.contains(&name) {
+                source.push_str(&format!("drop({name});\n"));
+            }
+        }
+        "_next".to_owned()
+    }
+
+    fn interpreted(
+        &self,
+        source: &mut Code,
+        index: usize,
+        returning: bool,
+        output: ProgressOutput,
+    ) {
+        self.save(source, self.shape.checkpoints[index]);
+        let (prefix, suffix) = if returning {
+            ("return ", ";")
+        } else {
+            ("", "")
+        };
+        let progress = output.expression(format!(
+            "data::compiled::CompiledProgress::Interpreted({index})"
+        ));
+        source.push_str(&format!("{prefix}{progress}{suffix}\n"));
+    }
+
+    fn ready(&self, source: &mut Code, index: usize, output: ProgressOutput) {
         source.open("if *budget == 0 {\n");
         self.save(source, self.shape.checkpoints[index]);
         let progress =
             output.expression(format!("data::compiled::CompiledProgress::Yield({index})"));
         source.push_str(&format!("return {progress};\n"));
         source.close("}\n");
-        source.push_str("*budget -= 1;\n");
     }
 
     fn save(&self, source: &mut Code, point: CompiledCheckpoint) {
@@ -371,23 +516,14 @@ values.bools.extend_from_slice(&[{bools}]);
                 "values.bit_arrays.clear();\nvalues.bit_arrays.extend_from_slice(&[{ranges}]);\n"
             ));
         }
-    }
-
-    fn interpreted(
-        &self,
-        source: &mut Code,
-        index: usize,
-        returning: bool,
-        output: ProgressOutput,
-    ) {
-        self.save(source, self.shape.checkpoints[index]);
-        let progress = output.expression(format!(
-            "data::compiled::CompiledProgress::Interpreted({index})"
-        ));
-        if returning {
-            source.push_str(&format!("return {progress};\n"));
-        } else {
-            source.push_str(&format!("{progress}\n"));
+        if self.shape.kind == KernelKind::IntList {
+            let lists = (0..point.int_lists)
+                .map(|index| format!("b{}_l{index}", point.block.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            source.push_str(&format!(
+                "values.int_lists.clear();\nvalues.int_lists.extend([{lists}]);\n"
+            ));
         }
     }
 
@@ -395,7 +531,9 @@ values.bools.extend_from_slice(&[{bools}]);
         let body = self.shape.block(block);
         for (instruction_index, instruction) in body.instructions.iter().enumerate() {
             let index = self.shape.start(block) + instruction_index;
-            self.tick(source, index, ProgressOutput::Direct);
+            self.ready(source, index, ProgressOutput::Direct);
+            self.preflight(source, index, instruction, ProgressOutput::Direct);
+            source.push_str("*budget -= 1;\n");
             self.instruction(source, self.shape.checkpoints[index], instruction);
             self.big_exit(
                 source,
@@ -407,9 +545,14 @@ values.bools.extend_from_slice(&[{bools}]);
         }
         let index = self.shape.start(block) + body.instructions.len();
         let point = self.shape.checkpoints[index];
-        // This structured path belongs to scalar generation, whose shape
-        // covers every terminator. Bit-array suffixes use bit_loop instead.
-        self.tick(source, index, ProgressOutput::Direct);
+        self.ready(source, index, ProgressOutput::Direct);
+        self.preflight_terminator(source, index, &body.terminator);
+        if !matches!(
+            body.terminator,
+            CompiledTerminator::Interpreted | CompiledTerminator::Match(_)
+        ) {
+            source.push_str("*budget -= 1;\n");
+        }
         let join = self.shape.joins[block.0];
         if let Some(join) = join {
             let join_point = self.shape.checkpoints[self.shape.start(join)];
@@ -419,7 +562,7 @@ values.bools.extend_from_slice(&[{bools}]);
             source,
             point,
             &body.terminator,
-            self.shape.repeats,
+            self.shape.repeats || join.is_some() || stop.is_some(),
             ProgressOutput::Direct,
             |source, target, inputs| self.edge(source, target, inputs, join.or(stop)),
         );
@@ -463,7 +606,8 @@ values.bools.extend_from_slice(&[{bools}]);
         match terminator {
             CompiledTerminator::Jump(edge) => {
                 source.open("{\n");
-                emit_edge(source, edge.target(), edge_inputs(point.block, edge));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                emit_edge(source, edge.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Boolean {
@@ -472,9 +616,11 @@ values.bools.extend_from_slice(&[{bools}]);
                 false_,
             } => {
                 source.open(&format!("if b{}_v{} {{\n", point.block.0, subject.0));
-                emit_edge(source, true_.target(), edge_inputs(point.block, true_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(true_));
+                emit_edge(source, true_.target(), inputs);
                 source.alternative("} else {\n");
-                emit_edge(source, false_.target(), edge_inputs(point.block, false_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(false_));
+                emit_edge(source, false_.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Test {
@@ -483,9 +629,11 @@ values.bools.extend_from_slice(&[{bools}]);
                 false_,
             } => {
                 source.open(&format!("if {} {{\n", test_expression(point.block, test)));
-                emit_edge(source, true_.target(), edge_inputs(point.block, true_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(true_));
+                emit_edge(source, true_.target(), inputs);
                 source.alternative("} else {\n");
-                emit_edge(source, false_.target(), edge_inputs(point.block, false_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(false_));
+                emit_edge(source, false_.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Switch {
@@ -493,30 +641,37 @@ values.bools.extend_from_slice(&[{bools}]);
                 clauses,
                 fallback,
             } => {
-                for (index, (literal, edge)) in clauses.iter().enumerate() {
-                    if index > 0 {
-                        source.push_str("else ");
-                    }
+                for (literal, edge) in clauses.iter() {
                     source.open(&format!(
                         "if b{}_i{} == {}_i128 {{\n",
                         point.block.0, subject.0, literal
                     ));
-                    emit_edge(source, edge.target(), edge_inputs(point.block, edge));
-                    source.close("} ");
-                }
-                if !clauses.is_empty() {
-                    source.push_str("else ");
+                    let inputs =
+                        self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                    emit_edge(source, edge.target(), inputs);
+                    source.close("} else ");
                 }
                 source.open("{\n");
-                emit_edge(
-                    source,
-                    fallback.target(),
-                    edge_inputs(point.block, fallback),
-                );
+                let inputs =
+                    self.edge_inputs(source, point.block, CompiledEdge::Ordinary(fallback));
+                emit_edge(source, fallback.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Exit(exit) => {
                 self.complete(source, point, *exit, returning, output)
+            }
+            CompiledTerminator::Match(view) => {
+                self.match_branch(
+                    source,
+                    point,
+                    view,
+                    returning,
+                    output,
+                    &mut |source, edge| {
+                        let inputs = self.edge_inputs(source, point.block, edge);
+                        emit_edge(source, edge.target(), inputs);
+                    },
+                );
             }
             CompiledTerminator::BitArray(matcher) => {
                 self.bit_match(source, point, matcher, output, &mut emit_edge)
@@ -639,6 +794,9 @@ values.bools.extend_from_slice(&[{bools}]);
                     ));
                 }
             }
+            CompiledInstruction::IntList(instruction) => {
+                self.list_instruction(source, point, instruction)
+            }
         }
     }
 
@@ -657,7 +815,8 @@ values.bools.extend_from_slice(&[{bools}]);
                 _,
                 NumericInteger::Value(_) | NumericInteger::Binary(NumericOperation::Remainder, ..),
             )
-            | CompiledInstruction::Boolean(..) => return,
+            | CompiledInstruction::Boolean(..)
+            | CompiledInstruction::IntList(_) => return,
             CompiledInstruction::Integer(output, _) => std::slice::from_ref(output),
             CompiledInstruction::Region { outputs, .. } => outputs.as_slice(),
         };
@@ -730,15 +889,6 @@ impl Code {
     }
 }
 
-impl KernelKind {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Numeric => "numeric",
-            Self::BitArray => "bit_array",
-        }
-    }
-}
-
 fn checkpoint_inputs(point: CompiledCheckpoint) -> String {
     tuple(
         (0..point.ints)
@@ -757,20 +907,54 @@ fn tuple(values: impl IntoIterator<Item = String>) -> String {
     format!("({values})")
 }
 
-fn edge_inputs(block: BlockId, edge: &Edge) -> String {
-    let ints = edge.args().iter().filter_map(|local| match local {
-        ParamLocal::Int(local) => Some(format!("b{}_i{}", block.0, local.0)),
-        _ => None,
-    });
-    let bools = edge.args().iter().filter_map(|local| match local {
-        ParamLocal::Bool(local) => Some(format!("b{}_v{}", block.0, local.0)),
-        _ => None,
-    });
-    let bits = edge.args().iter().filter_map(|local| match local {
-        ParamLocal::BitArray(local) => Some(format!("b{}_b{}", block.0, local.0)),
-        _ => None,
-    });
-    tuple(ints.chain(bools).chain(bits))
+fn local_expression(block: BlockId, local: &ParamLocal) -> Option<(StorageFamily, String)> {
+    Some(match local {
+        ParamLocal::Int(local) => (StorageFamily::Int, format!("b{}_i{}", block.0, local.0)),
+        ParamLocal::Bool(local) => (StorageFamily::Bool, format!("b{}_v{}", block.0, local.0)),
+        ParamLocal::BitArray(local) => (
+            StorageFamily::BitArray,
+            format!("b{}_b{}", block.0, local.0),
+        ),
+        ParamLocal::List(ListLocal::Int { local, .. }) => {
+            (StorageFamily::IntList, format!("b{}_l{}", block.0, local.0))
+        }
+        _ => return None,
+    })
+}
+
+impl KernelKind {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Numeric => "numeric",
+            Self::IntList => "int_list",
+            Self::BitArray => "bit_array",
+        }
+    }
+    fn values(self) -> &'static str {
+        match self {
+            Self::Numeric => "data::compiled::numeric::NumericValues",
+            Self::IntList => "data::compiled::int_list::IntListValues",
+            Self::BitArray => "data::compiled::bit_array::BitArrayValues",
+        }
+    }
+    fn operations_parameter(self) -> &'static str {
+        match self {
+            Self::Numeric | Self::BitArray => "",
+            Self::IntList => "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
+        }
+    }
+    fn operations_argument(self) -> &'static str {
+        match self {
+            Self::Numeric | Self::BitArray => "",
+            Self::IntList => ", _lists",
+        }
+    }
+    fn operations_type(self) -> &'static str {
+        match self {
+            Self::Numeric | Self::BitArray => "",
+            Self::IntList => "&data::compiled::int_list::IntListOps<'_>, ",
+        }
+    }
 }
 
 fn operand_expression(block: BlockId, operand: IntegerOperand) -> String {
@@ -824,6 +1008,7 @@ fn test_expression(block: BlockId, test: &CompiledTest) -> String {
                 operand_expression(block, *right)
             )
         }
+        CompiledTest::IntList(test) => int_list::test_expression(block, test),
     }
 }
 
@@ -841,18 +1026,230 @@ mod tests {
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
         NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
-        test_expression,
+        local_expression, test_expression,
     };
     use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
-    use crate::plan::execution::function::{ExecutionIntFunctionBody, FunctionExit, IntFunctionId};
+    use crate::plan::execution::function::{
+        BoolFunctionId, ExecutionIntFunctionBody, FunctionExit, IntFunctionId,
+    };
     use crate::plan::execution::graph::{
         ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BlockGraphExitId,
-        BlockId, BoolBranch, BoolLocalId, BoolTest, Edge, FamilyTransfer, IntLocalId, IntSwitch,
-        IntegerLiteral, IntegerOperand, Jump, ParamLocal, ParamSlot, ProfiledBlock,
-        ProfiledBlockGraph, StorageFamily, Terminator, TestBranch, Transfer,
+        BlockId, BoolBranch, BoolLocalId, BoolTest, Edge, FamilyTransfer, FloatLocalId,
+        IntListLocalId, IntLocalId, IntSwitch, IntegerLiteral, IntegerOperand, Jump, ListLocal,
+        ParamLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph, StorageFamily, Terminator,
+        TestBranch, Transfer, TransferStep,
     };
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::convert::Infallible;
+
+    #[test]
+    fn block_locals_emit_only_the_supported_typed_families() {
+        for (local, expected) in [
+            (
+                ParamLocal::Int(IntLocalId(2)),
+                Some((StorageFamily::Int, "b3_i2")),
+            ),
+            (
+                ParamLocal::Bool(BoolLocalId(1)),
+                Some((StorageFamily::Bool, "b3_v1")),
+            ),
+            (ParamLocal::Float(FloatLocalId(0)), None),
+        ] {
+            assert_eq!(
+                local_expression(BlockId(3), &local),
+                expected.map(|(family, expression)| (family, expression.to_owned()))
+            );
+        }
+    }
+
+    #[test]
+    fn list_checkpoint_inputs_move_once_and_save_only_the_actual_typed_prefix() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn choose(left: List(Int), right: List(Int), flag: Bool, value: Int) -> Int {
+  case flag {
+    True -> {
+      let assert [first, ..] = left
+      value + first
+    }
+    False -> {
+      let assert [first, ..] = right
+      value - first
+    }
+  }
+}
+pub fn main() { choose([7], [2], True, 3) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let point = shape.checkpoints[shape.start(shape.graph.entry())];
+        assert_eq!(point.block, BlockId(0));
+        assert_eq!((point.ints, point.bools, point.int_lists), (1, 1, 2));
+        let function = FunctionCodegen {
+            index: 1,
+            name: "choose".into(),
+            shape,
+        };
+        let mut inputs = Code::default();
+        assert_eq!(
+            function.take_inputs(&mut inputs, point),
+            "(values.ints[0], values.bools[0], _list0, _list1,)"
+        );
+        assert_eq!(
+            inputs.as_str(),
+            r#"
+let _list1 = values.int_lists.remove(1);
+let _list0 = values.int_lists.remove(0);
+"#
+            .trim_start_matches('\n')
+        );
+        let mut saved = Code::default();
+        function.save(&mut saved, point);
+        assert_eq!(
+            saved.as_str(),
+            r#"
+values.ints.clear();
+values.ints.extend_from_slice(&[b0_i0]);
+values.bools.clear();
+values.bools.extend_from_slice(&[b0_v0]);
+values.int_lists.clear();
+values.int_lists.extend([b0_l0, b0_l1]);
+"#
+        );
+    }
+
+    #[test]
+    fn list_edges_move_single_uses_clone_additional_uses_and_drop_omitted_columns() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn walk(left: List(Int), right: List(Int), steps: Int) -> Int {
+  case steps {
+    0 -> { let assert [first, ..] = left
+           let assert [second, ..] = right
+           first - second }
+    _ -> walk(left, left, steps - 1)
+  }
+}
+pub fn main() { walk([7], [2], 1) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let entry = shape.graph.entry();
+        assert_eq!(entry, BlockId(0));
+        let prefix = shape.checkpoints[shape.start(BlockId(0))];
+        assert_eq!((prefix.ints, prefix.bools, prefix.int_lists), (1, 0, 2));
+        let function = FunctionCodegen {
+            index: 1,
+            name: "walk".into(),
+            shape,
+        };
+        for (lists, step, expected_inputs, expected_code) in [
+            (
+                [0, 0],
+                TransferStep {
+                    source: 0,
+                    destination: 1,
+                },
+                "_next",
+                "let _next = (b0_i0, b0_l0.clone(), b0_l0,);\ndrop(b0_l1);\n",
+            ),
+            (
+                [1, 0],
+                TransferStep {
+                    source: 1,
+                    destination: 0,
+                },
+                "(b0_i0, b0_l1, b0_l0,)",
+                "",
+            ),
+        ] {
+            let edge = Edge {
+                target: entry,
+                args: function
+                    .shape
+                    .graph
+                    .block(entry)
+                    .params()
+                    .iter()
+                    .map(|slot| match slot.local() {
+                        ParamLocal::List(ListLocal::Int { local, type_id }) => {
+                            ParamLocal::List(ListLocal::Int {
+                                local: IntListLocalId(lists[local.0]),
+                                type_id: *type_id,
+                            })
+                        }
+                        local => local.clone(),
+                    })
+                    .collect(),
+                transfer: Transfer {
+                    families: vec![FamilyTransfer {
+                        family: StorageFamily::IntList,
+                        length: 2,
+                        steps: vec![step].into(),
+                    }]
+                    .into(),
+                },
+            };
+            let mut source = Code::default();
+            assert_eq!(
+                function.edge_inputs(&mut source, entry, super::CompiledEdge::Ordinary(&edge)),
+                expected_inputs
+            );
+            assert_eq!(source.as_str(), expected_code);
+        }
+    }
+
+    #[test]
+    fn whole_list_alias_edges_move_the_subject_beside_the_selected_tail() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn same(values: List(Int)) {
+  let assert [_, ..tail] as original = values
+  tail == original
+}
+pub fn main() { same([7]) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let function = FunctionCodegen {
+            index: 1,
+            name: "same".into(),
+            shape: CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap(),
+        };
+        let matches = function
+            .shape
+            .blocks
+            .iter()
+            .filter_map(|(block, view)| match &view.terminator {
+                CompiledTerminator::Match(view) => Some((BlockId(*block), view)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(matches.len(), 1);
+        let (block, view) = matches[0];
+        assert_eq!(block, BlockId(0));
+        let mut source = Code::default();
+        assert_eq!(
+            function.edge_inputs(
+                &mut source,
+                block,
+                super::CompiledEdge::Match(&view.matcher.success),
+            ),
+            "(m0, b0_l0,)"
+        );
+        assert_eq!(source.as_str(), "");
+    }
 
     #[test]
     fn scalar_arithmetic_and_boolean_comparisons_have_exact_rust_expressions() {
@@ -915,6 +1312,202 @@ mod tests {
     }
 
     #[test]
+    fn list_match_and_source_failure_paths_have_exact_structured_code() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn head(values: List(Int), value: Int) {
+  let assert [first, ..] = values
+  first + value
+}
+pub fn main() { head([7], 3) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let function = FunctionCodegen {
+            index: 1,
+            name: "head".into(),
+            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+        };
+        let mut source = Code::default();
+        function.path(&mut source, BlockId(0), None);
+        assert_eq!(
+            source.as_str(),
+            r#"
+if *budget == 0 {
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b0_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    values.int_lists.clear();
+    values.int_lists.extend([b0_l0]);
+    return data::compiled::CompiledProgress::Yield(0);
+}
+let _matched = if !b0_l0.is_empty() {
+    'pattern: {
+        let mut _reader = _lists.prefix(&b0_l0, 1);
+        let Some(_head0) = _reader.next() else {
+            break 'pattern Ok(None);
+        };
+        let Some(_small0) = _head0.small() else {
+            break 'pattern Err(());
+        };
+        let m0 = _small0;
+        break 'pattern Ok(Some((m0,)));
+    }
+} else {
+    Ok(None)
+};
+match _matched {
+    Ok(Some((m0,))) => {
+        *budget -= 1;
+        let _next = (b0_i0, m0,);
+        drop(b0_l0);
+        let (b1_i0, b1_i1,) = _next;
+        if *budget == 0 {
+
+            values.ints.clear();
+            values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+            values.bools.clear();
+            values.bools.extend_from_slice(&[]);
+            values.int_lists.clear();
+            values.int_lists.extend([]);
+            return data::compiled::CompiledProgress::Yield(1);
+        }
+        *budget -= 1;
+        let b1_i2 = b1_i1 + b1_i0;
+        if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+
+            values.ints.clear();
+            values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+            values.bools.clear();
+            values.bools.extend_from_slice(&[]);
+            values.int_lists.clear();
+            values.int_lists.extend([]);
+            return data::compiled::CompiledProgress::Interpreted(2);
+        }
+        if *budget == 0 {
+
+            values.ints.clear();
+            values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+            values.bools.clear();
+            values.bools.extend_from_slice(&[]);
+            values.int_lists.clear();
+            values.int_lists.extend([]);
+            return data::compiled::CompiledProgress::Yield(2);
+        }
+        *budget -= 1;
+
+        values.ints.clear();
+        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+        values.bools.clear();
+        values.bools.extend_from_slice(&[]);
+        values.int_lists.clear();
+        values.int_lists.extend([]);
+        data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+    },
+    Ok(None) => {
+        *budget -= 1;
+        let (b2_l0,) = (b0_l0,);
+        if *budget == 0 {
+
+            values.ints.clear();
+            values.ints.extend_from_slice(&[]);
+            values.bools.clear();
+            values.bools.extend_from_slice(&[]);
+            values.int_lists.clear();
+            values.int_lists.extend([b2_l0]);
+            return data::compiled::CompiledProgress::Yield(3);
+        }
+
+        values.ints.clear();
+        values.ints.extend_from_slice(&[]);
+        values.bools.clear();
+        values.bools.extend_from_slice(&[]);
+        values.int_lists.clear();
+        values.int_lists.extend([b2_l0]);
+        data::compiled::CompiledProgress::Interpreted(3)
+    },
+    Err(()) => {
+
+        values.ints.clear();
+        values.ints.extend_from_slice(&[b0_i0]);
+        values.bools.clear();
+        values.bools.extend_from_slice(&[]);
+        values.int_lists.clear();
+        values.int_lists.extend([b0_l0]);
+        data::compiled::CompiledProgress::Interpreted(0)
+    }
+}
+"#
+            .trim_start_matches('\n')
+        );
+    }
+
+    #[test]
+    fn resumed_integer_switch_saves_each_selected_branch_before_dispatch() {
+        let source = r#"
+fn choose(value: Int) {
+  case value {
+    0 -> value + 1
+    1 -> value + 2
+    _ -> value + 3
+  }
+}
+
+pub fn main() { choose(0) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let function = FunctionCodegen {
+            index: 1,
+            name: "choose".into(),
+            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+        };
+        let point = function.shape.checkpoints[function.entry()];
+        let mut output = Code::default();
+        function.resume_terminator(
+            &mut output,
+            point,
+            &function.shape.block(point.block).terminator,
+        );
+        assert_eq!(
+            output.as_str(),
+            r#"
+if b0_i0 == 0_i128 {
+    let (b1_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b1_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(1)
+} else if b0_i0 == 1_i128 {
+    let (b2_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b2_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(3)
+} else {
+    let (b3_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b3_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(5)
+}
+"#
+            .trim_start_matches('\n')
+        );
+    }
+
+    #[test]
     fn empty_switch_arms_and_unretained_region_outputs_emit_only_their_actual_work() {
         let source = r#"
 fn choose(value: Int) {
@@ -930,7 +1523,7 @@ pub fn main() { choose(7) }
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
-        let function = FunctionCodegen {
+        let mut function = FunctionCodegen {
             index: 1,
             name: "selected".into(),
             shape,
@@ -984,6 +1577,34 @@ pub fn main() { choose(7) }
     values.bools.clear();
     values.bools.extend_from_slice(&[]);
     CompiledResume::Next(1)
+}
+"#
+            .trim_start_matches('\n')
+        );
+
+        // Drive the same structured-path edge callback as normal emission;
+        // a direct formatter closure is a different generic instantiation.
+        function.shape.blocks.get_mut(&0).unwrap().terminator = CompiledTerminator::Switch {
+            subject: IntLocalId(0),
+            clauses: &[],
+            fallback: &edge,
+        };
+        output = Code::default();
+        function.path(&mut output, BlockId(0), Some(BlockId(1)));
+        assert_eq!(
+            output.as_str(),
+            r#"
+if *budget == 0 {
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b0_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    return data::compiled::CompiledProgress::Yield(0);
+}
+*budget -= 1;
+{
+    (b0_i0,)
 }
 "#
             .trim_start_matches('\n')
@@ -1471,6 +2092,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 1,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -1478,6 +2100,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -1485,6 +2108,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 1,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -1492,6 +2116,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -1499,6 +2124,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 1,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                     ]),
                     run: numeric_int_0,
@@ -1722,6 +2348,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 1,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -1729,6 +2356,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -1736,6 +2364,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 1,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -1743,6 +2372,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 0,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -1750,6 +2380,7 @@ let (b1_i0, b1_v0,) = {branch};
                             ints: 0,
                             bools: 1,
                             bit_arrays: 0,
+                            int_lists: 0,
                         },
                     ]),
                     run: numeric_bool_0,

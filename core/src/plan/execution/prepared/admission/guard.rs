@@ -4,6 +4,7 @@ mod origin;
 mod pattern;
 
 use super::block::Blocks;
+use super::control::Control;
 use super::incoming::{self, Condition, Input};
 use super::local::Address;
 use super::place::{self, Place, Projection};
@@ -125,11 +126,14 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
             ),
             _ => return false,
         };
-        self.proves(Query {
-            block: block_id,
-            place: Place::local(local),
-            requirement,
-        })
+        self.proves(
+            Query {
+                block: block_id,
+                place: Place::local(local),
+                requirement,
+            },
+            None,
+        )
     }
 
     pub(super) fn excludes(&self, block: BlockId, condition: Condition<'data>) -> bool {
@@ -196,16 +200,20 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         &self,
         block: BlockId,
         instruction: &'data ProfiledInstruction<Graph>,
+        control: Option<&Control<'_, 'data, Graph>>,
     ) -> Result<(), GuardError> {
         let Some(instruction) = instruction.value() else {
             return Ok(());
         };
         if let Some(access) = access::instruction(&instruction.kind)?
-            && !self.proves(Query {
-                block,
-                place: Place::local(access.local),
-                requirement: access.requirement.clone(),
-            })
+            && !self.proves(
+                Query {
+                    block,
+                    place: Place::local(access.local),
+                    requirement: access.requirement.clone(),
+                },
+                control,
+            )
         {
             return Err(GuardError::Unproved {
                 local: access.local,
@@ -217,7 +225,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
 
     // Backward proofs cover all incoming paths. A cycle can preserve or weaken
     // an obligation, but cannot justify a progressively stronger one.
-    fn proves(&self, query: Query<'data>) -> bool {
+    fn proves(&self, query: Query<'data>, control: Option<&Control<'_, 'data, Graph>>) -> bool {
         let mut pending = vec![Visit::Enter(query)];
         let mut active =
             HashMap::<(BlockId, Address), (Vec<Projection>, Requirement<'data>)>::new();
@@ -283,6 +291,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                                 input.condition,
                                 &source,
                                 &query.requirement,
+                                control,
                             ) else {
                                 continue;
                             };
@@ -338,6 +347,7 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
         condition: Condition<'data>,
         source: &Place,
         required: &Requirement<'data>,
+        control: Option<&Control<'_, 'data, Graph>>,
     ) -> Option<Requirement<'data>> {
         let proven = match condition {
             Condition::Always => false,
@@ -355,11 +365,25 @@ impl<'data, Graph: ExecutionGraphProfile> Guards<'_, 'data, Graph> {
                     return Some(required.clone());
                 }
                 let path = &source.path[subject.path.len()..];
-                if !success && !path.is_empty() {
-                    return Some(required.clone());
+                let pattern = if success || path.is_empty() {
+                    place::pattern_at(&matcher.pattern, path)
+                } else {
+                    control.and_then(|control| {
+                        control.failed_match_pattern(block, &matcher.pattern, subject, path)
+                    })
+                };
+                if !success
+                    && let Some(length) = pattern.and_then(pattern::excluded_list_length)
+                    && let Requirement::Length(lengths) = required
+                {
+                    let remaining = Requirement::Length(lengths.excluding(length));
+                    return if remaining.is_empty() {
+                        None
+                    } else {
+                        Some(remaining)
+                    };
                 }
-                place::pattern_at(&matcher.pattern, path)
-                    .is_some_and(|pattern| pattern::establishes(pattern, success, required))
+                pattern.is_some_and(|pattern| pattern::establishes(pattern, success, required))
             }
             condition @ (Condition::Bool { .. } | Condition::Test { .. }) => {
                 return self.boolean(block, condition, source, required);
@@ -541,6 +565,301 @@ mod tests {
     use std::convert::Infallible;
 
     #[test]
+    fn nested_empty_list_failure_requires_proven_ancestors_and_irrefutable_siblings() {
+        use super::GuardError;
+        use crate::plan::execution::graph::MatchPattern;
+        use crate::plan::execution::prepared::admission::{
+            control::Control, tests::owned_mut, type_::Types,
+        };
+        use crate::{ExecutionPlan, compile_typed_module, plan_module};
+
+        let source = r#"
+fn head(input: Result(#(Bool, List(Int)), String)) -> Int {
+  case input {
+    Error(_) -> 0
+    Ok(#(_, [])) -> 0
+    Ok(#(_, [head, ..])) -> head
+  }
+}
+pub fn main() {
+  #(head(Ok(#(False, [7]))), head(Ok(#(False, []))), head(Error("invalid")))
+}
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let original = plan.program.functions.value_returns.int_functions[0]
+            .body()
+            .block_graph();
+        for (refutable_sibling, bypass_constructor) in
+            [(false, false), (true, false), (false, true)]
+        {
+            let blocks = Blocks::admit(original).unwrap();
+            let mut graph: ProfiledBlockGraph<Infallible> = ProfiledBlockGraph::from_parts(
+                original.entry,
+                blocks
+                    .iter()
+                    .map(|block| {
+                        ProfiledBlock::new(
+                            block.params().to_vec(),
+                            block.instructions().to_vec(),
+                            block.terminator().clone(),
+                        )
+                    })
+                    .collect(),
+            );
+            let headers = owned_mut(&mut graph.blocks);
+            if bypass_constructor && let Terminator::Match(matcher) = &headers[0].terminator {
+                headers[0].terminator = Terminator::Jump(Jump::new(matcher.failure.clone()));
+            }
+            if refutable_sibling {
+                let fields = headers
+                    .iter_mut()
+                    .find_map(|header| {
+                        if let Terminator::Match(matcher) = &mut header.terminator
+                            && let MatchPattern::Custom { fields, .. } = &mut matcher.pattern
+                            && let MatchPattern::Tuple(fields) = &mut owned_mut(fields)[0]
+                        {
+                            Some(fields)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                owned_mut(fields)[0] = MatchPattern::Bool(true);
+            }
+            let blocks = Blocks::admit(&graph).unwrap();
+            let control = Control::new(&blocks, &types);
+            let (block, read) = blocks
+                .iter()
+                .enumerate()
+                .find_map(|(index, block)| {
+                    block
+                        .instructions()
+                        .iter()
+                        .find(|instruction| {
+                            matches!(
+                                instruction.value().map(|value| &value.kind),
+                                Some(ProfiledInstructionKind::Int(
+                                    IntInstruction::ListIndex { .. }
+                                ))
+                            )
+                        })
+                        .map(|read| (BlockId(index), read))
+                })
+                .unwrap();
+            let unproved = Err(GuardError::Unproved {
+                local: IntListLocalId(0).into(),
+                requirement: "at least 1 list elements".into(),
+            });
+            assert_eq!(control.guards.check(block, read, None), unproved);
+            assert_eq!(
+                control.guards.check(block, read, Some(&control)),
+                if refutable_sibling || bypass_constructor {
+                    unproved
+                } else {
+                    Ok(())
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn nested_list_failures_require_independently_proven_siblings_on_every_path() {
+        use crate::plan::execution::graph::{MatchEdgeArgument, MatchPattern};
+        use crate::plan::execution::prepared::admission::{
+            control::Control, tests::owned_mut, type_::Types,
+        };
+        use crate::{ExecutionPlan, compile_typed_module, plan_module};
+
+        let source = r#"
+fn second(input: Result(#(Bool, Bool, List(Int)), String)) -> Int {
+  case input {
+    Error(_) -> 0
+    Ok(#(False, _, _)) -> 0
+    Ok(#(True, _, [])) -> 0
+    Ok(#(True, _, [_])) -> 0
+    Ok(#(True, _, [_, value, ..])) -> value
+  }
+}
+pub fn main() {
+  #(
+    second(Error("invalid")),
+    second(Ok(#(False, True, [1, 7]))),
+    second(Ok(#(True, False, []))),
+    second(Ok(#(True, False, [1]))),
+    second(Ok(#(True, False, [1, 7]))),
+  )
+}
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let original = plan.program.functions.value_returns.int_functions[0]
+            .body()
+            .block_graph();
+        for (bypass_proof, other_field, extra_incoming) in [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            let mut bodies = Vec::new();
+            let mut changed = 0;
+            for block in original.blocks() {
+                let mut terminator = block.terminator().clone();
+                if let Terminator::Match(matcher) = &mut terminator
+                    && let MatchPattern::Custom { fields, .. } = &mut matcher.pattern
+                    && let MatchPattern::Tuple(fields) = &mut owned_mut(fields)[0]
+                    && matches!(&fields[0], MatchPattern::Bool(false))
+                {
+                    if bypass_proof {
+                        terminator = Terminator::Jump(Jump::new(matcher.failure.clone()));
+                    } else if other_field {
+                        let fields = owned_mut(fields);
+                        fields[0] = MatchPattern::Discard;
+                        fields[1] = MatchPattern::Bool(false);
+                    } else if extra_incoming {
+                        matcher.success.target = matcher.failure.target;
+                        matcher.success.args = matcher
+                            .failure
+                            .args
+                            .iter()
+                            .cloned()
+                            .map(MatchEdgeArgument::Value)
+                            .collect::<Vec<_>>()
+                            .into();
+                        matcher.success.transfer = matcher.failure.transfer.clone();
+                    }
+                    changed += 1;
+                }
+                bodies.push(ProfiledBlock::new(
+                    block.params().to_vec(),
+                    block.instructions().to_vec(),
+                    terminator,
+                ));
+            }
+            assert_eq!(changed, 1);
+            let graph: ProfiledBlockGraph<Infallible> =
+                ProfiledBlockGraph::from_parts(original.entry, bodies);
+            let blocks = Blocks::admit(&graph).unwrap();
+            let control = Control::new(&blocks, &types);
+            let (block, read) = blocks
+                .iter()
+                .enumerate()
+                .find_map(|(index, block)| {
+                    block
+                        .instructions()
+                        .iter()
+                        .find(|instruction| {
+                            matches!(
+                                instruction.value().map(|value| &value.kind),
+                                Some(ProfiledInstructionKind::Int(IntInstruction::ListIndex {
+                                    index: 1,
+                                    ..
+                                }))
+                            )
+                        })
+                        .map(|read| (BlockId(index), read))
+                })
+                .unwrap();
+            let unproved = Err(GuardError::Unproved {
+                local: IntListLocalId(0).into(),
+                requirement: "at least 2 list elements".into(),
+            });
+            assert_eq!(control.guards.check(block, read, None), unproved);
+            assert_eq!(
+                control.guards.check(block, read, Some(&control)),
+                if bypass_proof || other_field || extra_incoming {
+                    unproved
+                } else {
+                    Ok(())
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn nested_short_list_failures_accumulate_length_requirements() {
+        use crate::plan::execution::prepared::admission::{control::Control, type_::Types};
+        use crate::{ExecutionPlan, compile_typed_module, plan_module};
+
+        let source = r#"
+fn second(input: Result(#(Bool, List(Int)), String)) -> Int {
+  case input {
+    Error(_) -> 0
+    Ok(#(_, [])) -> 0
+    Ok(#(_, [_])) -> 0
+    Ok(#(_, [_, value, ..])) -> value
+  }
+}
+pub fn main() {
+  #(
+    second(Ok(#(False, []))),
+    second(Ok(#(False, [1]))),
+    second(Ok(#(False, [1, 7]))),
+    second(Error("invalid")),
+  )
+}
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan.program.functions.value_returns.int_functions[0]
+            .body()
+            .block_graph();
+        let blocks = Blocks::admit(graph).unwrap();
+        let control = Control::new(&blocks, &types);
+        let (block, read) = blocks
+            .iter()
+            .enumerate()
+            .find_map(|(index, block)| {
+                block
+                    .instructions()
+                    .iter()
+                    .find(|instruction| {
+                        matches!(
+                            instruction.value().map(|value| &value.kind),
+                            Some(ProfiledInstructionKind::Int(
+                                IntInstruction::ListIndex { .. }
+                            ))
+                        )
+                    })
+                    .map(|read| (BlockId(index), read))
+            })
+            .unwrap();
+        assert_eq!(
+            control.guards.check(block, read, None),
+            Err(GuardError::Unproved {
+                local: IntListLocalId(0).into(),
+                requirement: "at least 2 list elements".into(),
+            })
+        );
+        assert_eq!(control.guards.check(block, read, Some(&control)), Ok(()));
+    }
+
+    #[test]
     fn checks_real_list_and_string_pattern_projections() {
         let source = r#"
 fn head(xs) { case xs { [] -> 0 [x, ..] -> x } }
@@ -572,7 +891,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
         let mut count = 0;
         for (index, block) in blocks.iter().enumerate() {
             for instruction in block.instructions() {
-                guards.check(BlockId(index), instruction).unwrap();
+                guards.check(BlockId(index), instruction, None).unwrap();
                 count += usize::from(
                     access::instruction(&instruction.value().unwrap().kind)
                         .unwrap()
@@ -653,18 +972,24 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 let blocks = Blocks::admit(&graph).unwrap();
                 let guards = Guards::new(&blocks);
                 assert_eq!(
-                    guards.proves(Query {
-                        block: BlockId(1),
-                        place: Place::local(IntListLocalId(0).into()),
-                        requirement: Requirement::length(minimum)
-                    }),
+                    guards.proves(
+                        Query {
+                            block: BlockId(1),
+                            place: Place::local(IntListLocalId(0).into()),
+                            requirement: Requirement::length(minimum)
+                        },
+                        None
+                    ),
                     expected && !bypass
                 );
-                assert!(!guards.proves(Query {
-                    block: BlockId(0),
-                    place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::length(1)
-                }));
+                assert!(!guards.proves(
+                    Query {
+                        block: BlockId(0),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(1)
+                    },
+                    None
+                ));
             }
         }
     }
@@ -716,18 +1041,24 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 let blocks = Blocks::admit(&graph).unwrap();
                 let guards = Guards::new(&blocks);
                 assert_eq!(
-                    guards.proves(Query {
-                        block: BlockId(3),
-                        place: Place::local(IntListLocalId(0).into()),
-                        requirement: Requirement::length(3),
-                    }),
+                    guards.proves(
+                        Query {
+                            block: BlockId(3),
+                            place: Place::local(IntListLocalId(0).into()),
+                            requirement: Requirement::length(3),
+                        },
+                        None
+                    ),
                     !bypass
                 );
-                assert!(!guards.proves(Query {
-                    block: BlockId(3),
-                    place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::length(4),
-                }));
+                assert!(!guards.proves(
+                    Query {
+                        block: BlockId(3),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(4),
+                    },
+                    None
+                ));
             }
         }
     }
@@ -782,11 +1113,14 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             let blocks = Blocks::admit(&graph).unwrap();
             let guards = Guards::new(&blocks);
             assert_eq!(
-                guards.proves(Query {
-                    block: BlockId(1),
-                    place: Place::local(StringLocalId(0).into()),
-                    requirement: Requirement::Prefix(prefix.into())
-                }),
+                guards.proves(
+                    Query {
+                        block: BlockId(1),
+                        place: Place::local(StringLocalId(0).into()),
+                        requirement: Requirement::Prefix(prefix.into())
+                    },
+                    None
+                ),
                 expected
             );
             let read = instruction(
@@ -796,7 +1130,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                     prefix: Text::Owned(prefix.into()),
                 }),
             );
-            assert_eq!(guards.check(BlockId(1), &read).is_ok(), expected);
+            assert_eq!(guards.check(BlockId(1), &read, None).is_ok(), expected);
         }
     }
 
@@ -913,11 +1247,14 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             let blocks = Blocks::admit(&graph).unwrap();
             let guards = Guards::new(&blocks);
             assert_eq!(
-                guards.proves(Query {
-                    block: BlockId(1),
-                    place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::length(1)
-                }),
+                guards.proves(
+                    Query {
+                        block: BlockId(1),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(1)
+                    },
+                    None
+                ),
                 expected
             );
             let read = instruction(
@@ -928,7 +1265,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                 }),
             );
             assert_eq!(
-                guards.check(BlockId(1), &read),
+                guards.check(BlockId(1), &read, None),
                 Err(GuardError::LengthOverflow)
             );
         }
@@ -1069,11 +1406,14 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             );
             let blocks = Blocks::admit(&graph).unwrap();
             assert_eq!(
-                Guards::new(&blocks).proves(Query {
-                    block: BlockId(1),
-                    place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::length(1),
-                }),
+                Guards::new(&blocks).proves(
+                    Query {
+                        block: BlockId(1),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(1),
+                    },
+                    None
+                ),
                 expected
             );
         }
@@ -1156,11 +1496,14 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             Some(Requirement::Prefix("pre".into()))
         );
         for (block, local) in [(99, 0), (0, 99)] {
-            assert!(!guards.proves(Query {
-                block: BlockId(block),
-                place: Place::local(IntListLocalId(local).into()),
-                requirement: Requirement::length(1),
-            }));
+            assert!(!guards.proves(
+                Query {
+                    block: BlockId(block),
+                    place: Place::local(IntListLocalId(local).into()),
+                    requirement: Requirement::length(1),
+                },
+                None
+            ));
         }
     }
 
@@ -1205,6 +1548,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                     },
                     &Place::local(StringLocalId(local).into()),
                     &prefix,
+                    None
                 ),
                 if expected { None } else { Some(prefix.clone()) }
             );
@@ -1259,6 +1603,7 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
                         path
                     },
                     &Requirement::length(1),
+                    None
                 ),
                 if expected {
                     None
@@ -1333,16 +1678,22 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             );
             let blocks = Blocks::admit(&graph).unwrap();
             let guards = Guards::new(&blocks);
-            assert!(!guards.proves(Query {
-                block: BlockId(1),
-                place: Place::local(TupleLocalId(0).into()),
-                requirement: Requirement::length(1),
-            }));
-            assert!(!guards.proves(Query {
-                block: BlockId(0),
-                place: Place::local(TupleLocalId(0).into()),
-                requirement: Requirement::length(1),
-            }));
+            assert!(!guards.proves(
+                Query {
+                    block: BlockId(1),
+                    place: Place::local(TupleLocalId(0).into()),
+                    requirement: Requirement::length(1),
+                },
+                None
+            ));
+            assert!(!guards.proves(
+                Query {
+                    block: BlockId(0),
+                    place: Place::local(TupleLocalId(0).into()),
+                    requirement: Requirement::length(1),
+                },
+                None
+            ));
         }
     }
 
@@ -1684,11 +2035,14 @@ pub fn main() { #(head([42]), second([0, 42]), after_short_lists([0, 42]), unord
             (3, "", true),
         ] {
             assert_eq!(
-                guards.proves(Query {
-                    block: BlockId(0),
-                    place: Place::local(StringLocalId(index).into()),
-                    requirement: Requirement::Prefix(prefix.into()),
-                }),
+                guards.proves(
+                    Query {
+                        block: BlockId(0),
+                        place: Place::local(StringLocalId(index).into()),
+                        requirement: Requirement::Prefix(prefix.into()),
+                    },
+                    None
+                ),
                 expected
             );
         }
@@ -1834,18 +2188,24 @@ mod direct_test_tests {
                 let blocks = Blocks::admit(&graph).unwrap();
                 let guards = Guards::new(&blocks);
                 assert_eq!(
-                    guards.proves(Query {
-                        block: BlockId(1),
-                        place: Place::local(IntListLocalId(0).into()),
-                        requirement: Requirement::length(minimum)
-                    }),
+                    guards.proves(
+                        Query {
+                            block: BlockId(1),
+                            place: Place::local(IntListLocalId(0).into()),
+                            requirement: Requirement::length(minimum)
+                        },
+                        None
+                    ),
                     expected && !bypass
                 );
-                assert!(!guards.proves(Query {
-                    block: BlockId(0),
-                    place: Place::local(IntListLocalId(0).into()),
-                    requirement: Requirement::length(minimum)
-                }));
+                assert!(!guards.proves(
+                    Query {
+                        block: BlockId(0),
+                        place: Place::local(IntListLocalId(0).into()),
+                        requirement: Requirement::length(minimum)
+                    },
+                    None
+                ));
             }
         }
     }

@@ -17,6 +17,11 @@ pub use custom::{
     HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
     HostCustomTypeArgument, HostCustomTypeSchema, HostNominalCustomField, HostSchemaType,
 };
+#[doc(hidden)]
+pub use custom::{
+    HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
+    HostCustomIndexLeft, HostCustomIndexRight,
+};
 pub use function::HostFunctionType;
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
@@ -514,7 +519,13 @@ mod private {
     }
 
     pub(crate) trait CustomConstructors {
-        fn schemas() -> Vec<super::HostCustomConstructorSchema>;
+        const CONSTRUCTOR_COUNT: usize;
+        fn schemas() -> Vec<super::HostCustomConstructorSchema> {
+            let mut constructors = Vec::with_capacity(Self::CONSTRUCTOR_COUNT);
+            Self::collect_constructor_schemas(&mut constructors);
+            constructors
+        }
+        fn collect_constructor_schemas(constructors: &mut Vec<super::HostCustomConstructorSchema>);
         fn collect_custom_schemas(
             output: &mut Vec<super::HostCustomTypeSchema>,
             visited: &mut std::collections::HashSet<super::HostCustomSchemaId>,

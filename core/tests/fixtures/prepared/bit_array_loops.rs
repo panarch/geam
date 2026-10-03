@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 13,
+    format: 14,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -7584,6 +7584,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7591,6 +7592,7 @@ data::ModuleArtifact {
                                     ints: 5,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7598,6 +7600,7 @@ data::ModuleArtifact {
                                     ints: 6,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7605,6 +7608,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7612,6 +7616,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7619,6 +7624,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_0,
@@ -7635,6 +7641,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7642,6 +7649,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7649,6 +7657,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7656,6 +7665,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7663,6 +7673,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7670,6 +7681,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7677,6 +7689,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_1,
@@ -7693,6 +7706,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7700,6 +7714,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 3,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7707,6 +7722,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7714,6 +7730,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7721,6 +7738,7 @@ data::ModuleArtifact {
                                     ints: 4,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7728,6 +7746,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7735,6 +7754,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -7742,6 +7762,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -7749,6 +7770,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -7756,6 +7778,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -7763,6 +7786,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -7770,6 +7794,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -7777,6 +7802,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_2,
@@ -7793,6 +7819,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7800,6 +7827,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7807,6 +7835,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7814,6 +7843,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7821,6 +7851,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7828,6 +7859,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7835,6 +7867,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_3,
@@ -7851,6 +7884,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7858,6 +7892,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7865,6 +7900,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7872,6 +7908,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_4,
@@ -7888,6 +7925,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7895,6 +7933,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7902,6 +7941,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -7909,6 +7949,7 @@ data::ModuleArtifact {
                                     ints: 4,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7916,6 +7957,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -7923,6 +7965,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -7930,6 +7973,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -7937,6 +7981,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -7944,6 +7989,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -7951,6 +7997,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -7958,6 +8005,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -7965,6 +8013,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -7972,6 +8021,7 @@ data::ModuleArtifact {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_int_5,
@@ -7990,6 +8040,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 1,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -7997,6 +8048,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 1,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -8004,6 +8056,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 2,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -8011,6 +8064,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 1,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -8018,6 +8072,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 1,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -8025,6 +8080,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -8032,6 +8088,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 1,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_bool_0,
@@ -8050,6 +8107,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -8057,6 +8115,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -8064,6 +8123,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -8071,6 +8131,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -8078,6 +8139,7 @@ data::ModuleArtifact {
                                     ints: 4,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -8085,6 +8147,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -8092,6 +8155,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -8099,6 +8163,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -8106,6 +8171,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -8113,6 +8179,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(9),
@@ -8120,6 +8187,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(9),
@@ -8127,6 +8195,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(9),
@@ -8134,6 +8203,7 @@ data::ModuleArtifact {
                                     ints: 4,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(10),
@@ -8141,6 +8211,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 2,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(11),
@@ -8148,6 +8219,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(12),
@@ -8155,6 +8227,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(13),
@@ -8162,6 +8235,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(14),
@@ -8169,6 +8243,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(14),
@@ -8176,6 +8251,7 @@ data::ModuleArtifact {
                                     ints: 3,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(15),
@@ -8183,6 +8259,7 @@ data::ModuleArtifact {
                                     ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(16),
@@ -8190,6 +8267,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(17),
@@ -8197,6 +8275,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(18),
@@ -8204,6 +8283,7 @@ data::ModuleArtifact {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 1,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: bit_array_custom_0,

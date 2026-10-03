@@ -11,6 +11,7 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::BlockGraphView;
 use crate::runtime::compiled::CompiledProgress;
 use crate::runtime::compiled::bit_array::BitArrayValues;
+use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
 use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
@@ -38,6 +39,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
     numeric: NumericValues,
     bit_array_loop: Option<Box<BitArrayValues>>,
+    int_list: Option<Box<IntListValues>>,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -201,6 +203,23 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         frame.resume_compiled(progress, implementation, storage)?
                     }
                 }
+                CompiledImplementation::IntList(int_list) => {
+                    let values = storage.int_list.get_or_insert_with(Box::default);
+                    if !frame.position.environment.load_int_list(values) {
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        let mut budget = *remaining + 1;
+                        let progress = (int_list.run)(
+                            point,
+                            values,
+                            &IntListOps::new(state.lists()),
+                            &mut budget,
+                        );
+                        *remaining = budget;
+                        frame.position.environment.restore_int_list(values);
+                        frame.resume_compiled(progress, implementation, storage)?
+                    }
+                }
                 CompiledImplementation::BitArray(bit_array) => {
                     let values = storage.bit_array_loop.get_or_insert_with(Default::default);
                     if !frame.position.environment.load_bit_array(values) {
@@ -237,6 +256,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             arithmetic: Default::default(),
             numeric: Default::default(),
             bit_array_loop: None,
+            int_list: None,
         }
     }
 }
@@ -709,7 +729,8 @@ mod tests {
     };
     use crate::ExecutionPlan;
     use crate::plan::execution::compiled::{
-        BitArrayImplementation, CompiledCheckpoint, CompiledImplementation, NumericImplementation,
+        BitArrayImplementation, CompiledCheckpoint, CompiledImplementation, IntListImplementation,
+        NumericImplementation,
     };
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
@@ -718,6 +739,7 @@ mod tests {
     use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
     use crate::runtime::compiled::CompiledProgress;
     use crate::runtime::compiled::bit_array::BitArrayValues;
+    use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
@@ -741,6 +763,7 @@ mod tests {
             ints: 1,
             bools: 0,
             bit_arrays: 1,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -748,6 +771,7 @@ mod tests {
             ints: 1,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -755,6 +779,7 @@ mod tests {
             ints: 1,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
     ];
 
@@ -925,6 +950,7 @@ mod tests {
             ints: 1,
             bools: 1,
             bit_arrays: 0,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -932,6 +958,7 @@ mod tests {
             ints: 1,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -939,6 +966,7 @@ mod tests {
             ints: 2,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -946,6 +974,7 @@ mod tests {
             ints: 1,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -953,6 +982,7 @@ mod tests {
             ints: 2,
             bools: 0,
             bit_arrays: 0,
+            int_lists: 0,
         },
     ];
 
@@ -1290,6 +1320,314 @@ mod tests {
                 assert!(echo.is_empty());
             }
         });
+    }
+
+    #[test]
+    fn list_returns_preserve_the_fallible_return_mapper_and_release_scratch() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        let source = r#"
+fn head(values: List(Int), value: Int) {
+  let assert [first, ..] = values
+  first + value
+}
+pub fn main() { head([7], 3) }
+"#;
+        let checkpoints = [
+            CompiledCheckpoint {
+                block: BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 1,
+                ints: 3,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(2),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+        ];
+        with_source_plans!(source, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::IntList(IntListImplementation {
+                entry: 0,
+                checkpoints: checkpoints.to_vec().into(),
+                run: one_step_head,
+            });
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for (value, point) in [(BigInt::from(3), 0), (BigInt::from(1) << 100_usize, 2)] {
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // This existing return boundary may fail after either a
+                    // generated return or interpretation of a Big prefix.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut inputs = RetainedValues::empty();
+                if point == 0 {
+                    inputs.push_int(value.into());
+                    inputs.push_list(
+                        state
+                            .lists()
+                            .int(
+                                IntListTypeId {
+                                    list_type: ListTypeId(0),
+                                },
+                                vec![IntegerValue::from(7_i64)],
+                            )
+                            .into(),
+                    );
+                } else {
+                    // The addition has completed at checkpoint two. A Big
+                    // prefix resumes its return without replaying that work.
+                    inputs.push_int(value.clone().into());
+                    inputs.push_int(7_i64.into());
+                    inputs.push_int((value + 7_i64).into());
+                }
+                let mut position = GraphPosition::new(checkpoints[point].block, inputs);
+                position.instruction = checkpoints[point].instruction;
+                let mut execution = Execution {
+                    active: Activation::Compiled {
+                        frame: Frame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point,
+                    },
+                };
+                let result = loop {
+                    match execution.advance(plan, &mut state, &mut storage, &mut 0) {
+                        Ok(Progress::Continue(next)) => execution = next,
+                        result => break result,
+                    }
+                };
+                assert_eq!(
+                    result.err(),
+                    Some(ExecutionError::Invariant(expected.clone()))
+                );
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                let scratch = storage.int_list.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bools.is_empty());
+                assert!(scratch.int_lists.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    #[test]
+    fn list_activation_moves_prefixes_and_preserves_small_big_and_source_failure_returns() {
+        use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
+
+        let source = r#"
+fn head(values: List(Int), value: Int) {
+  let assert [first, ..] = values
+  first + value
+}
+pub fn main() { head([7], 3) }
+"#;
+        let checkpoints = [
+            CompiledCheckpoint {
+                block: BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 1,
+                ints: 3,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(2),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+        ];
+        with_source_plans!(source, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::IntList(IntListImplementation {
+                entry: 0,
+                checkpoints: checkpoints.to_vec().into(),
+                run: one_step_head,
+            });
+            let big: BigInt = BigInt::from(1) << 100;
+            for (head, value, expected) in [
+                (vec![BigInt::from(7)], BigInt::from(3), Ok(BigInt::from(10))),
+                (
+                    vec![BigInt::from(1)],
+                    BigInt::from(i64::MAX),
+                    Ok(BigInt::from(i64::MAX) + 1),
+                ),
+                (
+                    vec![BigInt::from(-1)],
+                    BigInt::from(i64::MIN),
+                    Ok(BigInt::from(i64::MIN) - 1),
+                ),
+                (vec![big.clone()], BigInt::from(3), Ok(&big + 3)),
+                (vec![BigInt::from(7)], big.clone(), Ok(&big + 7)),
+                (
+                    vec![],
+                    BigInt::from(3),
+                    Err(
+                        "let_assert: Pattern match failed, no pattern matched the value."
+                            .to_owned(),
+                    ),
+                ),
+            ] {
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(value.into());
+                inputs.push_list(
+                    state
+                        .lists()
+                        .int(
+                            IntListTypeId {
+                                list_type: ListTypeId(0),
+                            },
+                            head.into_iter().map(IntegerValue::from).collect::<Vec<_>>(),
+                        )
+                        .into(),
+                );
+                let mut execution =
+                    Execution::new(body.block_graph().as_view(), inputs, Some(&implementation));
+                let mut storage = Storage::new();
+                let result = loop {
+                    match execution.advance(plan, &mut state, &mut storage, &mut 0) {
+                        Ok(Progress::Continue(next)) => execution = next,
+                        Ok(complete) => {
+                            break Ok(returned_int(plan, IntFunctionId(1), completed(complete)));
+                        }
+                        Err(error) => break Err(error.to_string()),
+                    }
+                };
+                assert_eq!(result, expected);
+                let values = storage.int_list.as_ref().unwrap();
+                assert!(values.ints.is_empty());
+                assert!(values.bools.is_empty());
+                assert!(values.int_lists.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    fn one_step_head(
+        point: usize,
+        values: &mut IntListValues,
+        lists: &IntListOps<'_>,
+        budget: &mut usize,
+    ) -> CompiledProgress {
+        // This fixture observes the activation bridge one canonical step at a
+        // time. Actual emitted kernels are executed by prepared consumers.
+        assert_eq!(*budget, 1);
+        match point {
+            0 => {
+                if values.int_lists[0].is_empty() {
+                    values.ints.clear();
+                    *budget = 0;
+                    return CompiledProgress::Yield(3);
+                }
+                let head = lists
+                    .prefix(&values.int_lists[0], 1)
+                    .next()
+                    .and_then(|head| head.small());
+                if let Some(head) = head {
+                    values.ints.push(head);
+                    values.int_lists.clear();
+                    *budget = 0;
+                    CompiledProgress::Yield(1)
+                } else {
+                    CompiledProgress::Interpreted(0)
+                }
+            }
+            1 => {
+                let sum = values.ints[0] + values.ints[1];
+                values.ints.push(sum);
+                *budget = 0;
+                if sum < i128::from(i64::MIN) || sum > i128::from(i64::MAX) {
+                    CompiledProgress::Interpreted(2)
+                } else {
+                    CompiledProgress::Yield(2)
+                }
+            }
+            2 => {
+                *budget = 0;
+                CompiledProgress::Complete(BlockGraphExitId(0))
+            }
+            3 => CompiledProgress::Interpreted(3),
+            _ => panic!("head bridge fixture uses exactly four checkpoints"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "head bridge fixture uses exactly four checkpoints")]
+    fn list_bridge_fixture_rejects_other_checkpoints() {
+        one_step_head(
+            99,
+            &mut IntListValues::default(),
+            &IntListOps::new(&RuntimeListStorage::default()),
+            &mut 1,
+        );
     }
 
     fn int_body<Plan: ExecutableRuntimePlan>(

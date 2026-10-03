@@ -3,6 +3,7 @@ use crate::plan::execution::function::{BoolFunctionId, CustomFunctionId, IntFunc
 use crate::plan::execution::graph::BlockId;
 use crate::plan::execution::storage::Table;
 use crate::runtime::compiled::bit_array::BitArrayKernel;
+use crate::runtime::compiled::int_list::IntListKernel;
 use crate::runtime::compiled::numeric::NumericKernel;
 
 /// Compiler-generated implementations, separate from the canonical graph.
@@ -23,6 +24,7 @@ pub struct CompiledFunction<Id> {
 pub enum CompiledImplementation {
     Numeric(NumericImplementation),
     BitArray(BitArrayImplementation),
+    IntList(IntListImplementation),
 }
 
 impl CompiledImplementation {
@@ -30,6 +32,7 @@ impl CompiledImplementation {
         match self {
             Self::Numeric(value) => value.entry,
             Self::BitArray(value) => value.entry,
+            Self::IntList(value) => value.entry,
         }
     }
 
@@ -37,6 +40,7 @@ impl CompiledImplementation {
         match self {
             Self::Numeric(value) => &value.checkpoints,
             Self::BitArray(value) => &value.checkpoints,
+            Self::IntList(value) => &value.checkpoints,
         }
     }
 }
@@ -53,6 +57,12 @@ pub struct BitArrayImplementation {
     pub run: BitArrayKernel,
 }
 
+pub struct IntListImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: IntListKernel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompiledCheckpoint {
     pub block: BlockId,
@@ -60,6 +70,7 @@ pub struct CompiledCheckpoint {
     pub ints: usize,
     pub bools: usize,
     pub bit_arrays: usize,
+    pub int_lists: usize,
 }
 
 impl CompiledFunctions {
@@ -111,6 +122,7 @@ impl Emit for CompiledCheckpoint {
                 ("ints", &self.ints),
                 ("bools", &self.bools),
                 ("bit_arrays", &self.bit_arrays),
+                ("int_lists", &self.int_lists),
             ],
         );
     }
@@ -120,13 +132,15 @@ impl Emit for CompiledCheckpoint {
 mod tests {
     use super::{
         BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
-        CompiledImplementation, NumericImplementation, Rust,
+        CompiledImplementation, IntListImplementation, NumericImplementation, Rust,
     };
     use crate::plan::execution::function::{BoolFunctionId, CustomFunctionId, IntFunctionId};
     use crate::plan::execution::graph::BlockId;
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
-    use crate::runtime::compiled::tests::{metadata_bit_array, metadata_numeric};
+    use crate::runtime::compiled::tests::{
+        metadata_bit_array, metadata_int_list, metadata_numeric,
+    };
 
     static FUNCTIONS: CompiledFunctions = CompiledFunctions {
         ints: Table::Static(&[CompiledFunction {
@@ -139,10 +153,10 @@ mod tests {
         }]),
         bools: Table::Static(&[CompiledFunction {
             function: BoolFunctionId(3),
-            implementation: CompiledImplementation::Numeric(NumericImplementation {
+            implementation: CompiledImplementation::IntList(IntListImplementation {
                 entry: 1,
                 checkpoints: Table::Static(&[]),
-                run: metadata_numeric,
+                run: metadata_int_list,
             }),
         }]),
         customs: Table::Static(&[CompiledFunction {
@@ -216,14 +230,15 @@ mod tests {
     }
 
     #[test]
-    fn emits_the_exact_block_position_and_actual_numeric_prefix() {
+    fn emits_the_exact_block_position_and_actual_typed_prefix() {
         assert_eq!(
             Rust::expression(&CompiledCheckpoint {
                 block: BlockId(2),
                 instruction: 3,
                 ints: 5,
                 bools: 1,
-                bit_arrays: 0,
+                bit_arrays: 3,
+                int_lists: 2,
             }),
             r#"
 data::compiled::CompiledCheckpoint {
@@ -231,7 +246,8 @@ data::compiled::CompiledCheckpoint {
     instruction: 3,
     ints: 5,
     bools: 1,
-    bit_arrays: 0,
+    bit_arrays: 3,
+    int_lists: 2,
 }
 "#
             .trim_matches('\n')

@@ -18,6 +18,67 @@ use std::marker::PhantomData;
 pub struct HostCustomType<Schema, Arguments = HostTypeListEnd>(PhantomData<(Schema, Arguments)>);
 
 /// A constructor selected at `Index` from `Custom`'s sealed constructor list.
+///
+/// Matching names and fields cannot substitute a different Rust definition.
+///
+/// ```compile_fail
+/// use geam_core::{
+///     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
+///     HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
+/// };
+/// use geam_core::__macro_support::{HostCustomConstructorLeaf, HostCustomIndexHere};
+///
+/// struct Schema;
+/// struct Declared;
+/// struct Lookalike;
+/// impl HostCustomSchema for Schema {
+///     const PACKAGE: &'static str = "application";
+///     const MODULE: &'static str = "main";
+///     const NAME: &'static str = "Thing";
+///     const PARAMETER_COUNT: usize = 0;
+///     type Constructors = HostCustomConstructorLeaf<Declared>;
+/// }
+/// impl HostCustomConstructorDefinition for Declared {
+///     const NAME: &'static str = "Item";
+///     type Fields = HostCustomFieldListEnd;
+/// }
+/// impl HostCustomConstructorDefinition for Lookalike {
+///     const NAME: &'static str = "Item";
+///     type Fields = HostCustomFieldListEnd;
+/// }
+/// fn registered<Constructor: HostCustomConstructor>() {}
+/// registered::<HostCustomConstructorAt<HostCustomType<Schema>, HostCustomIndexHere, Lookalike>>();
+/// ```
+///
+/// A leaf has no selectable right subtree.
+///
+/// ```compile_fail
+/// use geam_core::{
+///     HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorDefinition,
+///     HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
+/// };
+/// use geam_core::__macro_support::{
+///     HostCustomConstructorLeaf, HostCustomIndexHere, HostCustomIndexRight,
+/// };
+///
+/// struct Schema;
+/// struct Declared;
+/// impl HostCustomSchema for Schema {
+///     const PACKAGE: &'static str = "application";
+///     const MODULE: &'static str = "main";
+///     const NAME: &'static str = "Thing";
+///     const PARAMETER_COUNT: usize = 0;
+///     type Constructors = HostCustomConstructorLeaf<Declared>;
+/// }
+/// impl HostCustomConstructorDefinition for Declared {
+///     const NAME: &'static str = "Item";
+///     type Fields = HostCustomFieldListEnd;
+/// }
+/// fn registered<Constructor: HostCustomConstructor>() {}
+/// registered::<HostCustomConstructorAt<
+///     HostCustomType<Schema>, HostCustomIndexRight<HostCustomIndexHere>, Declared,
+/// >>();
+/// ```
 pub struct HostCustomConstructorAt<Custom, Index, Definition>(
     PhantomData<(Custom, Index, Definition)>,
 );
@@ -27,6 +88,14 @@ pub struct HostCustomConstructorList<Head, Tail>(PhantomData<(Head, Tail)>);
 
 /// The end of an ordered custom constructor list.
 pub struct HostCustomConstructorListEnd;
+
+/// One exact constructor definition in a generated ordered tree.
+#[doc(hidden)]
+pub struct HostCustomConstructorLeaf<Definition>(PhantomData<fn() -> Definition>);
+
+/// Left constructor definitions followed by right constructor definitions.
+#[doc(hidden)]
+pub struct HostCustomConstructorBranch<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
 /// One custom field definition followed by the remaining definitions.
 pub struct HostCustomFieldList<Head, Tail>(PhantomData<(Head, Tail)>);
@@ -39,6 +108,18 @@ pub struct HostCustomIndex0;
 
 /// The position following `Index` in a custom constructor list.
 pub struct HostCustomIndexNext<Index>(PhantomData<Index>);
+
+/// The exact definition at a generated constructor leaf.
+#[doc(hidden)]
+pub struct HostCustomIndexHere;
+
+/// A constructor selected inside the left ordered subtree.
+#[doc(hidden)]
+pub struct HostCustomIndexLeft<Index>(PhantomData<fn() -> Index>);
+
+/// A constructor selected inside the right ordered subtree.
+#[doc(hidden)]
+pub struct HostCustomIndexRight<Index>(PhantomData<fn() -> Index>);
 
 /// The complete source schema for one ordinary Gleam custom type.
 pub trait HostCustomSchema: Send + Sync + 'static {
@@ -377,13 +458,14 @@ where
     Head: HostCustomConstructorDefinition,
     Tail: HostCustomConstructorSequence,
 {
-    fn schemas() -> Vec<HostCustomConstructorSchema> {
-        let mut constructors = vec![HostCustomConstructorSchema::new(
+    const CONSTRUCTOR_COUNT: usize = 1 + Tail::CONSTRUCTOR_COUNT;
+
+    fn collect_constructor_schemas(constructors: &mut Vec<HostCustomConstructorSchema>) {
+        constructors.push(HostCustomConstructorSchema::new(
             Head::NAME,
             <Head::Fields as private::CustomFields>::schemas(),
-        )];
-        constructors.extend(<Tail as private::CustomConstructors>::schemas());
-        constructors
+        ));
+        <Tail as private::CustomConstructors>::collect_constructor_schemas(constructors);
     }
 
     fn collect_custom_schemas(
@@ -396,14 +478,84 @@ where
 }
 
 impl private::CustomConstructors for HostCustomConstructorListEnd {
-    fn schemas() -> Vec<HostCustomConstructorSchema> {
-        Vec::new()
-    }
+    const CONSTRUCTOR_COUNT: usize = 0;
+
+    fn collect_constructor_schemas(_: &mut Vec<HostCustomConstructorSchema>) {}
 
     fn collect_custom_schemas(
         _output: &mut Vec<HostCustomTypeSchema>,
         _visited: &mut HashSet<HostCustomSchemaId>,
     ) {
+    }
+}
+
+impl<Definition: HostCustomConstructorDefinition> private::CustomConstructors
+    for HostCustomConstructorLeaf<Definition>
+{
+    const CONSTRUCTOR_COUNT: usize = 1;
+
+    fn collect_constructor_schemas(constructors: &mut Vec<HostCustomConstructorSchema>) {
+        constructors.push(HostCustomConstructorSchema::new(
+            Definition::NAME,
+            <Definition::Fields as private::CustomFields>::schemas(),
+        ));
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomSchemaId>,
+    ) {
+        <Definition::Fields as private::CustomFields>::collect_custom_schemas(output, visited);
+    }
+}
+
+impl<Left: HostCustomConstructorSequence, Right: HostCustomConstructorSequence>
+    private::CustomConstructors for HostCustomConstructorBranch<Left, Right>
+{
+    const CONSTRUCTOR_COUNT: usize = Left::CONSTRUCTOR_COUNT + Right::CONSTRUCTOR_COUNT;
+
+    fn collect_constructor_schemas(constructors: &mut Vec<HostCustomConstructorSchema>) {
+        <Left as private::CustomConstructors>::collect_constructor_schemas(constructors);
+        <Right as private::CustomConstructors>::collect_constructor_schemas(constructors);
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomSchemaId>,
+    ) {
+        <Left as private::CustomConstructors>::collect_custom_schemas(output, visited);
+        <Right as private::CustomConstructors>::collect_custom_schemas(output, visited);
+    }
+}
+
+impl<Definition: HostCustomConstructorDefinition>
+    private::ConstructorAt<HostCustomIndexHere, Definition>
+    for HostCustomConstructorLeaf<Definition>
+{
+    fn index() -> usize {
+        0
+    }
+}
+
+impl<Left, Right, Index, Definition> private::ConstructorAt<HostCustomIndexLeft<Index>, Definition>
+    for HostCustomConstructorBranch<Left, Right>
+where
+    Left: HostCustomConstructorSequence + private::ConstructorAt<Index, Definition>,
+    Right: HostCustomConstructorSequence,
+{
+    fn index() -> usize {
+        <Left as private::ConstructorAt<Index, Definition>>::index()
+    }
+}
+
+impl<Left, Right, Index, Definition> private::ConstructorAt<HostCustomIndexRight<Index>, Definition>
+    for HostCustomConstructorBranch<Left, Right>
+where
+    Left: HostCustomConstructorSequence,
+    Right: HostCustomConstructorSequence + private::ConstructorAt<Index, Definition>,
+{
+    fn index() -> usize {
+        Left::CONSTRUCTOR_COUNT + <Right as private::ConstructorAt<Index, Definition>>::index()
     }
 }
 

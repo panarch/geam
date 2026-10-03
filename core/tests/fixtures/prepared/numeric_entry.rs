@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 13,
+    format: 14,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -513,6 +513,7 @@ pub fn main() {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -520,6 +521,7 @@ pub fn main() {
                                     ints: 1,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -527,6 +529,7 @@ pub fn main() {
                                     ints: 2,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -534,6 +537,7 @@ pub fn main() {
                                     ints: 4,
                                     bools: 0,
                                     bit_arrays: 0,
+                                    int_lists: 0,
                                 },
                             ]),
                             run: numeric_int_0,

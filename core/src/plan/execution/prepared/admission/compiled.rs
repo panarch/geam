@@ -1,4 +1,5 @@
 use super::super::codegen::CompiledShape;
+use super::super::codegen::shape::KernelKind;
 use crate::plan::execution::compiled::{
     CompiledFunction, CompiledFunctions, CompiledImplementation,
 };
@@ -27,6 +28,7 @@ enum Reason {
     MissingFunction,
     HostFunction,
     UnsupportedGraph,
+    ImplementationKind,
     Entry,
     CheckpointCount,
     Checkpoint(usize),
@@ -114,11 +116,20 @@ fn value_shape<'body, Body: ExecutionFunctionBody>(
     body: &'body Body,
     implementation: &CompiledImplementation,
 ) -> Result<CompiledShape<'body, Body::Graph>, Reason> {
-    match implementation {
-        CompiledImplementation::Numeric(_) => CompiledShape::inspect(body.function_body()),
-        CompiledImplementation::BitArray(_) => CompiledShape::inspect_bits(body.function_body()),
+    let expected = match implementation {
+        CompiledImplementation::Numeric(_) => KernelKind::Numeric,
+        CompiledImplementation::IntList(_) => KernelKind::IntList,
+        CompiledImplementation::BitArray(_) => {
+            return CompiledShape::inspect_bits(body.function_body())
+                .ok_or(Reason::UnsupportedGraph);
+        }
+    };
+    let shape = CompiledShape::inspect(body.function_body()).ok_or(Reason::UnsupportedGraph)?;
+    if shape.kind == expected {
+        Ok(shape)
+    } else {
+        Err(Reason::ImplementationKind)
     }
-    .ok_or(Reason::UnsupportedGraph)
 }
 
 fn custom_shape<'body, Body: ExecutionFunctionBody>(
@@ -129,18 +140,18 @@ fn custom_shape<'body, Body: ExecutionFunctionBody>(
         CompiledImplementation::BitArray(_) => {
             CompiledShape::inspect_bits(body.function_body()).ok_or(Reason::UnsupportedGraph)
         }
-        CompiledImplementation::Numeric(_) => Err(Reason::Kernel),
+        _ => Err(Reason::Kernel),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::tests::{graph_body, owned_mut};
-    use super::CompiledShape;
     use super::{CompiledError, Family, Reason, all, targets, value_shape};
+    use super::{CompiledShape, KernelKind};
     use crate::plan::execution::compiled::{
         BitArrayImplementation, CompiledFunction, CompiledFunctions, CompiledImplementation,
-        NumericImplementation,
+        IntListImplementation, NumericImplementation,
     };
     use crate::plan::execution::function::{
         ExecutionIntFunctionBody, IntFunctionId, ValueFunctionEntry,
@@ -149,7 +160,9 @@ mod tests {
     use crate::plan::execution::host::{
         HostFunctionId, HostedExecutionProfile, HostedFunctionTarget,
     };
-    use crate::runtime::compiled::tests::{metadata_bit_array, metadata_numeric};
+    use crate::runtime::compiled::tests::{
+        metadata_bit_array, metadata_int_list, metadata_numeric,
+    };
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::marker::PhantomData;
     use std::sync::Arc;
@@ -382,6 +395,90 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             );
         }
         assert_eq!(all(&CompiledFunctions::interpreted(), functions), Ok(()));
+    }
+
+    #[test]
+    fn list_targets_require_the_matching_kernel_and_exact_list_prefix_in_both_return_families() {
+        use crate::plan::execution::function::BoolFunctionId;
+
+        let execution = hosted_plan(
+            r#"
+fn head(values: List(Int)) { case values { [value, ..] -> value _ -> 0 } }
+fn same(left: List(Int), right: List(Int)) { left == right }
+pub fn main() { #(head([1]), same([1], [1])) }
+"#,
+        );
+        let functions = &execution.execution.program.functions;
+        let integer =
+            CompiledShape::inspect(graph_body(&functions.value_returns.int_functions[0])).unwrap();
+        let boolean =
+            CompiledShape::inspect(graph_body(&functions.value_returns.bool_functions[0])).unwrap();
+        assert_eq!(integer.kind, KernelKind::IntList);
+        assert_eq!(boolean.kind, KernelKind::IntList);
+        for change in 0..4 {
+            let mut points = integer.checkpoints.clone();
+            if change == 2 {
+                points[0].int_lists += 1;
+            }
+            let implementation = if change == 1 {
+                CompiledImplementation::Numeric(NumericImplementation {
+                    entry: integer.start(integer.graph.entry()),
+                    checkpoints: points.into(),
+                    run: metadata_numeric,
+                })
+            } else {
+                CompiledImplementation::IntList(IntListImplementation {
+                    entry: integer.start(integer.graph.entry()),
+                    checkpoints: points.into(),
+                    run: metadata_int_list,
+                })
+            };
+            let boolean_implementation = if change == 3 {
+                CompiledImplementation::Numeric(NumericImplementation {
+                    entry: boolean.start(boolean.graph.entry()),
+                    checkpoints: boolean.checkpoints.clone().into(),
+                    run: metadata_numeric,
+                })
+            } else {
+                CompiledImplementation::IntList(IntListImplementation {
+                    entry: boolean.start(boolean.graph.entry()),
+                    checkpoints: boolean.checkpoints.clone().into(),
+                    run: metadata_int_list,
+                })
+            };
+            let compiled = CompiledFunctions {
+                customs: vec![].into(),
+                ints: vec![CompiledFunction {
+                    function: IntFunctionId(0),
+                    implementation,
+                }]
+                .into(),
+                bools: vec![CompiledFunction {
+                    function: BoolFunctionId(0),
+                    implementation: boolean_implementation,
+                }]
+                .into(),
+            };
+            let expected = match change {
+                0 => Ok(()),
+                1 => Err(CompiledError {
+                    family: Family::Int,
+                    function: 0,
+                    reason: Reason::ImplementationKind,
+                }),
+                2 => Err(CompiledError {
+                    family: Family::Int,
+                    function: 0,
+                    reason: Reason::Checkpoint(0),
+                }),
+                _ => Err(CompiledError {
+                    family: Family::Bool,
+                    function: 0,
+                    reason: Reason::ImplementationKind,
+                }),
+            };
+            assert_eq!(all(&compiled, functions), expected);
+        }
     }
 
     #[test]

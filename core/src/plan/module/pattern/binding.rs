@@ -28,7 +28,10 @@ pub(crate) enum TotalBindingPatternKind {
     Bind(AssertBinding),
     Discard,
     Tuple(Vec<TotalBindingPattern>),
-    List(ListAssertTail),
+    List {
+        elements: Vec<TotalBindingPattern>,
+        tail: Option<ListAssertTail>,
+    },
     Custom(CustomBindingPattern),
     Alias {
         pattern: Box<TotalBindingPattern>,
@@ -144,10 +147,14 @@ impl TotalBindingPattern {
         Self::new(type_, TotalBindingPatternKind::Tuple(elements))
     }
 
-    pub(crate) fn list(element_type: ValueType, tail: ListAssertTail) -> Self {
+    pub(crate) fn list(
+        element_type: ValueType,
+        elements: Vec<Self>,
+        tail: Option<ListAssertTail>,
+    ) -> Self {
         Self::new(
             ValueType::List(Box::new(element_type)),
-            TotalBindingPatternKind::List(tail),
+            TotalBindingPatternKind::List { elements, tail },
         )
     }
 
@@ -173,6 +180,21 @@ impl TotalBindingPattern {
 
     pub(crate) fn type_(&self) -> &ValueType {
         &self.type_
+    }
+
+    pub(crate) fn has_bindings(&self) -> bool {
+        match &self.kind {
+            TotalBindingPatternKind::Bind(_) | TotalBindingPatternKind::Alias { .. } => true,
+            TotalBindingPatternKind::Discard => false,
+            TotalBindingPatternKind::Tuple(elements) => elements.iter().any(Self::has_bindings),
+            TotalBindingPatternKind::List { elements, tail } => {
+                elements.iter().any(Self::has_bindings)
+                    || matches!(tail, Some(ListAssertTail::Bind(_)))
+            }
+            TotalBindingPatternKind::Custom(pattern) => {
+                pattern.fields().iter().any(Self::has_bindings)
+            }
+        }
     }
 
     fn new(type_: ValueType, kind: TotalBindingPatternKind) -> Self {

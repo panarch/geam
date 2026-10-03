@@ -1,4 +1,5 @@
 pub(crate) mod bit_array;
+pub(crate) mod int_list;
 pub(crate) mod numeric;
 
 use crate::plan::execution::graph::BlockGraphExitId;
@@ -18,7 +19,9 @@ pub enum CompiledProgress {
 pub(crate) mod tests {
     use super::CompiledProgress;
     use super::bit_array::BitArrayValues;
+    use super::int_list::{IntListOps, IntListValues};
     use super::numeric::NumericValues;
+    use crate::runtime::state::list::RuntimeListStorage;
 
     // Admission and static-link fixtures describe metadata, never execution.
     pub(crate) fn metadata_numeric(
@@ -37,6 +40,15 @@ pub(crate) mod tests {
         panic!("metadata fixture must not execute a bit-array kernel")
     }
 
+    pub(crate) fn metadata_int_list(
+        _: usize,
+        _: &mut IntListValues,
+        _: &IntListOps<'_>,
+        _: &mut usize,
+    ) -> CompiledProgress {
+        panic!("metadata fixture must not execute a list kernel")
+    }
+
     #[test]
     #[should_panic(expected = "metadata fixture must not execute a numeric kernel")]
     fn numeric_metadata_fixture_rejects_execution() {
@@ -47,5 +59,16 @@ pub(crate) mod tests {
     #[should_panic(expected = "metadata fixture must not execute a bit-array kernel")]
     fn bit_array_metadata_fixture_rejects_execution() {
         metadata_bit_array(0, &mut BitArrayValues::default(), &mut 1);
+    }
+    #[test]
+    #[should_panic(expected = "metadata fixture must not execute a list kernel")]
+    fn list_metadata_fixture_rejects_execution() {
+        let storage = RuntimeListStorage::default();
+        metadata_int_list(
+            0,
+            &mut IntListValues::default(),
+            &IntListOps::new(&storage),
+            &mut 1,
+        );
     }
 }

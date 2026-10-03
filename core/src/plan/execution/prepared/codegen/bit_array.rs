@@ -1,5 +1,5 @@
 use super::shape::CompiledTerminator;
-use super::{Code, FunctionCodegen, ProgressOutput, edge_inputs, tuple};
+use super::{Code, FunctionCodegen, ProgressOutput, tuple};
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
@@ -460,6 +460,22 @@ fn range_pattern(source: &mut Code, pattern: &BitArrayBindingPattern, value: &st
             source.push_str(&format!("let _matched_{} = {value};\n", binding.index));
         }
     }
+}
+
+fn edge_inputs(block: BlockId, edge: &Edge) -> String {
+    let ints = edge.args().iter().filter_map(|local| match local {
+        ParamLocal::Int(local) => Some(format!("b{}_i{}", block.0, local.0)),
+        _ => None,
+    });
+    let bools = edge.args().iter().filter_map(|local| match local {
+        ParamLocal::Bool(local) => Some(format!("b{}_v{}", block.0, local.0)),
+        _ => None,
+    });
+    let bits = edge.args().iter().filter_map(|local| match local {
+        ParamLocal::BitArray(local) => Some(format!("b{}_b{}", block.0, local.0)),
+        _ => None,
+    });
+    tuple(ints.chain(bools).chain(bits))
 }
 
 #[cfg(test)]
