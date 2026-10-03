@@ -17,7 +17,9 @@ pub(in crate::planner) struct PlannedRuntimePattern {
     pub(in crate::planner) pattern: AssertPattern,
     matched_shape: ValueShape,
     pub(in crate::planner) is_total: bool,
-    pub(in crate::planner) total_binding: Option<TotalBindingPattern>,
+    // Local definitions after this pattern is known to match. Their availability
+    // does not imply that the pattern matches every input.
+    pub(in crate::planner) binding_projection: Option<TotalBindingPattern>,
     pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
 }
 
@@ -25,7 +27,7 @@ pub(in crate::planner) struct PlannedCustomPattern {
     pub(in crate::planner) pattern: CustomPattern,
     pub(in crate::planner) matched_shape: CustomValueShape,
     pub(in crate::planner) is_total: bool,
-    total_binding: Option<TotalBindingPattern>,
+    binding_projection: Option<TotalBindingPattern>,
     pub(in crate::planner) custom_binding: Option<PlannedCustomBinding>,
 }
 
@@ -35,7 +37,7 @@ impl PlannedCustomPattern {
             pattern: AssertPattern::custom(self.pattern),
             matched_shape: ValueShape::Custom(self.matched_shape),
             is_total: self.is_total,
-            total_binding: self.total_binding,
+            binding_projection: self.binding_projection,
             custom_binding: self.custom_binding,
         }
     }
@@ -148,7 +150,7 @@ fn plan_validated_runtime_pattern(
                 pattern: AssertPattern::Bind(binding.clone()),
                 matched_shape,
                 is_total: true,
-                total_binding: Some(TotalBindingPattern::bind(binding)),
+                binding_projection: Some(TotalBindingPattern::bind(binding)),
                 custom_binding: None,
             })
         }
@@ -162,7 +164,7 @@ fn plan_validated_runtime_pattern(
                 pattern: AssertPattern::Discard,
                 matched_shape,
                 is_total: true,
-                total_binding: Some(TotalBindingPattern::discard(type_)),
+                binding_projection: Some(TotalBindingPattern::discard(type_)),
                 custom_binding: None,
             })
         }
@@ -170,21 +172,21 @@ fn plan_validated_runtime_pattern(
             pattern: AssertPattern::Int(int_value),
             matched_shape: ValueShape::Int,
             is_total: false,
-            total_binding: None,
+            binding_projection: Some(TotalBindingPattern::discard(ValueType::Int)),
             custom_binding: None,
         }),
         Pattern::Float { float_value, .. } => Ok(PlannedRuntimePattern {
             pattern: AssertPattern::Float(float_value.value()),
             matched_shape: ValueShape::Float,
             is_total: false,
-            total_binding: None,
+            binding_projection: Some(TotalBindingPattern::discard(ValueType::Float)),
             custom_binding: None,
         }),
         Pattern::String { value, .. } => Ok(PlannedRuntimePattern {
             pattern: AssertPattern::String(convert_string_escape_chars(&value)),
             matched_shape: ValueShape::String,
             is_total: false,
-            total_binding: None,
+            binding_projection: Some(TotalBindingPattern::discard(ValueType::String)),
             custom_binding: None,
         }),
         Pattern::Tuple { location, elements } => {
@@ -202,17 +204,19 @@ fn plan_validated_runtime_pattern(
                 let element =
                     plan_runtime_pattern_with_source_shape(element, source_shape, context)?;
                 is_total &= element.is_total;
-                if let Some(binding) = element.total_binding {
+                if let Some(binding) = element.binding_projection {
                     bindings.push(binding);
                 }
                 matched_shapes.push(element.matched_shape);
                 patterns.push(element.pattern);
             }
+            let binding_projection =
+                (bindings.len() == patterns.len()).then(|| TotalBindingPattern::tuple(bindings));
             Ok(PlannedRuntimePattern {
                 pattern: AssertPattern::Tuple(patterns),
                 matched_shape: ValueShape::Tuple(matched_shapes.into_boxed_slice()),
                 is_total,
-                total_binding: is_total.then(|| TotalBindingPattern::tuple(bindings)),
+                binding_projection,
                 custom_binding: None,
             })
         }
@@ -249,7 +253,7 @@ fn plan_validated_runtime_pattern(
             super::validation::validate_pattern_type(&source_shape, ValueShape::BitArray)?;
             let (pattern, is_total) = super::plan_bit_array_pattern(segments.clone(), context)?;
             Ok(PlannedRuntimePattern {
-                total_binding: if is_total {
+                binding_projection: if is_total {
                     total_bit_array_binding(&pattern)
                 } else {
                     None
@@ -309,7 +313,7 @@ fn plan_validated_runtime_pattern(
                 },
                 matched_shape: ValueShape::String,
                 is_total: false,
-                total_binding: None,
+                binding_projection: None,
                 custom_binding: None,
             })
         }
@@ -320,8 +324,8 @@ fn plan_validated_runtime_pattern(
                 pattern: AssertPattern::alias(planned.pattern, binding.clone()),
                 matched_shape: planned.matched_shape,
                 is_total: planned.is_total,
-                total_binding: planned
-                    .total_binding
+                binding_projection: planned
+                    .binding_projection
                     .map(|pattern| TotalBindingPattern::alias(pattern, binding)),
                 custom_binding: planned.custom_binding,
             })
@@ -372,26 +376,30 @@ fn plan_list_pattern(
     let element_type = item_shape.value_type();
     let has_no_elements = elements.is_empty();
     let mut patterns = Vec::with_capacity(elements.len());
+    let mut bindings = Vec::with_capacity(elements.len());
     for element in elements {
-        patterns.push(
-            plan_runtime_pattern_with_source_shape(element, item_shape.clone(), context)?.pattern,
-        );
+        let element = plan_runtime_pattern_with_source_shape(element, item_shape.clone(), context)?;
+        if let Some(binding) = element.binding_projection {
+            bindings.push(binding);
+        }
+        patterns.push(element.pattern);
     }
     let tail = tail
         .map(|tail| plan_list_tail(tail, &item_shape, context))
         .transpose()?;
     let is_total = has_no_elements && tail.is_some();
-    let total_binding = if is_total {
-        tail.clone()
-            .map(|tail| TotalBindingPattern::list(element_type.clone(), tail))
-    } else {
-        None
-    };
+    let binding_projection = (bindings.len() == patterns.len()).then(|| {
+        if has_no_elements && tail.is_none() {
+            TotalBindingPattern::discard(ValueType::List(Box::new(element_type.clone())))
+        } else {
+            TotalBindingPattern::list(element_type.clone(), bindings, tail.clone())
+        }
+    });
     Ok(PlannedRuntimePattern {
         pattern: AssertPattern::list(ListAssertPattern::new(element_type, patterns, tail)),
         matched_shape,
         is_total,
-        total_binding,
+        binding_projection,
         custom_binding: None,
     })
 }
@@ -417,7 +425,7 @@ fn plan_bool_pattern(value: bool) -> PlannedRuntimePattern {
         pattern: AssertPattern::Bool(value),
         matched_shape: ValueShape::Bool,
         is_total: false,
-        total_binding: None,
+        binding_projection: Some(TotalBindingPattern::discard(ValueType::Bool)),
         custom_binding: None,
     }
 }
@@ -427,7 +435,7 @@ fn plan_nil_pattern() -> PlannedRuntimePattern {
         pattern: AssertPattern::Nil,
         matched_shape: ValueShape::Nil,
         is_total: true,
-        total_binding: Some(TotalBindingPattern::discard(ValueType::Nil)),
+        binding_projection: Some(TotalBindingPattern::discard(ValueType::Nil)),
         custom_binding: None,
     }
 }
@@ -456,7 +464,7 @@ fn plan_custom_pattern(
         let source_shape = ValueShape::from_value_type(source_field.type_().clone());
         let field = plan_runtime_pattern_with_source_shape(argument.value, source_shape, context)?;
         fields_are_total &= field.is_total;
-        if let Some(binding) = field.total_binding {
+        if let Some(binding) = field.binding_projection {
             binding_fields.push(binding);
         }
         fields.push(field.pattern);
@@ -476,14 +484,16 @@ fn plan_custom_pattern(
         matched_arguments.arguments().to_vec(),
         CustomConstructorRefinement::Exact(custom_constructor.index()),
     );
-    let custom_binding =
-        (fields_are_bindable && binding_source_shape.is_some()).then(|| PlannedCustomBinding {
+    let needs_binding =
+        fields_are_total || binding_fields.iter().any(TotalBindingPattern::has_bindings);
+    let custom_binding = (fields_are_bindable && needs_binding && binding_source_shape.is_some())
+        .then(|| PlannedCustomBinding {
             constructor: custom_constructor.clone(),
             fields: binding_fields.clone(),
             source_shape: source_shape.clone(),
             constructor_count,
         });
-    let total_binding = binding_source_shape
+    let binding_projection = binding_source_shape
         .filter(|_| fields_are_bindable)
         .map(|binding_source_shape| PlannedCustomBinding {
             constructor: custom_constructor.clone(),
@@ -501,7 +511,7 @@ fn plan_custom_pattern(
         ),
         matched_shape,
         is_total,
-        total_binding,
+        binding_projection,
         custom_binding,
     })
 }
@@ -573,8 +583,8 @@ mod tests {
     use crate::plan::{
         AssertBinding, AssertPattern, BitArrayBindingPattern, BitArrayLocalId, BitArrayPattern,
         BitArrayPatternSegment, CustomBindingPattern, CustomPattern, CustomTypeName, GenericLocal,
-        GenericLocalId, IntListLocalId, ListAssertPattern, ListAssertTail, ListLocal, ParamLocal,
-        PatternBinding, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
+        GenericLocalId, IntListLocalId, IntLocalId, ListAssertPattern, ListAssertTail, ListLocal,
+        ParamLocal, PatternBinding, TotalBindingPattern, TypeParameterId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
     use crate::planner::{
@@ -632,15 +642,82 @@ mod tests {
         );
         assert!(planned.is_total);
         assert_eq!(
-            planned.total_binding,
-            Some(TotalBindingPattern::list(ValueType::Int, tail)),
+            planned.binding_projection,
+            Some(TotalBindingPattern::list(
+                ValueType::Int,
+                Vec::new(),
+                Some(tail)
+            )),
         );
         assert!(planned.custom_binding.is_none());
 
         let planned = plan_bool_pattern(false);
         assert_eq!(planned.pattern, AssertPattern::Bool(false));
         assert!(!planned.is_total);
-        assert!(planned.total_binding.is_none());
+        assert_eq!(
+            planned.binding_projection,
+            Some(TotalBindingPattern::discard(ValueType::Bool)),
+        );
+        assert!(planned.custom_binding.is_none());
+    }
+
+    #[test]
+    fn plan_refutable_list_preserves_head_and_tail_projection_without_becoming_total() {
+        let module = EcoString::from("main");
+        let functions = HashMap::<EcoString, FunctionInfo>::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let span = crate::planner::support::dummy_span();
+        let planned = plan_runtime_pattern(
+            Pattern::List {
+                location: span,
+                elements: vec![Pattern::Variable {
+                    location: span,
+                    name: "head".into(),
+                    type_: type_::int(),
+                    origin: VariableOrigin::generated(),
+                }],
+                tail: Some(Box::new(TailPattern {
+                    location: span,
+                    pattern: Pattern::Variable {
+                        location: span,
+                        name: "tail".into(),
+                        type_: type_::list(type_::int()),
+                        origin: VariableOrigin::generated(),
+                    },
+                })),
+                type_: type_::list(type_::int()),
+            },
+            &mut context,
+        )
+        .unwrap();
+        let head = AssertBinding::new(
+            ParamLocal::int(IntLocalId(0)),
+            "head".into(),
+            ValueShape::Int,
+        );
+        let tail = ListAssertTail::bind(
+            ListLocal::int(IntListLocalId(0)),
+            "tail".into(),
+            ValueShape::Int,
+        );
+        assert_eq!(
+            planned.pattern,
+            AssertPattern::list(ListAssertPattern::new(
+                ValueType::Int,
+                vec![AssertPattern::Bind(head.clone())],
+                Some(tail.clone()),
+            ))
+        );
+        assert!(!planned.is_total);
+        assert_eq!(
+            planned.binding_projection,
+            Some(TotalBindingPattern::list(
+                ValueType::Int,
+                vec![TotalBindingPattern::bind(head)],
+                Some(tail),
+            ))
+        );
         assert!(planned.custom_binding.is_none());
     }
 
@@ -729,7 +806,7 @@ mod tests {
         assert_eq!(planned.pattern, AssertPattern::bit_array(expected_pattern),);
         assert!(planned.is_total);
         assert_eq!(
-            planned.total_binding,
+            planned.binding_projection,
             Some(TotalBindingPattern::bind(AssertBinding::new(
                 ParamLocal::bit_array(BitArrayLocalId(0)),
                 "rest".into(),
@@ -822,7 +899,7 @@ mod tests {
         );
         assert!(generic_binding.is_total);
         assert_eq!(
-            generic_binding.total_binding,
+            generic_binding.binding_projection,
             Some(TotalBindingPattern::bind(binding)),
         );
         assert!(generic_binding.custom_binding.is_none());
@@ -839,7 +916,7 @@ mod tests {
         assert_eq!(generic_discard.pattern, AssertPattern::Discard);
         assert!(generic_discard.is_total);
         assert_eq!(
-            generic_discard.total_binding,
+            generic_discard.binding_projection,
             Some(TotalBindingPattern::discard(ValueType::Parameter(
                 parameter
             ))),
@@ -998,7 +1075,7 @@ mod tests {
             .constructor()
             .clone();
         assert_eq!(
-            planned.total_binding,
+            planned.binding_projection,
             Some(TotalBindingPattern::custom(CustomBindingPattern::exact(
                 exact_result_shape,
                 constructor,

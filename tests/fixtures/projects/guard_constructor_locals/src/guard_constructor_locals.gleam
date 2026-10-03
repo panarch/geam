@@ -4,6 +4,7 @@ import clip_contracts
 import gleam/io
 import gleam/option.{type Option, None, Some}
 import multi_subject_patterns
+import nested_pattern_bindings
 
 pub type Pair {
   Pair(left: Int, right: Int)
@@ -185,6 +186,24 @@ pub fn arithmetic_captured_match(
   alias(Some(expected))
 }
 
+pub fn remainder_bool(value: Bool, has_remaining: Bool) -> Bool {
+  let remaining = case has_remaining {
+    True -> ["tail"]
+    False -> []
+  }
+  nested_pattern_bindings.enabled(Ok(#(value, remaining)))
+}
+
+pub fn remainder_custom(value: Bool, has_remaining: Bool) -> Bool {
+  let remaining = case has_remaining {
+    True -> ["tail"]
+    False -> []
+  }
+  nested_pattern_bindings.enabled_request(
+    Ok(#(nested_pattern_bindings.Request(value), remaining)),
+  )
+}
+
 pub fn clip_cases() {
   let name = opt.new("name") |> opt.short("n")
   let assert Ok(#("Drew", ["rest"])) = opt.run(name, ["--name", "Drew", "rest"])
@@ -219,5 +238,6 @@ pub fn main() {
   clip_cases()
   let assert "value" = multi_subject_patterns.main()
   clip_contracts.main()
+  nested_pattern_bindings.main()
   io.println("guard locals, multi-subject patterns and original clip: ok")
 }

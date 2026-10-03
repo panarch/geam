@@ -8,8 +8,54 @@ use std::time::{Duration, Instant};
 
 #[path = "support/guard_constructor_fixture.rs"]
 mod guard_constructor_fixture;
+#[path = "support/large_custom_fixture.rs"]
+mod large_custom_fixture;
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
+
+#[test]
+fn large_custom_provider_builds_and_relocates_at_the_default_recursion_limit() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(directory.path()).unwrap();
+    let project = root.join("project");
+    let provider = root.join("provider");
+    large_custom_fixture::create_project(&project);
+    large_custom_fixture::create_provider(&provider);
+    large_custom_fixture::configure_cargo(&project);
+    checked(&mut geam(
+        &project,
+        &["provider", "add", "--path", "../provider"],
+    ));
+    checked(&mut geam(&project, &["prepare"]));
+    let output = checked(&mut geam(&project, &["run"]));
+    assert!(output.stdout.is_empty());
+    let build = checked(&mut geam(&project, &["build"]));
+    let expected = project.join(format!(
+        "build/geam/target/debug/custom_repro{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let executable = built_executable(&build, &expected);
+    let output = checked(&mut deployed(&executable, &project));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+    assert!(
+        !fs::read_to_string(project.join("build/geam/runner.rs"))
+            .unwrap()
+            .contains("recursion_limit")
+    );
+    let deployment = root.join("deployment");
+    fs::create_dir_all(&deployment).unwrap();
+    let binary = deployment.join(format!("large application{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(&executable, &binary).unwrap();
+    assert_eq!(fs::read(&binary).unwrap(), fs::read(executable).unwrap());
+    fs::remove_dir_all(&project).unwrap();
+    fs::remove_dir_all(&provider).unwrap();
+    for _ in 0..2 {
+        let output = checked(&mut deployed(&binary, &deployment));
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
+    }
+}
 
 #[test]
 fn builds_and_relocates_complete_applications_without_development_inputs() {

@@ -1,10 +1,14 @@
 use super::{
-    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
-    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomSchema, HostCustomType,
-    HostCustomTypeSchema,
+    HostCustomConstructor, HostCustomConstructorAt, HostCustomConstructorBranch,
+    HostCustomConstructorDefinition, HostCustomConstructorLeaf, HostCustomConstructorList,
+    HostCustomConstructorListEnd, HostCustomConstructorSchema, HostCustomField,
+    HostCustomFieldList, HostCustomFieldListEnd, HostCustomFieldSchema, HostCustomIndexHere,
+    HostCustomIndexLeft, HostCustomIndexRight, HostCustomSchema, HostCustomType,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostSchemaType,
 };
 use crate::embedding::HostPreparation;
-use crate::host::{HostAbiType, HostTypeList, HostTypeListEnd};
+use crate::host::type_::custom_constructor_index;
+use crate::host::{HostAbiType, HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeSequence};
 use crate::{
     HostDeclarations, HostFunctionDeclaration, HostProviderModuleDeclaration, ModuleSource,
     PackageSource,
@@ -77,6 +81,102 @@ impl HostCustomSchema for Shared {
     const PARAMETER_COUNT: usize = 0;
     const SHARED: bool = true;
     type Constructors = HostCustomConstructorList<FirstConstructor, HostCustomConstructorListEnd>;
+}
+
+#[test]
+fn balanced_constructors_preserve_metadata_membership_fields_and_nested_schema_visits() {
+    struct Schema;
+    struct GenericConstructor;
+    struct GenericField;
+    impl HostCustomSchema for Schema {
+        const PACKAGE: &'static str = "app";
+        const MODULE: &'static str = "main";
+        const NAME: &'static str = "Balanced";
+        const PARAMETER_COUNT: usize = 1;
+        type Constructors = HostCustomConstructorBranch<
+            HostCustomConstructorLeaf<OuterConstructor<First>>,
+            HostCustomConstructorBranch<
+                HostCustomConstructorLeaf<FirstConstructor>,
+                HostCustomConstructorLeaf<GenericConstructor>,
+            >,
+        >;
+    }
+    impl HostCustomConstructorDefinition for GenericConstructor {
+        const NAME: &'static str = "Generic";
+        type Fields = HostCustomFieldList<GenericField, HostCustomFieldListEnd>;
+    }
+    impl HostCustomField for GenericField {
+        const LABEL: Option<&'static str> = Some("value");
+        type Type = HostCustomTypeArgument<HostTypeIndex0>;
+    }
+    type Custom = HostCustomType<Schema, HostTypeList<bool, HostTypeListEnd>>;
+    type FirstSelection = HostCustomConstructorAt<
+        Custom,
+        HostCustomIndexLeft<HostCustomIndexHere>,
+        OuterConstructor<First>,
+    >;
+    type MiddleSelection = HostCustomConstructorAt<
+        Custom,
+        HostCustomIndexRight<HostCustomIndexLeft<HostCustomIndexHere>>,
+        FirstConstructor,
+    >;
+    type LastSelection = HostCustomConstructorAt<
+        Custom,
+        HostCustomIndexRight<HostCustomIndexRight<HostCustomIndexHere>>,
+        GenericConstructor,
+    >;
+
+    let schema = HostCustomTypeSchema::of::<Schema>();
+    assert_eq!(
+        schema,
+        HostCustomTypeSchema::new(
+            "app",
+            "main",
+            "Balanced",
+            1,
+            [
+                HostCustomConstructorSchema::new(
+                    "Outer",
+                    [HostCustomFieldSchema::new(
+                        None::<&str>,
+                        HostSchemaType::Custom {
+                            package: "app".into(),
+                            module: "main".into(),
+                            name: "Inner".into(),
+                            arguments: Box::new([]),
+                        }
+                    )]
+                ),
+                HostCustomConstructorSchema::new(
+                    "Inner",
+                    [HostCustomFieldSchema::new(
+                        None::<&str>,
+                        HostSchemaType::Int
+                    )]
+                ),
+                HostCustomConstructorSchema::new(
+                    "Generic",
+                    [HostCustomFieldSchema::new(
+                        Some("value"),
+                        HostSchemaType::Parameter(0)
+                    )]
+                ),
+            ]
+        )
+    );
+    assert_eq!(custom_constructor_index::<FirstSelection>(), 0);
+    assert_eq!(custom_constructor_index::<MiddleSelection>(), 1);
+    assert_eq!(custom_constructor_index::<LastSelection>(), 2);
+    type Fields = <LastSelection as HostCustomConstructor>::Fields;
+    let fields: <Fields as HostTypeSequence>::Values<'_> = (true, ());
+    assert!(fields.0);
+
+    let mut schemas = Vec::new();
+    let mut visited = HashSet::new();
+    <Custom as HostAbiType>::collect_custom_schemas(&mut schemas, &mut visited);
+    <Custom as HostAbiType>::collect_custom_schemas(&mut schemas, &mut visited);
+    assert_eq!(schemas, [schema, HostCustomTypeSchema::of::<First>()]);
+    assert_eq!(visited.len(), 2);
 }
 
 #[test]

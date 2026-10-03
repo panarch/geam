@@ -369,7 +369,11 @@ fn plan_total_binding_pattern(
                 ),
                 ListTailBinding::Discard => ListAssertTail::Ignore,
             };
-            Ok(TotalBindingPattern::list(element_type, tail))
+            Ok(TotalBindingPattern::list(
+                element_type,
+                Vec::new(),
+                Some(tail),
+            ))
         }
         (
             BindingPattern::Custom {
@@ -1386,11 +1390,12 @@ mod tests {
             ),
             Ok(TotalBindingPattern::list(
                 ValueType::Int,
-                ListAssertTail::bind(
+                Vec::new(),
+                Some(ListAssertTail::bind(
                     ListLocal::int(IntListLocalId(0)),
                     "rest".into(),
                     ValueShape::Int
-                ),
+                )),
             )),
         );
         assert_eq!(
@@ -1404,7 +1409,8 @@ mod tests {
             ),
             Ok(TotalBindingPattern::list(
                 ValueType::String,
-                ListAssertTail::Ignore,
+                Vec::new(),
+                Some(ListAssertTail::Ignore),
             )),
         );
 

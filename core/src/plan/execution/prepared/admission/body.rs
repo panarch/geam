@@ -222,6 +222,7 @@ where
                 .check(
                     crate::plan::execution::graph::BlockId(block_index),
                     instruction,
+                    Some(&control),
                 )
                 .map_err(|error| BodyError::Guard {
                     block: block_index,

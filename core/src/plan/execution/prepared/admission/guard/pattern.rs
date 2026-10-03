@@ -1,3 +1,4 @@
+use super::super::control::{irrefutable, unaliased};
 use super::super::place::{Projection, pattern_at};
 use super::Requirement;
 use crate::plan::execution::graph::{MatchPattern, MatchPatternListTail};
@@ -11,6 +12,13 @@ pub(super) enum BindingProof<'data> {
         requirement: Requirement<'data>,
     },
     Unknown,
+}
+
+pub(super) fn excluded_list_length(pattern: &MatchPattern) -> Option<usize> {
+    let MatchPattern::List(list) = unaliased(pattern)? else {
+        return None;
+    };
+    (list.tail.is_none() && list.elements.iter().all(irrefutable)).then_some(list.elements.len())
 }
 
 pub(super) fn establishes(
@@ -159,13 +167,49 @@ pub(super) fn binding<'data>(
 
 #[cfg(test)]
 mod tests {
-    use super::{BindingProof, Requirement, binding, establishes};
+    use super::{BindingProof, Requirement, binding, establishes, excluded_list_length};
     use crate::plan::execution::graph::{
         MatchPattern, MatchPatternBinding, MatchPatternList, MatchPatternListTail,
     };
     use crate::plan::execution::prepared::admission::place::Projection;
     use crate::plan::execution::storage::{Node, Table};
     use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+    #[test]
+    fn failed_exact_lists_exclude_only_lengths_without_other_matching_requirements() {
+        let one = MatchPattern::List(MatchPatternList::new(
+            vec![MatchPattern::Bind(MatchPatternBinding::new(0))],
+            None,
+        ));
+        assert_eq!(excluded_list_length(&one), Some(1));
+        let alias = MatchPattern::Alias {
+            pattern: Box::new(one).into(),
+            binding: MatchPatternBinding::new(1),
+        };
+        assert_eq!(excluded_list_length(&alias), Some(1));
+        let tuple = MatchPattern::List(MatchPatternList::new(
+            vec![MatchPattern::Tuple(
+                vec![MatchPattern::Discard, MatchPattern::Discard].into(),
+            )],
+            None,
+        ));
+        assert_eq!(excluded_list_length(&tuple), Some(1));
+        assert_eq!(
+            excluded_list_length(&MatchPattern::List(MatchPatternList::new(
+                vec![MatchPattern::Discard],
+                Some(MatchPatternListTail::Ignore),
+            ))),
+            None
+        );
+        assert_eq!(
+            excluded_list_length(&MatchPattern::List(MatchPatternList::new(
+                vec![MatchPattern::Bool(true)],
+                None,
+            ))),
+            None
+        );
+        assert_eq!(excluded_list_length(&MatchPattern::Discard), None);
+    }
 
     #[test]
     fn successful_and_failed_list_patterns_prove_only_their_length_constraints() {
@@ -451,6 +495,7 @@ mod tests {
             binding: MatchPatternBinding { index: 0 },
         };
         assert!(!establishes(&CYCLE, true, &Requirement::length(1)));
+        assert_eq!(excluded_list_length(&CYCLE), None);
         assert_eq!(
             binding(&CYCLE, 1, &[], &Requirement::length(1)),
             BindingProof::Unknown

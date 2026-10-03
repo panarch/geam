@@ -499,23 +499,24 @@ fn select_construction_proof(
     support: &TokenStream,
 ) -> Option<TokenStream> {
     let mut seen = std::collections::BTreeSet::new();
-    let mut position = 0;
-    for codec in super::callback::custom_codecs(&customs[index], customs) {
-        if !seen.insert(codec.key()) || !codec.generate(&[], customs, support).has_constructions {
-            continue;
-        }
-        let selector = super::function::provider_construction_index(position, support);
+    let codecs = super::callback::custom_codecs(&customs[index], customs)
+        .into_iter()
+        .filter(|codec| {
+            seen.insert(codec.key()) && codec.generate(&[], customs, support).has_constructions
+        })
+        .collect::<Vec<_>>();
+    for (position, codec) in codecs.iter().enumerate() {
+        let selector = super::function::provider_requirement_index(position, codecs.len(), support);
         let selected = quote!(#proof.select::<#selector>());
         if codec.key() == key {
             return Some(selected);
         }
         if let super::callback::InputCodec::Custom { index, .. } = codec
             && let Some(selected) =
-                select_construction_proof(key, index, selected, customs, support)
+                select_construction_proof(key, *index, selected, customs, support)
         {
             return Some(selected);
         }
-        position += 1;
     }
     None
 }

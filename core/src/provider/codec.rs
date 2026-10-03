@@ -336,6 +336,14 @@ pub struct ProviderConstruction<Type>(PhantomData<fn() -> Type>);
 #[doc(hidden)]
 pub struct ProviderConstructionList<Head, Tail>(PhantomData<fn() -> (Head, Tail)>);
 
+/// One exact conversion requirement in a generated ordered tree.
+#[doc(hidden)]
+pub struct ProviderConstructionLeaf<Requirement>(PhantomData<fn() -> Requirement>);
+
+/// Left conversion requirements followed by right conversion requirements.
+#[doc(hidden)]
+pub struct ProviderConstructionBranch<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+
 /// First generated construction requirement in one exact static list.
 #[doc(hidden)]
 pub struct ProviderConstructionIndex0;
@@ -344,36 +352,105 @@ pub struct ProviderConstructionIndex0;
 #[doc(hidden)]
 pub struct ProviderConstructionIndexNext<Index>(PhantomData<fn() -> Index>);
 
-/// Selects one exact requirement from a generated construction list.
+/// The exact requirement at a generated conversion leaf.
 #[doc(hidden)]
-pub trait ProviderConstructionRequirementAt<Index>: ProviderConstructionRequirements {
+pub struct ProviderConstructionIndexHere;
+
+/// A requirement selected inside the left ordered subtree.
+#[doc(hidden)]
+pub struct ProviderConstructionIndexLeft<Index>(PhantomData<fn() -> Index>);
+
+/// A requirement selected inside the right ordered subtree.
+#[doc(hidden)]
+pub struct ProviderConstructionIndexRight<Index>(PhantomData<fn() -> Index>);
+
+/// Selects one exact requirement from a generated construction list.
+///
+/// Selection is sealed to the registered list, including its callable offset.
+/// An external index cannot grant a construction from an empty requirement.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstruction, ProviderConstructionRequirementAt, ProviderConstructions,
+///     ProviderNoConstructions,
+/// };
+/// use geam_core::HostListType;
+/// use num_bigint::BigInt;
+///
+/// struct UnregisteredIndex;
+/// impl ProviderConstructionRequirementAt<UnregisteredIndex> for ProviderNoConstructions {
+///     const CALLABLE_OFFSET: usize = 0;
+///     type Requirement = ProviderConstruction<HostListType<BigInt>>;
+/// }
+/// let _ = ProviderConstructions::none().select::<UnregisteredIndex>().token();
+/// ```
+///
+/// An external index cannot replace a registered type or its callable offset.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstruction, ProviderConstructionList, ProviderConstructionRequirementAt,
+///     ProviderNoConstructions,
+/// };
+/// use geam_core::{HostListType, StringValue};
+/// use num_bigint::BigInt;
+///
+/// type Registered = ProviderConstructionList<
+///     ProviderConstruction<HostListType<BigInt>>, ProviderNoConstructions,
+/// >;
+/// struct UnregisteredIndex;
+/// impl ProviderConstructionRequirementAt<UnregisteredIndex> for Registered {
+///     const CALLABLE_OFFSET: usize = 10;
+///     type Requirement = ProviderConstruction<HostListType<StringValue>>;
+/// }
+/// ```
+#[doc(hidden)]
+#[allow(private_bounds)]
+pub trait ProviderConstructionRequirementAt<Index>:
+    ProviderConstructionRequirements + private::ConstructionRequirementAt<Index>
+{
     const CALLABLE_OFFSET: usize;
     type Requirement: ProviderConstructionRequirements;
 }
 
-impl<Head, Tail> ProviderConstructionRequirementAt<ProviderConstructionIndex0>
-    for ProviderConstructionList<Head, Tail>
+impl<Requirements, Index> ProviderConstructionRequirementAt<Index> for Requirements
 where
-    Head: ProviderConstructionRequirements,
-    Tail: ProviderConstructionRequirements,
+    Requirements: ProviderConstructionRequirements + private::ConstructionRequirementAt<Index>,
 {
-    const CALLABLE_OFFSET: usize = 0;
-    type Requirement = Head;
-}
-
-impl<Head, Tail, Index> ProviderConstructionRequirementAt<ProviderConstructionIndexNext<Index>>
-    for ProviderConstructionList<Head, Tail>
-where
-    Head: ProviderConstructionRequirements,
-    Tail: ProviderConstructionRequirementAt<Index>,
-{
-    const CALLABLE_OFFSET: usize = crate::host::construction_callable_count::<
-        Head::Types<HostTypeListEnd>,
-    >() + Tail::CALLABLE_OFFSET;
-    type Requirement = Tail::Requirement;
+    const CALLABLE_OFFSET: usize =
+        <Self as private::ConstructionRequirementAt<Index>>::REGISTERED_CALLABLE_OFFSET;
+    type Requirement = <Self as private::ConstructionRequirementAt<Index>>::RegisteredRequirement;
 }
 
 /// Call-scoped proof of one exact generated construction requirement tree.
+///
+/// Selecting an empty leaf cannot descend to an unregistered subtree.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstructionIndexHere, ProviderConstructionIndexRight,
+///     ProviderConstructionLeaf, ProviderConstructions, ProviderNoConstructions,
+/// };
+/// let proof = ProviderConstructions::<ProviderConstructionLeaf<ProviderNoConstructions>>::empty();
+/// let _ = proof.select::<ProviderConstructionIndexRight<ProviderConstructionIndexHere>>();
+/// ```
+///
+/// A selected token retains the exact registered host type.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstruction, ProviderConstructionIndexHere, ProviderConstructionLeaf,
+///     ProviderConstructions,
+/// };
+/// use geam_core::{HostConstruction, HostListType, StringValue};
+/// use num_bigint::BigInt;
+/// type Registered = ProviderConstructionLeaf<ProviderConstruction<HostListType<BigInt>>>;
+/// fn wrong_type<'call>(
+///     proof: &ProviderConstructions<'call, Registered>,
+/// ) -> HostConstruction<'call, HostListType<StringValue>> {
+///     proof.select::<ProviderConstructionIndexHere>().token()
+/// }
+/// ```
 ///
 /// The saved construction positions belong to the call that granted them.
 ///
@@ -478,6 +555,19 @@ where
     Tail: ProviderConstructionRequirements,
 {
     type Types<End: HostTypeSequence> = Head::Types<Tail::Types<End>>;
+}
+
+impl<Requirement: ProviderConstructionRequirements> ProviderConstructionRequirements
+    for ProviderConstructionLeaf<Requirement>
+{
+    type Types<Tail: HostTypeSequence> = Requirement::Types<Tail>;
+}
+
+impl<Left: ProviderConstructionRequirements, Right: ProviderConstructionRequirements>
+    ProviderConstructionRequirements for ProviderConstructionBranch<Left, Right>
+{
+    type Types<Tail: HostTypeSequence> =
+        <Left::Types<HostTypeListEnd> as HostTypeSequence>::Joined<Right::Types<Tail>>;
 }
 
 macro_rules! provider_scalar {
@@ -805,9 +895,86 @@ where
 }
 
 mod private {
+    use super::{
+        ProviderConstructionBranch, ProviderConstructionIndex0, ProviderConstructionIndexHere,
+        ProviderConstructionIndexLeft, ProviderConstructionIndexNext,
+        ProviderConstructionIndexRight, ProviderConstructionLeaf, ProviderConstructionList,
+        ProviderConstructionRequirements,
+    };
+    use crate::host::{HostTypeListEnd, construction_callable_count};
+
     pub trait Requirements {}
 
+    pub trait ConstructionRequirementAt<Index>: ProviderConstructionRequirements {
+        const REGISTERED_CALLABLE_OFFSET: usize;
+        type RegisteredRequirement: ProviderConstructionRequirements;
+    }
+
+    impl<Head, Tail> ConstructionRequirementAt<ProviderConstructionIndex0>
+        for ProviderConstructionList<Head, Tail>
+    where
+        Head: ProviderConstructionRequirements,
+        Tail: ProviderConstructionRequirements,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = 0;
+        type RegisteredRequirement = Head;
+    }
+
+    impl<Head, Tail, Index> ConstructionRequirementAt<ProviderConstructionIndexNext<Index>>
+        for ProviderConstructionList<Head, Tail>
+    where
+        Head: ProviderConstructionRequirements,
+        Tail: ConstructionRequirementAt<Index>,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = construction_callable_count::<
+            Head::Types<HostTypeListEnd>,
+        >() + Tail::REGISTERED_CALLABLE_OFFSET;
+        type RegisteredRequirement = Tail::RegisteredRequirement;
+    }
+
+    impl<Requirement: ProviderConstructionRequirements>
+        ConstructionRequirementAt<ProviderConstructionIndexHere>
+        for ProviderConstructionLeaf<Requirement>
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = 0;
+        type RegisteredRequirement = Requirement;
+    }
+
+    impl<Left, Right, Index> ConstructionRequirementAt<ProviderConstructionIndexLeft<Index>>
+        for ProviderConstructionBranch<Left, Right>
+    where
+        Left: ConstructionRequirementAt<Index>,
+        Right: ProviderConstructionRequirements,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = Left::REGISTERED_CALLABLE_OFFSET;
+        type RegisteredRequirement = Left::RegisteredRequirement;
+    }
+
+    impl<Left, Right, Index> ConstructionRequirementAt<ProviderConstructionIndexRight<Index>>
+        for ProviderConstructionBranch<Left, Right>
+    where
+        Left: ProviderConstructionRequirements,
+        Right: ConstructionRequirementAt<Index>,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = construction_callable_count::<
+            Left::Types<HostTypeListEnd>,
+        >() + Right::REGISTERED_CALLABLE_OFFSET;
+        type RegisteredRequirement = Right::RegisteredRequirement;
+    }
+
     impl Requirements for super::ProviderNoConstructions {}
+
+    impl<Requirement: super::ProviderConstructionRequirements> Requirements
+        for super::ProviderConstructionLeaf<Requirement>
+    {
+    }
+
+    impl<
+        Left: super::ProviderConstructionRequirements,
+        Right: super::ProviderConstructionRequirements,
+    > Requirements for super::ProviderConstructionBranch<Left, Right>
+    {
+    }
 
     impl<Type> Requirements for super::ProviderConstruction<Type> where Type: crate::HostType {}
 
@@ -852,6 +1019,60 @@ mod tests {
     }
 
     #[test]
+    fn balanced_requirements_preserve_empty_positions_and_append_tail_in_order() {
+        use super::{
+            ProviderConstructionBranch, ProviderConstructionIndexHere,
+            ProviderConstructionIndexLeft, ProviderConstructionIndexRight,
+            ProviderConstructionLeaf, ProviderConstructionRequirementAt,
+        };
+        use crate::HostSchemaType;
+        use crate::host::{HostAbiTypeSequence, HostTypeDescriptor};
+
+        type Balanced = ProviderConstructionBranch<
+            ProviderConstructionLeaf<ProviderNoConstructions>,
+            ProviderConstructionBranch<
+                ProviderConstructionLeaf<ProviderConstruction<HostListType<BigInt>>>,
+                ProviderConstructionLeaf<ProviderConstruction<bool>>,
+            >,
+        >;
+        type Tail = HostTypeList<StringValue, HostTypeListEnd>;
+        type Types = <Balanced as ProviderConstructionRequirements>::Types<Tail>;
+        type Empty = ProviderConstructionIndexLeft<ProviderConstructionIndexHere>;
+        type List = ProviderConstructionIndexRight<
+            ProviderConstructionIndexLeft<ProviderConstructionIndexHere>,
+        >;
+        type Bool = ProviderConstructionIndexRight<
+            ProviderConstructionIndexRight<ProviderConstructionIndexHere>,
+        >;
+
+        fn assert_requirement<Index, Requirement>()
+        where
+            Balanced: ProviderConstructionRequirementAt<Index, Requirement = Requirement>,
+            Requirement: ProviderConstructionRequirements,
+        {
+        }
+        assert_requirement::<Empty, ProviderNoConstructions>();
+        assert_requirement::<List, ProviderConstruction<HostListType<BigInt>>>();
+        assert_requirement::<Bool, ProviderConstruction<bool>>();
+        assert_eq!(
+            <Types as HostAbiTypeSequence>::descriptors(),
+            [
+                HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int)),
+                HostTypeDescriptor::Bool,
+                HostTypeDescriptor::String,
+            ],
+        );
+        assert_eq!(
+            <Types as HostAbiTypeSequence>::schema_types(),
+            [
+                HostSchemaType::List(Box::new(HostSchemaType::Int)),
+                HostSchemaType::Bool,
+                HostSchemaType::String,
+            ],
+        );
+    }
+
+    #[test]
     fn empty_requirement_groups_preserve_zero_construction_permission() {
         use super::{ProviderConstructionIndex0, ProviderConstructions};
         type Empty = ProviderConstructionList<
@@ -865,9 +1086,30 @@ mod tests {
     }
 
     #[test]
+    fn balanced_empty_groups_preserve_zero_construction_permission() {
+        use super::{
+            ProviderConstructionBranch, ProviderConstructionIndexHere,
+            ProviderConstructionIndexLeft, ProviderConstructionIndexRight,
+            ProviderConstructionLeaf, ProviderConstructions,
+        };
+        type Empty = ProviderConstructionBranch<
+            ProviderConstructionLeaf<ProviderNoConstructions>,
+            ProviderConstructionLeaf<ProviderNoConstructions>,
+        >;
+        let proof = ProviderConstructions::<Empty>::empty();
+        let left = proof.select::<ProviderConstructionIndexLeft<ProviderConstructionIndexHere>>();
+        let right = proof.select::<ProviderConstructionIndexRight<ProviderConstructionIndexHere>>();
+        assert_eq!(proof.host().callable_base(), 0);
+        assert_eq!(left.host().callable_base(), 0);
+        assert_eq!(right.host().callable_base(), 0);
+    }
+
+    #[test]
     fn selected_native_constructions_keep_their_body_through_retention_and_resume() {
         use super::{
-            ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructions,
+            ProviderConstructionBranch, ProviderConstructionIndex0, ProviderConstructionIndexHere,
+            ProviderConstructionIndexNext, ProviderConstructionIndexRight,
+            ProviderConstructionLeaf, ProviderConstructions,
         };
         use crate::{
             HostCall, HostCallCompletion, HostCallError, HostCallable, HostCallableSchema,
@@ -900,6 +1142,16 @@ mod tests {
         >;
         type Constructions = <Requirements as ProviderConstructionRequirements>::Types<End>;
         type Next = ProviderConstructionIndexNext<ProviderConstructionIndex0>;
+        type BalancedGroup = ProviderConstructionBranch<
+            ProviderConstructionLeaf<ProviderConstruction<HostListType<BigInt>>>,
+            ProviderConstructionLeaf<Second>,
+        >;
+        type Balanced = ProviderConstructionBranch<
+            ProviderConstructionLeaf<ProviderConstruction<HostCreatedFunction<Add<10>>>>,
+            ProviderConstructionLeaf<BalancedGroup>,
+        >;
+        type BalancedConstructions = <Balanced as ProviderConstructionRequirements>::Types<End>;
+        type Right = ProviderConstructionIndexRight<ProviderConstructionIndexHere>;
         struct Provider;
         impl HostProvider<StatelessHostProfile> for Provider {
             type State = ();
@@ -945,6 +1197,17 @@ mod tests {
                 })
             }))
         }
+        fn balanced<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, Thunk>,
+            constructions: HostConstructions<'call, BalancedConstructions>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, Thunk>, HostCallError> {
+            let selected = ProviderConstructions::<Balanced>::new(&constructions)
+                .select::<Right>()
+                .select::<Right>();
+            let callback = call.construct_function(selected.token(), (value, ()));
+            Ok(call.return_value(callback))
+        }
         fn retained<'call>(
             call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
             constructions: HostConstructions<'call, Constructions>,
@@ -989,6 +1252,8 @@ mod tests {
                 "resumable", resumable,
             )
             .unwrap()
+            .with_scoped_function_and_constructions::<Provider, (BigInt,), Thunk, BalancedConstructions, _>("balanced", balanced)
+            .unwrap()
             .with_resumable_function::<Provider, (HostFunctionType<One<Thunk>, BigInt>,), BigInt, Constructions, _>("retained", retained)
             .unwrap()
             .with_callable::<Provider, Add<10>, (), _>(body::<10>)
@@ -1008,7 +1273,8 @@ mod tests {
 @external(erlang, "native", "immediate") fn immediate(value: Int) -> fn() -> Int
 @external(erlang, "native", "resumable") fn resumable(value: Int) -> fn() -> Int
 @external(erlang, "native", "retained") fn retained(callback: fn(fn() -> Int) -> Int) -> Int
-pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1 })) }
+@external(erlang, "native", "balanced") fn balanced(value: Int) -> fn() -> Int
+pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1 }), balanced(23)()) }
 "#,
                 )],
             )],
@@ -1020,7 +1286,7 @@ pub fn main() { #(immediate(5)(), resumable(6)(), retained(fn(next) { next() + 1
                 .unwrap();
         let mut echoes = Vec::new();
         let result = crate::execution_fixture::run(&mut execution, &mut (), &mut echoes).unwrap();
-        assert_eq!(result.inspect().to_string(), "#(105, 106, 108)");
+        assert_eq!(result.inspect().to_string(), "#(105, 106, 108, 123)");
         assert!(echoes.is_empty());
     }
     #[test]

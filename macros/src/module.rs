@@ -6162,7 +6162,7 @@ mod tests {
             .find("call . construct_tuple")
             .expect("nested one-tuple should be an intermediate construction");
         assert!(external < one_tuple);
-        assert!(expansion.contains("ProviderConstructionList <"));
+        assert!(expansion.contains("ProviderConstructionBranch <"));
         assert!(expansion.contains("ProviderConstructionRequirements > :: Types <"));
         assert!(
             expansion.contains(

@@ -1263,7 +1263,7 @@ fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
 }
 
 #[test]
-fn nested_constructor_exclusions_preserve_dynamic_and_prepared_results() {
+fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_results() {
     let source = include_str!("fixtures/prepared/nested_patterns.gleam");
     let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, _) = ModuleBuilder::new(typed)

@@ -635,8 +635,12 @@ fn parameter_list_kind(
                 }
             })
         }
-        E::DropFirst { list, count: _ } => {
-            parameter_list_kind(list, parameter, cursor, graph, context)
+        E::DropFirst { list, count } => {
+            parameter_list_kind(list, parameter, cursor, graph, context).map(|flow| {
+                flow.map_cursor(|cursor, list| {
+                    drop_first(&item, list, *count, cursor, graph, context)
+                })
+            })
         }
         E::Panic(value) => panic_expr(value, cursor, graph, context).map(|_| DraftFlow::Diverged),
         E::BoolCase {
@@ -957,6 +961,24 @@ fn draft_stored_list(item: &StoredValueShape, value: DraftValueRef) -> DraftStor
     }
 }
 
+pub(in crate::plan::execution::lowering) fn drop_first(
+    item: &SpecializedValueShape,
+    list: DraftList,
+    count: usize,
+    cursor: &mut DraftCursor,
+    graph: &mut DraftGraph,
+    context: &mut super::super::LoweringContext,
+) -> DraftList {
+    match item.storage_representation() {
+        StorageRepresentation::Parameter(_) => list,
+        StorageRepresentation::Stored(stored) => graph.list_instruction(
+            cursor,
+            item.clone(),
+            typed_generic_list_drop_first(&stored, list, count, context),
+        ),
+    }
+}
+
 fn typed_generic_list_drop_first(
     item: &StoredValueShape,
     list: DraftList,
@@ -1269,11 +1291,7 @@ fn stored_generic_list_kind(
         E::DropFirst { list, count } => {
             stored_generic_list_kind(list, item, cursor, graph, context).map(|flow| {
                 flow.map_cursor(|cursor, list| {
-                    graph.list_instruction(
-                        cursor,
-                        item_shape.clone(),
-                        typed_generic_list_drop_first(item, list, *count, context),
-                    )
+                    drop_first(&item_shape, list, *count, cursor, graph, context)
                 })
             })
         }

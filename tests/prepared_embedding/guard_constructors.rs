@@ -74,6 +74,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assert!(scope.call(&functions.matches_string, ("ab".into(), "ab".into())).await?);
             assert!(!scope.call(&functions.matches_string, ("ab".into(), "ac".into())).await?);
             assert!(scope.call(&functions.captured_match, (7.into(), 7.into())).await?);
+            for (input, expected) in [
+                ((true, false), true), ((false, false), false),
+                ((true, true), false), ((true, false), true),
+            ] {
+                assert_eq!(scope.call(&functions.remainder_bool, input).await?, expected);
+                assert_eq!(scope.call(&functions.remainder_custom, input).await?, expected);
+            }
             for (value, offset, expected, matches) in [
                 ("9223372036854775807", "1", "9223372036854775807", true),
                 ("7", "170141183460469231731687303715884105727", "7", true),
