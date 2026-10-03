@@ -426,7 +426,7 @@ mod tests {
         HostExternalStore, HostExternalType, HostProfile, HostProvider, HostProviderModule,
         HostProviderSet,
     };
-    use crate::plan::execution::graph::{Match, ProfiledInstruction, Terminator};
+    use crate::plan::execution::graph::{Match, MatchPattern, ProfiledInstruction, Terminator};
     use crate::plan::execution::host::{HostedExecutionProfile, HostedFunctionMetadata};
     use crate::plan::execution::prepared::{
         FORMAT_VERSION, ModuleArtifact, PreparedModule, ProgramTables,
@@ -1568,6 +1568,164 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             };
             assert_eq!(error.as_ref().map(ToString::to_string).as_deref(), expected);
         }
+    }
+
+    #[test]
+    fn typed_nil_fallthrough_preserves_pattern_validation_and_projection_evidence() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::instruction::InstructionError;
+        use super::pattern::PatternError;
+        use super::terminator::TerminatorError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let source = r#"
+pub type Reason { Closed Timeout }
+pub fn choose(value: Result(Nil, Reason)) -> Int {
+  case value {
+    Ok(Nil) -> 0
+    Error(reason) -> case reason { Closed -> 1 Timeout -> 2 }
+  }
+}
+pub fn main() {
+  let assert 0 = choose(Ok(Nil))
+  let assert 1 = choose(Error(Closed))
+  let assert 2 = choose(Error(Timeout))
+  Nil
+}
+"#;
+        for (type_id, fields, discard, expected) in [
+            (0, vec![MatchPattern::Nil], false, None),
+            (
+                0,
+                vec![MatchPattern::Nil],
+                true,
+                Some(BodyError::Instruction {
+                    block: 2,
+                    index: 0,
+                    error: InstructionError::OutputType,
+                }),
+            ),
+            (
+                0,
+                vec![MatchPattern::Bool(true)],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            ),
+            (
+                1,
+                vec![MatchPattern::Nil],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            ),
+            (
+                0,
+                vec![MatchPattern::Nil, MatchPattern::Nil],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::FieldCount {
+                        expected: 1,
+                        found: 2,
+                    }),
+                }),
+            ),
+        ] {
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, _) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            let mut artifact = artifact(bindings.prepare());
+            let function =
+                &mut owned_mut(&mut artifact.program.functions.value_returns.int_functions)[0];
+            let pattern = fixture_match_pattern(
+                &mut owned_mut(&mut function.body.block_graph.blocks)[0].terminator,
+            );
+            *pattern = if discard {
+                MatchPattern::Discard
+            } else {
+                MatchPattern::Custom {
+                    constructor: CustomConstructorId {
+                        type_id: CustomTypeId(type_id),
+                        index: 0,
+                    },
+                    fields: fields.into(),
+                }
+            };
+            assert_eq!(
+                module(&artifact, &functions::InfallibleHosts).err(),
+                expected.map(|error| Error::Functions(FunctionError {
+                    family: FunctionTableFamily::Int,
+                    index: 0,
+                    kind: FunctionErrorKind::Body(error),
+                }))
+            );
+        }
+
+        let source = r#"
+pub type Reason { Closed Timeout }
+pub fn choose(value: Result(Bool, Reason)) -> Int {
+  case value {
+    Ok(True) -> 0
+    Ok(False) -> 3
+    Error(reason) -> case reason { Closed -> 1 Timeout -> 2 }
+  }
+}
+pub fn main() { let assert 3 = choose(Ok(False)) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), ()>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.int_functions)[0];
+        *fixture_match_pattern(
+            &mut owned_mut(&mut function.body.block_graph.blocks)[0].terminator,
+        ) = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(0),
+                index: 0,
+            },
+            fields: vec![MatchPattern::Nil].into(),
+        };
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            }))
+        );
+    }
+
+    fn fixture_match_pattern(terminator: &mut Terminator) -> &mut MatchPattern {
+        match terminator {
+            Terminator::Match(matcher) => &mut matcher.pattern,
+            _ => panic!("the mutated fixture must contain a match"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the mutated fixture must contain a match")]
+    fn match_fixture_guard_rejects_other_terminators() {
+        use crate::plan::execution::graph::BlockGraphExitId;
+
+        fixture_match_pattern(&mut Terminator::Exit(BlockGraphExitId(0)));
     }
 
     #[test]

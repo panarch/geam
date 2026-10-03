@@ -696,7 +696,7 @@ pub(super) fn irrefutable(pattern: &MatchPattern) -> bool {
         }
         pending.push((pattern, true));
         match pattern {
-            MatchPattern::Bind(_) | MatchPattern::Discard => {}
+            MatchPattern::Bind(_) | MatchPattern::Discard | MatchPattern::Nil => {}
             MatchPattern::Tuple(fields) => {
                 pending.extend(fields.iter().map(|field| (field, false)));
             }
@@ -730,7 +730,7 @@ fn pattern_requirements(
         }
         pending.push(PatternVisit::Leave(key));
         let (fields, custom) = match pattern {
-            MatchPattern::Bind(_) | MatchPattern::Discard => continue,
+            MatchPattern::Bind(_) | MatchPattern::Discard | MatchPattern::Nil => continue,
             MatchPattern::Bool(value) => {
                 requirements.push(Query {
                     block,
@@ -2185,8 +2185,22 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
         };
         for (custom_parent, sibling, boolean) in [
             (false, MatchPattern::Discard, false),
+            (false, MatchPattern::Nil, false),
+            (
+                false,
+                MatchPattern::Tuple(vec![MatchPattern::Nil, MatchPattern::Discard].into()),
+                false,
+            ),
             (false, MatchPattern::Bool(true), true),
             (true, MatchPattern::Discard, false),
+            (
+                true,
+                MatchPattern::Alias {
+                    pattern: Node::Static(&MatchPattern::Nil),
+                    binding: MatchPatternBinding::new(0),
+                },
+                false,
+            ),
             (true, MatchPattern::Bool(true), true),
         ] {
             let fields = vec![leaf.clone(), sibling].into();
@@ -2375,6 +2389,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
 
     #[test]
     fn failed_field_tests_do_not_exclude_the_outer_constructor() {
+        use crate::plan::execution::graph::MatchPatternList;
+
         let constructor = CustomConstructorId {
             type_id: crate::plan::execution::type_::CustomTypeId(0),
             index: 7,
@@ -2382,11 +2398,44 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
         for (field, excluded) in [
             (MatchPattern::Discard, true),
             (MatchPattern::Bind(MatchPatternBinding { index: 0 }), true),
+            (MatchPattern::Nil, true),
+            (
+                MatchPattern::Tuple(
+                    vec![
+                        MatchPattern::Nil,
+                        MatchPattern::Alias {
+                            pattern: Node::Static(&MatchPattern::Nil),
+                            binding: MatchPatternBinding::new(0),
+                        },
+                    ]
+                    .into(),
+                ),
+                true,
+            ),
             (
                 MatchPattern::Tuple(vec![MatchPattern::Discard, MatchPattern::Discard].into()),
                 true,
             ),
+            (
+                MatchPattern::Tuple(vec![MatchPattern::Nil, MatchPattern::Bool(true)].into()),
+                false,
+            ),
             (MatchPattern::Bool(true), false),
+            (MatchPattern::String("present".into()), false),
+            (
+                MatchPattern::List(MatchPatternList {
+                    elements: Vec::new().into(),
+                    tail: None,
+                }),
+                false,
+            ),
+            (
+                MatchPattern::Custom {
+                    constructor,
+                    fields: Vec::new().into(),
+                },
+                false,
+            ),
             (
                 MatchPattern::Int(crate::plan::execution::graph::IntegerLiteral::from(
                     num_bigint::BigInt::from(42),

@@ -330,6 +330,7 @@ mod control_flow {
             custom_pattern_combinations,
             nested_custom_field_fallthrough,
             nested_constructor_remainders,
+            nil_pattern_fallthrough,
             nested_remainder_bool,
             nested_remainder_constraints,
             nested_remainder_proven_siblings,

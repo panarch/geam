@@ -29,7 +29,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(0),
-                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                    shape_id: data::type_::CustomValueShapeId(66),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -62,7 +62,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(0),
-                                                            shape_id: data::type_::CustomValueShapeId(41),
+                                                            shape_id: data::type_::CustomValueShapeId(66),
                                                         },
                                                     }),
                                                 ]),
@@ -85,7 +85,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(0),
-                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                    shape_id: data::type_::CustomValueShapeId(66),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -121,7 +121,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(0),
-                                                            shape_id: data::type_::CustomValueShapeId(41),
+                                                            shape_id: data::type_::CustomValueShapeId(66),
                                                         },
                                                     }),
                                                 ]),
@@ -144,7 +144,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(0),
-                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                    shape_id: data::type_::CustomValueShapeId(66),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -183,7 +183,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(0),
-                                                            shape_id: data::type_::CustomValueShapeId(41),
+                                                            shape_id: data::type_::CustomValueShapeId(66),
                                                         },
                                                     }),
                                                 ]),
@@ -206,7 +206,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(0),
-                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                    shape_id: data::type_::CustomValueShapeId(66),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -247,7 +247,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(0),
-                                                            shape_id: data::type_::CustomValueShapeId(41),
+                                                            shape_id: data::type_::CustomValueShapeId(66),
                                                         },
                                                     }),
                                                 ]),
@@ -274,50 +274,50 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(0),
-                                                shape_id: data::type_::CustomValueShapeId(41),
+                                                shape_id: data::type_::CustomValueShapeId(66),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(59),
+                                        shape: data::type_::ValueShapeId(89),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(0),
-                                                shape_id: data::type_::CustomValueShapeId(41),
+                                                shape_id: data::type_::CustomValueShapeId(66),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(59),
+                                        shape: data::type_::ValueShapeId(89),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(0),
-                                                shape_id: data::type_::CustomValueShapeId(41),
+                                                shape_id: data::type_::CustomValueShapeId(66),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(59),
+                                        shape: data::type_::ValueShapeId(89),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(0),
-                                                shape_id: data::type_::CustomValueShapeId(41),
+                                                shape_id: data::type_::CustomValueShapeId(66),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(59),
+                                        shape: data::type_::ValueShapeId(89),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(0),
-                                                shape_id: data::type_::CustomValueShapeId(41),
+                                                shape_id: data::type_::CustomValueShapeId(66),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(59),
+                                        shape: data::type_::ValueShapeId(89),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -377,7 +377,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(0),
-                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                    shape_id: data::type_::CustomValueShapeId(66),
                                                 },
                                             },
                                             index: 0,
@@ -437,7 +437,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -470,7 +470,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(1),
-                                                            shape_id: data::type_::CustomValueShapeId(42),
+                                                            shape_id: data::type_::CustomValueShapeId(67),
                                                         },
                                                     }),
                                                 ]),
@@ -493,7 +493,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -532,7 +532,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(1),
-                                                            shape_id: data::type_::CustomValueShapeId(42),
+                                                            shape_id: data::type_::CustomValueShapeId(67),
                                                         },
                                                     }),
                                                 ]),
@@ -555,7 +555,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -597,7 +597,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(1),
-                                                            shape_id: data::type_::CustomValueShapeId(42),
+                                                            shape_id: data::type_::CustomValueShapeId(67),
                                                         },
                                                     }),
                                                 ]),
@@ -620,7 +620,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -665,7 +665,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(1),
-                                                            shape_id: data::type_::CustomValueShapeId(42),
+                                                            shape_id: data::type_::CustomValueShapeId(67),
                                                         },
                                                     }),
                                                 ]),
@@ -688,7 +688,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -735,7 +735,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(1),
-                                                            shape_id: data::type_::CustomValueShapeId(42),
+                                                            shape_id: data::type_::CustomValueShapeId(67),
                                                         },
                                                     }),
                                                 ]),
@@ -762,60 +762,60 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(1),
-                                                shape_id: data::type_::CustomValueShapeId(42),
+                                                shape_id: data::type_::CustomValueShapeId(67),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(60),
+                                        shape: data::type_::ValueShapeId(90),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -885,7 +885,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(1),
-                                                    shape_id: data::type_::CustomValueShapeId(42),
+                                                    shape_id: data::type_::CustomValueShapeId(67),
                                                 },
                                             },
                                             index: 0,
@@ -952,7 +952,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -991,7 +991,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1014,7 +1014,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -1053,7 +1053,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1076,7 +1076,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -1115,7 +1115,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1138,7 +1138,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -1171,7 +1171,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1194,7 +1194,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -1235,7 +1235,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1258,7 +1258,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -1297,7 +1297,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(12),
-                                                            shape_id: data::type_::CustomValueShapeId(48),
+                                                            shape_id: data::type_::CustomValueShapeId(73),
                                                         },
                                                     }),
                                                 ]),
@@ -1324,70 +1324,70 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(12),
-                                                shape_id: data::type_::CustomValueShapeId(48),
+                                                shape_id: data::type_::CustomValueShapeId(73),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(66),
+                                        shape: data::type_::ValueShapeId(96),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -1475,7 +1475,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(12),
-                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                    shape_id: data::type_::CustomValueShapeId(73),
                                                 },
                                             },
                                             index: 0,
@@ -1510,6 +1510,1400 @@ data::ModuleArtifact {
                             ]),
                         },
                     },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(74),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Nil,
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(14),
+                                                            shape_id: data::type_::CustomValueShapeId(74),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 2..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 3..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(74),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(97),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(74),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(97),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(74),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                1,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                2,
+                                            ]),
+                                        })),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(74),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Discard,
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(14),
+                                                            shape_id: data::type_::CustomValueShapeId(74),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 2..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 3..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(74),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(97),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(74),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(97),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(74),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                1,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                2,
+                                            ]),
+                                        })),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    shape_id: data::type_::CustomValueShapeId(75),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                        data::graph::MatchPattern::Alias {
+                                                            pattern: data::Storage::Static(&data::graph::MatchPattern::Nil),
+                                                            binding: data::graph::MatchPatternBinding {
+                                                                index: 0,
+                                                            },
+                                                        },
+                                                        data::graph::MatchPattern::Nil,
+                                                    ])),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(16),
+                                                            shape_id: data::type_::CustomValueShapeId(75),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(16),
+                                                shape_id: data::type_::CustomValueShapeId(75),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(98),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(16),
+                                                shape_id: data::type_::CustomValueShapeId(75),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(98),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    shape_id: data::type_::CustomValueShapeId(75),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(76),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(99),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(41),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(3),
+                                        site: data::source::HostCallSite::from_static("example", "tuple", data::source::SourceSpan::new(5196, 5221)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(2),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(76),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Custom,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 2,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    shape_id: data::type_::CustomValueShapeId(77),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Custom {
+                                                        constructor: data::type_::CustomConstructorId {
+                                                            type_id: data::type_::CustomTypeId(18),
+                                                            index: 0,
+                                                        },
+                                                        fields: data::Storage::Static(&[
+                                                            data::graph::MatchPattern::Custom {
+                                                                constructor: data::type_::CustomConstructorId {
+                                                                    type_id: data::type_::CustomTypeId(17),
+                                                                    index: 0,
+                                                                },
+                                                                fields: data::Storage::Static(&[
+                                                                    data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                                        data::graph::MatchPattern::Nil,
+                                                                        data::graph::MatchPattern::Nil,
+                                                                    ])),
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(19),
+                                                            shape_id: data::type_::CustomValueShapeId(77),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(19),
+                                                shape_id: data::type_::CustomValueShapeId(77),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(100),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(19),
+                                                shape_id: data::type_::CustomValueShapeId(77),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(100),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    shape_id: data::type_::CustomValueShapeId(77),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(76),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(99),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(41),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(3),
+                                        site: data::source::HostCallSite::from_static("example", "wrapped", data::source::SourceSpan::new(5370, 5395)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(2),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(76),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Custom,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 2,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(78),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                        data::graph::MatchPattern::Nil,
+                                                        data::graph::MatchPattern::Bool(true),
+                                                        data::graph::MatchPattern::String(data::Text::Static("ready")),
+                                                        data::graph::MatchPattern::List(data::graph::MatchPatternList {
+                                                            elements: data::Storage::Static(&[]),
+                                                            tail: None,
+                                                        }),
+                                                        data::graph::MatchPattern::Custom {
+                                                            constructor: data::type_::CustomConstructorId {
+                                                                type_id: data::type_::CustomTypeId(15),
+                                                                index: 0,
+                                                            },
+                                                            fields: data::Storage::Static(&[]),
+                                                        },
+                                                    ])),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(20),
+                                                            shape_id: data::type_::CustomValueShapeId(78),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(78),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Discard,
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(20),
+                                                            shape_id: data::type_::CustomValueShapeId(78),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..3,
+                                        instructions: 2..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                shape_id: data::type_::CustomValueShapeId(78),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(101),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                shape_id: data::type_::CustomValueShapeId(78),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(101),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                shape_id: data::type_::CustomValueShapeId(78),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(101),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                3,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(78),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(76),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(99),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(41),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(3),
+                                        site: data::source::HostCallSite::from_static("example", "refutable", data::source::SourceSpan::new(5595, 5620)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(2),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(76),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Custom,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 2,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(79),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Custom {
+                                                        constructor: data::type_::CustomConstructorId {
+                                                            type_id: data::type_::CustomTypeId(21),
+                                                            index: 0,
+                                                        },
+                                                        fields: data::Storage::Static(&[
+                                                            data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                                data::graph::MatchPattern::Nil,
+                                                                data::graph::MatchPattern::Bool(true),
+                                                            ])),
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(22),
+                                                            shape_id: data::type_::CustomValueShapeId(79),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(79),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Custom {
+                                                        constructor: data::type_::CustomConstructorId {
+                                                            type_id: data::type_::CustomTypeId(21),
+                                                            index: 0,
+                                                        },
+                                                        fields: data::Storage::Static(&[
+                                                            data::graph::MatchPattern::Tuple(data::Storage::Static(&[
+                                                                data::graph::MatchPattern::Discard,
+                                                                data::graph::MatchPattern::Bool(false),
+                                                            ])),
+                                                        ]),
+                                                    },
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(22),
+                                                            shape_id: data::type_::CustomValueShapeId(79),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..2,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..3,
+                                        instructions: 2..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                shape_id: data::type_::CustomValueShapeId(79),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(102),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                shape_id: data::type_::CustomValueShapeId(79),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(102),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                shape_id: data::type_::CustomValueShapeId(79),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(102),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                3,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(41),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(59),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(79),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(76),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(99),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(41),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(3),
+                                        site: data::source::HostCallSite::from_static("example", "wrapped_refutable", data::source::SourceSpan::new(5800, 5825)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(2),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                shape_id: data::type_::CustomValueShapeId(76),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Custom,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 2,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    },
                 ]),
                 float_functions: data::Storage::Static(&[]),
                 string_functions: data::Storage::Static(&[
@@ -1523,7 +2917,7 @@ data::ModuleArtifact {
                                 blocks: data::Storage::Static(&[
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 0..4,
+                                        instructions: 0..5,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1578,7 +2972,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 4..11,
+                                        instructions: 5..12,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1663,7 +3057,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 11..16,
+                                        instructions: 12..17,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1738,7 +3132,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 16..22,
+                                        instructions: 17..23,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1823,7 +3217,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 22..29,
+                                        instructions: 23..30,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1910,7 +3304,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 29..37,
+                                        instructions: 30..38,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -1997,7 +3391,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 37..40,
+                                        instructions: 38..41,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2052,7 +3446,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 40..43,
+                                        instructions: 41..44,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2097,7 +3491,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 43..50,
+                                        instructions: 44..51,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2172,7 +3566,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 50..55,
+                                        instructions: 51..56,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2237,7 +3631,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 55..61,
+                                        instructions: 56..62,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2312,7 +3706,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 61..68,
+                                        instructions: 62..69,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2389,7 +3783,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 68..76,
+                                        instructions: 69..77,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
                                             pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
@@ -2466,7 +3860,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 76..82,
+                                        instructions: 77..83,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -2566,7 +3960,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 82..85,
+                                        instructions: 83..86,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -2645,7 +4039,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 85..89,
+                                        instructions: 86..90,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -2734,7 +4128,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 89..92,
+                                        instructions: 90..93,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -2813,7 +4207,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 92..97,
+                                        instructions: 93..98,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(true),
@@ -2885,7 +4279,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 97..102,
+                                        instructions: 98..103,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -2957,7 +4351,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 102..108,
+                                        instructions: 103..109,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -3039,7 +4433,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 108..111,
+                                        instructions: 109..112,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -3091,7 +4485,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 111..117,
+                                        instructions: 112..118,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(true),
@@ -3163,7 +4557,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 117..123,
+                                        instructions: 118..124,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -3235,7 +4629,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 123..130,
+                                        instructions: 124..131,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -3317,7 +4711,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 130..133,
+                                        instructions: 131..134,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             pattern: data::graph::MatchPattern::Bool(false),
@@ -3369,7 +4763,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 133..138,
+                                        instructions: 134..139,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3461,7 +4855,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 138..141,
+                                        instructions: 139..142,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3534,7 +4928,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 141..144,
+                                        instructions: 142..145,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3607,7 +5001,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 144..149,
+                                        instructions: 145..150,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(1),
@@ -3689,7 +5083,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 149..154,
+                                        instructions: 150..155,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(1),
@@ -3777,7 +5171,7 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 154..157,
+                                        instructions: 155..158,
                                         terminator: data::graph::Terminator::Match(data::graph::Match {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(1),
@@ -3844,12 +5238,12 @@ data::ModuleArtifact {
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..0,
-                                        instructions: 157..194,
+                                        instructions: 158..195,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
                                         params: 0..1,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
                                                 local: data::graph::ParameterListLocalId(0),
@@ -3859,13 +5253,13 @@ data::ModuleArtifact {
                                                 },
                                             }),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4327, 4337)),
-                                            pattern_span: data::source::SourceSpan::new(4338, 4340),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4349, 4359)),
+                                            pattern_span: data::source::SourceSpan::new(4360, 4362),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 1..2,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -3874,13 +5268,13 @@ data::ModuleArtifact {
                                                 },
                                             }),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4275, 4285)),
-                                            pattern_span: data::source::SourceSpan::new(4286, 4293),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4297, 4307)),
+                                            pattern_span: data::source::SourceSpan::new(4308, 4315),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 2..3,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
                                                 local: data::graph::IntListLocalId(0),
@@ -3889,13 +5283,13 @@ data::ModuleArtifact {
                                                 },
                                             }),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4227, 4237)),
-                                            pattern_span: data::source::SourceSpan::new(4238, 4242),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4249, 4259)),
+                                            pattern_span: data::source::SourceSpan::new(4260, 4264),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 3..4,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3905,13 +5299,13 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4176, 4186)),
-                                            pattern_span: data::source::SourceSpan::new(4187, 4195),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4198, 4208)),
+                                            pattern_span: data::source::SourceSpan::new(4209, 4217),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 4..5,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3921,13 +5315,13 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4135, 4145)),
-                                            pattern_span: data::source::SourceSpan::new(4146, 4154),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4157, 4167)),
+                                            pattern_span: data::source::SourceSpan::new(4168, 4176),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 5..6,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -3937,93 +5331,93 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4089, 4099)),
-                                            pattern_span: data::source::SourceSpan::new(4100, 4109),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4111, 4121)),
+                                            pattern_span: data::source::SourceSpan::new(4122, 4131),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 6..7,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4034, 4044)),
-                                            pattern_span: data::source::SourceSpan::new(4045, 4050),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(4056, 4066)),
+                                            pattern_span: data::source::SourceSpan::new(4067, 4072),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 7..8,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3965, 3975)),
-                                            pattern_span: data::source::SourceSpan::new(3976, 3981),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3987, 3997)),
+                                            pattern_span: data::source::SourceSpan::new(3998, 4003),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 8..9,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3901, 3911)),
-                                            pattern_span: data::source::SourceSpan::new(3912, 3917),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3923, 3933)),
+                                            pattern_span: data::source::SourceSpan::new(3934, 3939),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 9..10,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3839, 3849)),
-                                            pattern_span: data::source::SourceSpan::new(3850, 3854),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3861, 3871)),
+                                            pattern_span: data::source::SourceSpan::new(3872, 3876),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 10..11,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3792, 3802)),
-                                            pattern_span: data::source::SourceSpan::new(3803, 3808),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3814, 3824)),
+                                            pattern_span: data::source::SourceSpan::new(3825, 3830),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 11..12,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3740, 3750)),
-                                            pattern_span: data::source::SourceSpan::new(3751, 3756),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3762, 3772)),
+                                            pattern_span: data::source::SourceSpan::new(3773, 3778),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 12..13,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3693, 3703)),
-                                            pattern_span: data::source::SourceSpan::new(3704, 3709),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3715, 3725)),
+                                            pattern_span: data::source::SourceSpan::new(3726, 3731),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 13..14,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3648, 3658)),
-                                            pattern_span: data::source::SourceSpan::new(3659, 3663),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3670, 3680)),
+                                            pattern_span: data::source::SourceSpan::new(3681, 3685),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 14..15,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -4034,13 +5428,13 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3593, 3603)),
-                                            pattern_span: data::source::SourceSpan::new(3604, 3615),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3615, 3625)),
+                                            pattern_span: data::source::SourceSpan::new(3626, 3637),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 15..16,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -4051,13 +5445,13 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3547, 3557)),
-                                            pattern_span: data::source::SourceSpan::new(3558, 3569),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3569, 3579)),
+                                            pattern_span: data::source::SourceSpan::new(3580, 3591),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 16..17,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -4068,13 +5462,13 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3502, 3512)),
-                                            pattern_span: data::source::SourceSpan::new(3513, 3524),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3524, 3534)),
+                                            pattern_span: data::source::SourceSpan::new(3535, 3546),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 17..18,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Tuple {
                                                 local: data::graph::TupleLocalId(0),
@@ -4085,138 +5479,138 @@ data::ModuleArtifact {
                                                 ]),
                                             },
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3449, 3459)),
-                                            pattern_span: data::source::SourceSpan::new(3460, 3472),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3471, 3481)),
+                                            pattern_span: data::source::SourceSpan::new(3482, 3494),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 18..19,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3388, 3398)),
-                                            pattern_span: data::source::SourceSpan::new(3399, 3400),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3410, 3420)),
+                                            pattern_span: data::source::SourceSpan::new(3421, 3422),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 19..20,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3330, 3340)),
-                                            pattern_span: data::source::SourceSpan::new(3341, 3342),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3352, 3362)),
+                                            pattern_span: data::source::SourceSpan::new(3363, 3364),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 20..21,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3275, 3285)),
-                                            pattern_span: data::source::SourceSpan::new(3286, 3287),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3297, 3307)),
+                                            pattern_span: data::source::SourceSpan::new(3308, 3309),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 21..22,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3221, 3231)),
-                                            pattern_span: data::source::SourceSpan::new(3232, 3233),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3243, 3253)),
+                                            pattern_span: data::source::SourceSpan::new(3254, 3255),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 22..23,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3162, 3172)),
-                                            pattern_span: data::source::SourceSpan::new(3173, 3174),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3184, 3194)),
+                                            pattern_span: data::source::SourceSpan::new(3195, 3196),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 23..24,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3118, 3128)),
-                                            pattern_span: data::source::SourceSpan::new(3129, 3130),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3140, 3150)),
+                                            pattern_span: data::source::SourceSpan::new(3151, 3152),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 24..25,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3069, 3079)),
-                                            pattern_span: data::source::SourceSpan::new(3080, 3081),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3091, 3101)),
+                                            pattern_span: data::source::SourceSpan::new(3102, 3103),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 25..26,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3021, 3031)),
-                                            pattern_span: data::source::SourceSpan::new(3032, 3033),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3043, 3053)),
+                                            pattern_span: data::source::SourceSpan::new(3054, 3055),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 26..27,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2976, 2986)),
-                                            pattern_span: data::source::SourceSpan::new(2987, 2988),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2998, 3008)),
+                                            pattern_span: data::source::SourceSpan::new(3009, 3010),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 27..28,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2934, 2944)),
-                                            pattern_span: data::source::SourceSpan::new(2945, 2946),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2956, 2966)),
+                                            pattern_span: data::source::SourceSpan::new(2967, 2968),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 28..29,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2893, 2903)),
-                                            pattern_span: data::source::SourceSpan::new(2904, 2905),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2915, 2925)),
+                                            pattern_span: data::source::SourceSpan::new(2926, 2927),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 29..30,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2847, 2857)),
-                                            pattern_span: data::source::SourceSpan::new(2858, 2859),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2869, 2879)),
+                                            pattern_span: data::source::SourceSpan::new(2880, 2881),
                                         }),
                                     },
                                     data::graph::BlockHeader {
                                         params: 30..31,
-                                        instructions: 194..194,
+                                        instructions: 195..195,
                                         terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                             subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             message: None,
-                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2805, 2815)),
-                                            pattern_span: data::source::SourceSpan::new(2816, 2817),
+                                            site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(2827, 2837)),
+                                            pattern_span: data::source::SourceSpan::new(2838, 2839),
                                         }),
                                     },
                                 ]),
@@ -4422,6 +5816,17 @@ data::ModuleArtifact {
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Call {
+                                            function: data::function::NilFunctionId(1),
+                                            args: data::Storage::Static(&[]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2805, 2824)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
@@ -4464,7 +5869,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2820, 2844)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2842, 2866)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4579,7 +5984,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2862, 2890)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2884, 2912)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4667,7 +6072,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2908, 2931)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2930, 2953)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4769,7 +6174,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2949, 2973)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2971, 2995)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4884,7 +6289,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2991, 3018)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3013, 3040)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5012,7 +6417,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3036, 3066)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3058, 3088)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5059,7 +6464,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3084, 3115)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3106, 3137)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5124,7 +6529,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3133, 3159)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3155, 3181)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5245,7 +6650,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3177, 3218)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3199, 3240)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5339,7 +6744,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3236, 3272)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3258, 3294)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5447,7 +6852,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3290, 3327)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3312, 3349)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5568,7 +6973,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3345, 3385)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3367, 3407)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5702,7 +7107,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3403, 3446)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3425, 3468)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5808,7 +7213,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3475, 3499)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3497, 3521)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5874,7 +7279,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3527, 3544)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3549, 3566)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5954,7 +7359,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3572, 3590)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3594, 3612)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6008,7 +7413,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3618, 3645)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3640, 3667)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6096,7 +7501,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3666, 3690)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3688, 3712)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6184,7 +7589,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3712, 3737)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3734, 3759)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6281,7 +7686,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3759, 3789)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3781, 3811)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6328,7 +7733,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3811, 3836)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3833, 3858)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6443,7 +7848,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3857, 3898)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3879, 3920)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6558,7 +7963,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3920, 3962)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3942, 3984)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6682,7 +8087,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3984, 4031)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4006, 4053)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6729,7 +8134,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4053, 4086)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4075, 4108)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6821,7 +8226,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4112, 4132)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4134, 4154)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6886,7 +8291,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4157, 4173)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4179, 4195)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -6939,7 +8344,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4198, 4224)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4220, 4246)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7018,7 +8423,7 @@ data::ModuleArtifact {
                                                 }),
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4245, 4272)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4267, 4294)),
                                         })),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7097,7 +8502,7 @@ data::ModuleArtifact {
                                                 }),
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4296, 4324)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4318, 4346)),
                                         })),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7155,7 +8560,7 @@ data::ModuleArtifact {
                                                 }),
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4343, 4365)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4365, 4387)),
                                         })),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7234,7 +8639,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4368, 4389)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4390, 4411)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7299,7 +8704,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4395, 4412)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4417, 4434)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7356,7 +8761,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4418, 4443)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4440, 4465)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7506,7 +8911,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4449, 4481)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4471, 4503)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7642,7 +9047,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4487, 4515)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4509, 4537)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7751,7 +9156,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4521, 4543)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4543, 4565)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7808,7 +9213,7 @@ data::ModuleArtifact {
                                                     },
                                                 }),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4549, 4570)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(4571, 4592)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -7844,7 +9249,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(8),
-                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                    shape_id: data::type_::CustomValueShapeId(71),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -7885,7 +9290,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(8),
-                                                            shape_id: data::type_::CustomValueShapeId(46),
+                                                            shape_id: data::type_::CustomValueShapeId(71),
                                                         },
                                                     }),
                                                 ]),
@@ -7908,7 +9313,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(8),
-                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                    shape_id: data::type_::CustomValueShapeId(71),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -7947,7 +9352,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(8),
-                                                            shape_id: data::type_::CustomValueShapeId(46),
+                                                            shape_id: data::type_::CustomValueShapeId(71),
                                                         },
                                                     }),
                                                 ]),
@@ -7974,30 +9379,30 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(8),
-                                                shape_id: data::type_::CustomValueShapeId(46),
+                                                shape_id: data::type_::CustomValueShapeId(71),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(64),
+                                        shape: data::type_::ValueShapeId(94),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(8),
-                                                shape_id: data::type_::CustomValueShapeId(46),
+                                                shape_id: data::type_::CustomValueShapeId(71),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(64),
+                                        shape: data::type_::ValueShapeId(94),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(8),
-                                                shape_id: data::type_::CustomValueShapeId(46),
+                                                shape_id: data::type_::CustomValueShapeId(71),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(64),
+                                        shape: data::type_::ValueShapeId(94),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -8025,7 +9430,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(8),
-                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                    shape_id: data::type_::CustomValueShapeId(71),
                                                 },
                                             },
                                             index: 0,
@@ -8056,7 +9461,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(10),
-                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                    shape_id: data::type_::CustomValueShapeId(72),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8108,7 +9513,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(10),
-                                                            shape_id: data::type_::CustomValueShapeId(47),
+                                                            shape_id: data::type_::CustomValueShapeId(72),
                                                         },
                                                     }),
                                                 ]),
@@ -8131,7 +9536,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(10),
-                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                    shape_id: data::type_::CustomValueShapeId(72),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8181,7 +9586,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(10),
-                                                            shape_id: data::type_::CustomValueShapeId(47),
+                                                            shape_id: data::type_::CustomValueShapeId(72),
                                                         },
                                                     }),
                                                 ]),
@@ -8204,7 +9609,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(10),
-                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                    shape_id: data::type_::CustomValueShapeId(72),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8246,7 +9651,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(10),
-                                                            shape_id: data::type_::CustomValueShapeId(47),
+                                                            shape_id: data::type_::CustomValueShapeId(72),
                                                         },
                                                     }),
                                                 ]),
@@ -8273,40 +9678,40 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(10),
-                                                shape_id: data::type_::CustomValueShapeId(47),
+                                                shape_id: data::type_::CustomValueShapeId(72),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(65),
+                                        shape: data::type_::ValueShapeId(95),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(10),
-                                                shape_id: data::type_::CustomValueShapeId(47),
+                                                shape_id: data::type_::CustomValueShapeId(72),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(65),
+                                        shape: data::type_::ValueShapeId(95),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(10),
-                                                shape_id: data::type_::CustomValueShapeId(47),
+                                                shape_id: data::type_::CustomValueShapeId(72),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(65),
+                                        shape: data::type_::ValueShapeId(95),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(10),
-                                                shape_id: data::type_::CustomValueShapeId(47),
+                                                shape_id: data::type_::CustomValueShapeId(72),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(65),
+                                        shape: data::type_::ValueShapeId(95),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -8341,7 +9746,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(10),
-                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                    shape_id: data::type_::CustomValueShapeId(72),
                                                 },
                                             },
                                             index: 0,
@@ -8379,7 +9784,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(4),
-                                                    shape_id: data::type_::CustomValueShapeId(44),
+                                                    shape_id: data::type_::CustomValueShapeId(69),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8412,7 +9817,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(4),
-                                                            shape_id: data::type_::CustomValueShapeId(44),
+                                                            shape_id: data::type_::CustomValueShapeId(69),
                                                         },
                                                     }),
                                                 ]),
@@ -8435,7 +9840,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(4),
-                                                    shape_id: data::type_::CustomValueShapeId(44),
+                                                    shape_id: data::type_::CustomValueShapeId(69),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8476,7 +9881,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(4),
-                                                            shape_id: data::type_::CustomValueShapeId(44),
+                                                            shape_id: data::type_::CustomValueShapeId(69),
                                                         },
                                                     }),
                                                 ]),
@@ -8503,30 +9908,30 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(4),
-                                                shape_id: data::type_::CustomValueShapeId(44),
+                                                shape_id: data::type_::CustomValueShapeId(69),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(62),
+                                        shape: data::type_::ValueShapeId(92),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(4),
-                                                shape_id: data::type_::CustomValueShapeId(44),
+                                                shape_id: data::type_::CustomValueShapeId(69),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(62),
+                                        shape: data::type_::ValueShapeId(92),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(4),
-                                                shape_id: data::type_::CustomValueShapeId(44),
+                                                shape_id: data::type_::CustomValueShapeId(69),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(62),
+                                        shape: data::type_::ValueShapeId(92),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -8560,7 +9965,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(4),
-                                                    shape_id: data::type_::CustomValueShapeId(44),
+                                                    shape_id: data::type_::CustomValueShapeId(69),
                                                 },
                                             },
                                             index: 0,
@@ -8601,7 +10006,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(6),
-                                                    shape_id: data::type_::CustomValueShapeId(45),
+                                                    shape_id: data::type_::CustomValueShapeId(70),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8634,7 +10039,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(6),
-                                                            shape_id: data::type_::CustomValueShapeId(45),
+                                                            shape_id: data::type_::CustomValueShapeId(70),
                                                         },
                                                     }),
                                                 ]),
@@ -8657,7 +10062,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(6),
-                                                    shape_id: data::type_::CustomValueShapeId(45),
+                                                    shape_id: data::type_::CustomValueShapeId(70),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -8698,7 +10103,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(6),
-                                                            shape_id: data::type_::CustomValueShapeId(45),
+                                                            shape_id: data::type_::CustomValueShapeId(70),
                                                         },
                                                     }),
                                                 ]),
@@ -8725,30 +10130,30 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(6),
-                                                shape_id: data::type_::CustomValueShapeId(45),
+                                                shape_id: data::type_::CustomValueShapeId(70),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(63),
+                                        shape: data::type_::ValueShapeId(93),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(6),
-                                                shape_id: data::type_::CustomValueShapeId(45),
+                                                shape_id: data::type_::CustomValueShapeId(70),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(63),
+                                        shape: data::type_::ValueShapeId(93),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(6),
-                                                shape_id: data::type_::CustomValueShapeId(45),
+                                                shape_id: data::type_::CustomValueShapeId(70),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(63),
+                                        shape: data::type_::ValueShapeId(93),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -8782,7 +10187,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(6),
-                                                    shape_id: data::type_::CustomValueShapeId(45),
+                                                    shape_id: data::type_::CustomValueShapeId(70),
                                                 },
                                             },
                                             index: 0,
@@ -9788,6 +11193,3678 @@ data::ModuleArtifact {
                             ]),
                         },
                     },
+                    data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 0,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 0..3,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(46),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 3..6,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(45),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 6..9,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(44),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 9..12,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(43),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 12..15,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(5),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(42),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 15..18,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(6),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(41),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 18..23,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(7),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(40),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 23..26,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(8),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(39),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 26..29,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(9),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(38),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 29..36,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(10),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(37),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 36..39,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(11),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(36),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 39..42,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(12),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(35),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 42..50,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(13),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(34),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 50..58,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    3,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(14),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(33),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 58..66,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    3,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(15),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(32),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 66..75,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    3,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(16),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(31),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 1,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 1,
+                                                                    destination: 0,
+                                                                },
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 75..83,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    3,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(17),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(30),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::IntList,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 83..86,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(18),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(29),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 86..89,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(19),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(28),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 89..95,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(20),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(27),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 95..101,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    3,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(21),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(26),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 101..104,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    1,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(22),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(25),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 104..107,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            pattern: data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    2,
+                                                ]),
+                                            }),
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(23),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(24),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 107..108,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6968, 6978)),
+                                            pattern_span: data::source::SourceSpan::new(6979, 6980),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6915, 6925)),
+                                            pattern_span: data::source::SourceSpan::new(6926, 6927),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..3,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6855, 6865)),
+                                            pattern_span: data::source::SourceSpan::new(6866, 6867),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 3..4,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6796, 6806)),
+                                            pattern_span: data::source::SourceSpan::new(6807, 6808),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 4..5,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6753, 6763)),
+                                            pattern_span: data::source::SourceSpan::new(6764, 6765),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 5..6,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6708, 6718)),
+                                            pattern_span: data::source::SourceSpan::new(6719, 6720),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 6..7,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6641, 6651)),
+                                            pattern_span: data::source::SourceSpan::new(6652, 6653),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 7..8,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6571, 6581)),
+                                            pattern_span: data::source::SourceSpan::new(6582, 6583),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 8..9,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6502, 6512)),
+                                            pattern_span: data::source::SourceSpan::new(6513, 6514),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 9..10,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6432, 6442)),
+                                            pattern_span: data::source::SourceSpan::new(6443, 6444),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 10..11,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6363, 6373)),
+                                            pattern_span: data::source::SourceSpan::new(6374, 6375),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 11..12,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6322, 6332)),
+                                            pattern_span: data::source::SourceSpan::new(6333, 6334),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 12..13,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6279, 6289)),
+                                            pattern_span: data::source::SourceSpan::new(6290, 6291),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 13..14,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6225, 6235)),
+                                            pattern_span: data::source::SourceSpan::new(6236, 6237),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 14..15,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6186, 6196)),
+                                            pattern_span: data::source::SourceSpan::new(6197, 6198),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 15..16,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6145, 6155)),
+                                            pattern_span: data::source::SourceSpan::new(6156, 6157),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 16..17,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6105, 6115)),
+                                            pattern_span: data::source::SourceSpan::new(6116, 6117),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 17..18,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6064, 6074)),
+                                            pattern_span: data::source::SourceSpan::new(6075, 6076),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 18..19,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6021, 6031)),
+                                            pattern_span: data::source::SourceSpan::new(6032, 6033),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 19..20,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5987, 5997)),
+                                            pattern_span: data::source::SourceSpan::new(5998, 5999),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 20..21,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5943, 5953)),
+                                            pattern_span: data::source::SourceSpan::new(5954, 5955),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 21..22,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5897, 5907)),
+                                            pattern_span: data::source::SourceSpan::new(5908, 5909),
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 22..23,
+                                        instructions: 108..108,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5860, 5870)),
+                                            pattern_span: data::source::SourceSpan::new(5871, 5872),
+                                        }),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(2),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(45),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(66),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(3),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(45),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5875, 5894)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(68),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(3),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(47),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5912, 5940)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(49),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(70),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(3),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(49),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(5958, 5984)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(45),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(66),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(4),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(45),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6002, 6018)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(47),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(68),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(4),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(47),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6036, 6061)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(14),
+                                                    shape_id: data::type_::CustomValueShapeId(49),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(70),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(14),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(4),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(14),
+                                                        shape_id: data::type_::CustomValueShapeId(49),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6079, 6102)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Nil,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(60),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    shape_id: data::type_::CustomValueShapeId(50),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(71),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(16),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Nil,
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(5),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(16),
+                                                        shape_id: data::type_::CustomValueShapeId(50),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6120, 6142)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    shape_id: data::type_::CustomValueShapeId(51),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(72),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(16),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(5),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(16),
+                                                        shape_id: data::type_::CustomValueShapeId(51),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6160, 6183)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(16),
+                                                    shape_id: data::type_::CustomValueShapeId(52),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(73),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(16),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(5),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(16),
+                                                        shape_id: data::type_::CustomValueShapeId(52),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6201, 6222)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Nil,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(60),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(1)),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(17),
+                                                    shape_id: data::type_::CustomValueShapeId(53),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(74),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(17),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Nil,
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(18),
+                                                    shape_id: data::type_::CustomValueShapeId(54),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(75),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(18),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(17),
+                                                        shape_id: data::type_::CustomValueShapeId(53),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    shape_id: data::type_::CustomValueShapeId(55),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(76),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(19),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(18),
+                                                        shape_id: data::type_::CustomValueShapeId(54),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(6),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(2),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(19),
+                                                        shape_id: data::type_::CustomValueShapeId(55),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6240, 6276)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    shape_id: data::type_::CustomValueShapeId(56),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(77),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(19),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(6),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(19),
+                                                        shape_id: data::type_::CustomValueShapeId(56),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6294, 6319)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(19),
+                                                    shape_id: data::type_::CustomValueShapeId(57),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(78),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(19),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(6),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(19),
+                                                        shape_id: data::type_::CustomValueShapeId(57),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6337, 6360)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("ready"))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+                                            list_type: data::type_::ListTypeId(0),
+                                        }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::String,
+                                                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(79),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(58),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(80),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::String,
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(58),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6378, 6429)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(false)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("ready"))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+                                            list_type: data::type_::ListTypeId(0),
+                                        }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::String,
+                                                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(79),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(58),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(80),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::String,
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(58),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6447, 6499)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("other"))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+                                            list_type: data::type_::ListTypeId(0),
+                                        }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::String,
+                                                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(79),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(58),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(80),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::String,
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(58),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6517, 6568)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("ready"))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                1,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+                                            list_type: data::type_::ListTypeId(0),
+                                        }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
+                                            data::graph::IntLocalId(0),
+                                        ])))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::String,
+                                                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(79),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(58),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(80),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::String,
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(58),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6586, 6638)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("ready"))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Int(data::type_::IntListTypeId {
+                                            list_type: data::type_::ListTypeId(0),
+                                        }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[])))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                    data::type_::ValueType::String,
+                                                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(81),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(59),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(82),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                        data::type_::ValueType::String,
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(59),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6656, 6705)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(60),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(83),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(60),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6723, 6750)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(20),
+                                                    shape_id: data::type_::CustomValueShapeId(61),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(84),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(20),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(20),
+                                                        shape_id: data::type_::CustomValueShapeId(61),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6768, 6793)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(64),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(21),
+                                                    shape_id: data::type_::CustomValueShapeId(62),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(85),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(21),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(63),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(86),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(21),
+                                                        shape_id: data::type_::CustomValueShapeId(62),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(8),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(22),
+                                                        shape_id: data::type_::CustomValueShapeId(63),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6811, 6852)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(false)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Nil,
+                                                    data::type_::ValueType::Bool,
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(64),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(21),
+                                                    shape_id: data::type_::CustomValueShapeId(62),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(85),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(21),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Tuple {
+                                                    local: data::graph::TupleLocalId(0),
+                                                    type_: data::Storage::Static(&[
+                                                        data::type_::ValueType::Nil,
+                                                        data::type_::ValueType::Bool,
+                                                    ]),
+                                                },
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(63),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(86),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(21),
+                                                        shape_id: data::type_::CustomValueShapeId(62),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(8),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(22),
+                                                        shape_id: data::type_::CustomValueShapeId(63),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6870, 6912)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(46),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(67),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(64),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(87),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(46),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(8),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(22),
+                                                        shape_id: data::type_::CustomValueShapeId(64),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6930, 6965)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(15),
+                                                    shape_id: data::type_::CustomValueShapeId(48),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(69),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(15),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(22),
+                                                    shape_id: data::type_::CustomValueShapeId(65),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(88),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(22),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(15),
+                                                        shape_id: data::type_::CustomValueShapeId(48),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(8),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(1),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(22),
+                                                        shape_id: data::type_::CustomValueShapeId(65),
+                                                    },
+                                                }),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "nil_pattern_cases", data::source::SourceSpan::new(6983, 7016)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Value),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::NilLocalId(0)),
+                            ]),
+                        },
+                    },
                 ]),
                 tuple_functions: data::Storage::Static(&[
                     data::function::ExecutableFunction {
@@ -9806,7 +14883,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -9839,7 +14916,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(3),
-                                                            shape_id: data::type_::CustomValueShapeId(43),
+                                                            shape_id: data::type_::CustomValueShapeId(68),
                                                         },
                                                     }),
                                                 ]),
@@ -9862,7 +14939,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -9898,7 +14975,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(3),
-                                                            shape_id: data::type_::CustomValueShapeId(43),
+                                                            shape_id: data::type_::CustomValueShapeId(68),
                                                         },
                                                     }),
                                                 ]),
@@ -9921,7 +14998,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -9959,7 +15036,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(3),
-                                                            shape_id: data::type_::CustomValueShapeId(43),
+                                                            shape_id: data::type_::CustomValueShapeId(68),
                                                         },
                                                     }),
                                                 ]),
@@ -9986,40 +15063,40 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -10211,7 +15288,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             },
                                             index: 0,
@@ -10303,7 +15380,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -10336,7 +15413,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(3),
-                                                            shape_id: data::type_::CustomValueShapeId(43),
+                                                            shape_id: data::type_::CustomValueShapeId(68),
                                                         },
                                                     }),
                                                 ]),
@@ -10359,7 +15436,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             }),
                                             pattern: data::graph::MatchPattern::Custom {
@@ -10395,7 +15472,7 @@ data::ModuleArtifact {
                                                         id: data::graph::CustomLocalId(0),
                                                         shape: data::type_::CustomValueShape {
                                                             type_id: data::type_::CustomTypeId(3),
-                                                            shape_id: data::type_::CustomValueShapeId(43),
+                                                            shape_id: data::type_::CustomValueShapeId(68),
                                                         },
                                                     }),
                                                 ]),
@@ -10422,30 +15499,30 @@ data::ModuleArtifact {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                             id: data::graph::CustomLocalId(0),
                                             shape: data::type_::CustomValueShape {
                                                 type_id: data::type_::CustomTypeId(3),
-                                                shape_id: data::type_::CustomValueShapeId(43),
+                                                shape_id: data::type_::CustomValueShapeId(68),
                                             },
                                         }),
-                                        shape: data::type_::ValueShapeId(61),
+                                        shape: data::type_::ValueShapeId(91),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
@@ -10556,7 +15633,7 @@ data::ModuleArtifact {
                                                 id: data::graph::CustomLocalId(0),
                                                 shape: data::type_::CustomValueShape {
                                                     type_id: data::type_::CustomTypeId(3),
-                                                    shape_id: data::type_::CustomValueShapeId(43),
+                                                    shape_id: data::type_::CustomValueShapeId(68),
                                                 },
                                             },
                                             index: 0,
@@ -11002,18 +16079,18 @@ data::ModuleArtifact {
         function_parameters: data::function::FunctionCatalog {
             families: [
                 0..0,
-                0..3,
+                0..9,
                 0..0,
-                3..6,
-                0..0,
-                0..0,
+                9..12,
                 0..0,
                 0..0,
-                6..8,
-                8..9,
-                9..11,
-                11..12,
-                12..13,
+                0..0,
+                0..0,
+                12..14,
+                14..16,
+                16..18,
+                18..19,
+                19..20,
                 0..0,
                 0..0,
                 0..0,
@@ -11058,7 +16135,7 @@ data::ModuleArtifact {
                 data::function::FunctionContract {
                     parameters: 0..1,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(59),
+                        data::type_::ValueShapeId(89),
                     ]),
                     return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
@@ -11066,7 +16143,7 @@ data::ModuleArtifact {
                 data::function::FunctionContract {
                     parameters: 1..2,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(60),
+                        data::type_::ValueShapeId(90),
                     ]),
                     return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
@@ -11074,73 +16151,127 @@ data::ModuleArtifact {
                 data::function::FunctionContract {
                     parameters: 2..3,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(66),
+                        data::type_::ValueShapeId(96),
                     ]),
                     return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
-                    parameters: 3..3,
-                    parameter_shapes: data::Storage::Static(&[]),
-                    return_: data::type_::ValueShapeId(0),
-                    captures: data::Storage::Static(&[]),
-                },
-                data::function::FunctionContract {
                     parameters: 3..4,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(64),
+                        data::type_::ValueShapeId(97),
                     ]),
-                    return_: data::type_::ValueShapeId(0),
+                    return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
                     parameters: 4..5,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(65),
+                        data::type_::ValueShapeId(97),
                     ]),
-                    return_: data::type_::ValueShapeId(0),
+                    return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
                     parameters: 5..6,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(62),
+                        data::type_::ValueShapeId(98),
                     ]),
-                    return_: data::type_::ValueShapeId(1),
+                    return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
                     parameters: 6..7,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(63),
+                        data::type_::ValueShapeId(100),
                     ]),
-                    return_: data::type_::ValueShapeId(1),
-                    captures: data::Storage::Static(&[]),
-                },
-                data::function::FunctionContract {
-                    parameters: 7..7,
-                    parameter_shapes: data::Storage::Static(&[]),
-                    return_: data::type_::ValueShapeId(13),
+                    return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
                     parameters: 7..8,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(61),
+                        data::type_::ValueShapeId(101),
                     ]),
-                    return_: data::type_::ValueShapeId(22),
+                    return_: data::type_::ValueShapeId(2),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
                     parameters: 8..9,
                     parameter_shapes: data::Storage::Static(&[
-                        data::type_::ValueShapeId(61),
+                        data::type_::ValueShapeId(102),
+                    ]),
+                    return_: data::type_::ValueShapeId(2),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 9..9,
+                    parameter_shapes: data::Storage::Static(&[]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 9..10,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(94),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 10..11,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(95),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 11..12,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(92),
+                    ]),
+                    return_: data::type_::ValueShapeId(1),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 12..13,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(93),
+                    ]),
+                    return_: data::type_::ValueShapeId(1),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 13..13,
+                    parameter_shapes: data::Storage::Static(&[]),
+                    return_: data::type_::ValueShapeId(13),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 13..13,
+                    parameter_shapes: data::Storage::Static(&[]),
+                    return_: data::type_::ValueShapeId(13),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 13..14,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(91),
+                    ]),
+                    return_: data::type_::ValueShapeId(22),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 14..15,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(91),
                     ]),
                     return_: data::type_::ValueShapeId(30),
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
-                    parameters: 9..11,
+                    parameters: 15..17,
                     parameter_shapes: data::Storage::Static(&[
                         data::type_::ValueShapeId(32),
                         data::type_::ValueShapeId(1),
@@ -11149,7 +16280,7 @@ data::ModuleArtifact {
                     captures: data::Storage::Static(&[]),
                 },
                 data::function::FunctionContract {
-                    parameters: 11..13,
+                    parameters: 17..19,
                     parameter_shapes: data::Storage::Static(&[
                         data::type_::ValueShapeId(3),
                         data::type_::ValueShapeId(1),
@@ -11163,63 +16294,105 @@ data::ModuleArtifact {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(0),
-                        shape_id: data::type_::CustomValueShapeId(41),
+                        shape_id: data::type_::CustomValueShapeId(66),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(1),
-                        shape_id: data::type_::CustomValueShapeId(42),
+                        shape_id: data::type_::CustomValueShapeId(67),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(12),
-                        shape_id: data::type_::CustomValueShapeId(48),
+                        shape_id: data::type_::CustomValueShapeId(73),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(14),
+                        shape_id: data::type_::CustomValueShapeId(74),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(14),
+                        shape_id: data::type_::CustomValueShapeId(74),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(16),
+                        shape_id: data::type_::CustomValueShapeId(75),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(19),
+                        shape_id: data::type_::CustomValueShapeId(77),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(20),
+                        shape_id: data::type_::CustomValueShapeId(78),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(22),
+                        shape_id: data::type_::CustomValueShapeId(79),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(8),
-                        shape_id: data::type_::CustomValueShapeId(46),
+                        shape_id: data::type_::CustomValueShapeId(71),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(10),
-                        shape_id: data::type_::CustomValueShapeId(47),
+                        shape_id: data::type_::CustomValueShapeId(72),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(4),
-                        shape_id: data::type_::CustomValueShapeId(44),
+                        shape_id: data::type_::CustomValueShapeId(69),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(6),
-                        shape_id: data::type_::CustomValueShapeId(45),
+                        shape_id: data::type_::CustomValueShapeId(70),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(3),
-                        shape_id: data::type_::CustomValueShapeId(43),
+                        shape_id: data::type_::CustomValueShapeId(68),
                     },
                 }),
                 data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                     id: data::graph::CustomLocalId(0),
                     shape: data::type_::CustomValueShape {
                         type_id: data::type_::CustomTypeId(3),
-                        shape_id: data::type_::CustomValueShapeId(43),
+                        shape_id: data::type_::CustomValueShapeId(68),
                     },
                 }),
                 data::graph::ParamLocal::List(data::graph::ListLocal::Parameter {
@@ -11928,6 +17101,449 @@ data::ModuleArtifact {
                         },
                     ]),
                 },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static(""),
+                        module: data::Text::Static("gleam"),
+                        name: data::Text::Static("Result"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Nil,
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Reason"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(14),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Ok"),
+                            native_tag: data::Text::Static("ok"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Nil,
+                                    shape: data::type_::ValueShapeId(13),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(14),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Error"),
+                            native_tag: data::Text::Static("error"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    shape: data::type_::ValueShapeId(59),
+                                    refinement: data::type_::FieldRefinement::Argument(1),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("geam"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Reason"),
+                        arguments: data::Storage::Static(&[]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(15),
+                                index: 0,
+                            },
+                            name: data::Text::Static("NilClosed"),
+                            native_tag: data::Text::Static("nil_closed"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(15),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Timeout"),
+                            native_tag: data::Text::Static("timeout"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static(""),
+                        module: data::Text::Static("gleam"),
+                        name: data::Text::Static("Result"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                data::type_::TypeMetadata::Nil,
+                                data::type_::TypeMetadata::Nil,
+                            ])),
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Reason"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(16),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Ok"),
+                            native_tag: data::Text::Static("ok"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Tuple(data::Storage::Static(&[
+                                        data::type_::ValueType::Nil,
+                                        data::type_::ValueType::Nil,
+                                    ])),
+                                    shape: data::type_::ValueShapeId(60),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(16),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Error"),
+                            native_tag: data::Text::Static("error"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    shape: data::type_::ValueShapeId(59),
+                                    refinement: data::type_::FieldRefinement::Argument(1),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("geam"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Wrap"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                data::type_::TypeMetadata::Nil,
+                                data::type_::TypeMetadata::Nil,
+                            ])),
+                        ]),
+                    },
+                    constructor_count: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(17),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Wrap"),
+                            native_tag: data::Text::Static("wrap"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Tuple(data::Storage::Static(&[
+                                        data::type_::ValueType::Nil,
+                                        data::type_::ValueType::Nil,
+                                    ])),
+                                    shape: data::type_::ValueShapeId(60),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("geam"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Wrap"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Wrap"),
+                                arguments: data::Storage::Static(&[
+                                    data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                        data::type_::TypeMetadata::Nil,
+                                        data::type_::TypeMetadata::Nil,
+                                    ])),
+                                ]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(18),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Wrap"),
+                            native_tag: data::Text::Static("wrap"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(17)),
+                                    shape: data::type_::ValueShapeId(61),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static(""),
+                        module: data::Text::Static("gleam"),
+                        name: data::Text::Static("Result"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Wrap"),
+                                arguments: data::Storage::Static(&[
+                                    data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                        package: data::Text::Static("geam"),
+                                        module: data::Text::Static("example"),
+                                        name: data::Text::Static("Wrap"),
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                                data::type_::TypeMetadata::Nil,
+                                                data::type_::TypeMetadata::Nil,
+                                            ])),
+                                        ]),
+                                    }),
+                                ]),
+                            }),
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Reason"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(19),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Ok"),
+                            native_tag: data::Text::Static("ok"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(18)),
+                                    shape: data::type_::ValueShapeId(62),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(19),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Error"),
+                            native_tag: data::Text::Static("error"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    shape: data::type_::ValueShapeId(59),
+                                    refinement: data::type_::FieldRefinement::Argument(1),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static(""),
+                        module: data::Text::Static("gleam"),
+                        name: data::Text::Static("Result"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                data::type_::TypeMetadata::Nil,
+                                data::type_::TypeMetadata::Bool,
+                                data::type_::TypeMetadata::String,
+                                data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Int)),
+                                data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                    package: data::Text::Static("geam"),
+                                    module: data::Text::Static("example"),
+                                    name: data::Text::Static("Reason"),
+                                    arguments: data::Storage::Static(&[]),
+                                }),
+                            ])),
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Reason"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(20),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Ok"),
+                            native_tag: data::Text::Static("ok"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Tuple(data::Storage::Static(&[
+                                        data::type_::ValueType::Nil,
+                                        data::type_::ValueType::Bool,
+                                        data::type_::ValueType::String,
+                                        data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                        data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    ])),
+                                    shape: data::type_::ValueShapeId(63),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(20),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Error"),
+                            native_tag: data::Text::Static("error"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    shape: data::type_::ValueShapeId(59),
+                                    refinement: data::type_::FieldRefinement::Argument(1),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("geam"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Wrap"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                data::type_::TypeMetadata::Nil,
+                                data::type_::TypeMetadata::Bool,
+                            ])),
+                        ]),
+                    },
+                    constructor_count: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(21),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Wrap"),
+                            native_tag: data::Text::Static("wrap"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Tuple(data::Storage::Static(&[
+                                        data::type_::ValueType::Nil,
+                                        data::type_::ValueType::Bool,
+                                    ])),
+                                    shape: data::type_::ValueShapeId(64),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static(""),
+                        module: data::Text::Static("gleam"),
+                        name: data::Text::Static("Result"),
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Wrap"),
+                                arguments: data::Storage::Static(&[
+                                    data::type_::TypeMetadata::Tuple(data::Storage::Static(&[
+                                        data::type_::TypeMetadata::Nil,
+                                        data::type_::TypeMetadata::Bool,
+                                    ])),
+                                ]),
+                            }),
+                            data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("geam"),
+                                module: data::Text::Static("example"),
+                                name: data::Text::Static("Reason"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                        ]),
+                    },
+                    constructor_count: 2,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(22),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Ok"),
+                            native_tag: data::Text::Static("ok"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(21)),
+                                    shape: data::type_::ValueShapeId(65),
+                                    refinement: data::type_::FieldRefinement::Argument(0),
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(22),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Error"),
+                            native_tag: data::Text::Static("error"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                                    shape: data::type_::ValueShapeId(59),
+                                    refinement: data::type_::FieldRefinement::Argument(1),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
             ]),
             definitions: data::Storage::Static(&[
                 data::type_::CustomDefinition {
@@ -12079,6 +17695,24 @@ data::ModuleArtifact {
                 data::type_::CustomDefinition {
                     package: data::Text::Static("geam"),
                     module: data::Text::Static("example"),
+                    name: data::Text::Static("Reason"),
+                    publicity: data::type_::CustomTypePublicity::Public,
+                    opaque: false,
+                    parameters: 0,
+                    constructors: data::Storage::Static(&[
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("NilClosed"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Timeout"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                    ]),
+                },
+                data::type_::CustomDefinition {
+                    package: data::Text::Static("geam"),
+                    module: data::Text::Static("example"),
                     name: data::Text::Static("Request"),
                     publicity: data::type_::CustomTypePublicity::Public,
                     opaque: false,
@@ -12090,6 +17724,25 @@ data::ModuleArtifact {
                                 data::type_::FieldDefinition {
                                     label: Some(data::Text::Static("enabled")),
                                     type_: data::type_::TypeMetadata::Bool,
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomDefinition {
+                    package: data::Text::Static("geam"),
+                    module: data::Text::Static("example"),
+                    name: data::Text::Static("Wrap"),
+                    publicity: data::type_::CustomTypePublicity::Public,
+                    opaque: false,
+                    parameters: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Wrap"),
+                            fields: data::Storage::Static(&[
+                                data::type_::FieldDefinition {
+                                    label: None,
+                                    type_: data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0)),
                                 },
                             ]),
                         },
@@ -12193,13 +17846,73 @@ data::ModuleArtifact {
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(39)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(40)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(41)),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(13),
+                    data::type_::ValueShapeId(13),
+                ])),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(42)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(43)),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(13),
+                    data::type_::ValueShapeId(1),
+                    data::type_::ValueShapeId(0),
+                    data::type_::ValueShapeId(3),
+                    data::type_::ValueShapeId(59),
+                ])),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(13),
+                    data::type_::ValueShapeId(1),
+                ])),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(44)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(45)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(46)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(47)),
                 data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(48)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(49)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(50)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(51)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(52)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(53)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(54)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(55)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(56)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(57)),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(13),
+                    data::type_::ValueShapeId(1),
+                    data::type_::ValueShapeId(0),
+                    data::type_::ValueShapeId(3),
+                    data::type_::ValueShapeId(67),
+                ])),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(58)),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(13),
+                    data::type_::ValueShapeId(1),
+                    data::type_::ValueShapeId(0),
+                    data::type_::ValueShapeId(3),
+                    data::type_::ValueShapeId(69),
+                ])),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(59)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(60)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(61)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(62)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(63)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(64)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(65)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(66)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(67)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(68)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(69)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(70)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(71)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(72)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(73)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(74)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(75)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(76)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(77)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(78)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(79)),
             ]),
             shape_types: data::Storage::Static(&[
                 data::type_::ValueType::String,
@@ -12292,6 +18005,60 @@ data::ModuleArtifact {
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(11)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(11)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(11)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Nil,
+                    data::type_::ValueType::Nil,
+                ])),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(17)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(18)),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Nil,
+                    data::type_::ValueType::Bool,
+                    data::type_::ValueType::String,
+                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                ])),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Nil,
+                    data::type_::ValueType::Bool,
+                ])),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(21)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(14)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(14)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(14)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(16)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(16)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(16)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(17)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(18)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(19)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(19)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(19)),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Nil,
+                    data::type_::ValueType::Bool,
+                    data::type_::ValueType::String,
+                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                ])),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(20)),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Nil,
+                    data::type_::ValueType::Bool,
+                    data::type_::ValueType::String,
+                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(15)),
+                ])),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(20)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(20)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(20)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(21)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(22)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(22)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(22)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(3)),
@@ -12300,6 +18067,12 @@ data::ModuleArtifact {
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(8)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(10)),
                 data::type_::ValueType::Custom(data::type_::CustomTypeId(12)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(14)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(16)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(14)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(19)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(20)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(22)),
             ]),
             custom_shapes: data::Storage::Static(&[
                 data::type_::CustomValueShapeDescriptor {
@@ -12576,6 +18349,191 @@ data::ModuleArtifact {
                     constructor: data::type_::CustomConstructorRefinement::Exact(3),
                 },
                 data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(15),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(17),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(18),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(61),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(21),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(64),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(14),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(13),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(15),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(14),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(13),
+                        data::type_::ValueShapeId(67),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(15),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(14),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(13),
+                        data::type_::ValueShapeId(69),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(16),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(16),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                        data::type_::ValueShapeId(67),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(16),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                        data::type_::ValueShapeId(69),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(17),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(18),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(74),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(19),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(75),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(19),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(62),
+                        data::type_::ValueShapeId(67),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(19),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(62),
+                        data::type_::ValueShapeId(69),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(20),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(79),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(20),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(81),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(20),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(63),
+                        data::type_::ValueShapeId(67),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(20),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(63),
+                        data::type_::ValueShapeId(69),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(21),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(64),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(22),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(85),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(22),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(65),
+                        data::type_::ValueShapeId(67),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(22),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(65),
+                        data::type_::ValueShapeId(69),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
                     type_id: data::type_::CustomTypeId(0),
                     arguments: data::Storage::Static(&[
                         data::type_::ValueShapeId(4),
@@ -12634,6 +18592,54 @@ data::ModuleArtifact {
                 data::type_::CustomValueShapeDescriptor {
                     type_id: data::type_::CustomTypeId(12),
                     arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(14),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(13),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(16),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(60),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(14),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(13),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(19),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(62),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(20),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(63),
+                        data::type_::ValueShapeId(59),
+                    ]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(22),
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueShapeId(65),
+                        data::type_::ValueShapeId(59),
+                    ]),
                     constructor: data::type_::CustomConstructorRefinement::Any,
                 },
             ]),
