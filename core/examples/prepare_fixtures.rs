@@ -28,6 +28,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (arithmetic, _) =
         ModuleBuilder::new(arithmetic)?.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
 
+    let numeric_switch = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/numeric_switch.gleam"),
+    )?;
+    let (numeric_switch, _) = ModuleBuilder::new(numeric_switch)?
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))?;
+
     let numeric = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -185,6 +193,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let int_list_entry =
         PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(int_list_entry)?)?;
 
+    let bit_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/bit_array_entry.gleam",
+                include_str!("../tests/fixtures/prepared/bit_array_entry.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let bit_entry =
+        PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(bit_entry)?)?;
+
     let values = geam_core::compile_typed_program(
         "example",
         [ModuleSource::new(
@@ -244,6 +269,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         "fixed_failure",
     ))?;
 
+    let bit_loops = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/bit_array_loops.gleam"),
+    )?;
+    let (mut bit_loops, _) = ModuleBuilder::new(bit_loops)?
+        .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            "checksum",
+        ))?;
+    bit_loops.function(FunctionDeclaration::<
+        (BitArrayValue, BigInt, BigInt),
+        Result<BigInt, ()>,
+    >::new("parse"))?;
+    for name in ["wide", "aliases", "little"] {
+        bit_loops.function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            name,
+        ))?;
+    }
+    bit_loops.function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+        "late_failure",
+    ))?;
+    bit_loops.function(FunctionDeclaration::<
+        (BitArrayValue, BitArrayValue, BigInt),
+        BigInt,
+    >::new("paired"))?;
+    bit_loops.function(FunctionDeclaration::<(BitArrayValue, bool), bool>::new(
+        "toggle",
+    ))?;
+
     let native = geam_core::compile_typed_host_program(
         "application",
         "main",
@@ -277,9 +331,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
+        ("numeric_switch.rs", numeric_switch.prepare().emit_rust()),
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
+        ("bit_array_entry.rs", bit_entry.emit_rust()),
         ("int_list.rs", int_list.prepare().emit_rust()),
         ("int_list_hosted.rs", hosted_int_list.prepare()?.emit_rust()),
         ("int_list_entry.rs", int_list_entry.emit_rust()),
@@ -301,6 +357,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("sparse_patterns.rs", sparse.prepare().emit_rust()),
         ("bit_array_patterns.rs", bit_arrays.prepare().emit_rust()),
+        ("bit_array_loops.rs", bit_loops.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
         (

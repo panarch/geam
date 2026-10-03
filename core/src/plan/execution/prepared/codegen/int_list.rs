@@ -299,7 +299,7 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
         view: &IntListMatch<'_>,
         returning: bool,
         output: ProgressOutput,
-        emit_edge: &impl Fn(&mut Code, CompiledEdge<'_>),
+        emit_edge: &mut impl FnMut(&mut Code, CompiledEdge<'_>),
     ) {
         let bindings = tuple(
             view.elements
@@ -336,7 +336,7 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
         source.open("Err(()) => {\n");
         self.interpreted(
             source,
-            self.shape.starts[point.block.0] + point.instruction,
+            self.shape.start(point.block) + point.instruction,
             returning,
             output,
         );
@@ -466,7 +466,7 @@ mod tests {
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
-        let point = shape.checkpoints[shape.starts[shape.graph.entry().0]];
+        let point = shape.checkpoints[shape.start(shape.graph.entry())];
         assert_eq!((point.ints, point.bools, point.int_lists), (0, 0, 1));
         let function = FunctionCodegen {
             index: 1,
@@ -475,7 +475,7 @@ mod tests {
         };
         let terminator = CompiledTerminator::Match(view);
         let mut source = Code::default();
-        function.preflight_terminator(&mut source, function.shape.starts[0], &terminator);
+        function.preflight_terminator(&mut source, function.shape.start(BlockId(0)), &terminator);
         assert_eq!(
             source.as_str(),
             r#"
@@ -513,7 +513,7 @@ let _matched = if b0_l0.len() >= 2 {
             &view,
             false,
             ProgressOutput::Direct,
-            &|source, _| source.push_str("edge;\n"),
+            &mut |source, _| source.push_str("edge;\n"),
         );
         assert_eq!(
             branch.as_str(),
@@ -605,7 +605,7 @@ match _matched {
             let mut source = Code::default();
             function.preflight_terminator(
                 &mut source,
-                function.shape.starts[0],
+                function.shape.start(BlockId(0)),
                 &CompiledTerminator::Match(view),
             );
             assert_eq!(
@@ -795,7 +795,7 @@ let _matched = {
         let type_id = IntListTypeId {
             list_type: ListTypeId(0),
         };
-        let emit_edge = |source: &mut Code, _: CompiledEdge<'_>| source.push_str("edge;\n");
+        let mut emit_edge = |source: &mut Code, _: CompiledEdge<'_>| source.push_str("edge;\n");
         for (selected, expected) in [
             (
                 vec![1, 3],
@@ -926,7 +926,7 @@ let _matched = if b0_l0.len() >= 2 {
                 &view,
                 false,
                 ProgressOutput::Direct,
-                &emit_edge,
+                &mut emit_edge,
             );
             assert_eq!(code.as_str(), expected.trim_start_matches('\n'));
         }

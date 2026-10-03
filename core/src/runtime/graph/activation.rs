@@ -10,6 +10,7 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::graph::BlockGraphView;
 use crate::runtime::compiled::CompiledProgress;
+use crate::runtime::compiled::bit_array::BitArrayValues;
 use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
 use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
@@ -37,8 +38,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     match_results: MatchResults,
     pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
     numeric: NumericValues,
-    // Only compiled list activations construct this payload. Ordinary graphs
-    // and numeric kernels keep their existing storage without list buffers.
+    bit_array_loop: Option<Box<BitArrayValues>>,
     int_list: Option<Box<IntListValues>>,
 }
 
@@ -186,68 +186,55 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 mut frame,
                 implementation,
                 point,
-            } => {
-                let mut budget = *remaining + 1;
-                let progress = match implementation {
-                    CompiledImplementation::Numeric(implementation) => {
-                        if frame
-                            .position
-                            .environment
-                            .load_numeric(&mut storage.numeric)
-                        {
-                            let progress =
-                                (implementation.run)(point, &mut storage.numeric, &mut budget);
-                            frame.position.environment.restore_numeric(&storage.numeric);
-                            Some(progress)
-                        } else {
-                            None
-                        }
+            } => match implementation {
+                CompiledImplementation::Numeric(numeric) => {
+                    if !frame
+                        .position
+                        .environment
+                        .load_numeric(&mut storage.numeric)
+                    {
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        // The outer driver already charged the first graph step.
+                        let mut budget = *remaining + 1;
+                        let progress = (numeric.run)(point, &mut storage.numeric, &mut budget);
+                        *remaining = budget;
+                        frame.position.environment.restore_numeric(&storage.numeric);
+                        frame.resume_compiled(progress, implementation, storage)?
                     }
-                    CompiledImplementation::IntList(implementation) => {
-                        let values = storage.int_list.get_or_insert_with(Box::default);
-                        if frame.position.environment.load_int_list(values) {
-                            let progress = (implementation.run)(
-                                point,
-                                values,
-                                &IntListOps::new(state.lists()),
-                                &mut budget,
-                            );
-                            frame.position.environment.restore_int_list(values);
-                            Some(progress)
-                        } else {
-                            None
-                        }
-                    }
-                };
-                if let Some(progress) = progress {
-                    *remaining = budget;
-                    match progress {
-                        CompiledProgress::Yield(point) | CompiledProgress::Interpreted(point) => {
-                            let checkpoint = implementation.checkpoints()[point];
-                            frame.position.block = checkpoint.block;
-                            frame.position.instruction = checkpoint.instruction;
-                            if matches!(progress, CompiledProgress::Yield(_)) {
-                                Activation::Compiled {
-                                    frame,
-                                    implementation,
-                                    point,
-                                }
-                            } else {
-                                Activation::Graph(frame)
-                            }
-                        }
-                        CompiledProgress::Complete(exit) => frame.exit.exit(
-                            CompletedGraph {
-                                exit,
-                                environment: frame.position.environment,
-                            },
-                            storage,
-                        )?,
-                    }
-                } else {
-                    frame.advance(plan, state, storage, remaining)?
                 }
-            }
+                CompiledImplementation::IntList(int_list) => {
+                    let values = storage.int_list.get_or_insert_with(Box::default);
+                    if !frame.position.environment.load_int_list(values) {
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        let mut budget = *remaining + 1;
+                        let progress = (int_list.run)(
+                            point,
+                            values,
+                            &IntListOps::new(state.lists()),
+                            &mut budget,
+                        );
+                        *remaining = budget;
+                        frame.position.environment.restore_int_list(values);
+                        frame.resume_compiled(progress, implementation, storage)?
+                    }
+                }
+                CompiledImplementation::BitArray(bit_array) => {
+                    let values = storage.bit_array_loop.get_or_insert_with(Default::default);
+                    if !frame.position.environment.load_bit_array(values) {
+                        values.clear();
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        let mut budget = *remaining + 1;
+                        let progress = (bit_array.run)(point, values, &mut budget);
+                        *remaining = budget;
+                        frame.position.environment.restore_bit_array(values);
+                        values.clear();
+                        frame.resume_compiled(progress, implementation, storage)?
+                    }
+                }
+            },
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -268,6 +255,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             match_results: MatchResults::default(),
             arithmetic: Default::default(),
             numeric: Default::default(),
+            bit_array_loop: None,
             int_list: None,
         }
     }
@@ -350,6 +338,37 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
             }
         };
         Ok(active)
+    }
+
+    fn resume_compiled(
+        mut self,
+        progress: CompiledProgress,
+        implementation: &'plan CompiledImplementation,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        Ok(match progress {
+            CompiledProgress::Yield(point) | CompiledProgress::Interpreted(point) => {
+                let checkpoint = implementation.checkpoints()[point];
+                self.position.block = checkpoint.block;
+                self.position.instruction = checkpoint.instruction;
+                if matches!(progress, CompiledProgress::Yield(_)) {
+                    Activation::Compiled {
+                        frame: self,
+                        implementation,
+                        point,
+                    }
+                } else {
+                    Activation::Graph(self)
+                }
+            }
+            CompiledProgress::Complete(exit) => self.exit.exit(
+                CompletedGraph {
+                    exit,
+                    environment: self.position.environment,
+                },
+                storage,
+            )?,
+        })
     }
 
     pub(super) fn store<Value: ReturnValue>(mut self, value: Value) -> Activation<'plan, Plan> {
@@ -710,7 +729,8 @@ mod tests {
     };
     use crate::ExecutionPlan;
     use crate::plan::execution::compiled::{
-        CompiledCheckpoint, CompiledImplementation, IntListImplementation, NumericImplementation,
+        BitArrayImplementation, CompiledCheckpoint, CompiledImplementation, IntListImplementation,
+        NumericImplementation,
     };
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
@@ -718,6 +738,7 @@ mod tests {
     };
     use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
     use crate::runtime::compiled::CompiledProgress;
+    use crate::runtime::compiled::bit_array::BitArrayValues;
     use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
@@ -733,12 +754,202 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const NUMERIC_CHOOSE_SOURCE: &str = "fn choose(value: Int, flag: Bool) { case flag { True -> value + 1 False -> value - 1 } } pub fn main() { choose(7, True) }";
+
+    const BIT_READ_SOURCE: &str = "fn read(input: BitArray, fallback: Int) { case input { <<value:64>> -> value _ -> fallback } } pub fn main() { read(<<7:64>>, 3) }";
+    const BIT_READ_POINTS: &[CompiledCheckpoint] = &[
+        CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+            bit_arrays: 1,
+            int_lists: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(1),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(2),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+        },
+    ];
+
+    // Both complete execution profiles consume this same frame protocol.
+    macro_rules! with_source_plans {
+        ($source:expr, $plan:ident, $scenario:block) => {{
+            let plain = crate::runtime::plan_src($source);
+            let $plan = &plain;
+            $scenario
+
+            let typed = crate::compile_typed_host_program(
+                "example",
+                "example",
+                [crate::PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [crate::ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        $source,
+                    )],
+                )],
+                crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let mut hosted = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            )
+            .unwrap();
+            let (hosted_plan, _, _) = hosted.parts_mut();
+            let $plan = &**hosted_plan;
+            $scenario
+        }};
+    }
+
+    #[test]
+    fn bit_array_activation_restores_match_edges_and_releases_scratch_on_every_yield() {
+        use crate::BitArrayValue;
+        use crate::runtime::evaluated::EvaluatedBitArray;
+        with_source_plans!(BIT_READ_SOURCE, plan, {
+            let id = IntFunctionId(1);
+            let graph = int_body(plan, id).block_graph().as_view();
+            assert_eq!(graph.blocks().len(), 3);
+            for (bytes, fallback, expected) in [
+                (
+                    7_u64.to_be_bytes().to_vec(),
+                    BigInt::from(3),
+                    BigInt::from(7),
+                ),
+                (
+                    u64::MAX.to_be_bytes().to_vec(),
+                    BigInt::from(3),
+                    BigInt::from(u64::MAX),
+                ),
+                (vec![7], BigInt::from(3), BigInt::from(3)),
+                (vec![], BigInt::from(1) << 100, BigInt::from(1) << 100),
+                (
+                    7_u64.to_be_bytes().to_vec(),
+                    BigInt::from(1) << 100,
+                    BigInt::from(7),
+                ),
+            ] {
+                let hit = bytes.len() == 8;
+                let implementation = CompiledImplementation::BitArray(BitArrayImplementation {
+                    entry: 0,
+                    checkpoints: BIT_READ_POINTS.to_vec().into(),
+                    run: one_bit_match_step,
+                });
+                let mut values = RetainedValues::empty();
+                values.push_bit_array(EvaluatedBitArray::from_value(BitArrayValue::from_bytes(
+                    bytes,
+                )));
+                values.push_int(fallback.clone().into());
+                let mut execution = Execution::new(graph, values, Some(&implementation));
+                let mut storage = Storage::new();
+                assert!(storage.bit_array_loop.is_none());
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                let frame = if fallback <= BigInt::from(i64::MAX)
+                    && (!hit || expected <= BigInt::from(i64::MAX))
+                {
+                    numeric_frame(&execution).0
+                } else {
+                    active_frame(&execution)
+                };
+                assert_eq!(
+                    (frame.position.block, frame.position.instruction),
+                    (BlockId(if hit { 1 } else { 2 }), 0)
+                );
+                assert_eq!(
+                    frame
+                        .position
+                        .environment
+                        .int(IntLocalId(0))
+                        .bigint()
+                        .as_ref(),
+                    &expected
+                );
+                let scratch = storage.bit_array_loop.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bit_arrays.is_empty());
+                assert!(scratch.bools.is_empty());
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                let progress = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .unwrap();
+                assert_eq!(returned_int(plan, id, completed(progress)), expected);
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    fn one_bit_match_step(
+        point: usize,
+        values: &mut BitArrayValues,
+        budget: &mut usize,
+    ) -> CompiledProgress {
+        use crate::plan::execution::graph::{Endianness, Signedness};
+        assert!(*budget > 0);
+        *budget -= 1;
+        match point {
+            0 => {
+                let input = values.bit_arrays[0];
+                let value = (input.bit_len() == 64).then(|| {
+                    values
+                        .integer(input, 0, 64, Endianness::Big, Signedness::Unsigned)
+                        .unwrap()
+                });
+                values.bit_arrays.clear();
+                match value {
+                    Some(value) => {
+                        values.ints.clear();
+                        values.ints.push(value);
+                        if value > i128::from(i64::MAX) {
+                            CompiledProgress::Interpreted(1)
+                        } else {
+                            CompiledProgress::Yield(1)
+                        }
+                    }
+                    None => CompiledProgress::Yield(2),
+                }
+            }
+            1 => CompiledProgress::Complete(BlockGraphExitId(0)),
+            2 => CompiledProgress::Complete(BlockGraphExitId(1)),
+            _ => panic!("bit bridge fixture has three canonical positions"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "bit bridge fixture has three canonical positions")]
+    fn bit_bridge_fixture_rejects_an_unknown_position() {
+        one_bit_match_step(99, &mut Default::default(), &mut 1);
+    }
+
     const CHOOSE_POINTS: &[CompiledCheckpoint] = &[
         CompiledCheckpoint {
             block: BlockId(0),
             instruction: 0,
             ints: 1,
             bools: 1,
+            bit_arrays: 0,
             int_lists: 0,
         },
         CompiledCheckpoint {
@@ -746,6 +957,7 @@ mod tests {
             instruction: 0,
             ints: 1,
             bools: 0,
+            bit_arrays: 0,
             int_lists: 0,
         },
         CompiledCheckpoint {
@@ -753,6 +965,7 @@ mod tests {
             instruction: 1,
             ints: 2,
             bools: 0,
+            bit_arrays: 0,
             int_lists: 0,
         },
         CompiledCheckpoint {
@@ -760,6 +973,7 @@ mod tests {
             instruction: 0,
             ints: 1,
             bools: 0,
+            bit_arrays: 0,
             int_lists: 0,
         },
         CompiledCheckpoint {
@@ -767,6 +981,7 @@ mod tests {
             instruction: 1,
             ints: 2,
             bools: 0,
+            bit_arrays: 0,
             int_lists: 0,
         },
     ];
@@ -800,41 +1015,9 @@ mod tests {
         }
     }
 
-    // Both complete execution profiles consume this same frame protocol.
-    macro_rules! with_compiled_plans {
-        ($source:expr, $plan:ident, $scenario:block) => {{
-            let plain = crate::runtime::plan_src($source);
-            let $plan = &plain;
-            $scenario
-
-            let typed = crate::compile_typed_host_program(
-                "example",
-                "example",
-                [crate::PackageSource::new(
-                    "example",
-                    Vec::<String>::new(),
-                    [crate::ModuleSource::new(
-                        "example",
-                        "src/example.gleam",
-                        $source,
-                    )],
-                )],
-                crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
-            )
-            .unwrap();
-            let mut hosted = crate::HostedExecution::try_from_module_plan(
-                crate::plan_host_program(typed).unwrap(),
-            )
-            .unwrap();
-            let (hosted_plan, _, _) = hosted.parts_mut();
-            let $plan = &**hosted_plan;
-            $scenario
-        }};
-    }
-
     #[test]
     fn numeric_activation_preserves_the_existing_frame_and_exact_yield_prefix() {
-        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
             let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
@@ -889,13 +1072,12 @@ mod tests {
                 ),
                 BigInt::from(8)
             );
-            assert!(storage.int_list.is_none());
         });
     }
 
     #[test]
     fn a_big_result_resumes_after_the_completed_instruction_and_initial_big_never_calls_rust() {
-        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
             for initially_big in [false, true] {
                 let implementation = CompiledImplementation::Numeric(NumericImplementation {
@@ -955,7 +1137,6 @@ mod tests {
                                 returned_int(plan, IntFunctionId(1), completed(result)),
                                 initial + 1
                             );
-                            assert!(storage.int_list.is_none());
                             break;
                         }
                     }
@@ -1008,7 +1189,7 @@ mod tests {
         use crate::plan::execution::function::FunctionReturnFamily;
         use crate::runtime::error::{ExecutionError, InvariantError};
 
-        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
             let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
@@ -1075,6 +1256,209 @@ mod tests {
     }
 
     #[test]
+    fn bit_array_returns_preserve_the_fallible_return_mapper_and_release_scratch() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        with_source_plans!(BIT_READ_SOURCE, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::BitArray(BitArrayImplementation {
+                entry: 0,
+                checkpoints: BIT_READ_POINTS.to_vec().into(),
+                run: one_bit_match_step,
+            });
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for value in [BigInt::from(7), BigInt::from(1) << 100_usize] {
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // The return adapter is allowed to fail for either kernel.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut values = RetainedValues::empty();
+                values.push_int(value.into());
+                let execution = Execution {
+                    active: Activation::Compiled {
+                        frame: Frame {
+                            graph: body.block_graph().as_view(),
+                            position: GraphPosition::new(BlockId(1), values),
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point: 1,
+                    },
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let error = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .err()
+                    .unwrap();
+                assert_eq!(error, ExecutionError::Invariant(expected.clone()));
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                let scratch = storage.bit_array_loop.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bools.is_empty());
+                assert!(scratch.bit_arrays.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    #[test]
+    fn list_returns_preserve_the_fallible_return_mapper_and_release_scratch() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        let source = r#"
+fn head(values: List(Int), value: Int) {
+  let assert [first, ..] = values
+  first + value
+}
+pub fn main() { head([7], 3) }
+"#;
+        let checkpoints = [
+            CompiledCheckpoint {
+                block: BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 1,
+                ints: 3,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(2),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+        ];
+        with_source_plans!(source, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::IntList(IntListImplementation {
+                entry: 0,
+                checkpoints: checkpoints.to_vec().into(),
+                run: one_step_head,
+            });
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for (value, point) in [(BigInt::from(3), 0), (BigInt::from(1) << 100_usize, 2)] {
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // This existing return boundary may fail after either a
+                    // generated return or interpretation of a Big prefix.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut inputs = RetainedValues::empty();
+                if point == 0 {
+                    inputs.push_int(value.into());
+                    inputs.push_list(
+                        state
+                            .lists()
+                            .int(
+                                IntListTypeId {
+                                    list_type: ListTypeId(0),
+                                },
+                                vec![IntegerValue::from(7_i64)],
+                            )
+                            .into(),
+                    );
+                } else {
+                    // The addition has completed at checkpoint two. A Big
+                    // prefix resumes its return without replaying that work.
+                    inputs.push_int(value.clone().into());
+                    inputs.push_int(7_i64.into());
+                    inputs.push_int((value + 7_i64).into());
+                }
+                let mut position = GraphPosition::new(checkpoints[point].block, inputs);
+                position.instruction = checkpoints[point].instruction;
+                let mut execution = Execution {
+                    active: Activation::Compiled {
+                        frame: Frame {
+                            graph: body.block_graph().as_view(),
+                            position,
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point,
+                    },
+                };
+                let result = loop {
+                    match execution.advance(plan, &mut state, &mut storage, &mut 0) {
+                        Ok(Progress::Continue(next)) => execution = next,
+                        result => break result,
+                    }
+                };
+                assert_eq!(
+                    result.err(),
+                    Some(ExecutionError::Invariant(expected.clone()))
+                );
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                let scratch = storage.int_list.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bools.is_empty());
+                assert!(scratch.int_lists.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    #[test]
     fn list_activation_moves_prefixes_and_preserves_small_big_and_source_failure_returns() {
         use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
 
@@ -1091,6 +1475,7 @@ pub fn main() { head([7], 3) }
                 instruction: 0,
                 ints: 1,
                 bools: 0,
+                bit_arrays: 0,
                 int_lists: 1,
             },
             CompiledCheckpoint {
@@ -1098,6 +1483,7 @@ pub fn main() { head([7], 3) }
                 instruction: 0,
                 ints: 2,
                 bools: 0,
+                bit_arrays: 0,
                 int_lists: 0,
             },
             CompiledCheckpoint {
@@ -1105,6 +1491,7 @@ pub fn main() { head([7], 3) }
                 instruction: 1,
                 ints: 3,
                 bools: 0,
+                bit_arrays: 0,
                 int_lists: 0,
             },
             CompiledCheckpoint {
@@ -1112,10 +1499,11 @@ pub fn main() { head([7], 3) }
                 instruction: 0,
                 ints: 0,
                 bools: 0,
+                bit_arrays: 0,
                 int_lists: 1,
             },
         ];
-        with_compiled_plans!(source, plan, {
+        with_source_plans!(source, plan, {
             let body = int_body(plan, IntFunctionId(1));
             let implementation = CompiledImplementation::IntList(IntListImplementation {
                 entry: 0,
@@ -1532,7 +1920,7 @@ pub fn main() {
     #[test]
     fn continuing_rejects_a_completed_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let finished = Execution {
                     active: Activation::Complete(complete_int_graph(plan)),
@@ -1566,7 +1954,7 @@ pub fn main() {
     #[test]
     fn completed_rejects_a_running_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let running = Execution::new(graph, RetainedValues::empty(), None);

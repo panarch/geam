@@ -431,6 +431,7 @@ mod tests {
         FORMAT_VERSION, ModuleArtifact, PreparedModule, ProgramTables,
     };
     use crate::plan::execution::storage::Storage;
+    use crate::runtime::compiled::tests::metadata_numeric;
     use std::convert::Infallible;
     use std::sync::Arc;
 
@@ -1081,10 +1082,11 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             implementation: CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: vec![].into(),
-                run: crate::runtime::compiled::tests::metadata_numeric,
+                run: metadata_numeric,
             }),
         }]
         .into();
+
         assert_eq!(
             plain(Box::leak(Box::new(artifact)))
                 .err()
@@ -1437,11 +1439,11 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 14; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 13; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 14; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -1559,7 +1561,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (
@@ -1741,7 +1743,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         implementation: CompiledImplementation::Numeric(NumericImplementation {
                             entry: 0,
                             checkpoints: vec![].into(),
-                            run: crate::runtime::compiled::tests::metadata_numeric,
+                            run: metadata_numeric,
                         }),
                     }]
                     .into();
@@ -1784,7 +1786,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (

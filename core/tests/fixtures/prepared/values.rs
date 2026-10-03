@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 13,
+    format: 14,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -16460,6 +16460,7 @@ fn integer_comparisons() {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -16467,6 +16468,7 @@ fn integer_comparisons() {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -16474,6 +16476,7 @@ fn integer_comparisons() {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -16481,6 +16484,7 @@ fn integer_comparisons() {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -16488,6 +16492,7 @@ fn integer_comparisons() {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -16496,6 +16501,8 @@ fn integer_comparisons() {
                     },
                 ]),
                 bools: data::Storage::Static(&[
+                ]),
+                customs: data::Storage::Static(&[
                 ]),
             }
         },

@@ -1,3 +1,7 @@
+use data::compiled::bit_array::BitArrayValues;
+use data::compiled::{
+    BitArrayImplementation, CompiledFunction, CompiledImplementation, CompiledProgress,
+};
 use geam_core::__prepared_support as data;
 use geam_core::embedding::{
     BigInt, BitArrayValue, CallError, FunctionDeclaration, HostedModuleBuilder, List,
@@ -10,12 +14,15 @@ use geam_core::{
     compile_typed_host_program, compile_typed_module, compile_typed_program,
 };
 use std::convert::Infallible;
+use std::sync::Mutex;
 
 static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
 
 static NUMERIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/numeric.rs");
 static NUMERIC_HOSTED: data::HostedModuleArtifact = include!("fixtures/prepared/numeric_hosted.rs");
 static NUMERIC_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/numeric_entry.rs");
+static NUMERIC_SWITCH: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/numeric_switch.rs");
 static INT_LIST: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/int_list.rs");
 static INT_LIST_HOSTED: data::HostedModuleArtifact =
     include!("fixtures/prepared/int_list_hosted.rs");
@@ -534,6 +541,498 @@ fn generated_int_list_hosted_artifact_matches_public_preparation() {
     );
 }
 
+static BIT_ARRAY_LOOPS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/bit_array_loops.rs");
+static BIT_ARRAY_ENTRY: data::HostedEntryArtifact =
+    include!("fixtures/prepared/bit_array_entry.rs");
+
+macro_rules! bit_loop_functions {
+    ($bindings:ident, $checksum:expr) => {
+        (
+            $checksum,
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BitArrayValue, BigInt, BigInt),
+                    Result<BigInt, ()>,
+                >::new("parse"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+                    "wide",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+                    "aliases",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+                    "little",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+                    "late_failure",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BitArrayValue, BitArrayValue, BigInt),
+                    BigInt,
+                >::new("paired"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(BitArrayValue, bool), bool>::new(
+                    "toggle",
+                ))
+                .unwrap(),
+        )
+    };
+}
+
+#[derive(Default)]
+struct BitCheckpointTrace {
+    allowance: usize,
+    steps: usize,
+    prefixes: Vec<BitCheckpointPrefix>,
+}
+
+struct BitCheckpointPrefix {
+    progress: CompiledProgress,
+    ints: Vec<i128>,
+    bools: Vec<bool>,
+    bit_lengths: Vec<usize>,
+}
+
+static BIT_CHECKPOINT_TRACE: Mutex<BitCheckpointTrace> = Mutex::new(BitCheckpointTrace {
+    allowance: 1,
+    steps: 0,
+    prefixes: Vec::new(),
+});
+
+fn traced_checksum(
+    point: usize,
+    values: &mut BitArrayValues,
+    budget: &mut usize,
+) -> CompiledProgress {
+    let CompiledImplementation::BitArray(implementation) =
+        &BIT_ARRAY_LOOPS.program.compiled.ints[0].implementation
+    else {
+        panic!("checksum fixture must use its generated bit-array kernel");
+    };
+    let mut trace = BIT_CHECKPOINT_TRACE.lock().unwrap();
+    let allowance = trace.allowance.min(*budget);
+    let mut remaining = allowance;
+    let progress = (implementation.run)(point, values, &mut remaining);
+    let consumed = allowance - remaining;
+    *budget -= consumed;
+    trace.steps += consumed;
+    trace.prefixes.push(BitCheckpointPrefix {
+        progress,
+        ints: values.ints.clone(),
+        bools: values.bools.clone(),
+        bit_lengths: values
+            .bit_arrays
+            .iter()
+            .map(|range| range.bit_len())
+            .collect(),
+    });
+    progress
+}
+
+#[test]
+fn generated_bit_checkpoints_charge_whole_matches_and_resume_without_replaying_completed_work() {
+    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/bit_array_loops.rs");
+    let mut artifact = BASE;
+    let target = artifact.entries.ints[0].function;
+    artifact.program.compiled.ints = artifact
+        .program
+        .compiled
+        .ints
+        .iter()
+        .map(|function| {
+            let CompiledImplementation::BitArray(implementation) = &function.implementation else {
+                panic!("bit-loop fixture must select its generated kernel");
+            };
+            CompiledFunction {
+                function: function.function,
+                implementation: CompiledImplementation::BitArray(BitArrayImplementation {
+                    entry: implementation.entry,
+                    checkpoints: implementation.checkpoints.clone(),
+                    run: if function.function == target {
+                        traced_checksum
+                    } else {
+                        implementation.run
+                    },
+                }),
+            }
+        })
+        .collect::<Vec<_>>()
+        .into();
+    let artifact = Box::leak(Box::new(artifact));
+    let mut bindings = artifact.load().unwrap();
+    let checksum = bindings
+        .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            "checksum",
+        ))
+        .unwrap();
+    let module = bindings.seal();
+    let mut echo = Vec::new();
+    let CompiledImplementation::BitArray(implementation) =
+        &BIT_ARRAY_LOOPS.program.compiled.ints[0].implementation
+    else {
+        panic!("checksum fixture must select its generated kernel");
+    };
+    for allowance in [1, 2, 3, 4, 7, 64, 1024] {
+        *BIT_CHECKPOINT_TRACE.lock().unwrap() = BitCheckpointTrace {
+            allowance,
+            ..Default::default()
+        };
+        assert_eq!(
+            module
+                .call(
+                    &checksum,
+                    (BitArrayValue::from_bytes([1, 2, 3, 4].repeat(2)), 0.into()),
+                    &mut echo
+                )
+                .unwrap(),
+            60.into()
+        );
+        let trace = BIT_CHECKPOINT_TRACE.lock().unwrap();
+        // Two Match/region/Jump iterations, then a failed record match,
+        // the empty match, and its return terminator.
+        assert_eq!(trace.steps, 9);
+        for prefix in &trace.prefixes {
+            match prefix.progress {
+                CompiledProgress::Yield(point) => {
+                    let point = implementation.checkpoints[point];
+                    assert_eq!(
+                        (
+                            prefix.ints.len(),
+                            prefix.bools.len(),
+                            prefix.bit_lengths.len()
+                        ),
+                        (point.ints, point.bools, point.bit_arrays)
+                    );
+                }
+                CompiledProgress::Complete(_) => assert_eq!(prefix.ints, [60]),
+                CompiledProgress::Interpreted(_) => panic!("small checksum must stay generated"),
+            }
+        }
+        if allowance == 1 {
+            assert_eq!(trace.prefixes[0].ints, [1, 2, 3, 4, 0]);
+            assert_eq!(trace.prefixes[0].bit_lengths, [32]);
+        }
+    }
+    *BIT_CHECKPOINT_TRACE.lock().unwrap() = BitCheckpointTrace {
+        allowance: 1,
+        ..Default::default()
+    };
+    assert_eq!(
+        module
+            .call(
+                &checksum,
+                (
+                    BitArrayValue::from_bytes([1, 2, 3, 4].repeat(2)),
+                    i64::MAX.into()
+                ),
+                &mut echo
+            )
+            .unwrap(),
+        BigInt::from(i64::MAX) + 60
+    );
+    let trace = BIT_CHECKPOINT_TRACE.lock().unwrap();
+    assert_eq!(trace.steps, 2);
+    let prefix = trace.prefixes.last().unwrap();
+    let CompiledProgress::Interpreted(point) = prefix.progress else {
+        panic!("completed Big output must resume interpreted");
+    };
+    assert_eq!(implementation.checkpoints[point].instruction, 1);
+    assert_eq!(prefix.ints.last(), Some(&(i128::from(i64::MAX) + 30)));
+    assert_eq!(prefix.bit_lengths, [32]);
+    assert!(echo.is_empty());
+}
+
+#[test]
+fn bit_array_artifacts_are_emitted_from_the_current_generator() {
+    let typed = compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("fixtures/prepared/bit_array_loops.gleam"),
+    )
+    .unwrap();
+    let (mut bindings, checksum) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            "checksum",
+        ))
+        .unwrap();
+    let _ = bit_loop_functions!(bindings, checksum);
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/bit_array_loops.rs").trim()
+    );
+
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/bit_array_entry.gleam",
+                include_str!("fixtures/prepared/bit_array_entry.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let prepared = geam_core::PreparedHostedEntry::try_from_module_plan(
+        geam_core::plan_host_program(typed).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        prepared.emit_rust(),
+        include_str!("fixtures/prepared/bit_array_entry.rs").trim()
+    );
+    assert_eq!(BIT_ARRAY_ENTRY.program.compiled.customs.len(), 1);
+    assert!(matches!(
+        BIT_ARRAY_ENTRY.program.compiled.customs[0].implementation,
+        CompiledImplementation::BitArray(_)
+    ));
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn bit_array_loops_restore_prefixes_before_user_constructor_exits() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut entry = BIT_ARRAY_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let mut echo = Vec::new();
+    runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap();
+    assert_eq!(
+        echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        [
+            "src/bit_array_entry.gleam:15\nDone(6)",
+            "src/bit_array_entry.gleam:16\nBad",
+        ]
+    );
+}
+
+#[test]
+fn generated_bit_loops_preserve_interpreted_matches_guards_big_values_and_custom_exits() {
+    let target = BIT_ARRAY_LOOPS.entries.ints[0].function;
+    assert!(
+        BIT_ARRAY_LOOPS
+            .program
+            .compiled
+            .ints
+            .iter()
+            .any(|function| function.function == target
+                && matches!(function.implementation, CompiledImplementation::BitArray(_)))
+    );
+    assert_eq!(BIT_ARRAY_LOOPS.program.compiled.customs.len(), 1);
+    assert!(matches!(
+        BIT_ARRAY_LOOPS.program.compiled.customs[0].implementation,
+        CompiledImplementation::BitArray(_)
+    ));
+    assert_eq!(BIT_ARRAY_LOOPS.program.compiled.ints.len(), 6);
+    assert_eq!(BIT_ARRAY_LOOPS.program.compiled.bools.len(), 1);
+    assert!(matches!(
+        BIT_ARRAY_LOOPS.program.compiled.bools[0].implementation,
+        CompiledImplementation::BitArray(_)
+    ));
+    let mut panic_oracle = None;
+    for prepared in [false, true] {
+        let (module, (checksum, parse, wide, aliases, little, late_failure, paired, toggle)) =
+            if prepared {
+                let mut bindings = BIT_ARRAY_LOOPS.load().unwrap();
+                let checksum = bindings
+                    .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+                        "checksum",
+                    ))
+                    .unwrap();
+                let functions = bit_loop_functions!(bindings, checksum);
+                (bindings.seal(), functions)
+            } else {
+                let typed = compile_typed_module(
+                    "example",
+                    "src/example.gleam",
+                    include_str!("fixtures/prepared/bit_array_loops.gleam"),
+                )
+                .unwrap();
+                let (mut bindings, checksum) = ModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+                        "checksum",
+                    ))
+                    .unwrap();
+                let functions = bit_loop_functions!(bindings, checksum);
+                (bindings.seal(), functions)
+            };
+        let mut echo = Vec::new();
+        for seed in [
+            BigInt::from(0),
+            BigInt::from(i64::MAX),
+            BigInt::from(1) << 100,
+        ] {
+            for records in [0, 1, 17] {
+                assert_eq!(
+                    module
+                        .call(
+                            &checksum,
+                            (
+                                BitArrayValue::from_bytes([1, 2, 3, 4].repeat(records)),
+                                seed.clone()
+                            ),
+                            &mut echo
+                        )
+                        .unwrap(),
+                    &seed + 30 * records
+                );
+            }
+        }
+        for (input, expected) in [
+            (b"".as_slice(), Some(0)),
+            (b"12", Some(12)),
+            (b"12,7,305,4\n", Some(328)),
+            (b",,3", Some(3)),
+            (b"x", None),
+            (b"12,x", None),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &parse,
+                        (
+                            BitArrayValue::from_bytes(input.to_vec()),
+                            0.into(),
+                            0.into()
+                        ),
+                        &mut echo
+                    )
+                    .unwrap(),
+                expected.map(BigInt::from).ok_or(())
+            );
+        }
+        let large = BigInt::from(u64::MAX);
+        let mut bytes = u64::MAX.to_be_bytes().to_vec();
+        bytes.extend_from_slice(&7_u64.to_be_bytes());
+        assert_eq!(
+            module
+                .call(
+                    &wide,
+                    (BitArrayValue::from_bytes(bytes), 1.into()),
+                    &mut echo
+                )
+                .unwrap(),
+            &large + 8
+        );
+        for (suffix, expected) in [
+            (vec![255], large.clone()),
+            (vec![254], (-1).into()),
+            (vec![], (-1).into()),
+            (vec![255, 1], (-1).into()),
+        ] {
+            let mut bytes = u64::MAX.to_be_bytes().to_vec();
+            bytes.extend(suffix);
+            assert_eq!(
+                module
+                    .call(
+                        &late_failure,
+                        (BitArrayValue::from_bytes(bytes),),
+                        &mut echo
+                    )
+                    .unwrap(),
+                expected
+            );
+        }
+        for (bytes, length, expected) in [
+            (vec![0b0000_0010, 0b0000_1000], 14, 3),
+            (vec![], 0, 0),
+            (vec![0xff], 8, -1),
+        ] {
+            let left = BitArrayValue::try_from_parts(bytes, length).unwrap();
+            let right = left.clone();
+            assert_eq!(
+                module
+                    .call(&paired, (left, right, 0.into()), &mut echo)
+                    .unwrap(),
+                BigInt::from(if expected < 0 { expected } else { expected * 2 })
+            );
+        }
+        for (bytes, expected) in [
+            (vec![1, 2, 3, 1, 2, 4], 9),
+            (vec![], 0),
+            (vec![1, 2], -1),
+            (vec![1, 2, 3, 0], -1),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &aliases,
+                        (BitArrayValue::from_bytes(bytes), 0.into()),
+                        &mut echo
+                    )
+                    .unwrap(),
+                expected.into()
+            );
+        }
+        assert_eq!(
+            module
+                .call(
+                    &little,
+                    (
+                        BitArrayValue::try_from_parts(vec![0xfe, 0x80], 9).unwrap(),
+                        0.into()
+                    ),
+                    &mut echo
+                )
+                .unwrap(),
+            (-2).into()
+        );
+        for (bytes, flag, expected) in [
+            (vec![], true, true),
+            (vec![1], true, false),
+            (vec![1, 1], true, true),
+            (vec![1, 0], true, false),
+        ] {
+            assert_eq!(
+                module
+                    .call(&toggle, (BitArrayValue::from_bytes(bytes), flag), &mut echo)
+                    .unwrap(),
+                expected
+            );
+        }
+        let failure = format!(
+            "{:?}",
+            module
+                .call(
+                    &checksum,
+                    (BitArrayValue::from_bytes(vec![1]), 0.into()),
+                    &mut echo
+                )
+                .unwrap_err()
+        );
+        assert!(failure.contains("incomplete record"));
+        if let Some(oracle) = &panic_oracle {
+            assert_eq!(&failure, oracle);
+        } else {
+            panic_oracle = Some(failure);
+        }
+        assert!(echo.is_empty());
+    }
+}
+
 macro_rules! numeric_functions {
     ($bindings:ident, $arithmetic:expr) => {
         (
@@ -590,6 +1089,105 @@ macro_rules! numeric_functions {
                 .unwrap(),
         )
     };
+}
+
+#[test]
+fn numeric_switch_resumes_after_its_prefix_and_preserves_every_selected_arm() {
+    use data::compiled::numeric::NumericValues;
+
+    let source = include_str!("fixtures/prepared/numeric_switch.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/numeric_switch.rs").trim()
+    );
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, direct_choose) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    let direct = bindings.seal();
+    let mut bindings = NUMERIC_SWITCH.load().unwrap();
+    let compiled_choose = bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("choose"))
+        .unwrap();
+    let compiled = bindings.seal();
+    let big: BigInt = BigInt::from(1) << 100;
+    for (input, expected) in [
+        ((-1).into(), 1.into()),
+        (0.into(), 3.into()),
+        (3.into(), 7.into()),
+        (i64::MAX.into(), BigInt::from(i64::MAX) + 4),
+        (big.clone(), big + 4),
+    ] {
+        assert_eq!(
+            direct
+                .call(&direct_choose, (input.clone(),), &mut Vec::new())
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            compiled
+                .call(&compiled_choose, (input,), &mut Vec::new())
+                .unwrap(),
+            expected
+        );
+    }
+
+    assert_eq!(NUMERIC_SWITCH.program.compiled.ints.len(), 1);
+    let kernels = NUMERIC_SWITCH
+        .program
+        .compiled
+        .ints
+        .iter()
+        .filter_map(|target| match &target.implementation {
+            CompiledImplementation::Numeric(kernel) => Some(kernel),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(kernels.len(), 1);
+    let kernel = kernels[0];
+    for (input, selected, target, result, exit) in
+        [(-1, 0, 2, 1, 0), (0, 1, 4, 3, 1), (3, 4, 6, 7, 2)]
+    {
+        let mut values = NumericValues {
+            ints: vec![input],
+            bools: vec![],
+        };
+        let mut budget = 1;
+        assert_eq!(
+            (kernel.run)(0, &mut values, &mut budget),
+            CompiledProgress::Yield(1)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [input, selected]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(1, &mut values, &mut budget),
+            CompiledProgress::Yield(target)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(target, &mut values, &mut budget),
+            CompiledProgress::Yield(target + 1)
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected, result]);
+        budget = 1;
+        assert_eq!(
+            (kernel.run)(target + 1, &mut values, &mut budget),
+            CompiledProgress::Complete(data::graph::BlockGraphExitId(exit))
+        );
+        assert_eq!(budget, 0);
+        assert_eq!(values.ints, [selected, result]);
+        assert!(values.bools.is_empty());
+    }
 }
 
 #[test]
@@ -880,6 +1478,7 @@ fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
             instruction: 1,
             ints: 4,
             bools: 0,
+            bit_arrays: 0,
             int_lists: 0,
         }
     );
@@ -1718,7 +2317,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 13; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 14; regenerate the prepared program"
     );
 }
 

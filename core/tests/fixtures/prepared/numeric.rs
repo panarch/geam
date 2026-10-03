@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 13,
+    format: 14,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -4859,6 +4859,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4866,6 +4867,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4873,6 +4875,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4880,6 +4883,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4887,6 +4891,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4894,6 +4899,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4901,6 +4907,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4908,6 +4915,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -4924,6 +4932,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4931,6 +4940,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4938,6 +4948,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4945,6 +4956,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4952,6 +4964,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4959,6 +4972,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4966,6 +4980,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4973,6 +4988,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4980,6 +4996,7 @@ data::ModuleArtifact {
                                     instruction: 2,
                                     ints: 4,
                                     bools: 2,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -4996,6 +5013,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5003,6 +5021,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5010,6 +5029,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5017,6 +5037,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5024,6 +5045,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5031,6 +5053,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5038,6 +5061,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5045,6 +5069,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5052,6 +5077,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5059,6 +5085,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5066,6 +5093,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5082,6 +5110,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5089,6 +5118,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5096,6 +5126,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5103,6 +5134,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5110,6 +5142,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5126,6 +5159,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5133,6 +5167,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5140,6 +5175,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5147,6 +5183,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5154,6 +5191,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5161,6 +5199,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5177,6 +5216,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5184,6 +5224,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5191,6 +5232,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5198,6 +5240,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5205,6 +5248,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5221,6 +5265,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5228,6 +5273,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5235,6 +5281,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5242,6 +5289,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5258,6 +5306,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5265,6 +5314,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5272,6 +5322,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5279,6 +5330,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5286,6 +5338,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5302,6 +5355,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5309,6 +5363,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5316,6 +5371,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5323,6 +5379,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5330,6 +5387,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5348,6 +5406,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5355,6 +5414,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5362,6 +5422,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 0,
                                     bools: 2,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5369,6 +5430,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5376,6 +5438,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5383,6 +5446,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5390,12 +5454,15 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
                             run: numeric_bool_0,
                         }),
                     },
+                ]),
+                customs: data::Storage::Static(&[
                 ]),
             }
         },

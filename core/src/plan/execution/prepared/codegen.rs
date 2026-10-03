@@ -1,3 +1,4 @@
+mod bit_array;
 mod int_list;
 pub(super) mod shape;
 
@@ -8,7 +9,7 @@ use self::shape::{
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile, ExecutionProfile,
-    FunctionTables,
+    FunctionBodyOwner, FunctionTables,
 };
 use crate::plan::execution::graph::{
     ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, IntegerOperand, ListLocal,
@@ -64,7 +65,8 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
-                let shape = CompiledShape::inspect(function.body())?;
+                let shape = CompiledShape::inspect(function.body())
+                    .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
                     index,
                     name: format!("{}_int_{index}", shape.kind.name()),
@@ -82,7 +84,8 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
-                let shape = CompiledShape::inspect(function.body())?;
+                let shape = CompiledShape::inspect(function.body())
+                    .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
                     index,
                     name: format!("{}_bool_{index}", shape.kind.name()),
@@ -90,7 +93,26 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 })
             })
             .collect::<Vec<_>>();
-        if ints.is_empty() && bools.is_empty() {
+        let customs = self
+            .functions
+            .value_returns
+            .custom_functions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, function)| {
+                let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
+                    return None;
+                };
+                let shape =
+                    CompiledShape::inspect_bits(FunctionBodyOwner::function_body(function.body()))?;
+                Some(FunctionCodegen {
+                    index,
+                    name: format!("{}_custom_{index}", shape.kind.name()),
+                    shape,
+                })
+            })
+            .collect::<Vec<_>>();
+        if ints.is_empty() && bools.is_empty() && customs.is_empty() {
             output.call("compiled::CompiledFunctions::interpreted", &[]);
             return;
         }
@@ -104,7 +126,7 @@ enum CompiledResume {
 }
 "#,
         );
-        for function in ints.iter().chain(&bools) {
+        for function in ints.iter().chain(&bools).chain(&customs) {
             function.write_code(&mut source);
         }
         source.open("data::compiled::CompiledFunctions {\n");
@@ -116,6 +138,11 @@ enum CompiledResume {
         source.open("bools: data::Storage::Static(&[\n");
         for function in &bools {
             function.write_target(&mut source, "Bool");
+        }
+        source.close("]),\n");
+        source.open("customs: data::Storage::Static(&[\n");
+        for function in &customs {
+            function.write_target(&mut source, "Custom");
         }
         source.close("]),\n");
         source.close("}\n");
@@ -151,7 +178,7 @@ const RESUME: [
         ));
         for (index, point) in self.shape.checkpoints.iter().enumerate() {
             if index == self.entry() {
-                if self.shape.kind == KernelKind::Numeric {
+                if self.shape.kind != KernelKind::IntList {
                     let inputs = checkpoint_inputs(*point);
                     source.push_str(&format!(
                         "|values, budget| CompiledResume::Exit({}_entry({inputs}, values, budget)),\n",
@@ -190,7 +217,11 @@ loop {{
         if self.shape.repeats {
             source.open("'repeat: loop {\n");
         }
-        self.path(source, entry.block, None);
+        if self.shape.kind == KernelKind::BitArray {
+            self.bit_loop(source);
+        } else {
+            self.path(source, entry.block, None);
+        }
         if self.shape.repeats {
             source.close("}\n");
         }
@@ -216,8 +247,17 @@ fn {name}(
                 self.locals(*point, false),
                 inputs
             ));
+            let block = self.shape.block(point.block);
+            if self.shape.kind == KernelKind::BitArray
+                && point.instruction == block.instructions.len()
+                && matches!(block.terminator, CompiledTerminator::Interpreted)
+            {
+                source.push_str("let _ = budget;\n");
+                self.resume_terminator(source, *point, &block.terminator);
+                source.close("}\n");
+                continue;
+            }
             self.ready(source, index, ProgressOutput::Resume);
-            let block = &self.shape.blocks[point.block.index()];
             if let Some(instruction) = block.instructions.get(point.instruction) {
                 self.preflight(source, index, instruction, ProgressOutput::Resume);
                 source.push_str("*budget -= 1;\n");
@@ -248,15 +288,20 @@ fn {name}(
 
     fn write_target(&self, source: &mut Code, family: &str) {
         source.open("data::compiled::CompiledFunction {\n");
-        source.push_str(&format!(
-            "function: data::function::{family}FunctionId({}),\n",
-            self.index
-        ));
-        let variant = match self.shape.kind {
+        let function = if family == "Custom" {
+            self.index.to_string()
+        } else {
+            format!("data::function::{family}FunctionId({})", self.index)
+        };
+        source.push_str(&format!("function: {function},\n"));
+        let implementation = match self.shape.kind {
             KernelKind::Numeric => "Numeric",
+            KernelKind::BitArray => "BitArray",
             KernelKind::IntList => "IntList",
         };
-        source.open(&format!("implementation: data::compiled::CompiledImplementation::{variant}(data::compiled::{variant}Implementation {{\n"));
+        source.open(&format!(
+            "implementation: data::compiled::CompiledImplementation::{implementation}(data::compiled::{implementation}Implementation {{\n"
+        ));
         source.push_str(&format!("entry: {},\n", self.entry()));
         source.open("checkpoints: data::Storage::Static(&[\n");
         for point in &self.shape.checkpoints {
@@ -269,13 +314,17 @@ fn {name}(
     }
 
     fn entry(&self) -> usize {
-        self.shape.starts[self.shape.graph.entry().index()]
+        self.shape.start(self.shape.graph.entry())
     }
 
     fn signature(&self, source: &mut Code, name: &str, point: CompiledCheckpoint) {
         let types = tuple(
             std::iter::repeat_n("i128".to_owned(), point.ints)
                 .chain(std::iter::repeat_n("bool".to_owned(), point.bools))
+                .chain(std::iter::repeat_n(
+                    "data::compiled::bit_array::BitArrayRange".to_owned(),
+                    point.bit_arrays,
+                ))
                 .chain(std::iter::repeat_n(
                     "data::compiled::int_list::IntList".to_owned(),
                     point.int_lists,
@@ -301,6 +350,10 @@ fn {name}(
                 .map(|index| format!("{prefix}b{}_i{index}", point.block.0))
                 .chain((0..point.bools).map(|index| format!("{prefix}b{}_v{index}", point.block.0)))
                 .chain(
+                    (0..point.bit_arrays)
+                        .map(|index| format!("{prefix}b{}_b{index}", point.block.0)),
+                )
+                .chain(
                     (0..point.int_lists)
                         .map(|index| format!("{prefix}b{}_l{index}", point.block.0)),
                 ),
@@ -309,6 +362,11 @@ fn {name}(
 
     fn resume_name(&self, point: usize) -> String {
         format!("{}_resume_{point}", self.name)
+    }
+
+    fn tick(&self, source: &mut Code, index: usize, output: ProgressOutput) {
+        self.ready(source, index, output);
+        source.push_str("*budget -= 1;\n");
     }
 
     fn take_inputs(&self, source: &mut Code, point: CompiledCheckpoint) -> String {
@@ -323,6 +381,7 @@ fn {name}(
             (0..point.ints)
                 .map(|index| format!("values.ints[{index}]"))
                 .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
+                .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]")))
                 .chain((0..point.int_lists).map(|index| format!("_list{index}"))),
         )
     }
@@ -342,8 +401,7 @@ fn {name}(
                 .filter_map(|(argument, parameter)| match argument {
                     MatchEdgeArgument::Value(local) => local_expression(from, local),
                     MatchEdgeArgument::Binding(index) => {
-                        if let CompiledTerminator::Match(view) =
-                            &self.shape.blocks[from.0].terminator
+                        if let CompiledTerminator::Match(view) = &self.shape.block(from).terminator
                             && view
                                 .lists
                                 .iter()
@@ -372,8 +430,12 @@ fn {name}(
             .filter(|(family, _)| *family == StorageFamily::IntList)
             .map(|(_, expression)| expression.clone())
             .collect::<Vec<_>>();
-        if self.shape.kind == KernelKind::Numeric {
-            return tuple(ints.chain(bools));
+        if self.shape.kind != KernelKind::IntList {
+            let bits = inputs
+                .iter()
+                .filter(|(family, _)| *family == StorageFamily::BitArray)
+                .map(|(_, expression)| expression.clone());
+            return tuple(ints.chain(bools).chain(bits));
         }
         let mut uses = BTreeSet::new();
         // The last edge use moves the handle; preceding uses retain it.
@@ -384,7 +446,7 @@ fn {name}(
         }
         let inputs = tuple(ints.chain(bools).chain(lists));
         let point = self.shape.checkpoints
-            [self.shape.starts[from.0] + self.shape.blocks[from.0].instructions.len()];
+            [self.shape.start(from) + self.shape.block(from).instructions.len()];
         let omits_list =
             (0..point.int_lists).any(|index| !uses.contains(&format!("b{}_l{index}", from.0)));
         if !omits_list {
@@ -445,6 +507,15 @@ values.bools.clear();
 values.bools.extend_from_slice(&[{bools}]);
 "#
         ));
+        if self.shape.kind == KernelKind::BitArray {
+            let ranges = (0..point.bit_arrays)
+                .map(|index| format!("b{}_b{index}", point.block.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            source.push_str(&format!(
+                "values.bit_arrays.clear();\nvalues.bit_arrays.extend_from_slice(&[{ranges}]);\n"
+            ));
+        }
         if self.shape.kind == KernelKind::IntList {
             let lists = (0..point.int_lists)
                 .map(|index| format!("b{}_l{index}", point.block.0))
@@ -457,9 +528,9 @@ values.bools.extend_from_slice(&[{bools}]);
     }
 
     fn path(&self, source: &mut Code, block: BlockId, stop: Option<BlockId>) {
-        let body = &self.shape.blocks[block.index()];
+        let body = self.shape.block(block);
         for (instruction_index, instruction) in body.instructions.iter().enumerate() {
-            let index = self.shape.starts[block.0] + instruction_index;
+            let index = self.shape.start(block) + instruction_index;
             self.ready(source, index, ProgressOutput::Direct);
             self.preflight(source, index, instruction, ProgressOutput::Direct);
             source.push_str("*budget -= 1;\n");
@@ -472,7 +543,7 @@ values.bools.extend_from_slice(&[{bools}]);
                 ProgressOutput::Direct,
             );
         }
-        let index = self.shape.starts[block.0] + body.instructions.len();
+        let index = self.shape.start(block) + body.instructions.len();
         let point = self.shape.checkpoints[index];
         self.ready(source, index, ProgressOutput::Direct);
         self.preflight_terminator(source, index, &body.terminator);
@@ -484,7 +555,7 @@ values.bools.extend_from_slice(&[{bools}]);
         }
         let join = self.shape.joins[block.0];
         if let Some(join) = join {
-            let join_point = self.shape.checkpoints[self.shape.starts[join.0]];
+            let join_point = self.shape.checkpoints[self.shape.start(join)];
             source.push_str(&format!("let {} = ", self.locals(join_point, false)));
         }
         self.branch(
@@ -493,14 +564,13 @@ values.bools.extend_from_slice(&[{bools}]);
             &body.terminator,
             self.shape.repeats || join.is_some() || stop.is_some(),
             ProgressOutput::Direct,
-            |source, edge| self.edge(source, block, edge, join.or(stop)),
+            |source, target, inputs| self.edge(source, target, inputs, join.or(stop)),
         );
         if let Some(join) = join {
             source.finish_statement();
             if Some(join) == stop {
-                source.push_str(
-                    &self.locals(self.shape.checkpoints[self.shape.starts[join.0]], false),
-                );
+                source
+                    .push_str(&self.locals(self.shape.checkpoints[self.shape.start(join)], false));
                 source.push_str("\n");
             } else {
                 self.path(source, join, stop);
@@ -508,15 +578,7 @@ values.bools.extend_from_slice(&[{bools}]);
         }
     }
 
-    fn edge(
-        &self,
-        source: &mut Code,
-        from: BlockId,
-        edge: CompiledEdge<'_>,
-        stop: Option<BlockId>,
-    ) {
-        let inputs = self.edge_inputs(source, from, edge);
-        let target = edge.target();
+    fn edge(&self, source: &mut Code, target: BlockId, inputs: String, stop: Option<BlockId>) {
         if target == self.shape.graph.entry() {
             source.push_str(&format!(
                 "{} = {inputs};\ncontinue 'repeat;\n",
@@ -526,7 +588,7 @@ values.bools.extend_from_slice(&[{bools}]);
             source.push_str(&inputs);
             source.push_str("\n");
         } else {
-            let point = self.shape.checkpoints[self.shape.starts[target.0]];
+            let point = self.shape.checkpoints[self.shape.start(target)];
             source.push_str(&format!("let {} = {inputs};\n", self.locals(point, false)));
             self.path(source, target, stop);
         }
@@ -539,12 +601,13 @@ values.bools.extend_from_slice(&[{bools}]);
         terminator: &CompiledTerminator<'_>,
         returning: bool,
         output: ProgressOutput,
-        emit_edge: impl Fn(&mut Code, CompiledEdge<'_>),
+        mut emit_edge: impl FnMut(&mut Code, BlockId, String),
     ) {
         match terminator {
             CompiledTerminator::Jump(edge) => {
                 source.open("{\n");
-                emit_edge(source, CompiledEdge::Ordinary(edge));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                emit_edge(source, edge.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Boolean {
@@ -553,9 +616,11 @@ values.bools.extend_from_slice(&[{bools}]);
                 false_,
             } => {
                 source.open(&format!("if b{}_v{} {{\n", point.block.0, subject.0));
-                emit_edge(source, CompiledEdge::Ordinary(true_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(true_));
+                emit_edge(source, true_.target(), inputs);
                 source.alternative("} else {\n");
-                emit_edge(source, CompiledEdge::Ordinary(false_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(false_));
+                emit_edge(source, false_.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Test {
@@ -564,9 +629,11 @@ values.bools.extend_from_slice(&[{bools}]);
                 false_,
             } => {
                 source.open(&format!("if {} {{\n", test_expression(point.block, test)));
-                emit_edge(source, CompiledEdge::Ordinary(true_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(true_));
+                emit_edge(source, true_.target(), inputs);
                 source.alternative("} else {\n");
-                emit_edge(source, CompiledEdge::Ordinary(false_));
+                let inputs = self.edge_inputs(source, point.block, CompiledEdge::Ordinary(false_));
+                emit_edge(source, false_.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Switch {
@@ -574,33 +641,44 @@ values.bools.extend_from_slice(&[{bools}]);
                 clauses,
                 fallback,
             } => {
-                for (index, (literal, edge)) in clauses.iter().enumerate() {
-                    if index > 0 {
-                        source.push_str("else ");
-                    }
+                for (literal, edge) in clauses.iter() {
                     source.open(&format!(
                         "if b{}_i{} == {}_i128 {{\n",
                         point.block.0, subject.0, literal
                     ));
-                    emit_edge(source, CompiledEdge::Ordinary(edge));
-                    source.close("} ");
-                }
-                if !clauses.is_empty() {
-                    source.push_str("else ");
+                    let inputs =
+                        self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                    emit_edge(source, edge.target(), inputs);
+                    source.close("} else ");
                 }
                 source.open("{\n");
-                emit_edge(source, CompiledEdge::Ordinary(fallback));
+                let inputs =
+                    self.edge_inputs(source, point.block, CompiledEdge::Ordinary(fallback));
+                emit_edge(source, fallback.target(), inputs);
                 source.close("}\n");
             }
             CompiledTerminator::Exit(exit) => {
                 self.complete(source, point, *exit, returning, output)
             }
             CompiledTerminator::Match(view) => {
-                self.match_branch(source, point, view, returning, output, &emit_edge)
+                self.match_branch(
+                    source,
+                    point,
+                    view,
+                    returning,
+                    output,
+                    &mut |source, edge| {
+                        let inputs = self.edge_inputs(source, point.block, edge);
+                        emit_edge(source, edge.target(), inputs);
+                    },
+                );
+            }
+            CompiledTerminator::BitArray(matcher) => {
+                self.bit_match(source, point, matcher, output, &mut emit_edge)
             }
             CompiledTerminator::Interpreted => self.interpreted(
                 source,
-                self.shape.starts[point.block.0] + point.instruction,
+                self.shape.start(point.block) + point.instruction,
                 returning,
                 output,
             ),
@@ -619,10 +697,9 @@ values.bools.extend_from_slice(&[{bools}]);
             terminator,
             false,
             ProgressOutput::Resume,
-            |source, edge| {
-                let next = self.shape.starts[edge.target().0];
+            |source, target, inputs| {
+                let next = self.shape.start(target);
                 let target = self.shape.checkpoints[next];
-                let inputs = self.edge_inputs(source, point.block, edge);
                 source.push_str(&format!("let {} = {inputs};\n", self.locals(target, false)));
                 self.save(source, target);
                 source.push_str(&format!("CompiledResume::Next({next})\n"));
@@ -816,7 +893,8 @@ fn checkpoint_inputs(point: CompiledCheckpoint) -> String {
     tuple(
         (0..point.ints)
             .map(|index| format!("values.ints[{index}]"))
-            .chain((0..point.bools).map(|index| format!("values.bools[{index}]"))),
+            .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
+            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]"))),
     )
 }
 
@@ -833,6 +911,10 @@ fn local_expression(block: BlockId, local: &ParamLocal) -> Option<(StorageFamily
     Some(match local {
         ParamLocal::Int(local) => (StorageFamily::Int, format!("b{}_i{}", block.0, local.0)),
         ParamLocal::Bool(local) => (StorageFamily::Bool, format!("b{}_v{}", block.0, local.0)),
+        ParamLocal::BitArray(local) => (
+            StorageFamily::BitArray,
+            format!("b{}_b{}", block.0, local.0),
+        ),
         ParamLocal::List(ListLocal::Int { local, .. }) => {
             (StorageFamily::IntList, format!("b{}_l{}", block.0, local.0))
         }
@@ -845,29 +927,31 @@ impl KernelKind {
         match self {
             Self::Numeric => "numeric",
             Self::IntList => "int_list",
+            Self::BitArray => "bit_array",
         }
     }
     fn values(self) -> &'static str {
         match self {
             Self::Numeric => "data::compiled::numeric::NumericValues",
             Self::IntList => "data::compiled::int_list::IntListValues",
+            Self::BitArray => "data::compiled::bit_array::BitArrayValues",
         }
     }
     fn operations_parameter(self) -> &'static str {
         match self {
-            Self::Numeric => "",
+            Self::Numeric | Self::BitArray => "",
             Self::IntList => "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
         }
     }
     fn operations_argument(self) -> &'static str {
         match self {
-            Self::Numeric => "",
+            Self::Numeric | Self::BitArray => "",
             Self::IntList => ", _lists",
         }
     }
     fn operations_type(self) -> &'static str {
         match self {
-            Self::Numeric => "",
+            Self::Numeric | Self::BitArray => "",
             Self::IntList => "&data::compiled::int_list::IntListOps<'_>, ",
         }
     }
@@ -930,13 +1014,24 @@ fn test_expression(block: BlockId, test: &CompiledTest) -> String {
 
 #[cfg(test)]
 mod tests {
+    pub(super) fn emit_edge_expression(
+        source: &mut super::Code,
+        _: super::BlockId,
+        inputs: String,
+    ) {
+        source.push_str(&inputs);
+        source.push_str("\n");
+    }
+
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
         NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
         local_expression, test_expression,
     };
     use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
-    use crate::plan::execution::function::{ExecutionIntFunctionBody, FunctionExit, IntFunctionId};
+    use crate::plan::execution::function::{
+        BoolFunctionId, ExecutionIntFunctionBody, FunctionExit, IntFunctionId,
+    };
     use crate::plan::execution::graph::{
         ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BlockGraphExitId,
         BlockId, BoolBranch, BoolLocalId, BoolTest, Edge, FamilyTransfer, FloatLocalId,
@@ -991,7 +1086,7 @@ pub fn main() { choose([7], [2], True, 3) }
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
-        let point = shape.checkpoints[shape.starts[shape.graph.entry().0]];
+        let point = shape.checkpoints[shape.start(shape.graph.entry())];
         assert_eq!(point.block, BlockId(0));
         assert_eq!((point.ints, point.bools, point.int_lists), (1, 1, 2));
         let function = FunctionCodegen {
@@ -1049,7 +1144,7 @@ pub fn main() { walk([7], [2], 1) }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let entry = shape.graph.entry();
         assert_eq!(entry, BlockId(0));
-        let prefix = shape.checkpoints[shape.starts[0]];
+        let prefix = shape.checkpoints[shape.start(BlockId(0))];
         assert_eq!((prefix.ints, prefix.bools, prefix.int_lists), (1, 0, 2));
         let function = FunctionCodegen {
             index: 1,
@@ -1110,6 +1205,50 @@ pub fn main() { walk([7], [2], 1) }
             );
             assert_eq!(source.as_str(), expected_code);
         }
+    }
+
+    #[test]
+    fn whole_list_alias_edges_move_the_subject_beside_the_selected_tail() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn same(values: List(Int)) {
+  let assert [_, ..tail] as original = values
+  tail == original
+}
+pub fn main() { same([7]) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let function = FunctionCodegen {
+            index: 1,
+            name: "same".into(),
+            shape: CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap(),
+        };
+        let matches = function
+            .shape
+            .blocks
+            .iter()
+            .filter_map(|(block, view)| match &view.terminator {
+                CompiledTerminator::Match(view) => Some((BlockId(*block), view)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(matches.len(), 1);
+        let (block, view) = matches[0];
+        assert_eq!(block, BlockId(0));
+        let mut source = Code::default();
+        assert_eq!(
+            function.edge_inputs(
+                &mut source,
+                block,
+                super::CompiledEdge::Match(&view.matcher.success),
+            ),
+            "(m0, b0_l0,)"
+        );
+        assert_eq!(source.as_str(), "");
     }
 
     #[test]
@@ -1309,6 +1448,66 @@ match _matched {
     }
 
     #[test]
+    fn resumed_integer_switch_saves_each_selected_branch_before_dispatch() {
+        let source = r#"
+fn choose(value: Int) {
+  case value {
+    0 -> value + 1
+    1 -> value + 2
+    _ -> value + 3
+  }
+}
+
+pub fn main() { choose(0) }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let function = FunctionCodegen {
+            index: 1,
+            name: "choose".into(),
+            shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
+        };
+        let point = function.shape.checkpoints[function.entry()];
+        let mut output = Code::default();
+        function.resume_terminator(
+            &mut output,
+            point,
+            &function.shape.block(point.block).terminator,
+        );
+        assert_eq!(
+            output.as_str(),
+            r#"
+if b0_i0 == 0_i128 {
+    let (b1_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b1_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(1)
+} else if b0_i0 == 1_i128 {
+    let (b2_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b2_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(3)
+} else {
+    let (b3_i0,) = (b0_i0,);
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[b3_i0]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    CompiledResume::Next(5)
+}
+"#
+            .trim_start_matches('\n')
+        );
+    }
+
+    #[test]
     fn empty_switch_arms_and_unretained_region_outputs_emit_only_their_actual_work() {
         let source = r#"
 fn choose(value: Int) {
@@ -1323,7 +1522,7 @@ pub fn main() { choose(7) }
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
-        let point = shape.checkpoints[shape.starts[shape.graph.entry().index()]];
+        let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let mut function = FunctionCodegen {
             index: 1,
             name: "selected".into(),
@@ -1353,7 +1552,7 @@ pub fn main() { choose(7) }
             &terminator,
             false,
             ProgressOutput::Direct,
-            |source, _| source.push_str("fallback\n"),
+            |source, _, _| source.push_str("fallback\n"),
         );
         assert_eq!(
             output.as_str(),
@@ -1385,7 +1584,7 @@ pub fn main() { choose(7) }
 
         // Drive the same structured-path edge callback as normal emission;
         // a direct formatter closure is a different generic instantiation.
-        function.shape.blocks[0].terminator = CompiledTerminator::Switch {
+        function.shape.blocks.get_mut(&0).unwrap().terminator = CompiledTerminator::Switch {
             subject: IntLocalId(0),
             clauses: &[],
             fallback: &edge,
@@ -1443,8 +1642,8 @@ let _r0_n1 = -_r0_n0;
 
         // Scalar and retained region outputs share the exact next checkpoint.
         // A Small remainder cannot promote; an Add or a retained region can.
-        let next = function.shape.starts[1] + 1;
-        let point = function.shape.checkpoints[function.shape.starts[1]];
+        let next = function.shape.start(BlockId(1)) + 1;
+        let point = function.shape.checkpoints[function.shape.start(BlockId(1))];
         let expected = r#"
 if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
 
@@ -1460,7 +1659,7 @@ if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
         function.big_exit(
             &mut output,
             point,
-            &function.shape.blocks[1].instructions[0],
+            &function.shape.block(BlockId(1)).instructions[0],
             next,
             ProgressOutput::Direct,
         );
@@ -1649,6 +1848,17 @@ if b0_i0 == 0_i128 {
                 name: "selected".into(),
                 shape: CompiledShape::inspect(&body).unwrap(),
             };
+            let point = function.shape.checkpoints[function.entry()];
+            let mut branch_output = Code::default();
+            function.branch(
+                &mut branch_output,
+                point,
+                &function.shape.block(BlockId(0)).terminator,
+                false,
+                ProgressOutput::Direct,
+                emit_edge_expression,
+            );
+            assert_eq!(branch_output.as_str(), expected.trim_start_matches('\n'));
             let mut output = Code::default();
             function.path(&mut output, BlockId(0), Some(BlockId(1)));
             let branch = expected.trim_matches('\n');
@@ -1881,6 +2091,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -1888,6 +2099,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -1895,6 +2107,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 1,
                             ints: 1,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -1902,6 +2115,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -1909,6 +2123,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 1,
                             ints: 1,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                     ]),
@@ -1917,6 +2132,8 @@ let (b1_i0, b1_v0,) = {branch};
             },
         ]),
         bools: data::Storage::Static(&[
+        ]),
+        customs: data::Storage::Static(&[
         ]),
     }
 }
@@ -2130,6 +2347,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -2137,6 +2355,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -2144,6 +2363,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 1,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -2151,6 +2371,7 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                         data::compiled::CompiledCheckpoint {
@@ -2158,12 +2379,15 @@ let (b1_i0, b1_v0,) = {branch};
                             instruction: 1,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                             int_lists: 0,
                         },
                     ]),
                     run: numeric_bool_0,
                 }),
             },
+        ]),
+        customs: data::Storage::Static(&[
         ]),
     }
 }

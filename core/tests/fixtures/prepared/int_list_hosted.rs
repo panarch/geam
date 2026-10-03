@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 13,
+        format: 14,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2607,6 +2607,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2614,6 +2615,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2621,6 +2623,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2628,6 +2631,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2635,6 +2639,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2642,6 +2647,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2649,6 +2655,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 2,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2656,6 +2663,7 @@ pub fn main() -> Int {
                                         instruction: 2,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 2,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2663,6 +2671,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2670,6 +2679,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2677,6 +2687,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 2,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2684,6 +2695,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                 ]),
@@ -2700,6 +2712,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2707,6 +2720,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2714,6 +2728,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2721,6 +2736,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                 ]),
@@ -2737,6 +2753,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2744,6 +2761,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2751,6 +2769,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2758,6 +2777,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2765,6 +2785,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2772,6 +2793,7 @@ pub fn main() -> Int {
                                         instruction: 1,
                                         ints: 4,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -2779,6 +2801,7 @@ pub fn main() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 1,
                                     },
                                 ]),
@@ -2787,6 +2810,8 @@ pub fn main() -> Int {
                         },
                     ]),
                     bools: data::Storage::Static(&[
+                    ]),
+                    customs: data::Storage::Static(&[
                     ]),
                 }
             },

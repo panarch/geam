@@ -153,7 +153,8 @@ entry_target!(
     ExecutionCustomFunctionBody,
     custom_function,
     |id| *id,
-    |id, target| id.with_index(*target.function())
+    |id, target| id.with_index(*target.function()),
+    compiled_custom_function
 );
 entry_target!(
     function::ExternalFunctionId,
