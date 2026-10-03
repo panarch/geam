@@ -1,4 +1,4 @@
-use super::compiled_numeric::NumericImplementation;
+use super::compiled::CompiledImplementation;
 use super::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use super::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -52,12 +52,12 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
-    fn compiled_numeric_int_function(&self, id: IntFunctionId) -> Option<&NumericImplementation> {
-        self.program().compiled_numeric.int(id)
+    fn compiled_int_function(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled.int(id)
     }
 
-    fn compiled_numeric_bool_function(&self, id: BoolFunctionId) -> Option<&NumericImplementation> {
-        self.program().compiled_numeric.bool(id)
+    fn compiled_bool_function(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled.bool(id)
     }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {

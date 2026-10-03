@@ -2502,6 +2502,34 @@ pub fn main() { done(10000, []) == [1] }
     }
 
     #[test]
+    fn compiled_list_handles_release_roots_and_scratch_through_existing_leases() {
+        use crate::runtime::compiled::int_list::{IntList, IntListOps, IntListValues};
+        let plan = plan_src("pub fn main() { [1, 2, 3] }");
+        let type_id = plan.int_list_function_id(0).type_id();
+        let storage = RuntimeListStorage::default();
+        let root = storage.int(type_id, vec![1_i64.into(), 2_i64.into(), 3_i64.into()]);
+        let root_owner = Arc::downgrade(&root.lease);
+        let mut values = IntListValues {
+            int_lists: vec![IntList(root)],
+            ..IntListValues::default()
+        };
+        let active = values.int_lists.pop().unwrap();
+        assert_eq!(root_owner.strong_count(), 1);
+        let tail = IntListOps::new(&storage).tail(&active, type_id, 1);
+        let tail_owner = Arc::downgrade(&tail.0.lease);
+        drop(active);
+        assert_eq!(root_owner.strong_count(), 0);
+        values.int_lists = vec![tail.clone(), tail];
+        assert_eq!(tail_owner.strong_count(), 2);
+        values.int_lists.pop();
+        assert_eq!(tail_owner.strong_count(), 1);
+        drop(storage);
+        assert_eq!(values.int_lists[0].len(), 2);
+        drop(values);
+        assert_eq!(tail_owner.strong_count(), 0);
+    }
+
+    #[test]
     fn list_value_facade_reconstructs_every_exact_storage_family() {
         let plan = plan_src(EVERY_LIST_FAMILY_SOURCE);
         let mut echo = Vec::new();

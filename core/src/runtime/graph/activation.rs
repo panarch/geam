@@ -2,14 +2,16 @@ use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
-use crate::plan::execution::compiled_numeric::NumericImplementation;
+use crate::plan::execution::compiled::CompiledImplementation;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionNeverFunctionBody, FunctionBodyOwner,
     FunctionExit,
 };
 use crate::plan::execution::graph::BlockGraphView;
-use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+use crate::runtime::compiled::CompiledProgress;
+use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
+use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -35,6 +37,9 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     match_results: MatchResults,
     pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
     numeric: NumericValues,
+    // Only compiled list activations construct this payload. Ordinary graphs
+    // and numeric kernels keep their existing storage without list buffers.
+    int_list: Option<Box<IntListValues>>,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -45,9 +50,9 @@ pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan>
 
 pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
-    CompiledNumeric {
+    Compiled {
         frame: Frame<'plan, Plan>,
-        implementation: &'plan NumericImplementation,
+        implementation: &'plan CompiledImplementation,
         point: usize,
     },
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
@@ -154,7 +159,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
     pub(in crate::runtime) fn new(
         graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
-        compiled_numeric: Option<&'plan NumericImplementation>,
+        compiled: Option<&'plan CompiledImplementation>,
     ) -> Self {
         Self {
             active: Frame {
@@ -162,7 +167,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(RootExit),
             }
-            .enter(compiled_numeric),
+            .enter(compiled),
         }
     }
 
@@ -177,30 +182,52 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(frame) => frame.advance(plan, state, storage, remaining)?,
-            Activation::CompiledNumeric {
+            Activation::Compiled {
                 mut frame,
                 implementation,
                 point,
             } => {
-                if !frame
-                    .position
-                    .environment
-                    .load_numeric(&mut storage.numeric)
-                {
-                    frame.advance(plan, state, storage, remaining)?
-                } else {
-                    // The outer driver already charged the first graph step.
-                    let mut budget = *remaining + 1;
-                    let progress = (implementation.run)(point, &mut storage.numeric, &mut budget);
+                let mut budget = *remaining + 1;
+                let progress = match implementation {
+                    CompiledImplementation::Numeric(implementation) => {
+                        if frame
+                            .position
+                            .environment
+                            .load_numeric(&mut storage.numeric)
+                        {
+                            let progress =
+                                (implementation.run)(point, &mut storage.numeric, &mut budget);
+                            frame.position.environment.restore_numeric(&storage.numeric);
+                            Some(progress)
+                        } else {
+                            None
+                        }
+                    }
+                    CompiledImplementation::IntList(implementation) => {
+                        let values = storage.int_list.get_or_insert_with(Box::default);
+                        if frame.position.environment.load_int_list(values) {
+                            let progress = (implementation.run)(
+                                point,
+                                values,
+                                &IntListOps::new(state.lists()),
+                                &mut budget,
+                            );
+                            frame.position.environment.restore_int_list(values);
+                            Some(progress)
+                        } else {
+                            None
+                        }
+                    }
+                };
+                if let Some(progress) = progress {
                     *remaining = budget;
-                    frame.position.environment.restore_numeric(&storage.numeric);
                     match progress {
-                        NumericProgress::Yield(point) | NumericProgress::Interpreted(point) => {
-                            let checkpoint = implementation.checkpoints[point];
+                        CompiledProgress::Yield(point) | CompiledProgress::Interpreted(point) => {
+                            let checkpoint = implementation.checkpoints()[point];
                             frame.position.block = checkpoint.block;
                             frame.position.instruction = checkpoint.instruction;
-                            if matches!(progress, NumericProgress::Yield(_)) {
-                                Activation::CompiledNumeric {
+                            if matches!(progress, CompiledProgress::Yield(_)) {
+                                Activation::Compiled {
                                     frame,
                                     implementation,
                                     point,
@@ -209,7 +236,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                                 Activation::Graph(frame)
                             }
                         }
-                        NumericProgress::Complete(exit) => frame.exit.exit(
+                        CompiledProgress::Complete(exit) => frame.exit.exit(
                             CompletedGraph {
                                 exit,
                                 environment: frame.position.environment,
@@ -217,6 +244,8 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                             storage,
                         )?,
                     }
+                } else {
+                    frame.advance(plan, state, storage, remaining)?
                 }
             }
             Activation::Host(invoke) => {
@@ -239,20 +268,18 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             match_results: MatchResults::default(),
             arithmetic: Default::default(),
             numeric: Default::default(),
+            int_list: None,
         }
     }
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
-    fn enter(
-        self,
-        compiled_numeric: Option<&'plan NumericImplementation>,
-    ) -> Activation<'plan, Plan> {
-        match compiled_numeric {
-            Some(implementation) => Activation::CompiledNumeric {
+    fn enter(self, compiled: Option<&'plan CompiledImplementation>) -> Activation<'plan, Plan> {
+        match compiled {
+            Some(implementation) => Activation::Compiled {
                 frame: self,
                 implementation,
-                point: implementation.entry,
+                point: implementation.entry(),
             },
             None => Activation::Graph(self),
         }
@@ -444,13 +471,13 @@ where
 {
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
-        let compiled_numeric = self.id.compiled_numeric(self.plan);
+        let compiled = self.id.compiled(self.plan);
         Frame {
             graph,
             position: GraphPosition::new(graph.entry(), inputs),
             exit: self,
         }
-        .enter(compiled_numeric)
+        .enter(compiled)
     }
 }
 
@@ -682,13 +709,17 @@ mod tests {
         Storage, enter_function, enter_never,
     };
     use crate::ExecutionPlan;
-    use crate::plan::execution::compiled_numeric::{NumericCheckpoint, NumericImplementation};
+    use crate::plan::execution::compiled::{
+        CompiledCheckpoint, CompiledImplementation, IntListImplementation, NumericImplementation,
+    };
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
         IntFunctionId,
     };
     use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
-    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled::CompiledProgress;
+    use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
+    use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::RuntimeState;
@@ -702,36 +733,41 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const NUMERIC_CHOOSE_SOURCE: &str = "fn choose(value: Int, flag: Bool) { case flag { True -> value + 1 False -> value - 1 } } pub fn main() { choose(7, True) }";
-    const CHOOSE_POINTS: &[NumericCheckpoint] = &[
-        NumericCheckpoint {
+    const CHOOSE_POINTS: &[CompiledCheckpoint] = &[
+        CompiledCheckpoint {
             block: BlockId(0),
             instruction: 0,
             ints: 1,
             bools: 1,
+            int_lists: 0,
         },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(1),
             instruction: 0,
             ints: 1,
             bools: 0,
+            int_lists: 0,
         },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(1),
             instruction: 1,
             ints: 2,
             bools: 0,
+            int_lists: 0,
         },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(2),
             instruction: 0,
             ints: 1,
             bools: 0,
+            int_lists: 0,
         },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(2),
             instruction: 1,
             ints: 2,
             bools: 0,
+            int_lists: 0,
         },
     ];
 
@@ -739,7 +775,7 @@ mod tests {
         point: usize,
         values: &mut NumericValues,
         budget: &mut usize,
-    ) -> NumericProgress {
+    ) -> CompiledProgress {
         // This bridge fixture supplies one exact instruction or edge per call;
         // the emitter's compiled execution is tested by the prepared fixture.
         assert_eq!(*budget, 1);
@@ -748,26 +784,26 @@ mod tests {
             0 => {
                 assert_eq!(values.bools, [true]);
                 values.bools.clear();
-                NumericProgress::Yield(1)
+                CompiledProgress::Yield(1)
             }
             1 => {
                 let output = values.ints[0] + 1;
                 values.ints.push(output);
                 if output > i128::from(i64::MAX) {
-                    NumericProgress::Interpreted(2)
+                    CompiledProgress::Interpreted(2)
                 } else {
-                    NumericProgress::Yield(2)
+                    CompiledProgress::Yield(2)
                 }
             }
-            2 => NumericProgress::Complete(BlockGraphExitId(0)),
+            2 => CompiledProgress::Complete(BlockGraphExitId(0)),
             _ => panic!("bridge fixture uses only the True branch"),
         }
     }
 
     // Both complete execution profiles consume this same frame protocol.
-    macro_rules! with_numeric_plans {
-        ($plan:ident, $scenario:block) => {{
-            let plain = crate::runtime::plan_src(NUMERIC_CHOOSE_SOURCE);
+    macro_rules! with_compiled_plans {
+        ($source:expr, $plan:ident, $scenario:block) => {{
+            let plain = crate::runtime::plan_src($source);
             let $plan = &plain;
             $scenario
 
@@ -780,7 +816,7 @@ mod tests {
                     [crate::ModuleSource::new(
                         "example",
                         "src/example.gleam",
-                        NUMERIC_CHOOSE_SOURCE,
+                        $source,
                     )],
                 )],
                 crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
@@ -798,13 +834,13 @@ mod tests {
 
     #[test]
     fn numeric_activation_preserves_the_existing_frame_and_exact_yield_prefix() {
-        with_numeric_plans!(plan, {
+        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
-            let implementation = NumericImplementation {
+            let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: CHOOSE_POINTS.to_vec().into(),
                 run: one_step_choose,
-            };
+            });
             let mut inputs = RetainedValues::empty();
             inputs.push_int(7_i64.into());
             inputs.push_bool(true);
@@ -853,15 +889,16 @@ mod tests {
                 ),
                 BigInt::from(8)
             );
+            assert!(storage.int_list.is_none());
         });
     }
 
     #[test]
     fn a_big_result_resumes_after_the_completed_instruction_and_initial_big_never_calls_rust() {
-        with_numeric_plans!(plan, {
+        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
             for initially_big in [false, true] {
-                let implementation = NumericImplementation {
+                let implementation = CompiledImplementation::Numeric(NumericImplementation {
                     entry: 0,
                     checkpoints: CHOOSE_POINTS.to_vec().into(),
                     run: if initially_big {
@@ -869,7 +906,7 @@ mod tests {
                     } else {
                         one_step_choose
                     },
-                };
+                });
                 let initial: BigInt = if initially_big {
                     BigInt::from(1) << 100
                 } else {
@@ -918,6 +955,7 @@ mod tests {
                                 returned_int(plan, IntFunctionId(1), completed(result)),
                                 initial + 1
                             );
+                            assert!(storage.int_list.is_none());
                             break;
                         }
                     }
@@ -930,12 +968,12 @@ mod tests {
         execution: &'run Execution<'plan, Plan>,
     ) -> (&'run Frame<'plan, Plan>, usize) {
         match &execution.active {
-            Activation::CompiledNumeric { frame, point, .. } => (frame, *point),
+            Activation::Compiled { frame, point, .. } => (frame, *point),
             _ => panic!("a Small yield retains generated execution"),
         }
     }
 
-    fn forbidden_numeric_entry(_: usize, _: &mut NumericValues, _: &mut usize) -> NumericProgress {
+    fn forbidden_numeric_entry(_: usize, _: &mut NumericValues, _: &mut usize) -> CompiledProgress {
         panic!("initial Big must remain interpreted")
     }
 
@@ -970,13 +1008,13 @@ mod tests {
         use crate::plan::execution::function::FunctionReturnFamily;
         use crate::runtime::error::{ExecutionError, InvariantError};
 
-        with_numeric_plans!(plan, {
+        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
-            let implementation = NumericImplementation {
+            let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: CHOOSE_POINTS.to_vec().into(),
                 run: one_step_choose,
-            };
+            });
             let expected = InvariantError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::Int,
                 actual: FunctionReturnFamily::Float,
@@ -1013,7 +1051,7 @@ mod tests {
                 let mut position = GraphPosition::new(BlockId(1), values);
                 position.instruction = 1;
                 let execution = Execution {
-                    active: Activation::CompiledNumeric {
+                    active: Activation::Compiled {
                         frame: Frame {
                             graph: body.block_graph().as_view(),
                             position,
@@ -1034,6 +1072,174 @@ mod tests {
                 assert!(echo.is_empty());
             }
         });
+    }
+
+    #[test]
+    fn list_activation_moves_prefixes_and_preserves_small_big_and_source_failure_returns() {
+        use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
+
+        let source = r#"
+fn head(values: List(Int), value: Int) {
+  let assert [first, ..] = values
+  first + value
+}
+pub fn main() { head([7], 3) }
+"#;
+        let checkpoints = [
+            CompiledCheckpoint {
+                block: BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                int_lists: 1,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(1),
+                instruction: 1,
+                ints: 3,
+                bools: 0,
+                int_lists: 0,
+            },
+            CompiledCheckpoint {
+                block: BlockId(2),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                int_lists: 1,
+            },
+        ];
+        with_compiled_plans!(source, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::IntList(IntListImplementation {
+                entry: 0,
+                checkpoints: checkpoints.to_vec().into(),
+                run: one_step_head,
+            });
+            let big: BigInt = BigInt::from(1) << 100;
+            for (head, value, expected) in [
+                (vec![BigInt::from(7)], BigInt::from(3), Ok(BigInt::from(10))),
+                (
+                    vec![BigInt::from(1)],
+                    BigInt::from(i64::MAX),
+                    Ok(BigInt::from(i64::MAX) + 1),
+                ),
+                (
+                    vec![BigInt::from(-1)],
+                    BigInt::from(i64::MIN),
+                    Ok(BigInt::from(i64::MIN) - 1),
+                ),
+                (vec![big.clone()], BigInt::from(3), Ok(&big + 3)),
+                (vec![BigInt::from(7)], big.clone(), Ok(&big + 7)),
+                (
+                    vec![],
+                    BigInt::from(3),
+                    Err(
+                        "let_assert: Pattern match failed, no pattern matched the value."
+                            .to_owned(),
+                    ),
+                ),
+            ] {
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(value.into());
+                inputs.push_list(
+                    state
+                        .lists()
+                        .int(
+                            IntListTypeId {
+                                list_type: ListTypeId(0),
+                            },
+                            head.into_iter().map(IntegerValue::from).collect::<Vec<_>>(),
+                        )
+                        .into(),
+                );
+                let mut execution =
+                    Execution::new(body.block_graph().as_view(), inputs, Some(&implementation));
+                let mut storage = Storage::new();
+                let result = loop {
+                    match execution.advance(plan, &mut state, &mut storage, &mut 0) {
+                        Ok(Progress::Continue(next)) => execution = next,
+                        Ok(complete) => {
+                            break Ok(returned_int(plan, IntFunctionId(1), completed(complete)));
+                        }
+                        Err(error) => break Err(error.to_string()),
+                    }
+                };
+                assert_eq!(result, expected);
+                let values = storage.int_list.as_ref().unwrap();
+                assert!(values.ints.is_empty());
+                assert!(values.bools.is_empty());
+                assert!(values.int_lists.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    fn one_step_head(
+        point: usize,
+        values: &mut IntListValues,
+        lists: &IntListOps<'_>,
+        budget: &mut usize,
+    ) -> CompiledProgress {
+        // This fixture observes the activation bridge one canonical step at a
+        // time. Actual emitted kernels are executed by prepared consumers.
+        assert_eq!(*budget, 1);
+        match point {
+            0 => {
+                if values.int_lists[0].is_empty() {
+                    values.ints.clear();
+                    *budget = 0;
+                    return CompiledProgress::Yield(3);
+                }
+                let head = lists
+                    .prefix(&values.int_lists[0], 1)
+                    .next()
+                    .and_then(|head| head.small());
+                if let Some(head) = head {
+                    values.ints.push(head);
+                    values.int_lists.clear();
+                    *budget = 0;
+                    CompiledProgress::Yield(1)
+                } else {
+                    CompiledProgress::Interpreted(0)
+                }
+            }
+            1 => {
+                let sum = values.ints[0] + values.ints[1];
+                values.ints.push(sum);
+                *budget = 0;
+                if sum < i128::from(i64::MIN) || sum > i128::from(i64::MAX) {
+                    CompiledProgress::Interpreted(2)
+                } else {
+                    CompiledProgress::Yield(2)
+                }
+            }
+            2 => {
+                *budget = 0;
+                CompiledProgress::Complete(BlockGraphExitId(0))
+            }
+            3 => CompiledProgress::Interpreted(3),
+            _ => panic!("head bridge fixture uses exactly four checkpoints"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "head bridge fixture uses exactly four checkpoints")]
+    fn list_bridge_fixture_rejects_other_checkpoints() {
+        one_step_head(
+            99,
+            &mut IntListValues::default(),
+            &IntListOps::new(&RuntimeListStorage::default()),
+            &mut 1,
+        );
     }
 
     fn int_body<Plan: ExecutableRuntimePlan>(
@@ -1326,7 +1532,7 @@ pub fn main() {
     #[test]
     fn continuing_rejects_a_completed_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_numeric_plans!(plan, {
+        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let finished = Execution {
                     active: Activation::Complete(complete_int_graph(plan)),
@@ -1360,7 +1566,7 @@ pub fn main() {
     #[test]
     fn completed_rejects_a_running_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_numeric_plans!(plan, {
+        with_compiled_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let running = Execution::new(graph, RetainedValues::empty(), None);

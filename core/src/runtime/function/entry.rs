@@ -1,4 +1,4 @@
-use crate::plan::execution::compiled_numeric::NumericImplementation;
+use crate::plan::execution::compiled::CompiledImplementation;
 use crate::plan::execution::function::{
     self as function, ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef,
     ExecutionHostTarget, ExecutionNeverHostTarget, FunctionBodyOwner,
@@ -25,7 +25,7 @@ pub(in crate::runtime) trait EntryTarget<Plan: ExecutableRuntimePlan>:
         plan: &'plan Plan,
     ) -> ExecutionFunctionRef<'plan, Self::Body, Self::HostTarget>;
 
-    fn compiled_numeric<'plan>(&self, _plan: &'plan Plan) -> Option<&'plan NumericImplementation> {
+    fn compiled<'plan>(&self, _plan: &'plan Plan) -> Option<&'plan CompiledImplementation> {
         None
     }
 
@@ -43,7 +43,7 @@ pub(in crate::runtime) trait EntryTarget<Plan: ExecutableRuntimePlan>:
 }
 
 macro_rules! entry_target {
-    ($id:ty, $body:ident, $entry:ident, |$current:ident| $argument:expr, |$previous:pat_param, $target:ident| $next:expr $(, $compiled_numeric:ident)?) => {
+    ($id:ty, $body:ident, $entry:ident, |$current:ident| $argument:expr, |$previous:pat_param, $target:ident| $next:expr $(, $compiled:ident)?) => {
         impl<Plan: ExecutableRuntimePlan> EntryTarget<Plan> for $id {
             type Body = function::$body<Plan::Profile>;
             type HostTarget = ExecutionHostTarget<Plan::Profile, Self::Body>;
@@ -56,8 +56,8 @@ macro_rules! entry_target {
                 plan.$entry($argument).as_ref()
             }
 
-            $(fn compiled_numeric<'plan>(&self, plan: &'plan Plan) -> Option<&'plan NumericImplementation> {
-                plan.$compiled_numeric(*self)
+            $(fn compiled<'plan>(&self, plan: &'plan Plan) -> Option<&'plan CompiledImplementation> {
+                plan.$compiled(*self)
             })?
 
             fn prepare_host<'plan>(
@@ -118,7 +118,7 @@ entry_target!(
     int_function,
     |id| *id,
     |_, target| *target.function(),
-    compiled_numeric_int_function
+    compiled_int_function
 );
 entry_target!(
     function::FloatFunctionId,
@@ -168,7 +168,7 @@ entry_target!(
     bool_function,
     |id| *id,
     |_, target| *target.function(),
-    compiled_numeric_bool_function
+    compiled_bool_function
 );
 entry_target!(
     function::NilFunctionId,

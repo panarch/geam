@@ -1,5 +1,5 @@
 use super::BlockEnvironment;
-use crate::runtime::compiled_numeric::NumericValues;
+use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::integer::IntegerValue;
 
 impl BlockEnvironment {

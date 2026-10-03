@@ -14,6 +14,8 @@ mod workspace_dependencies;
 #[path = "prepared_embedding/guard_constructors.rs"]
 mod guard_constructors;
 
+#[path = "prepared_embedding/int_list.rs"]
+mod int_list;
 #[path = "prepared_embedding/numeric.rs"]
 mod numeric;
 
