@@ -34,6 +34,11 @@ pub use codec::{
     ProviderRuntimeValueForms, ProviderStaticValueForms, ProviderTypedValue, ProviderValue,
     ProviderValueForms,
 };
+#[doc(hidden)]
+pub use codec::{
+    ProviderConstructionBranch, ProviderConstructionIndexHere, ProviderConstructionIndexLeft,
+    ProviderConstructionIndexRight, ProviderConstructionLeaf,
+};
 pub use ecow::EcoString;
 pub use factory::Factory;
 #[doc(hidden)]

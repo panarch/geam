@@ -29,6 +29,7 @@ pub(super) fn bindings_definition(
     function: &super::FunctionModel,
     requirements: &TokenStream,
     offset: usize,
+    count: usize,
     bounds: &[TokenStream],
     support: &TokenStream,
     flavor: super::InputOwnership,
@@ -42,7 +43,7 @@ pub(super) fn bindings_definition(
         .collect::<Vec<_>>();
     let type_ = bindings_type(function, &quote!(__GeamProfile));
     let selections = function.factories.iter().enumerate().map(|(index, factory)| {
-        let index = super::function::provider_construction_index(offset + index, support);
+        let index = super::function::provider_requirement_index(offset + index, count, support);
         let required = quote!(<#factory as #support::ProviderFactoryCodec<__GeamProfile, #mode>>::Requirements);
         quote! {
             impl<__GeamProfile, #(#parameters,)*> #support::ProviderFactoryBinding<#factory, #required> for #type_

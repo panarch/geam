@@ -121,8 +121,12 @@ pub(super) fn generate_callback_codec_with_flavor(
         bounds.push(quote!(__GeamProfile: #support::HostWorkProfile));
     }
     let requirements = provider_requirement_sequence(&constructions, support);
-    let construction_setup =
-        provider_construction_bindings(&constructions, quote!(constructions), support);
+    let construction_setup = provider_construction_bindings(
+        &constructions,
+        constructions.len(),
+        quote!(constructions),
+        support,
+    );
     let return_statements = decoded_return.statements;
     let returned = decoded_return.value;
     {
@@ -323,7 +327,12 @@ pub(super) fn generate_future_codec(
         &mut bounds,
     );
     let requirements = provider_requirement_sequence(&constructions, support);
-    let setup = provider_construction_bindings(&constructions, quote!(constructions), support);
+    let setup = provider_construction_bindings(
+        &constructions,
+        constructions.len(),
+        quote!(constructions),
+        support,
+    );
     if !constructions.is_empty() {
         bounds.push(quote!(#requirements: #support::ProviderConstructionRequirements));
         bounds.extend(provider_requirement_selection_bounds(
@@ -2384,24 +2393,31 @@ pub(super) fn provider_requirement_sequence(
     constructions: &[GeneratedConstruction],
     support: &TokenStream,
 ) -> TokenStream {
-    constructions.iter().rev().fold(
-        quote!(#support::ProviderNoConstructions),
-        |tail, construction| {
-            let head = &construction.requirement;
-            quote!(#support::ProviderConstructionList<#head, #tail>)
-        },
-    )
+    match constructions {
+        [] => quote!(#support::ProviderNoConstructions),
+        [construction] => {
+            let requirement = &construction.requirement;
+            quote!(#support::ProviderConstructionLeaf<#requirement>)
+        }
+        _ => {
+            let (left, right) = constructions.split_at(constructions.len() / 2);
+            let left = provider_requirement_sequence(left, support);
+            let right = provider_requirement_sequence(right, support);
+            quote!(#support::ProviderConstructionBranch<#left, #right>)
+        }
+    }
 }
 
 pub(super) fn provider_construction_bindings(
     constructions: &[GeneratedConstruction],
+    count: usize,
     requirements: TokenStream,
     support: &TokenStream,
 ) -> TokenStream {
     let mut statements = TokenStream::new();
     for (index, construction) in constructions.iter().enumerate() {
         let binding = &construction.binding;
-        let index = provider_construction_index(index, support);
+        let index = provider_requirement_index(index, count, support);
         statements.extend(quote! {
             let #binding = #support::ProviderConstructions::select::<#index>(#requirements);
         });
@@ -2418,7 +2434,7 @@ pub(super) fn provider_requirement_selection_bounds(
         .iter()
         .enumerate()
         .map(|(index, construction)| {
-            let index = provider_construction_index(index, support);
+            let index = provider_requirement_index(index, constructions.len(), support);
             let requirement = &construction.requirement;
             quote! {
                 #requirements:
@@ -2436,4 +2452,22 @@ pub(super) fn provider_construction_index(index: usize, support: &TokenStream) -
         quote!(#support::ProviderConstructionIndex0),
         |index, _| quote!(#support::ProviderConstructionIndexNext<#index>),
     )
+}
+
+pub(super) fn provider_requirement_index(
+    index: usize,
+    count: usize,
+    support: &TokenStream,
+) -> TokenStream {
+    if count == 1 {
+        return quote!(#support::ProviderConstructionIndexHere);
+    }
+    let split = count / 2;
+    if index < split {
+        let index = provider_requirement_index(index, split, support);
+        quote!(#support::ProviderConstructionIndexLeft<#index>)
+    } else {
+        let index = provider_requirement_index(index - split, count - split, support);
+        quote!(#support::ProviderConstructionIndexRight<#index>)
+    }
 }
