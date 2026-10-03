@@ -15,6 +15,10 @@ pub use crate::host::{
     HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence, HostWorkProfile,
     HostWorkSchema,
 };
+pub use crate::host::{
+    HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
+    HostCustomIndexLeft, HostCustomIndexRight,
+};
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{
     Equality, Hashing, Index0, Inspection, NativeValue, Next, ProviderDynamicInput,
@@ -50,6 +54,10 @@ pub use crate::provider::{
     ProviderOwnedCallbackListDecoder, ProviderOwnedCaptures, ProviderResult,
     ProviderRootOutputValue, ProviderRuntimeValueForms, ProviderSome, ProviderStaticValueForms,
     ProviderTypedValue, ProviderValue, ProviderValueForms,
+};
+pub use crate::provider::{
+    ProviderConstructionBranch, ProviderConstructionIndexHere, ProviderConstructionIndexLeft,
+    ProviderConstructionIndexRight, ProviderConstructionLeaf,
 };
 pub use crate::provider::{
     retain_argument, retain_constructed_argument, retain_constructed_dynamic, retain_dynamic,

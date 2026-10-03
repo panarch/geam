@@ -33,6 +33,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
 
+      - name: Check macro cross-crate fixture formatting
+        run: cargo fmt --manifest-path macros/tests/fixtures/cross_crate/Cargo.toml --all --check
+
       - name: Check benchmark formatting
         run: cargo fmt --manifest-path benchmarks/Cargo.toml --all --check
 
@@ -111,6 +114,9 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --features geam-core/tokio --locked -- -D warnings
+
+      - name: Run macro cross-crate fixture clippy
+        run: CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo clippy --manifest-path macros/tests/fixtures/cross_crate/Cargo.toml --workspace --all-targets --locked -- -D warnings
 
       - name: Run benchmark clippy
         run: cargo clippy --manifest-path benchmarks/Cargo.toml --workspace --all-targets --locked -- -D warnings
@@ -218,6 +224,9 @@ jobs:
 
       - name: Check guard constructor fixture formatting
         run: gleam format --check tests/fixtures/projects/guard_constructor_locals/src
+
+      - name: Check large custom provider fixture formatting
+        run: gleam format --check macros/tests/fixtures/cross_crate/declarations/gleam
 
       - name: Check documented compiler pin
         shell: bash

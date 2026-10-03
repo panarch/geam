@@ -17,6 +17,9 @@ mod guard_constructors;
 #[path = "prepared_embedding/numeric.rs"]
 mod numeric;
 
+#[path = "prepared_embedding/large_customs.rs"]
+mod large_customs;
+
 #[test]
 fn prepares_packages_and_runs_without_the_original_gleam_project() {
     let directory = tempfile::tempdir().unwrap();

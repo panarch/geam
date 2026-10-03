@@ -78,6 +78,14 @@ pub mod __macro_support {
         ProviderValueForms, Retained, RetainedExternalPayload, Stored, StoredDynamic, Value,
         component_initialization_error, external_payload_hash,
     };
+    pub use geam_core::__macro_support::{
+        HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
+        HostCustomIndexLeft, HostCustomIndexRight,
+    };
+    pub use geam_core::__macro_support::{
+        ProviderConstructionBranch, ProviderConstructionIndexHere, ProviderConstructionIndexLeft,
+        ProviderConstructionIndexRight, ProviderConstructionLeaf,
+    };
 }
 
 #[doc(hidden)]

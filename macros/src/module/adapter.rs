@@ -191,6 +191,7 @@ pub(super) fn generate_function_adapter(
     }
     let construction_bindings = provider_construction_bindings(
         &constructions[..factory_offset],
+        constructions.len(),
         quote!(&__geam_provider_constructions),
         support,
     );
@@ -226,6 +227,7 @@ pub(super) fn generate_function_adapter(
             function,
             &requirements,
             factory_offset,
+            constructions.len(),
             &bounds,
             support,
             flavor,

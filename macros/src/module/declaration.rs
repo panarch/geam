@@ -195,7 +195,7 @@ pub(super) fn generate_custom_declaration(
             fields.push(quote!(#definition #schema_generics));
         }
         let fields = host_custom_field_sequence(&fields, support);
-        let index = host_custom_index(index, support);
+        let index = host_custom_index(index, custom.constructors.len(), support);
         constructor_definitions.push(quote! {
             #[doc(hidden)]
             pub struct #definition #schema_generics #schema_field;
@@ -241,8 +241,12 @@ pub(super) fn generate_custom_declaration(
             support,
         ));
     }
-    let root_bindings =
-        provider_construction_bindings(&root.constructions, quote!(&constructions), support);
+    let root_bindings = provider_construction_bindings(
+        &root.constructions,
+        root.constructions.len(),
+        quote!(&constructions),
+        support,
+    );
     let root_statements = root.statements;
     let root_completion = root.completion;
 
@@ -275,8 +279,12 @@ pub(super) fn generate_custom_declaration(
         &nested_constructions,
         support,
     ));
-    let nested_bindings =
-        provider_construction_bindings(&nested_constructions, quote!(&constructions), support);
+    let nested_bindings = provider_construction_bindings(
+        &nested_constructions,
+        nested_constructions.len(),
+        quote!(&constructions),
+        support,
+    );
     let nested_statements = nested.statements;
     let nested_value = nested.value;
     let nested_codec_bounds = custom_output_codec_bounds(
@@ -765,8 +773,12 @@ fn generate_custom_input_declaration(
     };
     let (list_constructions, list_bindings, list_context_bounds) =
         super::custom_context::constructions(custom_index, customs, support);
-    let list_setup =
-        provider_construction_bindings(&list_constructions, quote!(_constructions), support);
+    let list_setup = provider_construction_bindings(
+        &list_constructions,
+        list_constructions.len(),
+        quote!(_constructions),
+        support,
+    );
     let list_return = quote!(__GeamReturn);
     let function_generics = super::custom_context::generics(custom);
     let list_environment = super::InputEnvironment {
@@ -889,7 +901,12 @@ fn generate_custom_decoder(
     let (constructions, callback_constructions, _) =
         super::custom_context::constructions(custom_index, customs, support);
     let requirements = provider_requirement_sequence(&constructions, support);
-    let bindings = provider_construction_bindings(&constructions, quote!(constructions), support);
+    let bindings = provider_construction_bindings(
+        &constructions,
+        constructions.len(),
+        quote!(constructions),
+        support,
+    );
     let function_generics = super::custom_context::generics(custom);
     let environment = super::InputEnvironment {
         customs,
@@ -1481,19 +1498,28 @@ fn host_custom_constructor_sequence(
     constructors: &[TokenStream],
     support: &TokenStream,
 ) -> TokenStream {
-    let mut tail = quote!(#support::HostCustomConstructorListEnd);
-    for head in constructors.iter().rev() {
-        tail = quote!(#support::HostCustomConstructorList<#head, #tail>);
+    if constructors.len() <= 1 {
+        let definition = &constructors[0];
+        return quote!(#support::HostCustomConstructorLeaf<#definition>);
     }
-    tail
+    let (left, right) = constructors.split_at(constructors.len() / 2);
+    let left = host_custom_constructor_sequence(left, support);
+    let right = host_custom_constructor_sequence(right, support);
+    quote!(#support::HostCustomConstructorBranch<#left, #right>)
 }
 
-fn host_custom_index(index: usize, support: &TokenStream) -> TokenStream {
-    let mut output = quote!(#support::HostCustomIndex0);
-    for _ in 0..index {
-        output = quote!(#support::HostCustomIndexNext<#output>);
+fn host_custom_index(index: usize, count: usize, support: &TokenStream) -> TokenStream {
+    if count == 1 {
+        return quote!(#support::HostCustomIndexHere);
     }
-    output
+    let split = count / 2;
+    if index < split {
+        let index = host_custom_index(index, split, support);
+        quote!(#support::HostCustomIndexLeft<#index>)
+    } else {
+        let index = host_custom_index(index - split, count - split, support);
+        quote!(#support::HostCustomIndexRight<#index>)
+    }
 }
 
 #[cfg(test)]
