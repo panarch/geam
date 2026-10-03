@@ -52,6 +52,17 @@ pub fn run() {
   )
 }
 
+pub fn list_callback(values: List(Int), initial: Int) -> Int {
+  let calculate = fn(input) {
+    let assert [head, ..tail] as original = values
+    case tail == original {
+      True -> input
+      False -> head + input
+    }
+  }
+  fold(calculate, initial)
+}
+
 pub fn substring(value: String) {
   let assert "prefix:" <> rest = value
   let read = fn() { rest }

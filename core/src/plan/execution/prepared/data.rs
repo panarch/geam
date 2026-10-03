@@ -239,9 +239,20 @@ pub mod source {
         }
     }
 }
-pub mod compiled_numeric {
-    pub use crate::plan::execution::compiled_numeric::{
-        NumericCheckpoint, NumericFunction, NumericFunctions, NumericImplementation,
+pub mod compiled {
+    pub use crate::plan::execution::compiled::{
+        CompiledCheckpoint, CompiledFunction, CompiledFunctions, CompiledImplementation,
+        IntListImplementation, NumericImplementation,
     };
-    pub use crate::runtime::compiled_numeric::{NumericKernel, NumericProgress, NumericValues};
+    pub use crate::runtime::compiled::CompiledProgress;
+
+    pub mod numeric {
+        pub use crate::runtime::compiled::numeric::{NumericKernel, NumericValues};
+    }
+
+    pub mod int_list {
+        pub use crate::runtime::compiled::int_list::{
+            IntList, IntListElement, IntListKernel, IntListOps, IntListReader, IntListValues,
+        };
+    }
 }

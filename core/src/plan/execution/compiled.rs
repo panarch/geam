@@ -2,37 +2,66 @@ use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
 use crate::plan::execution::graph::BlockId;
 use crate::plan::execution::storage::Table;
-use crate::runtime::compiled_numeric::NumericKernel;
+use crate::runtime::compiled::int_list::IntListKernel;
+use crate::runtime::compiled::numeric::NumericKernel;
 
 /// Compiler-generated implementations, separate from the canonical graph.
 ///
 /// An empty table explicitly selects interpreted execution. Admission checks
 /// every supplied target and checkpoint before sealing the execution owner.
-pub struct NumericFunctions {
-    pub ints: Table<NumericFunction<IntFunctionId>>,
-    pub bools: Table<NumericFunction<BoolFunctionId>>,
+pub struct CompiledFunctions {
+    pub ints: Table<CompiledFunction<IntFunctionId>>,
+    pub bools: Table<CompiledFunction<BoolFunctionId>>,
 }
 
-pub struct NumericFunction<Id> {
+pub struct CompiledFunction<Id> {
     pub function: Id,
-    pub implementation: NumericImplementation,
+    pub implementation: CompiledImplementation,
+}
+
+pub enum CompiledImplementation {
+    Numeric(NumericImplementation),
+    IntList(IntListImplementation),
+}
+
+impl CompiledImplementation {
+    pub(crate) fn entry(&self) -> usize {
+        match self {
+            Self::Numeric(value) => value.entry,
+            Self::IntList(value) => value.entry,
+        }
+    }
+
+    pub(crate) fn checkpoints(&self) -> &[CompiledCheckpoint] {
+        match self {
+            Self::Numeric(value) => &value.checkpoints,
+            Self::IntList(value) => &value.checkpoints,
+        }
+    }
 }
 
 pub struct NumericImplementation {
     pub entry: usize,
-    pub checkpoints: Table<NumericCheckpoint>,
+    pub checkpoints: Table<CompiledCheckpoint>,
     pub run: NumericKernel,
 }
 
+pub struct IntListImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: IntListKernel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NumericCheckpoint {
+pub struct CompiledCheckpoint {
     pub block: BlockId,
     pub instruction: usize,
     pub ints: usize,
     pub bools: usize,
+    pub int_lists: usize,
 }
 
-impl NumericFunctions {
+impl CompiledFunctions {
     pub const fn interpreted() -> Self {
         Self {
             ints: Table::Static(&[]),
@@ -47,14 +76,14 @@ impl NumericFunctions {
         }
     }
 
-    pub(crate) fn int(&self, id: IntFunctionId) -> Option<&NumericImplementation> {
+    pub(crate) fn int(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
         self.ints
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
             .map(|index| &self.ints[index].implementation)
     }
 
-    pub(crate) fn bool(&self, id: BoolFunctionId) -> Option<&NumericImplementation> {
+    pub(crate) fn bool(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
         self.bools
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
@@ -62,15 +91,16 @@ impl NumericFunctions {
     }
 }
 
-impl Emit for NumericCheckpoint {
+impl Emit for CompiledCheckpoint {
     fn emit(&self, output: &mut Rust) {
         output.structure(
-            "compiled_numeric::NumericCheckpoint",
+            "compiled::CompiledCheckpoint",
             &[
                 ("block", &self.block),
                 ("instruction", &self.instruction),
                 ("ints", &self.ints),
                 ("bools", &self.bools),
+                ("int_lists", &self.int_lists),
             ],
         );
     }
@@ -79,29 +109,30 @@ impl Emit for NumericCheckpoint {
 #[cfg(test)]
 mod tests {
     use super::{
-        NumericCheckpoint, NumericFunction, NumericFunctions, NumericImplementation, Rust,
+        CompiledCheckpoint, CompiledFunction, CompiledFunctions, CompiledImplementation,
+        IntListImplementation, NumericImplementation, Rust,
     };
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
     use crate::plan::execution::graph::BlockId;
     use crate::plan::execution::storage::Table;
-    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled::tests::{metadata_int_list, metadata_numeric};
 
-    static FUNCTIONS: NumericFunctions = NumericFunctions {
-        ints: Table::Static(&[NumericFunction {
+    static FUNCTIONS: CompiledFunctions = CompiledFunctions {
+        ints: Table::Static(&[CompiledFunction {
             function: IntFunctionId(2),
-            implementation: NumericImplementation {
+            implementation: CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: Table::Static(&[]),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+                run: metadata_numeric,
+            }),
         }]),
-        bools: Table::Static(&[NumericFunction {
+        bools: Table::Static(&[CompiledFunction {
             function: BoolFunctionId(3),
-            implementation: NumericImplementation {
+            implementation: CompiledImplementation::IntList(IntListImplementation {
                 entry: 1,
                 checkpoints: Table::Static(&[]),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+                run: metadata_int_list,
+            }),
         }]),
     };
 
@@ -126,46 +157,41 @@ mod tests {
         ));
         assert!(borrowed.int(IntFunctionId(3)).is_none());
         assert!(borrowed.bool(BoolFunctionId(2)).is_none());
-        // The sidecar borrows the actual Rust implementation, as well as its IDs.
-        let mut values = NumericValues::default();
-        let mut budget = 7;
-        assert_eq!(
-            (borrowed.int(IntFunctionId(2)).unwrap().run)(3, &mut values, &mut budget),
-            NumericProgress::Yield(3)
-        );
-        assert_eq!(
-            (borrowed.bool(BoolFunctionId(3)).unwrap().run)(4, &mut values, &mut budget),
-            NumericProgress::Yield(4)
-        );
-        assert_eq!(budget, 7);
+        // Borrowing retains the kernel pointer and metadata without executing it.
+        assert_eq!(borrowed.int(IntFunctionId(2)).unwrap().entry(), 0);
+        assert_eq!(borrowed.bool(BoolFunctionId(3)).unwrap().entry(), 1);
+        assert_eq!(borrowed.int(IntFunctionId(2)).unwrap().checkpoints(), []);
+        assert_eq!(borrowed.bool(BoolFunctionId(3)).unwrap().checkpoints(), []);
 
         assert!(
-            NumericFunctions::interpreted()
+            CompiledFunctions::interpreted()
                 .int(IntFunctionId(2))
                 .is_none()
         );
         assert!(
-            NumericFunctions::interpreted()
+            CompiledFunctions::interpreted()
                 .bool(BoolFunctionId(3))
                 .is_none()
         );
     }
 
     #[test]
-    fn emits_the_exact_block_position_and_actual_numeric_prefix() {
+    fn emits_the_exact_block_position_and_actual_typed_prefix() {
         assert_eq!(
-            Rust::expression(&NumericCheckpoint {
+            Rust::expression(&CompiledCheckpoint {
                 block: BlockId(2),
                 instruction: 3,
                 ints: 5,
                 bools: 1,
+                int_lists: 2,
             }),
             r#"
-data::compiled_numeric::NumericCheckpoint {
+data::compiled::CompiledCheckpoint {
     block: data::graph::BlockId(2),
     instruction: 3,
     ints: 5,
     bools: 1,
+    int_lists: 2,
 }
 "#
             .trim_matches('\n')

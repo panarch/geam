@@ -14,7 +14,7 @@ use super::{
     SpecializationOutcome, SpecializationState, try_resolve_specialization_fixed_point,
 };
 use crate::host::{HostFunctionBinding, HostProfile};
-use crate::plan::execution::compiled_numeric::NumericFunctions;
+use crate::plan::execution::compiled::CompiledFunctions;
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::host::{
     CallableRegistration, HostBindingTables, HostFunctionTables, HostSpecializationError,
@@ -298,7 +298,7 @@ fn assemble_hosted_program(
             value_shapes: Box::new(value_shapes).into(),
         }),
         functions: Box::new(functions).into(),
-        compiled_numeric: NumericFunctions::interpreted(),
+        compiled: CompiledFunctions::interpreted(),
     }
 }
 

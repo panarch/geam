@@ -1,12 +1,15 @@
-use super::super::numeric::NumericShape;
-use crate::plan::execution::compiled_numeric::{NumericFunction, NumericFunctions};
+use super::super::codegen::CompiledShape;
+use super::super::codegen::shape::KernelKind;
+use crate::plan::execution::compiled::{
+    CompiledFunction, CompiledFunctions, CompiledImplementation,
+};
 use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionProfile,
     FunctionTables,
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct NumericError {
+pub(super) struct CompiledError {
     family: Family,
     function: usize,
     reason: Reason,
@@ -24,23 +27,24 @@ enum Reason {
     MissingFunction,
     HostFunction,
     UnsupportedGraph,
+    ImplementationKind,
     Entry,
     CheckpointCount,
     Checkpoint(usize),
 }
 
 pub(super) fn all<Profile: ExecutionProfile>(
-    compiled_numeric: &NumericFunctions,
+    compiled: &CompiledFunctions,
     functions: &FunctionTables<Profile>,
-) -> Result<(), NumericError> {
+) -> Result<(), CompiledError> {
     targets(
-        &compiled_numeric.ints,
+        &compiled.ints,
         &functions.value_returns.int_functions,
         Family::Int,
         |id| id.0,
     )?;
     targets(
-        &compiled_numeric.bools,
+        &compiled.bools,
         &functions.value_returns.bool_functions,
         Family::Bool,
         |id| id.0,
@@ -48,15 +52,15 @@ pub(super) fn all<Profile: ExecutionProfile>(
 }
 
 fn targets<Id, Body: ExecutionFunctionBody, Entry: ExecutionFunctionEntry<Body>>(
-    targets: &[NumericFunction<Id>],
+    targets: &[CompiledFunction<Id>],
     functions: &[Entry],
     family: Family,
     index: impl Fn(&Id) -> usize,
-) -> Result<(), NumericError> {
+) -> Result<(), CompiledError> {
     let mut previous = None;
     for target in targets {
         let function = index(&target.function);
-        let error = |reason| NumericError {
+        let error = |reason| CompiledError {
             family,
             function,
             reason,
@@ -71,17 +75,24 @@ fn targets<Id, Body: ExecutionFunctionBody, Entry: ExecutionFunctionEntry<Body>>
         let ExecutionFunctionRef::Graph(entry) = entry.as_ref() else {
             return Err(error(Reason::HostFunction));
         };
-        let shape = NumericShape::inspect(entry.body().function_body())
+        let shape = CompiledShape::inspect(entry.body().function_body())
             .ok_or_else(|| error(Reason::UnsupportedGraph))?;
         let implementation = &target.implementation;
-        if implementation.entry != shape.starts[shape.graph.entry().index()] {
+        if !matches!(
+            (implementation, shape.kind),
+            (CompiledImplementation::Numeric(_), KernelKind::Numeric)
+                | (CompiledImplementation::IntList(_), KernelKind::IntList)
+        ) {
+            return Err(error(Reason::ImplementationKind));
+        }
+        if implementation.entry() != shape.starts[shape.graph.entry().index()] {
             return Err(error(Reason::Entry));
         }
-        if implementation.checkpoints.len() != shape.checkpoints.len() {
+        if implementation.checkpoints().len() != shape.checkpoints.len() {
             return Err(error(Reason::CheckpointCount));
         }
         for (index, (actual, expected)) in implementation
-            .checkpoints
+            .checkpoints()
             .iter()
             .zip(&shape.checkpoints)
             .enumerate()
@@ -97,10 +108,11 @@ fn targets<Id, Body: ExecutionFunctionBody, Entry: ExecutionFunctionEntry<Body>>
 #[cfg(test)]
 mod tests {
     use super::super::tests::{graph_body, owned_mut};
-    use super::NumericShape;
-    use super::{Family, NumericError, Reason, all, targets};
-    use crate::plan::execution::compiled_numeric::{
-        NumericFunction, NumericFunctions, NumericImplementation,
+    use super::{CompiledError, Family, Reason, all, targets};
+    use super::{CompiledShape, KernelKind};
+    use crate::plan::execution::compiled::{
+        CompiledFunction, CompiledFunctions, CompiledImplementation, IntListImplementation,
+        NumericImplementation,
     };
     use crate::plan::execution::function::{
         ExecutionIntFunctionBody, IntFunctionId, ValueFunctionEntry,
@@ -109,7 +121,7 @@ mod tests {
     use crate::plan::execution::host::{
         HostFunctionId, HostedExecutionProfile, HostedFunctionTarget,
     };
-    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled::tests::{metadata_int_list, metadata_numeric};
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::marker::PhantomData;
     use std::sync::Arc;
@@ -142,22 +154,13 @@ mod tests {
         );
         let functions = &execution.execution.program.functions;
         let shape =
-            NumericShape::inspect(graph_body(&functions.value_returns.int_functions[1])).unwrap();
+            CompiledShape::inspect(graph_body(&functions.value_returns.int_functions[1])).unwrap();
         let entry = shape.starts[shape.graph.entry().index()];
-        let make_target = || NumericFunction {
-            function: IntFunctionId(1),
-            implementation: NumericImplementation {
-                entry,
-                checkpoints: shape.checkpoints.clone().into(),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+        let make_implementation = || NumericImplementation {
+            entry,
+            checkpoints: shape.checkpoints.clone().into(),
+            run: metadata_numeric,
         };
-        let mut values = NumericValues::default();
-        let mut budget = 1;
-        assert_eq!(
-            (make_target().implementation.run)(entry, &mut values, &mut budget),
-            NumericProgress::Yield(entry)
-        );
         for (change, expected) in [
             (0, None),
             (1, Some((1, Reason::UnorderedTarget))),
@@ -170,14 +173,15 @@ mod tests {
             (8, Some((1, Reason::Checkpoint(0)))),
             (9, Some((1, Reason::Checkpoint(0)))),
         ] {
-            let mut target = make_target();
+            let mut function = IntFunctionId(1);
+            let mut implementation = make_implementation();
             let mut points = shape.checkpoints.clone();
             match change {
                 0 | 1 => {}
-                2 => target.function = IntFunctionId(999),
-                3 => target.function = IntFunctionId(0),
-                4 => target.implementation.entry = usize::MAX,
-                5 => target.implementation.checkpoints = vec![].into(),
+                2 => function = IntFunctionId(999),
+                3 => function = IntFunctionId(0),
+                4 => implementation.entry = usize::MAX,
+                5 => implementation.checkpoints = vec![].into(),
                 _ => {
                     match change {
                         6 => points[0].block = crate::plan::execution::graph::BlockId(999),
@@ -185,27 +189,116 @@ mod tests {
                         8 => points[0].ints += 1,
                         _ => points[0].bools += 1,
                     }
-                    target.implementation.checkpoints = points.into();
+                    implementation.checkpoints = points.into();
                 }
             }
-            let mut entries = vec![target];
+            let mut entries = vec![CompiledFunction {
+                function,
+                implementation: CompiledImplementation::Numeric(implementation),
+            }];
             if change == 1 {
-                entries.push(make_target());
+                entries.push(CompiledFunction {
+                    function: IntFunctionId(1),
+                    implementation: CompiledImplementation::Numeric(make_implementation()),
+                });
             }
-            let numeric = NumericFunctions {
+            let numeric = CompiledFunctions {
                 ints: entries.into(),
                 bools: vec![].into(),
             };
             assert_eq!(
                 all(&numeric, functions),
-                expected.map_or(Ok(()), |(function, reason)| Err(NumericError {
+                expected.map_or(Ok(()), |(function, reason)| Err(CompiledError {
                     family: Family::Int,
                     function,
                     reason
                 }))
             );
         }
-        assert_eq!(all(&NumericFunctions::interpreted(), functions), Ok(()));
+        assert_eq!(all(&CompiledFunctions::interpreted(), functions), Ok(()));
+    }
+
+    #[test]
+    fn list_targets_require_the_matching_kernel_and_exact_list_prefix_in_both_return_families() {
+        use crate::plan::execution::function::BoolFunctionId;
+
+        let execution = hosted_plan(
+            r#"
+fn head(values: List(Int)) { case values { [value, ..] -> value _ -> 0 } }
+fn same(left: List(Int), right: List(Int)) { left == right }
+pub fn main() { #(head([1]), same([1], [1])) }
+"#,
+        );
+        let functions = &execution.execution.program.functions;
+        let integer =
+            CompiledShape::inspect(graph_body(&functions.value_returns.int_functions[0])).unwrap();
+        let boolean =
+            CompiledShape::inspect(graph_body(&functions.value_returns.bool_functions[0])).unwrap();
+        assert_eq!(integer.kind, KernelKind::IntList);
+        assert_eq!(boolean.kind, KernelKind::IntList);
+        for change in 0..4 {
+            let mut points = integer.checkpoints.clone();
+            if change == 2 {
+                points[0].int_lists += 1;
+            }
+            let implementation = if change == 1 {
+                CompiledImplementation::Numeric(NumericImplementation {
+                    entry: integer.starts[integer.graph.entry().index()],
+                    checkpoints: points.into(),
+                    run: metadata_numeric,
+                })
+            } else {
+                CompiledImplementation::IntList(IntListImplementation {
+                    entry: integer.starts[integer.graph.entry().index()],
+                    checkpoints: points.into(),
+                    run: metadata_int_list,
+                })
+            };
+            let boolean_implementation = if change == 3 {
+                CompiledImplementation::Numeric(NumericImplementation {
+                    entry: boolean.starts[boolean.graph.entry().index()],
+                    checkpoints: boolean.checkpoints.clone().into(),
+                    run: metadata_numeric,
+                })
+            } else {
+                CompiledImplementation::IntList(IntListImplementation {
+                    entry: boolean.starts[boolean.graph.entry().index()],
+                    checkpoints: boolean.checkpoints.clone().into(),
+                    run: metadata_int_list,
+                })
+            };
+            let compiled = CompiledFunctions {
+                ints: vec![CompiledFunction {
+                    function: IntFunctionId(0),
+                    implementation,
+                }]
+                .into(),
+                bools: vec![CompiledFunction {
+                    function: BoolFunctionId(0),
+                    implementation: boolean_implementation,
+                }]
+                .into(),
+            };
+            let expected = match change {
+                0 => Ok(()),
+                1 => Err(CompiledError {
+                    family: Family::Int,
+                    function: 0,
+                    reason: Reason::ImplementationKind,
+                }),
+                2 => Err(CompiledError {
+                    family: Family::Int,
+                    function: 0,
+                    reason: Reason::Checkpoint(0),
+                }),
+                _ => Err(CompiledError {
+                    family: Family::Bool,
+                    function: 0,
+                    reason: Reason::ImplementationKind,
+                }),
+            };
+            assert_eq!(all(&compiled, functions), expected);
+        }
     }
 
     #[test]
@@ -214,25 +307,19 @@ mod tests {
         let plan = source_plan(
             "fn choose(value: Int, flag: Bool) { case value < 0 { True -> !flag False -> flag } } pub fn main() { choose(7, True) }",
         );
-        let shape = NumericShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
-        let numeric = NumericFunctions {
+        let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
+        let numeric = CompiledFunctions {
             ints: vec![].into(),
-            bools: vec![NumericFunction {
+            bools: vec![CompiledFunction {
                 function: BoolFunctionId(1),
-                implementation: NumericImplementation {
+                implementation: CompiledImplementation::Numeric(NumericImplementation {
                     entry: shape.starts[shape.graph.entry().index()],
                     checkpoints: shape.checkpoints.into(),
-                    run: |point, _, _| NumericProgress::Yield(point),
-                },
+                    run: metadata_numeric,
+                }),
             }]
             .into(),
         };
-        let mut values = NumericValues::default();
-        let mut budget = 1;
-        assert_eq!(
-            (numeric.bools[0].implementation.run)(0, &mut values, &mut budget),
-            NumericProgress::Yield(0)
-        );
         assert_eq!(all(&numeric, &plan.program.functions), Ok(()));
         assert_eq!(
             targets(
@@ -241,7 +328,7 @@ mod tests {
                 Family::Bool,
                 |id| id.0
             ),
-            Err(NumericError {
+            Err(CompiledError {
                 family: Family::Bool,
                 function: 1,
                 reason: Reason::MissingFunction,
@@ -263,23 +350,17 @@ mod tests {
                 body: PhantomData,
             },
         ))];
-        let numeric = [NumericFunction {
+        let numeric = [CompiledFunction {
             function: IntFunctionId(0),
-            implementation: NumericImplementation {
+            implementation: CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: vec![].into(),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+                run: metadata_numeric,
+            }),
         }];
-        let mut values = NumericValues::default();
-        let mut budget = 1;
-        assert_eq!(
-            (numeric[0].implementation.run)(0, &mut values, &mut budget),
-            NumericProgress::Yield(0)
-        );
         assert_eq!(
             targets(&numeric, &functions, Family::Int, |id| id.0),
-            Err(NumericError {
+            Err(CompiledError {
                 family: Family::Int,
                 function: 0,
                 reason: Reason::HostFunction
@@ -292,13 +373,13 @@ mod tests {
         tables.value_returns.int_functions = Vec::from(functions).into();
         assert_eq!(
             all(
-                &NumericFunctions {
+                &CompiledFunctions {
                     ints: Vec::from(numeric).into(),
                     bools: vec![].into(),
                 },
                 tables,
             ),
-            Err(NumericError {
+            Err(CompiledError {
                 family: Family::Int,
                 function: 0,
                 reason: Reason::HostFunction,

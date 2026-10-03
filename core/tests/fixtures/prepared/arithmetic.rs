@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 12,
+    format: 13,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -514,7 +514,7 @@ data::ModuleArtifact {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
-        compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
+        compiled: data::compiled::CompiledFunctions::interpreted(),
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),

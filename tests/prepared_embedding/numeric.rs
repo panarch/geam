@@ -69,7 +69,8 @@ geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
     fs::write(
         application.join("src/main.rs"),
         r#"
-use data::compiled_numeric::{NumericProgress, NumericValues};
+use data::compiled::CompiledProgress;
+use data::compiled::numeric::NumericValues;
 use geam::__prepared_support as data;
 use geam::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
 use std::convert::Infallible;
@@ -103,7 +104,7 @@ fn main() {
                     .unwrap(),
                 BigInt::from(7)
             );
-            let implementation = &PROGRAM.program.compiled_numeric.ints[0].implementation;
+            let data::compiled::CompiledImplementation::Numeric(implementation) = &PROGRAM.program.compiled.ints[0].implementation else { panic!("numeric target"); };
             assert_eq!(implementation.checkpoints.len(), 504);
             for allowance in [1, 1024] {
                 for (flag, expected) in [(true, 7), (false, -7)] {
@@ -114,7 +115,7 @@ fn main() {
                     let mut budget = 1;
                     let first =
                         (implementation.run)(implementation.entry, &mut values, &mut budget);
-                    assert_eq!(first, NumericProgress::Yield(1));
+                    assert_eq!(first, CompiledProgress::Yield(1));
                     assert_eq!(budget, 0);
                     assert_eq!(values.bools, [flag, !flag]);
                     let mut point = 1;
@@ -125,14 +126,14 @@ fn main() {
                         steps += allowance - budget;
                         assert!(steps <= 502);
                         match progress {
-                            NumericProgress::Yield(next) => {
+                            CompiledProgress::Yield(next) => {
                                 assert_eq!(budget, 0);
                                 let checkpoint = implementation.checkpoints[next];
                                 assert_eq!(values.ints.len(), checkpoint.ints);
                                 assert_eq!(values.bools.len(), checkpoint.bools);
                                 point = next;
                             }
-                            NumericProgress::Complete(_) => {
+                            CompiledProgress::Complete(_) => {
                                 assert_eq!(values.ints, [expected]);
                                 assert!(values.bools.is_empty());
                                 // The last Not is folded into the condition:
@@ -140,7 +141,7 @@ fn main() {
                                 assert_eq!(steps, 502);
                                 break;
                             }
-                            NumericProgress::Interpreted(_) => {
+                            CompiledProgress::Interpreted(_) => {
                                 panic!("Boolean fixture stays generated")
                             }
                         }
