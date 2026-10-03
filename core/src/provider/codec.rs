@@ -345,32 +345,61 @@ pub struct ProviderConstructionIndex0;
 pub struct ProviderConstructionIndexNext<Index>(PhantomData<fn() -> Index>);
 
 /// Selects one exact requirement from a generated construction list.
+///
+/// Selection is sealed to the registered list, including its callable offset.
+/// An external index cannot grant a construction from an empty requirement.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstruction, ProviderConstructionRequirementAt, ProviderConstructions,
+///     ProviderNoConstructions,
+/// };
+/// use geam_core::HostListType;
+/// use num_bigint::BigInt;
+///
+/// struct UnregisteredIndex;
+/// impl ProviderConstructionRequirementAt<UnregisteredIndex> for ProviderNoConstructions {
+///     const CALLABLE_OFFSET: usize = 0;
+///     type Requirement = ProviderConstruction<HostListType<BigInt>>;
+/// }
+/// let _ = ProviderConstructions::none().select::<UnregisteredIndex>().token();
+/// ```
+///
+/// An external index cannot replace a registered type or its callable offset.
+///
+/// ```compile_fail
+/// use geam_core::__macro_support::{
+///     ProviderConstruction, ProviderConstructionList, ProviderConstructionRequirementAt,
+///     ProviderNoConstructions,
+/// };
+/// use geam_core::{HostListType, StringValue};
+/// use num_bigint::BigInt;
+///
+/// type Registered = ProviderConstructionList<
+///     ProviderConstruction<HostListType<BigInt>>, ProviderNoConstructions,
+/// >;
+/// struct UnregisteredIndex;
+/// impl ProviderConstructionRequirementAt<UnregisteredIndex> for Registered {
+///     const CALLABLE_OFFSET: usize = 10;
+///     type Requirement = ProviderConstruction<HostListType<StringValue>>;
+/// }
+/// ```
 #[doc(hidden)]
-pub trait ProviderConstructionRequirementAt<Index>: ProviderConstructionRequirements {
+#[allow(private_bounds)]
+pub trait ProviderConstructionRequirementAt<Index>:
+    ProviderConstructionRequirements + private::ConstructionRequirementAt<Index>
+{
     const CALLABLE_OFFSET: usize;
     type Requirement: ProviderConstructionRequirements;
 }
 
-impl<Head, Tail> ProviderConstructionRequirementAt<ProviderConstructionIndex0>
-    for ProviderConstructionList<Head, Tail>
+impl<Requirements, Index> ProviderConstructionRequirementAt<Index> for Requirements
 where
-    Head: ProviderConstructionRequirements,
-    Tail: ProviderConstructionRequirements,
+    Requirements: ProviderConstructionRequirements + private::ConstructionRequirementAt<Index>,
 {
-    const CALLABLE_OFFSET: usize = 0;
-    type Requirement = Head;
-}
-
-impl<Head, Tail, Index> ProviderConstructionRequirementAt<ProviderConstructionIndexNext<Index>>
-    for ProviderConstructionList<Head, Tail>
-where
-    Head: ProviderConstructionRequirements,
-    Tail: ProviderConstructionRequirementAt<Index>,
-{
-    const CALLABLE_OFFSET: usize = crate::host::construction_callable_count::<
-        Head::Types<HostTypeListEnd>,
-    >() + Tail::CALLABLE_OFFSET;
-    type Requirement = Tail::Requirement;
+    const CALLABLE_OFFSET: usize =
+        <Self as private::ConstructionRequirementAt<Index>>::REGISTERED_CALLABLE_OFFSET;
+    type Requirement = <Self as private::ConstructionRequirementAt<Index>>::RegisteredRequirement;
 }
 
 /// Call-scoped proof of one exact generated construction requirement tree.
@@ -805,7 +834,40 @@ where
 }
 
 mod private {
+    use super::{
+        ProviderConstructionIndex0, ProviderConstructionIndexNext, ProviderConstructionList,
+        ProviderConstructionRequirements,
+    };
+    use crate::host::{HostTypeListEnd, construction_callable_count};
+
     pub trait Requirements {}
+
+    pub trait ConstructionRequirementAt<Index>: ProviderConstructionRequirements {
+        const REGISTERED_CALLABLE_OFFSET: usize;
+        type RegisteredRequirement: ProviderConstructionRequirements;
+    }
+
+    impl<Head, Tail> ConstructionRequirementAt<ProviderConstructionIndex0>
+        for ProviderConstructionList<Head, Tail>
+    where
+        Head: ProviderConstructionRequirements,
+        Tail: ProviderConstructionRequirements,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = 0;
+        type RegisteredRequirement = Head;
+    }
+
+    impl<Head, Tail, Index> ConstructionRequirementAt<ProviderConstructionIndexNext<Index>>
+        for ProviderConstructionList<Head, Tail>
+    where
+        Head: ProviderConstructionRequirements,
+        Tail: ConstructionRequirementAt<Index>,
+    {
+        const REGISTERED_CALLABLE_OFFSET: usize = construction_callable_count::<
+            Head::Types<HostTypeListEnd>,
+        >() + Tail::REGISTERED_CALLABLE_OFFSET;
+        type RegisteredRequirement = Tail::RegisteredRequirement;
+    }
 
     impl Requirements for super::ProviderNoConstructions {}
 
