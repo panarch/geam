@@ -1,5 +1,5 @@
 use crate::plan::execution::prepared::rust::{Emit, Rust};
-pub(crate) mod compiled_numeric;
+pub(crate) mod compiled;
 pub(crate) mod constant;
 mod entry;
 mod explain;
@@ -192,7 +192,7 @@ pub(crate) struct HostedProgram<Profile: HostProfile> {
 pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
     functions: Node<FunctionTables<Profile>>,
-    compiled_numeric: compiled_numeric::NumericFunctions,
+    compiled: compiled::CompiledFunctions,
 }
 
 struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {

@@ -89,8 +89,14 @@ impl BitArrayValue {
 
     pub(in crate::runtime) fn bit_slice(&self, start: usize, length: usize) -> Option<Self> {
         let end = start.checked_add(length)?;
-        let bits = self.bits().get(start..end)?;
-        let value = if bits.is_empty() {
+        self.bits().get(start..end)?;
+        Some(self.slice_in_bounds(start, length))
+    }
+
+    /// The caller retains a range constructed by a checked slice of this owner.
+    pub(in crate::runtime) fn slice_in_bounds(&self, start: usize, length: usize) -> Self {
+        let bits = &self.bits()[start..start + length];
+        if bits.is_empty() {
             Self::from_bytes(Vec::new())
         } else if self.bit_len.is_multiple_of(8)
             && start.is_multiple_of(8)
@@ -103,8 +109,7 @@ impl BitArrayValue {
             }
         } else {
             Self::from_evaluated(BitVec::from_bitslice(bits))
-        };
-        Some(value)
+        }
     }
 
     pub(crate) fn byte_slice(&self, start: usize, length: usize) -> Option<Self> {
@@ -295,6 +300,30 @@ mod tests {
         assert_eq!(tail.bytes(), &[0xcd, 0xe0]);
         assert_eq!(tail.bit_len(), 12);
         assert_eq!(tail.pad_to_bytes().bit_len(), 16);
+    }
+
+    #[test]
+    fn compiled_ranges_retain_each_input_once_and_release_owners_on_clear() {
+        use crate::runtime::compiled::bit_array::BitArrayValues;
+        let input = BitArrayValue::from_bytes(vec![1, 2, 3, 4]);
+        let weak = Arc::downgrade(&input.bytes);
+        let mut values = BitArrayValues::default();
+        values.push_input(input.clone());
+        assert_eq!(weak.strong_count(), 2);
+        for _ in 0..100 {
+            values
+                .bit_arrays
+                .push(values.bit_arrays[0].slice(8, 16).unwrap());
+        }
+        assert_eq!(weak.strong_count(), 2);
+        drop(input);
+        let retained = values.materialize(values.bit_arrays[1]);
+        assert_eq!(weak.strong_count(), 2);
+        values.clear();
+        assert_eq!(weak.strong_count(), 1);
+        assert_eq!(retained.bytes(), &[2, 3]);
+        drop(retained);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]

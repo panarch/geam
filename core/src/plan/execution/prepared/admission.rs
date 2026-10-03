@@ -3,6 +3,7 @@ mod body;
 mod call;
 mod callables;
 mod catalog;
+mod compiled;
 mod constant;
 mod control;
 mod edge;
@@ -16,7 +17,6 @@ mod input;
 mod instruction;
 mod literal;
 mod local;
-mod numeric;
 mod operand;
 mod pattern;
 mod place;
@@ -70,7 +70,7 @@ enum Error<HostError> {
     Catalog(catalog::CatalogError),
     Hosts(HostError),
     Functions(functions::FunctionError<HostError>),
-    Numeric(numeric::NumericError),
+    Compiled(compiled::CompiledError),
     Constants(constant::ConstantBodyError),
     Entries(entry::EntryError),
     Main(entry::MainError),
@@ -218,7 +218,7 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
-    numeric::all(&program.compiled_numeric, &program.functions).map_err(Error::Numeric)?;
+    compiled::all(&program.compiled, &program.functions).map_err(Error::Compiled)?;
     hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
     Ok((types, catalog))
@@ -432,6 +432,7 @@ mod tests {
         FORMAT_VERSION, ModuleArtifact, PreparedModule, ProgramTables,
     };
     use crate::plan::execution::storage::Storage;
+    use crate::runtime::compiled::tests::metadata_numeric;
     use std::convert::Infallible;
     use std::sync::Arc;
 
@@ -1219,9 +1220,10 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
 
     #[test]
     fn invalid_numeric_links_are_rejected_before_a_plain_binding_owner_is_created() {
-        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
+        use crate::plan::execution::compiled::{
+            CompiledFunction, CompiledImplementation, NumericImplementation,
+        };
         use crate::plan::execution::function::IntFunctionId;
-        use crate::runtime::compiled_numeric::NumericProgress;
         let typed =
             crate::compile_typed_module("example", "src/example.gleam", "pub fn main() { 42 }")
                 .unwrap();
@@ -1230,26 +1232,22 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             .function(FunctionDeclaration::<(), BigInt>::new("main"))
             .unwrap();
         let mut artifact = artifact(bindings.prepare());
-        artifact.program.compiled_numeric.ints = vec![NumericFunction {
+        artifact.program.compiled.ints = vec![CompiledFunction {
             function: IntFunctionId(999),
-            implementation: NumericImplementation {
+            implementation: CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: vec![].into(),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+                run: metadata_numeric,
+            }),
         }]
         .into();
-        let implementation = &artifact.program.compiled_numeric.ints[0].implementation;
-        assert_eq!(
-            (implementation.run)(0, &mut Default::default(), &mut 1),
-            NumericProgress::Yield(0)
-        );
+
         assert_eq!(
             plain(Box::leak(Box::new(artifact)))
                 .err()
                 .unwrap()
                 .to_string(),
-            "invalid prepared program: Numeric(NumericError { family: Int, function: 999, reason: MissingFunction }); regenerate the prepared program"
+            "invalid prepared program: Compiled(CompiledError { family: Int, function: 999, reason: MissingFunction }); regenerate the prepared program"
         );
     }
 
@@ -1265,7 +1263,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                 modules: common.modules,
                 main: common.main,
                 functions: *functions,
-                compiled_numeric: prepared.program.compiled_numeric,
+                compiled: prepared.program.compiled,
                 constants: *constants,
                 function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                 list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -1478,7 +1476,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        compiled_numeric: program.compiled_numeric,
+                        compiled: program.compiled,
                         constants: *owned(common.constants),
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -1754,11 +1752,11 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 12; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 14; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 12; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 14; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -1846,7 +1844,9 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
     #[test]
     fn hosted_admission_checks_format_and_native_tables_before_selecting_entries() {
         use crate::plan::SourceSpan;
-        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
+        use crate::plan::execution::compiled::{
+            CompiledFunction, CompiledImplementation, NumericImplementation,
+        };
         use crate::plan::execution::function::{IntFunctionId, NilFunctionId};
         use crate::plan::execution::prepared::HostedModuleArtifact;
         use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
@@ -1854,7 +1854,6 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
             LibraryListConstructions,
         };
-        use crate::runtime::compiled_numeric::NumericProgress;
 
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum Change {
@@ -1875,7 +1874,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 12; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (
@@ -1915,7 +1914,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Numeric,
                 Some(
-                    "invalid prepared program: Numeric(NumericError { family: Int, function: 99, reason: MissingFunction }); regenerate the prepared program",
+                    "invalid prepared program: Compiled(CompiledError { family: Int, function: 99, reason: MissingFunction }); regenerate the prepared program",
                 ),
             ),
             (
@@ -1976,7 +1975,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        compiled_numeric: program.compiled_numeric,
+                        compiled: program.compiled,
                         constants,
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -2052,21 +2051,15 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
                     )
                 }
                 Change::Numeric => {
-                    artifact.module.program.compiled_numeric.ints = vec![NumericFunction {
+                    artifact.module.program.compiled.ints = vec![CompiledFunction {
                         function: IntFunctionId(99),
-                        implementation: NumericImplementation {
+                        implementation: CompiledImplementation::Numeric(NumericImplementation {
                             entry: 0,
                             checkpoints: vec![].into(),
-                            run: |point, _, _| NumericProgress::Yield(point),
-                        },
+                            run: metadata_numeric,
+                        }),
                     }]
                     .into();
-                    assert_eq!(
-                        (artifact.module.program.compiled_numeric.ints[0]
-                            .implementation
-                            .run)(0, &mut Default::default(), &mut 1,),
-                        NumericProgress::Yield(0)
-                    );
                 }
                 _ => {}
             }
@@ -2106,7 +2099,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 12; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (
@@ -2138,7 +2131,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    compiled_numeric: program.compiled_numeric,
+                    compiled: program.compiled,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -2267,7 +2260,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    compiled_numeric: program.compiled_numeric,
+                    compiled: program.compiled,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
