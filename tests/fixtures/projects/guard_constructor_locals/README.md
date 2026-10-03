@@ -5,6 +5,10 @@ Downloaded package sources are unchanged and stay under the ignored `build/`
 directory. The application checks local values inside guard constructors and
 nested containers, pattern bindings, generic calls, captures, and the original
 clip option/flag paths, including exact errors and remaining arguments.
+Nested fallthrough cases also bind previously ignored fields, list heads/tails,
+and aliases, including guarded alternatives and retained captures.
+Earlier clauses also narrow Bool siblings in tuples and custom fields before
+the remaining branch reads the second list element.
 Arithmetic results also pass through captured constructor guards across small
 and arbitrary-precision integer boundaries, including promotion and demotion.
 

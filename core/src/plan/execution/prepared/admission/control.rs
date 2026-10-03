@@ -463,6 +463,20 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         }
     }
 
+    pub(super) fn failed_match_pattern<'pattern>(
+        &self,
+        block: BlockId,
+        pattern: &'pattern MatchPattern,
+        subject: Place,
+        path: &[Projection],
+    ) -> Option<&'pattern MatchPattern> {
+        let (pattern, _, requirements) = failure_path(block, pattern, subject, path, &[])?;
+        requirements
+            .into_iter()
+            .all(|query| self.proves_query(query))
+            .then_some(pattern)
+    }
+
     fn match_condition(
         &self,
         block: BlockId,
@@ -483,44 +497,8 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             return match_proves(place::pattern_at(&matcher.pattern, path)?, true, fact)
                 .then(Vec::new);
         }
-        let mut requirements = Vec::new();
-        let mut parent = subject;
-        let mut pattern = &matcher.pattern;
-        for projection in path {
-            let mut visited = HashSet::new();
-            while let MatchPattern::Alias { pattern: inner, .. } = pattern {
-                if !visited.insert(pattern as *const MatchPattern) {
-                    return None;
-                }
-                pattern = inner;
-            }
-            let (index, fields) = match (projection, pattern) {
-                (Projection::Tuple(index), MatchPattern::Tuple(fields)) => (index, fields),
-                (
-                    Projection::Custom(index),
-                    MatchPattern::Custom {
-                        constructor,
-                        fields,
-                    },
-                ) => {
-                    requirements.push(Query {
-                        block,
-                        place: parent.clone(),
-                        fact: Fact::Is(constructor.index),
-                        assumptions: assumptions.to_vec(),
-                    });
-                    (index, fields)
-                }
-                _ => return None,
-            };
-            for (other, field) in fields.iter().enumerate() {
-                if other != *index && !irrefutable(field) {
-                    return None;
-                }
-            }
-            pattern = fields.get(*index)?;
-            parent.path.push(*projection);
-        }
+        let (pattern, parent, mut requirements) =
+            failure_path(block, &matcher.pattern, subject, path, assumptions)?;
         if match_proves(pattern, false, fact) {
             return Some(requirements);
         }
@@ -546,6 +524,68 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         }
         Some(requirements)
     }
+}
+
+// A failed compound match can constrain a selected field only when every
+// ancestor constructor and every sibling pattern would have matched.
+fn failure_path<'pattern>(
+    block: BlockId,
+    mut pattern: &'pattern MatchPattern,
+    subject: Place,
+    path: &[Projection],
+    assumptions: &[Assumption],
+) -> Option<(&'pattern MatchPattern, Place, Vec<Query>)> {
+    let mut requirements = Vec::new();
+    let mut parent = subject;
+    let mut assumptions = assumptions.to_vec();
+    for projection in path {
+        let mut visited = HashSet::new();
+        while let MatchPattern::Alias { pattern: inner, .. } = pattern {
+            if !visited.insert(pattern as *const MatchPattern) {
+                return None;
+            }
+            pattern = inner;
+        }
+        let (index, fields, custom) = match (projection, pattern) {
+            (Projection::Tuple(index), MatchPattern::Tuple(fields)) => (index, fields, false),
+            (
+                Projection::Custom(index),
+                MatchPattern::Custom {
+                    constructor,
+                    fields,
+                },
+            ) => {
+                requirements.push(Query {
+                    block,
+                    place: parent.clone(),
+                    fact: Fact::Is(constructor.index),
+                    assumptions: assumptions.clone(),
+                });
+                assumptions.push(Assumption {
+                    path: parent.path.clone(),
+                    constructor: constructor.index,
+                });
+                (index, fields, true)
+            }
+            _ => return None,
+        };
+        for (other, field) in fields.iter().enumerate() {
+            if other != *index {
+                let mut sibling = parent.clone();
+                sibling.path.push(if custom {
+                    Projection::Custom(other)
+                } else {
+                    Projection::Tuple(other)
+                });
+                // Prove each sibling on the predecessor, independently of this
+                // failed match, before attributing failure to the selected field.
+                pattern_requirements(block, field, sibling, &assumptions, &mut requirements)?;
+            }
+        }
+        pattern = fields.get(*index)?;
+        parent.path.push(*projection);
+    }
+    Some((pattern, parent, requirements))
 }
 
 impl Query {
@@ -596,7 +636,7 @@ fn custom(pattern: &MatchPattern) -> Option<(usize, &[MatchPattern])> {
     }
 }
 
-fn unaliased(pattern: &MatchPattern) -> Option<&MatchPattern> {
+pub(super) fn unaliased(pattern: &MatchPattern) -> Option<&MatchPattern> {
     let mut current = pattern;
     let mut visited = HashSet::new();
     loop {
@@ -610,7 +650,7 @@ fn unaliased(pattern: &MatchPattern) -> Option<&MatchPattern> {
     }
 }
 
-fn irrefutable(pattern: &MatchPattern) -> bool {
+pub(super) fn irrefutable(pattern: &MatchPattern) -> bool {
     let mut pending = vec![(pattern, false)];
     let mut active = HashSet::new();
     let mut complete = HashSet::new();
@@ -1992,8 +2032,8 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
     }
 
     #[test]
-    fn failed_nested_patterns_require_the_parent_and_irrefutable_siblings() {
-        use super::{Condition, Place, Projection};
+    fn failed_nested_patterns_collect_parent_and_sibling_requirements() {
+        use super::{Assumption, Condition, Place, Projection, Query};
         use crate::plan::execution::graph::TupleLocalId;
         use crate::plan::execution::type_::{CustomTypeId, ValueShapeId};
 
@@ -2032,11 +2072,11 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
             },
             fields: Vec::new().into(),
         };
-        for (custom_parent, sibling, expected) in [
-            (false, MatchPattern::Discard, true),
-            (false, MatchPattern::Bool(true), false),
-            (true, MatchPattern::Discard, true),
-            (true, MatchPattern::Bool(true), false),
+        for (custom_parent, sibling, boolean) in [
+            (false, MatchPattern::Discard, false),
+            (false, MatchPattern::Bool(true), true),
+            (true, MatchPattern::Discard, false),
+            (true, MatchPattern::Bool(true), true),
         ] {
             let fields = vec![leaf.clone(), sibling].into();
             let pattern = if custom_parent {
@@ -2084,24 +2124,55 @@ pub fn main() { #(Wrap(First(42)), Fixed(42), [widen(First(42))], #(First(42))) 
                 root: TupleLocalId(0).into(),
                 path: path.clone(),
             };
-            let requirements = control.condition(
-                BlockId(0),
-                Condition::Match {
-                    matcher: &matcher,
-                    success: false,
-                },
-                &source,
-                Fact::IsNot(3),
-                &[],
-            );
-            assert_eq!(requirements.is_some(), expected);
-            if let Some(requirements) = requirements {
-                assert_eq!(requirements.len(), usize::from(custom_parent));
-                for query in requirements {
-                    assert_eq!(query.block, BlockId(0));
-                    assert_eq!(query.place, Place::local(TupleLocalId(0).into()));
-                    assert!(query.fact == Fact::Is(7));
-                }
+            let requirements = control
+                .condition(
+                    BlockId(0),
+                    Condition::Match {
+                        matcher: &matcher,
+                        success: false,
+                    },
+                    &source,
+                    Fact::IsNot(3),
+                    &[],
+                )
+                .unwrap();
+            let mut expected = Vec::new();
+            if custom_parent {
+                expected.push(Query {
+                    block: BlockId(0),
+                    place: Place::local(TupleLocalId(0).into()),
+                    fact: Fact::Is(7),
+                    assumptions: Vec::new(),
+                });
+            }
+            if boolean {
+                expected.push(Query {
+                    block: BlockId(0),
+                    place: Place {
+                        root: TupleLocalId(0).into(),
+                        path: vec![if custom_parent {
+                            Projection::Custom(1)
+                        } else {
+                            Projection::Tuple(1)
+                        }],
+                    },
+                    fact: Fact::Boolean(true),
+                    assumptions: if custom_parent {
+                        vec![Assumption {
+                            path: Vec::new(),
+                            constructor: 7,
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                });
+            }
+            assert_eq!(requirements.len(), expected.len());
+            for (actual, expected) in requirements.into_iter().zip(expected) {
+                assert_eq!(actual.block, expected.block);
+                assert_eq!(actual.place, expected.place);
+                assert!(actual.fact == expected.fact);
+                assert!(actual.assumptions == expected.assumptions);
             }
             assert!(
                 control

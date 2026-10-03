@@ -120,7 +120,10 @@ pub(super) fn stored_expr(
             DraftFlow::Value {
                 cursor,
                 value: source,
-            } => list_index(shape, source, *index, cursor, graph, context),
+            } => {
+                let (cursor, value) = list_index(shape, source, *index, cursor, graph, context);
+                DraftFlow::value(cursor, value)
+            }
         }),
         E::Panic(value) => panic_expr(value, cursor, graph, context).map(|_| DraftFlow::Diverged),
         E::BoolCase {
@@ -696,14 +699,14 @@ pub(in crate::plan::execution::lowering) fn custom_field(
     (cursor, value)
 }
 
-fn list_index(
+pub(in crate::plan::execution::lowering) fn list_index(
     shape: &StoredValueShape,
     source: super::super::DraftList,
     index: usize,
     mut cursor: DraftCursor,
     graph: &mut DraftGraph,
     context: &mut super::super::LoweringContext,
-) -> DraftFlow<DraftValueRef> {
+) -> (DraftCursor, DraftValueRef) {
     let value = match shape {
         StoredValueShape::Int => graph
             .int_instruction(
@@ -812,7 +815,7 @@ fn list_index(
             )
             .erase(),
     };
-    DraftFlow::value(cursor, value)
+    (cursor, value)
 }
 
 pub(in crate::plan::execution::lowering) fn never_expr(

@@ -147,13 +147,17 @@ fn internal_subject_name(local: CustomLocalId) -> EcoString {
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        AssertBinding, AssertPattern, BoolExpr, CustomBindingPattern, CustomConstructor,
-        CustomConstructorField, CustomExpr, CustomLocal, CustomLocalId, CustomPattern, CustomType,
-        CustomTypeName, CustomValueShape, Expr, IntLocalId, ParamLocal, ReturnExpr, Step,
-        TotalBindingPattern, ValueShape, ValueType,
+        AssertBinding, AssertPattern, BoolExpr, BoolLocalId, BoolReturn, CustomBindingPattern,
+        CustomConstructor, CustomConstructorField, CustomExpr, CustomLocal, CustomLocalId,
+        CustomPattern, CustomType, CustomTypeName, CustomValueShape, Expr, IntLocalId,
+        ListAssertPattern, ListAssertTail, ParamLocal, ReturnExpr, Step, TotalBindingPattern,
+        ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionInfo, PlanContext};
-    use crate::planner::dsl::{int, int_return_block, int_return_expr, local_int};
+    use crate::planner::dsl::{
+        bool_, bool_return_block, bool_return_expr, int, int_return_block, int_return_expr,
+        local_bool, local_int,
+    };
     use crate::planner::plan_module;
     use crate::planner::support::dummy_span;
     use crate::planner::{
@@ -162,6 +166,115 @@ mod tests {
     use gleam_compiler_core::type_::error::VariableOrigin;
     use num_bigint::BigInt;
     use std::collections::HashMap;
+
+    #[test]
+    fn plan_exhaustive_nested_remainder_preserves_the_exact_bool_binding() {
+        let plan = plan_module(crate::planner::support::compile(
+            r#"
+pub fn enabled(input: Result(#(Bool, List(String)), String)) -> Bool {
+  case input {
+    Error(_) -> False
+    Ok(#(_, [_, ..])) -> False
+    Ok(#(value, [])) -> value
+  }
+}
+pub fn main() {
+  let assert True = enabled(Ok(#(True, [])))
+  let assert False = enabled(Ok(#(False, [])))
+  let assert False = enabled(Ok(#(True, ["tail"])))
+  let assert False = enabled(Error("invalid"))
+}
+"#,
+        ))
+        .unwrap();
+        let payload = ValueType::Tuple(vec![
+            ValueType::Bool,
+            ValueType::List(Box::new(ValueType::String)),
+        ]);
+        let result = CustomType::new(
+            CustomTypeName::new("".into(), "gleam".into(), "Result".into()),
+            vec![payload.clone(), ValueType::String],
+        );
+        let shape = CustomValueShape::any(result.clone());
+        let ok = CustomConstructor::new(
+            result.clone(),
+            "Ok".into(),
+            0,
+            vec![CustomConstructorField::new(None, payload)],
+        );
+        let error = CustomConstructor::new(
+            result,
+            "Error".into(),
+            1,
+            vec![CustomConstructorField::new(None, ValueType::String)],
+        );
+        let subject = CustomExpr::local_get(
+            CustomLocal::from_shape(CustomLocalId(1), shape.clone()),
+            "<case:custom:1>".into(),
+        );
+        let bound = AssertBinding::new(
+            ParamLocal::bool(BoolLocalId(0)),
+            "value".into(),
+            ValueShape::Bool,
+        );
+        let expected = ReturnExpr::bool_body(bool_return_block(
+            [Step::let_custom(
+                CustomLocalId(1),
+                "<case:custom:1>".into(),
+                CustomExpr::local_get(
+                    CustomLocal::from_shape(CustomLocalId(0), shape.clone()),
+                    "input".into(),
+                ),
+            )],
+            BoolReturn::bool_case(
+                BoolExpr::custom_matches(
+                    subject.clone(),
+                    CustomPattern::new(
+                        error,
+                        vec![AssertPattern::Discard],
+                        Some(vec![TotalBindingPattern::discard(ValueType::String)]),
+                    ),
+                ),
+                bool_return_expr(bool_(false)),
+                BoolReturn::bool_case(
+                    BoolExpr::custom_matches(
+                        subject,
+                        CustomPattern::new(
+                            ok.clone(),
+                            vec![AssertPattern::Tuple(vec![
+                                AssertPattern::Discard,
+                                AssertPattern::list(ListAssertPattern::new(
+                                    ValueType::String,
+                                    vec![AssertPattern::Discard],
+                                    Some(ListAssertTail::Ignore),
+                                )),
+                            ])],
+                            None,
+                        ),
+                    ),
+                    bool_return_expr(bool_(false)),
+                    bool_return_block(
+                        [Step::bind_custom_fields(
+                            CustomLocalId(1),
+                            CustomBindingPattern::exhaustive_remainder(
+                                shape,
+                                vec![1],
+                                ok,
+                                vec![TotalBindingPattern::tuple(vec![
+                                    TotalBindingPattern::bind(bound),
+                                    TotalBindingPattern::discard(ValueType::List(Box::new(
+                                        ValueType::String,
+                                    ))),
+                                ])],
+                            ),
+                        )],
+                        bool_return_expr(local_bool(0, "value")),
+                    ),
+                ),
+            ),
+        ));
+        assert_eq!(plan.functions()[0].return_(), &expected);
+    }
 
     #[test]
     fn whole_custom_pattern_aliases_preserve_inner_to_outer_binding_order() {

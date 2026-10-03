@@ -8,8 +8,8 @@ use super::pattern::{
     DraftBitArrayStringPattern, DraftMatchListTail, DraftMatchPattern, DraftMatchPatternBinding,
 };
 use super::{
-    DraftCursor, DraftCustom, DraftFlow, DraftGraph, DraftGraphValue, DraftString, DraftTuple,
-    DraftValueRef,
+    DraftCursor, DraftCustom, DraftFlow, DraftGraph, DraftGraphValue, DraftList, DraftString,
+    DraftTuple, DraftValueRef,
 };
 use crate::plan::execution::lowering::specialization::{
     CustomConstructorMatch, FunctionArgumentsRepresentation, FunctionRepresentation,
@@ -1703,7 +1703,7 @@ fn bind_custom_fields(
         // Eliminating a known constructor test must not discard the metadata
         // needed to admit its remaining field reads. Uninhabited bindings and
         // discarded fields do not require a constructor descriptor.
-        if fields.iter().any(total_pattern_requires_value) {
+        if fields.iter().any(module::TotalBindingPattern::has_bindings) {
             context.custom_constructor(constructor.clone());
         }
         cursor
@@ -1718,7 +1718,7 @@ fn bind_total_custom_field(
     graph: &mut DraftGraph,
     context: &mut super::LoweringContext,
 ) -> Representability<DraftCursor> {
-    if !total_pattern_requires_value(pattern) {
+    if !pattern.has_bindings() {
         return Representability::Inhabited(cursor);
     }
     stored_pattern_shape(pattern, context).and_then(|shape| {
@@ -1751,7 +1751,7 @@ fn bind_total_pattern(
                 Representability::Inhabited(cursor),
                 |cursor, (index, element)| {
                     cursor.and_then(|cursor| {
-                        if !total_pattern_requires_value(element) {
+                        if !element.has_bindings() {
                             return Representability::Inhabited(cursor);
                         }
                         stored_pattern_shape(element, context).and_then(|shape| {
@@ -1769,13 +1769,54 @@ fn bind_total_pattern(
                 },
             )
         }
-        P::List(tail) => {
-            if let module::ListAssertTail::Bind(binding) = tail {
-                cursor
-                    .scope_mut()
-                    .insert(super::local::list_local_key(binding.local()), source);
-            }
-            Representability::Inhabited(cursor)
+        P::List { elements, tail } => {
+            let list = DraftList::from_ref(&source);
+            elements
+                .iter()
+                .enumerate()
+                .fold(
+                    Representability::Inhabited(cursor),
+                    |cursor, (index, element)| {
+                        cursor.and_then(|cursor| {
+                            if !element.has_bindings() {
+                                return Representability::Inhabited(cursor);
+                            }
+                            stored_pattern_shape(element, context).and_then(|shape| {
+                                let (cursor, value) = generic::list_index(
+                                    &shape,
+                                    list.clone(),
+                                    index,
+                                    cursor,
+                                    graph,
+                                    context,
+                                );
+                                bind_total_pattern(element, value, cursor, graph, context)
+                            })
+                        })
+                    },
+                )
+                .map(|mut cursor| {
+                    if let Some(module::ListAssertTail::Bind(binding)) = tail {
+                        let value = if elements.is_empty() {
+                            source
+                        } else {
+                            let item = context.concrete_value_shape(binding.item_shape());
+                            list::drop_first(
+                                &item,
+                                list,
+                                elements.len(),
+                                &mut cursor,
+                                graph,
+                                context,
+                            )
+                            .erase()
+                        };
+                        cursor
+                            .scope_mut()
+                            .insert(super::local::list_local_key(binding.local()), value);
+                    }
+                    cursor
+                })
         }
         P::Custom(pattern) => bind_custom_fields(
             pattern.constructor(),
@@ -1840,23 +1881,6 @@ fn stored_pattern_shape(
         .representations
         .representation(&shape)
         .into_representability()
-}
-
-fn total_pattern_requires_value(pattern: &module::TotalBindingPattern) -> bool {
-    match pattern.kind() {
-        module::TotalBindingPatternKind::Bind(_) => true,
-        module::TotalBindingPatternKind::Discard => false,
-        module::TotalBindingPatternKind::Tuple(elements) => {
-            elements.iter().any(total_pattern_requires_value)
-        }
-        module::TotalBindingPatternKind::List(tail) => {
-            matches!(tail, module::ListAssertTail::Bind(_))
-        }
-        module::TotalBindingPatternKind::Custom(pattern) => {
-            pattern.fields().iter().any(total_pattern_requires_value)
-        }
-        module::TotalBindingPatternKind::Alias { .. } => true,
-    }
 }
 
 #[cfg(test)]
@@ -2118,10 +2142,66 @@ pub fn main() { first(Stop, 42) }
     }
 
     #[test]
+    fn nested_list_remainder_projects_only_the_bound_prefix_element() {
+        use crate::plan::execution::graph::{
+            IntInstruction, IntListLocalId, ProfiledInstructionKind,
+        };
+        use crate::{ExecutionPlan, Value, compile_typed_module, plan_module, run_main};
+
+        let source = r#"
+fn second(input: Result(List(Int), String)) -> Int {
+  case input {
+    Error(_) -> 0
+    Ok([]) -> 0
+    Ok([_]) -> 0
+    Ok([_, value, ..]) -> value
+  }
+}
+pub fn main() {
+  let assert 0 = second(Error("invalid"))
+  let assert 0 = second(Ok([]))
+  let assert 0 = second(Ok([3]))
+  let assert 5 = second(Ok([3, 5]))
+  second(Ok([3, 7, 9]))
+}
+"#;
+        let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = ExecutionPlan::from_module_plan(plan_module(typed).unwrap());
+        let second = plan
+            .program
+            .functions
+            .value_returns
+            .int_functions
+            .iter()
+            .find(|function| function.entry().parameter_count == 1)
+            .unwrap();
+        let reads = second
+            .body()
+            .block_graph()
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .filter_map(
+                |instruction| match instruction.value().map(|value| &value.kind) {
+                    Some(ProfiledInstructionKind::Int(IntInstruction::ListIndex {
+                        list,
+                        index,
+                    })) => Some((*list, *index)),
+                    _ => None,
+                },
+            )
+            .collect::<Vec<_>>();
+        assert_eq!(reads, [(IntListLocalId(0), 1)]);
+        let mut echo = Vec::new();
+        assert_eq!(run_main(&plan, &mut echo), Ok(Value::Int(7.into())));
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn total_list_bindings_preserve_ignored_and_bound_tails() {
         let mut context =
             crate::plan::execution::lowering::test_support::lowering_context(Vec::new());
-        let ignored = TotalBindingPattern::list(ValueType::Int, ListAssertTail::Ignore);
+        let ignored =
+            TotalBindingPattern::list(ValueType::Int, Vec::new(), Some(ListAssertTail::Ignore));
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
         let list = graph.value_ref(StoredValueShape::List(Box::new(SpecializedValueShape::Int)));
@@ -2133,7 +2213,12 @@ pub fn main() { first(Stop, 42) }
         let local = ListLocal::int(IntListLocalId(0));
         let bound = TotalBindingPattern::list(
             ValueType::Int,
-            ListAssertTail::bind(local.clone(), "rest".into(), crate::plan::ValueShape::Int),
+            Vec::new(),
+            Some(ListAssertTail::bind(
+                local.clone(),
+                "rest".into(),
+                crate::plan::ValueShape::Int,
+            )),
         );
         let (mut graph, cursor) =
             DraftGraphBuilder::<DraftValueRef, ()>::new(Vec::new(), Vec::new());
