@@ -1,3 +1,4 @@
+mod bit_array;
 mod capture;
 mod match_results;
 mod numeric;

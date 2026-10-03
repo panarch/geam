@@ -1,48 +1,58 @@
-use crate::plan::execution::compiled_numeric::NumericCheckpoint;
+use super::bit_array::BitArrayMatch;
+use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{ExecutionGraphProfile, FunctionExit, ProfiledFunctionBody};
 use crate::plan::execution::graph::{
     ArithmeticRegion, BlockGraphExitId, BlockGraphView, BlockId, BoolInstruction, BoolLocalId,
     BoolTest, Edge, IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand, ParamLocal,
     ParamSlot, ProfiledInstruction, ProfiledInstructionKind, Terminator,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Borrowed inspection used only while emitting or admitting prepared data.
 /// None of the structuring work survives in the executable program.
-pub(in crate::plan::execution::prepared) struct NumericShape<'graph, Graph: ExecutionGraphProfile> {
+pub(in crate::plan::execution::prepared) struct CompiledShape<'graph, Graph: ExecutionGraphProfile>
+{
     pub graph: BlockGraphView<'graph, Graph>,
-    pub blocks: Vec<NumericBlock<'graph>>,
-    pub checkpoints: Vec<NumericCheckpoint>,
-    pub starts: Vec<usize>,
-    pub joins: Vec<Option<BlockId>>,
-    pub repeats: bool,
+    pub(super) blocks: BTreeMap<usize, CompiledBlock<'graph>>,
+    pub checkpoints: Vec<CompiledCheckpoint>,
+    pub(super) starts: BTreeMap<usize, usize>,
+    pub(super) joins: Vec<Option<BlockId>>,
+    pub(super) repeats: bool,
+    pub(super) kind: KernelKind,
+    pub(super) order: Vec<BlockId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum KernelKind {
+    Numeric,
+    BitArray,
 }
 
 // These are preparation-local views. They borrow the canonical graph and
 // narrow only the variants that this emitter implements; they are never
 // stored in an execution program or used as a second runtime evaluator.
-pub(in crate::plan::execution::prepared) struct NumericBlock<'graph> {
-    pub instructions: Vec<NumericInstruction<'graph>>,
-    pub terminator: NumericTerminator<'graph>,
+pub(super) struct CompiledBlock<'graph> {
+    pub instructions: Vec<CompiledInstruction<'graph>>,
+    pub terminator: CompiledTerminator<'graph>,
 }
 
-pub(in crate::plan::execution::prepared) enum NumericInstruction<'graph> {
+pub(super) enum CompiledInstruction<'graph> {
     Integer(IntLocalId, NumericInteger<'graph>),
-    Boolean(BoolLocalId, NumericBoolean),
+    Boolean(BoolLocalId, CompiledBoolean),
     Region {
         region: &'graph ArithmeticRegion,
         outputs: Vec<IntLocalId>,
     },
 }
 
-pub(in crate::plan::execution::prepared) enum NumericInteger<'graph> {
+pub(super) enum NumericInteger<'graph> {
     Value(&'graph IntegerLiteral),
     Binary(NumericOperation, IntegerOperand, IntegerOperand),
     Negate(IntLocalId),
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::plan::execution::prepared) enum NumericOperation {
+pub(super) enum NumericOperation {
     Add,
     Subtract,
     Multiply,
@@ -50,17 +60,17 @@ pub(in crate::plan::execution::prepared) enum NumericOperation {
     Remainder,
 }
 
-pub(in crate::plan::execution::prepared) enum NumericBoolean {
+pub(super) enum CompiledBoolean {
     Value(bool),
-    Test(NumericTest),
+    Test(CompiledTest),
 }
 
-pub(in crate::plan::execution::prepared) enum NumericTest {
+pub(super) enum CompiledTest {
     Not(BoolLocalId),
     Compare(NumericComparison, IntegerOperand, IntegerOperand),
 }
 
-pub(in crate::plan::execution::prepared) enum NumericComparison {
+pub(super) enum NumericComparison {
     Equal,
     NotEqual,
     Less,
@@ -69,7 +79,7 @@ pub(in crate::plan::execution::prepared) enum NumericComparison {
     GreaterEqual,
 }
 
-pub(in crate::plan::execution::prepared) enum NumericTerminator<'graph> {
+pub(super) enum CompiledTerminator<'graph> {
     Jump(&'graph Edge),
     Boolean {
         subject: BoolLocalId,
@@ -77,7 +87,7 @@ pub(in crate::plan::execution::prepared) enum NumericTerminator<'graph> {
         false_: &'graph Edge,
     },
     Test {
-        test: NumericTest,
+        test: CompiledTest,
         true_: &'graph Edge,
         false_: &'graph Edge,
     },
@@ -87,65 +97,129 @@ pub(in crate::plan::execution::prepared) enum NumericTerminator<'graph> {
         fallback: &'graph Edge,
     },
     Exit(BlockGraphExitId),
+    BitArray(BitArrayMatch<'graph>),
+    Interpreted,
 }
 
-impl<'graph, Graph: ExecutionGraphProfile> NumericShape<'graph, Graph> {
+impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
     pub(in crate::plan::execution::prepared) fn inspect<Return, Tail>(
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
     ) -> Option<Self> {
+        Self::inspect_supported(body, KernelKind::Numeric)
+    }
+
+    pub(in crate::plan::execution::prepared) fn inspect_bits<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+    ) -> Option<Self> {
+        Self::inspect_supported(body, KernelKind::BitArray)
+    }
+
+    pub(in crate::plan::execution::prepared) fn start(&self, block: BlockId) -> usize {
+        self.starts[&block.index()]
+    }
+
+    pub(super) fn block(&self, block: BlockId) -> &CompiledBlock<'graph> {
+        &self.blocks[&block.index()]
+    }
+
+    fn inspect_supported<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+        kind: KernelKind,
+    ) -> Option<Self> {
+        let bit_arrays = kind == KernelKind::BitArray;
         let graph = body.block_graph().as_view();
         let count = graph.blocks().len();
         if count < 2
-            || body
-                .exits
-                .iter()
-                .any(|exit| !matches!(exit, FunctionExit::Return(_)))
+            || (!bit_arrays
+                && body
+                    .exits
+                    .iter()
+                    .any(|exit| !matches!(exit, FunctionExit::Return(_))))
         {
             return None;
         }
         let mut checkpoints = Vec::new();
-        let mut blocks = Vec::with_capacity(count);
-        let mut starts = Vec::with_capacity(count);
+        let mut blocks = BTreeMap::new();
+        let mut starts = BTreeMap::new();
         let mut successors = Vec::with_capacity(count);
         let mut repeats = false;
+        let can_repeat = if bit_arrays {
+            repeating_blocks(graph)
+        } else {
+            vec![false; count]
+        };
         for (index, block) in graph.blocks().enumerate() {
-            let mut point = NumericCheckpoint {
+            let mut point = CompiledCheckpoint {
                 block: BlockId(index),
                 instruction: 0,
                 ints: 0,
                 bools: 0,
+                bit_arrays: 0,
             };
-            for slot in block.params() {
-                add_slot(&mut point, slot)?;
+            if block
+                .params()
+                .iter()
+                .try_for_each(|slot| add_slot(&mut point, slot, bit_arrays))
+                .is_none()
+            {
+                if !bit_arrays {
+                    return None;
+                }
+                successors.push(Vec::new());
+                continue;
             }
-            starts.push(checkpoints.len());
+            starts.insert(index, checkpoints.len());
             checkpoints.push(point);
             let mut instructions = Vec::with_capacity(block.instructions().len());
             for instruction in block.instructions() {
-                let instruction = NumericInstruction::inspect(instruction)?;
+                let Some(instruction) = CompiledInstruction::inspect(instruction) else {
+                    if !bit_arrays || can_repeat[index] {
+                        return None;
+                    }
+                    break;
+                };
                 match &instruction {
-                    NumericInstruction::Integer(..) => point.ints += 1,
-                    NumericInstruction::Boolean(..) => point.bools += 1,
-                    NumericInstruction::Region { outputs, .. } => point.ints += outputs.len(),
+                    CompiledInstruction::Integer(..) => point.ints += 1,
+                    CompiledInstruction::Boolean(..) => point.bools += 1,
+                    CompiledInstruction::Region { outputs, .. } => point.ints += outputs.len(),
                 }
                 instructions.push(instruction);
                 point.instruction += 1;
                 checkpoints.push(point);
             }
-            let terminator = NumericTerminator::inspect(block.terminator())?;
-            let edges = terminator.edges();
-            repeats |= edges.iter().any(|edge| edge.target() == graph.entry());
-            successors.push(
-                edges
-                    .iter()
-                    .map(|edge| edge.target().index())
-                    .collect::<Vec<_>>(),
+            let terminator = if instructions.len() < block.instructions().len() {
+                CompiledTerminator::Interpreted
+            } else {
+                let inspected = CompiledTerminator::inspect(block.terminator()).or_else(|| {
+                    if bit_arrays && let Terminator::Match(matcher) = block.terminator() {
+                        return BitArrayMatch::inspect(matcher).map(CompiledTerminator::BitArray);
+                    }
+                    None
+                }).filter(|terminator| {
+                    !matches!(terminator, CompiledTerminator::Exit(exit) if !matches!(body.exit(*exit), FunctionExit::Return(_)))
+                });
+                match inspected {
+                    Some(terminator) => terminator,
+                    None if bit_arrays && !can_repeat[index] => CompiledTerminator::Interpreted,
+                    None => return None,
+                }
+            };
+            let edges = terminator.targets();
+            repeats |= edges.contains(&graph.entry());
+            successors.push(edges.iter().map(|edge| edge.index()).collect::<Vec<_>>());
+            blocks.insert(
+                index,
+                CompiledBlock {
+                    instructions,
+                    terminator,
+                },
             );
-            blocks.push(NumericBlock {
-                instructions,
-                terminator,
-            });
         }
+        // Every retained edge forwards supported locals or supported match
+        // bindings. The typed graph therefore gives its destination the same
+        // supported families. A custom suffix stops at its first instruction,
+        // before it can produce a custom value or forward it along an edge.
+        starts.get(&graph.entry().index())?;
         let mut order = Vec::with_capacity(count);
         let mut visited = vec![0; count];
         visit(
@@ -155,9 +229,20 @@ impl<'graph, Graph: ExecutionGraphProfile> NumericShape<'graph, Graph> {
             &mut visited,
             &mut order,
         )?;
-        // A frozen graph contains only reachable blocks. Requiring all of them
-        // also makes the checkpoint layout complete rather than a partial view.
-        if order.len() != count {
+        // Scalar generation covers the complete frozen graph. Bit generation
+        // stops before unsupported terminal suffixes; each retained checkpoint
+        // still records an exact canonical prefix.
+        if !bit_arrays && order.len() != count {
+            return None;
+        }
+        if bit_arrays
+            && !order.iter().any(|&index| {
+                matches!(
+                    blocks.get(&index).map(|block| &block.terminator),
+                    Some(CompiledTerminator::BitArray(_))
+                )
+            })
+        {
             return None;
         }
         // Entry back-edges and returns lead to one virtual exit. In reverse
@@ -197,9 +282,13 @@ impl<'graph, Graph: ExecutionGraphProfile> NumericShape<'graph, Graph> {
             starts,
             joins,
             repeats,
+            kind,
+            order: order.iter().rev().copied().map(BlockId).collect(),
         };
-        let mut emitted = BTreeSet::new();
-        shape.structured_path(graph.entry(), None, &mut emitted)?;
+        if !bit_arrays {
+            let mut emitted = BTreeSet::new();
+            shape.structured_path(graph.entry(), None, &mut emitted)?;
+        }
         Some(shape)
     }
 
@@ -215,11 +304,11 @@ impl<'graph, Graph: ExecutionGraphProfile> NumericShape<'graph, Graph> {
         if !emitted.insert(block.index()) {
             return None;
         }
-        let outgoing = self.blocks[block.index()].terminator.edges();
+        let outgoing = self.block(block).terminator.targets();
         let join = self.joins[block.index()];
         for edge in outgoing {
-            if edge.target() != self.graph.entry() {
-                self.structured_path(edge.target(), join.or(stop), emitted)?;
+            if edge != self.graph.entry() {
+                self.structured_path(edge, join.or(stop), emitted)?;
             }
         }
         if let Some(join) = join {
@@ -227,6 +316,53 @@ impl<'graph, Graph: ExecutionGraphProfile> NumericShape<'graph, Graph> {
         }
         Some(())
     }
+}
+
+fn repeating_blocks<Graph: ExecutionGraphProfile>(graph: BlockGraphView<'_, Graph>) -> Vec<bool> {
+    let mut predecessors = vec![Vec::new(); graph.blocks().len()];
+    for (index, block) in graph.blocks().enumerate() {
+        let targets = match block.terminator() {
+            Terminator::Jump(jump) => vec![jump.edge.target()],
+            Terminator::BoolBranch(branch) => vec![branch.true_.target(), branch.false_.target()],
+            Terminator::TestBranch(branch) => vec![branch.true_.target(), branch.false_.target()],
+            Terminator::IntSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::FloatSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::StringSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::Match(matcher) => vec![matcher.success.target(), matcher.failure.target()],
+            Terminator::Echo(echo) => vec![echo.next.target()],
+            Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => Vec::new(),
+        };
+        for target in targets {
+            predecessors[target.index()].push(index);
+        }
+    }
+    let mut repeating = vec![false; predecessors.len()];
+    let mut pending = vec![graph.entry().index()];
+    while let Some(block) = pending.pop() {
+        if !repeating[block] {
+            repeating[block] = true;
+            pending.extend_from_slice(&predecessors[block]);
+        }
+    }
+    repeating
 }
 
 fn common_postdominator(
@@ -245,16 +381,17 @@ fn common_postdominator(
     left
 }
 
-fn add_slot(point: &mut NumericCheckpoint, slot: &ParamSlot) -> Option<()> {
+fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, bit_arrays: bool) -> Option<()> {
     match slot.local() {
         ParamLocal::Int(_) => point.ints += 1,
         ParamLocal::Bool(_) => point.bools += 1,
+        ParamLocal::BitArray(_) if bit_arrays => point.bit_arrays += 1,
         _ => return None,
     }
     Some(())
 }
 
-impl<'graph> NumericInstruction<'graph> {
+impl<'graph> CompiledInstruction<'graph> {
     fn inspect<Graph: ExecutionGraphProfile>(
         instruction: &'graph ProfiledInstruction<Graph>,
     ) -> Option<Self> {
@@ -281,9 +418,9 @@ impl<'graph> NumericInstruction<'graph> {
                 ),
                 (ProfiledInstructionKind::Bool(instruction), ParamLocal::Bool(output)) => {
                     let expression = match instruction {
-                        BoolInstruction::Value(value) => NumericBoolean::Value(*value),
+                        BoolInstruction::Value(value) => CompiledBoolean::Value(*value),
                         BoolInstruction::Test(test) => {
-                            NumericBoolean::Test(NumericTest::inspect(test)?)
+                            CompiledBoolean::Test(CompiledTest::inspect(test)?)
                         }
                         _ => return None,
                     };
@@ -314,7 +451,7 @@ impl<'graph> NumericInteger<'graph> {
     }
 }
 
-impl NumericTest {
+impl CompiledTest {
     fn inspect(test: &BoolTest) -> Option<Self> {
         let (comparison, left, right) = match test {
             BoolTest::Not(value) => return Some(Self::Not(*value)),
@@ -330,7 +467,7 @@ impl NumericTest {
     }
 }
 
-impl<'graph> NumericTerminator<'graph> {
+impl<'graph> CompiledTerminator<'graph> {
     fn inspect(terminator: &'graph Terminator) -> Option<Self> {
         Some(match terminator {
             Terminator::Jump(jump) => Self::Jump(&jump.edge),
@@ -340,7 +477,7 @@ impl<'graph> NumericTerminator<'graph> {
                 false_: &branch.false_,
             },
             Terminator::TestBranch(branch) => Self::Test {
-                test: NumericTest::inspect(&branch.test)?,
+                test: CompiledTest::inspect(&branch.test)?,
                 true_: &branch.true_,
                 false_: &branch.false_,
             },
@@ -361,7 +498,14 @@ impl<'graph> NumericTerminator<'graph> {
         })
     }
 
-    fn edges(&self) -> Vec<&'graph Edge> {
+    fn targets(&self) -> Vec<BlockId> {
+        match self {
+            Self::BitArray(matcher) => vec![matcher.success.target(), matcher.failure.target()],
+            _ => self.edges().iter().map(|edge| edge.target()).collect(),
+        }
+    }
+
+    fn edges(&self) -> Vec<&Edge> {
         match self {
             Self::Jump(edge) => vec![edge],
             Self::Boolean { true_, false_, .. } | Self::Test { true_, false_, .. } => {
@@ -374,7 +518,7 @@ impl<'graph> NumericTerminator<'graph> {
                 .map(|(_, edge)| edge)
                 .chain(std::iter::once(*fallback))
                 .collect(),
-            Self::Exit(_) => vec![],
+            Self::BitArray(_) | Self::Exit(_) | Self::Interpreted => vec![],
         }
     }
 }
@@ -404,18 +548,168 @@ fn visit(
 
 #[cfg(test)]
 mod tests {
-    use super::{NumericCheckpoint, NumericShape, visit};
+    use super::{CompiledCheckpoint, CompiledShape, visit};
     use crate::plan::execution::function::{ExecutionIntFunctionBody, FunctionExit, IntFunctionId};
     use crate::plan::execution::graph::{
         BlockGraphExitId, BlockId, Edge, IntLocalId, IntSwitch, IntegerLiteral, Jump, ParamLocal,
         ProfiledBlock, ProfiledBlockGraph, StringLocalId, Terminator,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::convert::Infallible;
 
     fn source_plan(source: &str) -> crate::ExecutionPlan {
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap())
+    }
+
+    #[test]
+    fn fixed_bit_fields_repeat_with_shared_guard_failure_and_terminal_panic_prefixes() {
+        let plan = source_plan(
+            r#"
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> if value > 0 -> walk(rest, total + value)
+    <<0:8, rest:bits>> -> walk(rest, total)
+    <<>> -> total
+    _ -> panic as "incomplete"
+  }
+}
+pub fn main() { walk(<<1, 0, 2>>, 0) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        assert!(CompiledShape::inspect(body).is_none());
+        let shape = CompiledShape::inspect_bits(body).unwrap();
+        assert!(shape.repeats);
+        assert_eq!(
+            shape.checkpoints[shape.start(shape.graph.entry())].bit_arrays,
+            1
+        );
+        assert_eq!(shape.order.first(), Some(&shape.graph.entry()));
+        let matches = shape
+            .blocks
+            .values()
+            .filter(|block| matches!(block.terminator, super::CompiledTerminator::BitArray(_)))
+            .count();
+        assert_eq!(matches, 3);
+        for block in shape.blocks.values() {
+            if let super::CompiledTerminator::BitArray(matcher) = &block.terminator {
+                assert_eq!(
+                    block.terminator.targets(),
+                    [matcher.success.target(), matcher.failure.target()]
+                );
+                assert!(block.terminator.edges().is_empty());
+            }
+        }
+        assert!(
+            shape
+                .blocks
+                .values()
+                .any(|block| matches!(block.terminator, super::CompiledTerminator::Interpreted))
+        );
+        for point in &shape.checkpoints {
+            assert!(point.instruction <= shape.block(point.block).instructions.len());
+        }
+    }
+
+    #[test]
+    fn boolean_short_circuit_edges_participate_in_the_entry_repeat() {
+        let plan = source_plan(
+            r#"
+fn walk(input: BitArray, total: Int, flag: Bool) {
+  case flag && total < 10 {
+    True -> case input {
+      <<value:8, rest:bits>> -> walk(rest, total + value, flag)
+      _ -> total
+    }
+    False -> total
+  }
+}
+pub fn main() { walk(<<1, 2>>, 0, True) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        let graph = body.block_graph().as_view();
+        assert!(
+            graph
+                .blocks()
+                .any(|block| matches!(block.terminator(), Terminator::BoolBranch(_)))
+        );
+        let shape = CompiledShape::inspect_bits(body).unwrap();
+        assert!(shape.repeats);
+        assert_eq!(
+            crate::runtime::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(3.into())
+        );
+    }
+
+    #[test]
+    fn terminal_calls_keep_their_original_exit_and_scalar_bodies_need_no_bit_kernel() {
+        let plan = source_plan(
+            r#"
+fn other(total: Int) { total + 1 }
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> -> walk(rest, total + value)
+    _ -> other(total)
+  }
+}
+pub fn main() { walk(<<1>>, 0) }
+"#,
+        );
+        let shapes = (0..3)
+            .map(|index| {
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(index)).body())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shapes.iter().filter(|shape| shape.is_some()).count(), 1);
+        let shape = shapes.into_iter().flatten().next().unwrap();
+        assert!(
+            shape
+                .blocks
+                .values()
+                .any(|block| matches!(block.terminator, super::CompiledTerminator::Interpreted))
+        );
+        let scalar = source_plan(
+            "fn choose(value: Int) { case value { 0 -> 1 _ -> value } } pub fn main() { choose(2) }",
+        );
+        assert!(
+            CompiledShape::inspect_bits(scalar.int_function(IntFunctionId(1)).body()).is_none()
+        );
+    }
+
+    #[test]
+    fn nonnumeric_switches_and_big_integer_switches_cannot_enter_a_generated_repeat() {
+        for source in [
+            "fn walk(input: BitArray, total: Int, flag: Float) { case flag { 0.0 -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value, flag) _ -> total } } } pub fn main() { walk(<<1>>, 0, 1.0) }",
+            "fn walk(input: BitArray, total: Int, flag: String) { case flag { \"\" -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value, flag) _ -> total } } } pub fn main() { walk(<<1>>, 0, \"x\") }",
+            "fn walk(input: BitArray, total: Int) { case total { 9223372036854775808 -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value) _ -> total } } } pub fn main() { walk(<<1>>, 0) }",
+        ] {
+            let plan = source_plan(source);
+            assert!(
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_bit_fields_and_interpreted_work_inside_repetition_keep_the_original_executor() {
+        for source in [
+            "fn walk(input: BitArray, total: Int, width: Int) { case input { <<value:size(width), rest:bits>> -> walk(rest, total + value, width) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0, 8) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<value:65, rest:bits>> -> walk(rest, total + value) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:64-float, rest:bits>> -> walk(rest, total + 1) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:utf8, rest:bits>> -> walk(rest, total + 1) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:8, rest:bits>> -> walk(rest, other(total)) <<>> -> total _ -> -1 } } fn other(total: Int) { total + 1 } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<value:8, rest:bits>> -> { echo value walk(rest, total + value) } <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(left: BitArray, right: BitArray, total: Int) { case left, right { <<a:8, l:bits>>, <<b:8, r:bits>> -> walk(l, r, total + a + b) _, _ -> total } } pub fn main() { walk(<<1>>, <<2>>, 0) }",
+        ] {
+            let plan = source_plan(source);
+            assert!(
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                "{source}"
+            );
+        }
     }
 
     #[test]
@@ -432,36 +726,40 @@ fn walk(n: Int, total: Int) {
 pub fn main() { walk(3, 0) }
 "#,
         );
-        let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         assert!(shape.repeats);
-        assert_eq!(shape.starts, [0, 1, 2]);
+        assert_eq!(shape.starts, BTreeMap::from([(0, 0), (1, 1), (2, 2)]));
         assert_eq!(shape.joins, [None, None, None]);
         assert_eq!(
             shape.checkpoints,
             [
-                NumericCheckpoint {
+                CompiledCheckpoint {
                     block: BlockId(0),
                     instruction: 0,
                     ints: 2,
-                    bools: 0
+                    bools: 0,
+                    bit_arrays: 0,
                 },
-                NumericCheckpoint {
+                CompiledCheckpoint {
                     block: BlockId(1),
                     instruction: 0,
                     ints: 1,
-                    bools: 0
+                    bools: 0,
+                    bit_arrays: 0,
                 },
-                NumericCheckpoint {
+                CompiledCheckpoint {
                     block: BlockId(2),
                     instruction: 0,
                     ints: 2,
-                    bools: 0
+                    bools: 0,
+                    bit_arrays: 0,
                 },
-                NumericCheckpoint {
+                CompiledCheckpoint {
                     block: BlockId(2),
                     instruction: 1,
                     ints: 4,
-                    bools: 0
+                    bools: 0,
+                    bit_arrays: 0,
                 },
             ]
         );
@@ -485,11 +783,11 @@ fn choose(value: Int, flag: Bool) {
 pub fn main() { choose(7, True) }
 "#,
         );
-        let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         assert!(!shape.repeats);
         let join = shape.joins[0].unwrap();
         assert_ne!(join, shape.graph.entry());
-        let point = shape.checkpoints[shape.starts[join.index()]];
+        let point = shape.checkpoints[shape.start(join)];
         assert_eq!((point.instruction, point.ints, point.bools), (0, 1, 0));
         assert_eq!(
             shape.checkpoints.len(),
@@ -604,7 +902,7 @@ pub fn main() { choose(True, False) }
         ] {
             let plan = source_plan(source);
             assert!(
-                NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none(),
                 "{source}"
             );
         }
@@ -638,7 +936,7 @@ pub fn main() { walk(3, 0) }
                     let mut terminator = block.terminator().clone();
                     if index == graph.entry().index() {
                         if change == 0 {
-                            let edge = super::NumericTerminator::inspect(&terminator)
+                            let edge = super::CompiledTerminator::inspect(&terminator)
                                 .unwrap()
                                 .edges()[0]
                                 .clone();
@@ -654,7 +952,7 @@ pub fn main() { walk(3, 0) }
             // the non-entry-cycle margin, keeping its real arguments and slots.
             if change == 2 {
                 let (params, instructions, terminator) = blocks.pop().unwrap().into_parts();
-                let mut edge = super::NumericTerminator::inspect(&terminator)
+                let mut edge = super::CompiledTerminator::inspect(&terminator)
                     .unwrap()
                     .edges()[0]
                     .clone();
@@ -670,7 +968,7 @@ pub fn main() { walk(3, 0) }
                     ProfiledBlockGraph::from_parts(graph.entry(), blocks),
                     vec![FunctionExit::Return(IntLocalId(0))].into(),
                 );
-            assert!(NumericShape::inspect(&body).is_none(), "margin {change}");
+            assert!(CompiledShape::inspect(&body).is_none(), "margin {change}");
         }
     }
 
@@ -694,7 +992,7 @@ pub fn main() { choose(7) }
             .block_graph()
             .as_view();
         let params = graph.block(graph.entry()).params();
-        let transfer = super::NumericTerminator::inspect(graph.block(graph.entry()).terminator())
+        let transfer = super::CompiledTerminator::inspect(graph.block(graph.entry()).terminator())
             .unwrap()
             .edges()[0]
             .transfer
@@ -734,9 +1032,9 @@ pub fn main() { choose(7) }
                 ProfiledBlockGraph::from_parts(BlockId(0), blocks),
                 vec![FunctionExit::Return(IntLocalId(0))].into(),
             );
-        assert!(NumericShape::inspect(&body).is_none());
+        assert!(CompiledShape::inspect(&body).is_none());
 
-        let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let mut already_emitted = BTreeSet::from([shape.graph.entry().index()]);
         assert_eq!(
             shape.structured_path(shape.graph.entry(), None, &mut already_emitted),
@@ -767,7 +1065,7 @@ fn choose(value: Int, flag: Bool) {
 pub fn main() { choose(7, True) }
 "#,
         );
-        let shape = NumericShape::inspect(joined.int_function(IntFunctionId(1)).body()).unwrap();
+        let shape = CompiledShape::inspect(joined.int_function(IntFunctionId(1)).body()).unwrap();
         let join = shape.joins[shape.graph.entry().index()].unwrap();
         let mut already_emitted = BTreeSet::from([join.index()]);
         assert_eq!(
@@ -813,7 +1111,7 @@ fn choose(flag: Bool) {
 pub fn main() { choose(True) }
 "#,
         );
-        let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         // Two completed Not values precede the final Not condition. The
         // selected literal blocks have no Boolean arguments or outputs.
         assert_eq!(
@@ -844,7 +1142,7 @@ fn choose(flag: Bool) {
 pub fn main() { choose(True) }
 "#,
         );
-        assert!(NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none());
+        assert!(CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none());
     }
 
     #[test]
@@ -864,29 +1162,29 @@ pub fn main() { choose(True, False) }
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         let terminator = graph.block(graph.entry()).terminator();
-        assert!(super::NumericTerminator::inspect(terminator).is_none());
-        assert!(NumericShape::inspect(body).is_none());
+        assert!(super::CompiledTerminator::inspect(terminator).is_none());
+        assert!(CompiledShape::inspect(body).is_none());
     }
 
     #[test]
     fn integer_tests_preserve_the_exact_comparison_and_canonical_operands() {
-        use super::{NumericComparison, NumericTest};
+        use super::{CompiledTest, NumericComparison};
         use crate::plan::execution::graph::{BoolLocalId, BoolTest, IntegerOperand};
         use crate::plan::execution::prepared::rust::Rust;
         use std::mem::discriminant;
 
         let left = IntegerOperand::Local(IntLocalId(2));
         let right = IntegerOperand::Immediate(-7);
-        let inspected_comparison = |test: &BoolTest| match NumericTest::inspect(test) {
-            Some(NumericTest::Compare(comparison, left, right)) => Some((
+        let inspected_comparison = |test: &BoolTest| match CompiledTest::inspect(test) {
+            Some(CompiledTest::Compare(comparison, left, right)) => Some((
                 discriminant(&comparison),
                 Rust::expression(&left),
                 Rust::expression(&right),
             )),
             _ => None,
         };
-        let inspected_not = |test: &BoolTest| match NumericTest::inspect(test) {
-            Some(NumericTest::Not(value)) => Some(value.0),
+        let inspected_not = |test: &BoolTest| match CompiledTest::inspect(test) {
+            Some(CompiledTest::Not(value)) => Some(value.0),
             _ => None,
         };
         for (test, expected) in [
@@ -942,7 +1240,7 @@ pub fn main() { choose(7) }
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         let terminator = graph.block(graph.entry()).terminator();
-        assert!(super::NumericTerminator::inspect(terminator).is_none());
-        assert!(NumericShape::inspect(body).is_none());
+        assert!(super::CompiledTerminator::inspect(terminator).is_none());
+        assert!(CompiledShape::inspect(body).is_none());
     }
 }

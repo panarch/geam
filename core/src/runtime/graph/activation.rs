@@ -2,14 +2,16 @@ use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
 use crate::StringValue;
-use crate::plan::execution::compiled_numeric::NumericImplementation;
+use crate::plan::execution::compiled::CompiledImplementation;
 use crate::plan::execution::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionNeverFunctionBody, FunctionBodyOwner,
     FunctionExit,
 };
 use crate::plan::execution::graph::BlockGraphView;
-use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+use crate::runtime::compiled::CompiledProgress;
+use crate::runtime::compiled::bit_array::BitArrayValues;
+use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -35,6 +37,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     match_results: MatchResults,
     pub(super) arithmetic: super::instruction::arithmetic::ArithmeticScratch,
     numeric: NumericValues,
+    bit_array_loop: Option<Box<BitArrayValues>>,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -45,9 +48,9 @@ pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan>
 
 pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     Graph(Frame<'plan, Plan>),
-    CompiledNumeric {
+    Compiled {
         frame: Frame<'plan, Plan>,
-        implementation: &'plan NumericImplementation,
+        implementation: &'plan CompiledImplementation,
         point: usize,
     },
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
@@ -154,7 +157,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
     pub(in crate::runtime) fn new(
         graph: BlockGraphView<'plan, RuntimeGraph<Plan>>,
         inputs: RetainedValues,
-        compiled_numeric: Option<&'plan NumericImplementation>,
+        compiled: Option<&'plan CompiledImplementation>,
     ) -> Self {
         Self {
             active: Frame {
@@ -162,7 +165,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 position: GraphPosition::new(graph.entry(), inputs),
                 exit: Box::new(RootExit),
             }
-            .enter(compiled_numeric),
+            .enter(compiled),
         }
     }
 
@@ -177,48 +180,42 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
         let active = match self.active {
             // The caller charged this activation; only additional steps consume remaining budget.
             Activation::Graph(frame) => frame.advance(plan, state, storage, remaining)?,
-            Activation::CompiledNumeric {
+            Activation::Compiled {
                 mut frame,
                 implementation,
                 point,
-            } => {
-                if !frame
-                    .position
-                    .environment
-                    .load_numeric(&mut storage.numeric)
-                {
-                    frame.advance(plan, state, storage, remaining)?
-                } else {
-                    // The outer driver already charged the first graph step.
-                    let mut budget = *remaining + 1;
-                    let progress = (implementation.run)(point, &mut storage.numeric, &mut budget);
-                    *remaining = budget;
-                    frame.position.environment.restore_numeric(&storage.numeric);
-                    match progress {
-                        NumericProgress::Yield(point) | NumericProgress::Interpreted(point) => {
-                            let checkpoint = implementation.checkpoints[point];
-                            frame.position.block = checkpoint.block;
-                            frame.position.instruction = checkpoint.instruction;
-                            if matches!(progress, NumericProgress::Yield(_)) {
-                                Activation::CompiledNumeric {
-                                    frame,
-                                    implementation,
-                                    point,
-                                }
-                            } else {
-                                Activation::Graph(frame)
-                            }
-                        }
-                        NumericProgress::Complete(exit) => frame.exit.exit(
-                            CompletedGraph {
-                                exit,
-                                environment: frame.position.environment,
-                            },
-                            storage,
-                        )?,
+            } => match implementation {
+                CompiledImplementation::Numeric(numeric) => {
+                    if !frame
+                        .position
+                        .environment
+                        .load_numeric(&mut storage.numeric)
+                    {
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        // The outer driver already charged the first graph step.
+                        let mut budget = *remaining + 1;
+                        let progress = (numeric.run)(point, &mut storage.numeric, &mut budget);
+                        *remaining = budget;
+                        frame.position.environment.restore_numeric(&storage.numeric);
+                        frame.resume_compiled(progress, implementation, storage)?
                     }
                 }
-            }
+                CompiledImplementation::BitArray(bit_array) => {
+                    let values = storage.bit_array_loop.get_or_insert_with(Default::default);
+                    if !frame.position.environment.load_bit_array(values) {
+                        values.clear();
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        let mut budget = *remaining + 1;
+                        let progress = (bit_array.run)(point, values, &mut budget);
+                        *remaining = budget;
+                        frame.position.environment.restore_bit_array(values);
+                        values.clear();
+                        frame.resume_compiled(progress, implementation, storage)?
+                    }
+                }
+            },
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -239,20 +236,18 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             match_results: MatchResults::default(),
             arithmetic: Default::default(),
             numeric: Default::default(),
+            bit_array_loop: None,
         }
     }
 }
 
 impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
-    fn enter(
-        self,
-        compiled_numeric: Option<&'plan NumericImplementation>,
-    ) -> Activation<'plan, Plan> {
-        match compiled_numeric {
-            Some(implementation) => Activation::CompiledNumeric {
+    fn enter(self, compiled: Option<&'plan CompiledImplementation>) -> Activation<'plan, Plan> {
+        match compiled {
+            Some(implementation) => Activation::Compiled {
                 frame: self,
                 implementation,
-                point: implementation.entry,
+                point: implementation.entry(),
             },
             None => Activation::Graph(self),
         }
@@ -323,6 +318,37 @@ impl<'plan, Plan: ExecutableRuntimePlan> Frame<'plan, Plan> {
             }
         };
         Ok(active)
+    }
+
+    fn resume_compiled(
+        mut self,
+        progress: CompiledProgress,
+        implementation: &'plan CompiledImplementation,
+        storage: &mut Storage<'plan, Plan>,
+    ) -> ExecutionResult<Activation<'plan, Plan>> {
+        Ok(match progress {
+            CompiledProgress::Yield(point) | CompiledProgress::Interpreted(point) => {
+                let checkpoint = implementation.checkpoints()[point];
+                self.position.block = checkpoint.block;
+                self.position.instruction = checkpoint.instruction;
+                if matches!(progress, CompiledProgress::Yield(_)) {
+                    Activation::Compiled {
+                        frame: self,
+                        implementation,
+                        point,
+                    }
+                } else {
+                    Activation::Graph(self)
+                }
+            }
+            CompiledProgress::Complete(exit) => self.exit.exit(
+                CompletedGraph {
+                    exit,
+                    environment: self.position.environment,
+                },
+                storage,
+            )?,
+        })
     }
 
     pub(super) fn store<Value: ReturnValue>(mut self, value: Value) -> Activation<'plan, Plan> {
@@ -444,13 +470,13 @@ where
 {
     fn enter(self: Box<Self>, inputs: RetainedValues) -> Activation<'plan, Plan> {
         let graph = self.body.function_body().block_graph().as_view();
-        let compiled_numeric = self.id.compiled_numeric(self.plan);
+        let compiled = self.id.compiled(self.plan);
         Frame {
             graph,
             position: GraphPosition::new(graph.entry(), inputs),
             exit: self,
         }
-        .enter(compiled_numeric)
+        .enter(compiled)
     }
 }
 
@@ -682,13 +708,17 @@ mod tests {
         Storage, enter_function, enter_never,
     };
     use crate::ExecutionPlan;
-    use crate::plan::execution::compiled_numeric::{NumericCheckpoint, NumericImplementation};
+    use crate::plan::execution::compiled::{
+        BitArrayImplementation, CompiledCheckpoint, CompiledImplementation, NumericImplementation,
+    };
     use crate::plan::execution::function::{
         ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, FunctionExit,
         IntFunctionId,
     };
     use crate::plan::execution::graph::{BlockGraphExitId, BlockId, IntLocalId};
-    use crate::runtime::compiled_numeric::{NumericProgress, NumericValues};
+    use crate::runtime::compiled::CompiledProgress;
+    use crate::runtime::compiled::bit_array::BitArrayValues;
+    use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::graph::{CompletedGraph, RetainedValues};
     use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::RuntimeState;
@@ -702,72 +732,36 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const NUMERIC_CHOOSE_SOURCE: &str = "fn choose(value: Int, flag: Bool) { case flag { True -> value + 1 False -> value - 1 } } pub fn main() { choose(7, True) }";
-    const CHOOSE_POINTS: &[NumericCheckpoint] = &[
-        NumericCheckpoint {
+
+    const BIT_READ_SOURCE: &str = "fn read(input: BitArray, fallback: Int) { case input { <<value:64>> -> value _ -> fallback } } pub fn main() { read(<<7:64>>, 3) }";
+    const BIT_READ_POINTS: &[CompiledCheckpoint] = &[
+        CompiledCheckpoint {
             block: BlockId(0),
             instruction: 0,
             ints: 1,
-            bools: 1,
+            bools: 0,
+            bit_arrays: 1,
         },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(1),
             instruction: 0,
             ints: 1,
             bools: 0,
+            bit_arrays: 0,
         },
-        NumericCheckpoint {
-            block: BlockId(1),
-            instruction: 1,
-            ints: 2,
-            bools: 0,
-        },
-        NumericCheckpoint {
+        CompiledCheckpoint {
             block: BlockId(2),
             instruction: 0,
             ints: 1,
             bools: 0,
-        },
-        NumericCheckpoint {
-            block: BlockId(2),
-            instruction: 1,
-            ints: 2,
-            bools: 0,
+            bit_arrays: 0,
         },
     ];
 
-    fn one_step_choose(
-        point: usize,
-        values: &mut NumericValues,
-        budget: &mut usize,
-    ) -> NumericProgress {
-        // This bridge fixture supplies one exact instruction or edge per call;
-        // the emitter's compiled execution is tested by the prepared fixture.
-        assert_eq!(*budget, 1);
-        *budget = 0;
-        match point {
-            0 => {
-                assert_eq!(values.bools, [true]);
-                values.bools.clear();
-                NumericProgress::Yield(1)
-            }
-            1 => {
-                let output = values.ints[0] + 1;
-                values.ints.push(output);
-                if output > i128::from(i64::MAX) {
-                    NumericProgress::Interpreted(2)
-                } else {
-                    NumericProgress::Yield(2)
-                }
-            }
-            2 => NumericProgress::Complete(BlockGraphExitId(0)),
-            _ => panic!("bridge fixture uses only the True branch"),
-        }
-    }
-
     // Both complete execution profiles consume this same frame protocol.
-    macro_rules! with_numeric_plans {
-        ($plan:ident, $scenario:block) => {{
-            let plain = crate::runtime::plan_src(NUMERIC_CHOOSE_SOURCE);
+    macro_rules! with_source_plans {
+        ($source:expr, $plan:ident, $scenario:block) => {{
+            let plain = crate::runtime::plan_src($source);
             let $plan = &plain;
             $scenario
 
@@ -780,7 +774,7 @@ mod tests {
                     [crate::ModuleSource::new(
                         "example",
                         "src/example.gleam",
-                        NUMERIC_CHOOSE_SOURCE,
+                        $source,
                     )],
                 )],
                 crate::HostProviderSet::<crate::StatelessHostProfile>::new([]).unwrap(),
@@ -797,14 +791,209 @@ mod tests {
     }
 
     #[test]
+    fn bit_array_activation_restores_match_edges_and_releases_scratch_on_every_yield() {
+        use crate::BitArrayValue;
+        use crate::runtime::evaluated::EvaluatedBitArray;
+        with_source_plans!(BIT_READ_SOURCE, plan, {
+            let id = IntFunctionId(1);
+            let graph = int_body(plan, id).block_graph().as_view();
+            assert_eq!(graph.blocks().len(), 3);
+            for (bytes, fallback, expected) in [
+                (
+                    7_u64.to_be_bytes().to_vec(),
+                    BigInt::from(3),
+                    BigInt::from(7),
+                ),
+                (
+                    u64::MAX.to_be_bytes().to_vec(),
+                    BigInt::from(3),
+                    BigInt::from(u64::MAX),
+                ),
+                (vec![7], BigInt::from(3), BigInt::from(3)),
+                (vec![], BigInt::from(1) << 100, BigInt::from(1) << 100),
+                (
+                    7_u64.to_be_bytes().to_vec(),
+                    BigInt::from(1) << 100,
+                    BigInt::from(7),
+                ),
+            ] {
+                let hit = bytes.len() == 8;
+                let implementation = CompiledImplementation::BitArray(BitArrayImplementation {
+                    entry: 0,
+                    checkpoints: BIT_READ_POINTS.to_vec().into(),
+                    run: one_bit_match_step,
+                });
+                let mut values = RetainedValues::empty();
+                values.push_bit_array(EvaluatedBitArray::from_value(BitArrayValue::from_bytes(
+                    bytes,
+                )));
+                values.push_int(fallback.clone().into());
+                let mut execution = Execution::new(graph, values, Some(&implementation));
+                let mut storage = Storage::new();
+                assert!(storage.bit_array_loop.is_none());
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                let frame = if fallback <= BigInt::from(i64::MAX)
+                    && (!hit || expected <= BigInt::from(i64::MAX))
+                {
+                    numeric_frame(&execution).0
+                } else {
+                    active_frame(&execution)
+                };
+                assert_eq!(
+                    (frame.position.block, frame.position.instruction),
+                    (BlockId(if hit { 1 } else { 2 }), 0)
+                );
+                assert_eq!(
+                    frame
+                        .position
+                        .environment
+                        .int(IntLocalId(0))
+                        .bigint()
+                        .as_ref(),
+                    &expected
+                );
+                let scratch = storage.bit_array_loop.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bit_arrays.is_empty());
+                assert!(scratch.bools.is_empty());
+                execution = continuing(
+                    execution
+                        .advance(plan, &mut state, &mut storage, &mut 0)
+                        .unwrap(),
+                );
+                let progress = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .unwrap();
+                assert_eq!(returned_int(plan, id, completed(progress)), expected);
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    fn one_bit_match_step(
+        point: usize,
+        values: &mut BitArrayValues,
+        budget: &mut usize,
+    ) -> CompiledProgress {
+        use crate::plan::execution::graph::{Endianness, Signedness};
+        assert!(*budget > 0);
+        *budget -= 1;
+        match point {
+            0 => {
+                let input = values.bit_arrays[0];
+                let value = (input.bit_len() == 64).then(|| {
+                    values
+                        .integer(input, 0, 64, Endianness::Big, Signedness::Unsigned)
+                        .unwrap()
+                });
+                values.bit_arrays.clear();
+                match value {
+                    Some(value) => {
+                        values.ints.clear();
+                        values.ints.push(value);
+                        if value > i128::from(i64::MAX) {
+                            CompiledProgress::Interpreted(1)
+                        } else {
+                            CompiledProgress::Yield(1)
+                        }
+                    }
+                    None => CompiledProgress::Yield(2),
+                }
+            }
+            1 => CompiledProgress::Complete(BlockGraphExitId(0)),
+            2 => CompiledProgress::Complete(BlockGraphExitId(1)),
+            _ => panic!("bit bridge fixture has three canonical positions"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "bit bridge fixture has three canonical positions")]
+    fn bit_bridge_fixture_rejects_an_unknown_position() {
+        one_bit_match_step(99, &mut Default::default(), &mut 1);
+    }
+
+    const CHOOSE_POINTS: &[CompiledCheckpoint] = &[
+        CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 1,
+            bools: 1,
+            bit_arrays: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(1),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+            bit_arrays: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(1),
+            instruction: 1,
+            ints: 2,
+            bools: 0,
+            bit_arrays: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(2),
+            instruction: 0,
+            ints: 1,
+            bools: 0,
+            bit_arrays: 0,
+        },
+        CompiledCheckpoint {
+            block: BlockId(2),
+            instruction: 1,
+            ints: 2,
+            bools: 0,
+            bit_arrays: 0,
+        },
+    ];
+
+    fn one_step_choose(
+        point: usize,
+        values: &mut NumericValues,
+        budget: &mut usize,
+    ) -> CompiledProgress {
+        // This bridge fixture supplies one exact instruction or edge per call;
+        // the emitter's compiled execution is tested by the prepared fixture.
+        assert_eq!(*budget, 1);
+        *budget = 0;
+        match point {
+            0 => {
+                assert_eq!(values.bools, [true]);
+                values.bools.clear();
+                CompiledProgress::Yield(1)
+            }
+            1 => {
+                let output = values.ints[0] + 1;
+                values.ints.push(output);
+                if output > i128::from(i64::MAX) {
+                    CompiledProgress::Interpreted(2)
+                } else {
+                    CompiledProgress::Yield(2)
+                }
+            }
+            2 => CompiledProgress::Complete(BlockGraphExitId(0)),
+            _ => panic!("bridge fixture uses only the True branch"),
+        }
+    }
+
+    #[test]
     fn numeric_activation_preserves_the_existing_frame_and_exact_yield_prefix() {
-        with_numeric_plans!(plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
-            let implementation = NumericImplementation {
+            let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: CHOOSE_POINTS.to_vec().into(),
                 run: one_step_choose,
-            };
+            });
             let mut inputs = RetainedValues::empty();
             inputs.push_int(7_i64.into());
             inputs.push_bool(true);
@@ -858,10 +1047,10 @@ mod tests {
 
     #[test]
     fn a_big_result_resumes_after_the_completed_instruction_and_initial_big_never_calls_rust() {
-        with_numeric_plans!(plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
             for initially_big in [false, true] {
-                let implementation = NumericImplementation {
+                let implementation = CompiledImplementation::Numeric(NumericImplementation {
                     entry: 0,
                     checkpoints: CHOOSE_POINTS.to_vec().into(),
                     run: if initially_big {
@@ -869,7 +1058,7 @@ mod tests {
                     } else {
                         one_step_choose
                     },
-                };
+                });
                 let initial: BigInt = if initially_big {
                     BigInt::from(1) << 100
                 } else {
@@ -930,12 +1119,12 @@ mod tests {
         execution: &'run Execution<'plan, Plan>,
     ) -> (&'run Frame<'plan, Plan>, usize) {
         match &execution.active {
-            Activation::CompiledNumeric { frame, point, .. } => (frame, *point),
+            Activation::Compiled { frame, point, .. } => (frame, *point),
             _ => panic!("a Small yield retains generated execution"),
         }
     }
 
-    fn forbidden_numeric_entry(_: usize, _: &mut NumericValues, _: &mut usize) -> NumericProgress {
+    fn forbidden_numeric_entry(_: usize, _: &mut NumericValues, _: &mut usize) -> CompiledProgress {
         panic!("initial Big must remain interpreted")
     }
 
@@ -970,13 +1159,13 @@ mod tests {
         use crate::plan::execution::function::FunctionReturnFamily;
         use crate::runtime::error::{ExecutionError, InvariantError};
 
-        with_numeric_plans!(plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let body = int_body(plan, IntFunctionId(1));
-            let implementation = NumericImplementation {
+            let implementation = CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: CHOOSE_POINTS.to_vec().into(),
                 run: one_step_choose,
-            };
+            });
             let expected = InvariantError::FunctionReturnFamilyMismatch {
                 expected: FunctionReturnFamily::Int,
                 actual: FunctionReturnFamily::Float,
@@ -1013,7 +1202,7 @@ mod tests {
                 let mut position = GraphPosition::new(BlockId(1), values);
                 position.instruction = 1;
                 let execution = Execution {
-                    active: Activation::CompiledNumeric {
+                    active: Activation::Compiled {
                         frame: Frame {
                             graph: body.block_graph().as_view(),
                             position,
@@ -1031,6 +1220,73 @@ mod tests {
                     .unwrap();
                 assert_eq!(error, ExecutionError::Invariant(expected.clone()));
                 assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    #[test]
+    fn bit_array_returns_preserve_the_fallible_return_mapper_and_release_scratch() {
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        with_source_plans!(BIT_READ_SOURCE, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let implementation = CompiledImplementation::BitArray(BitArrayImplementation {
+                entry: 0,
+                checkpoints: BIT_READ_POINTS.to_vec().into(),
+                run: one_bit_match_step,
+            });
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for value in [BigInt::from(7), BigInt::from(1) << 100_usize] {
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph: body.block_graph().as_view(),
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // The return adapter is allowed to fail for either kernel.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut values = RetainedValues::empty();
+                values.push_int(value.into());
+                let execution = Execution {
+                    active: Activation::Compiled {
+                        frame: Frame {
+                            graph: body.block_graph().as_view(),
+                            position: GraphPosition::new(BlockId(1), values),
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point: 1,
+                    },
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let error = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .err()
+                    .unwrap();
+                assert_eq!(error, ExecutionError::Invariant(expected.clone()));
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                let scratch = storage.bit_array_loop.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bools.is_empty());
+                assert!(scratch.bit_arrays.is_empty());
                 assert!(echo.is_empty());
             }
         });
@@ -1326,7 +1582,7 @@ pub fn main() {
     #[test]
     fn continuing_rejects_a_completed_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_numeric_plans!(plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let finished = Execution {
                     active: Activation::Complete(complete_int_graph(plan)),
@@ -1360,7 +1616,7 @@ pub fn main() {
     #[test]
     fn completed_rejects_a_running_source_graph() {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        with_numeric_plans!(plan, {
+        with_source_plans!(NUMERIC_CHOOSE_SOURCE, plan, {
             let graph = int_body(plan, IntFunctionId(0)).block_graph().as_view();
             let failure = catch_unwind(AssertUnwindSafe(|| {
                 let running = Execution::new(graph, RetainedValues::empty(), None);

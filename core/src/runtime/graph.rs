@@ -10,6 +10,7 @@ mod terminator;
 pub(super) use environment::GraphValue;
 pub(crate) use environment::RetainedValues;
 
+pub(in crate::runtime) use self::bit_array::decode_short_integer;
 pub(in crate::runtime) use self::environment::BlockEnvironment;
 pub(in crate::runtime) use self::terminator::RuntimeGraphState;
 use crate::ExecutionError;

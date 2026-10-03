@@ -308,24 +308,7 @@ pub(super) fn decode_integer(
         return IntegerValue::from(0u8);
     }
     if bits.len() <= 64 {
-        let value = match endianness {
-            Endianness::Big => bits.load_be::<u64>(),
-            // Gleam's little endian uses logical bytes from the field's start,
-            // including when that start is not aligned to a storage byte.
-            Endianness::Little => bits
-                .chunks(8)
-                .enumerate()
-                .fold(0u64, |value, (index, byte)| {
-                    value | (u64::from(byte.load_be::<u8>()) << (index * 8))
-                }),
-        };
-        return match signedness {
-            Signedness::Unsigned => IntegerValue::from(value),
-            Signedness::Signed => {
-                let shift = 64 - bits.len();
-                IntegerValue::from(((value << shift) as i64) >> shift)
-            }
-        };
+        return IntegerValue::from(decode_short_integer(bits, endianness, signedness));
     }
 
     let bytes: Vec<_> = match endianness {
@@ -341,6 +324,33 @@ pub(super) fn decode_integer(
     match signedness {
         Signedness::Unsigned => BigInt::from_bytes_le(Sign::Plus, &bytes).into(),
         Signedness::Signed => BigInt::from_signed_bytes_le(&bytes).into(),
+    }
+}
+
+pub(in crate::runtime) fn decode_short_integer(
+    bits: &BitSlice<u8, Msb0>,
+    endianness: Endianness,
+    signedness: Signedness,
+) -> i128 {
+    if bits.is_empty() {
+        return 0;
+    }
+    let value = match endianness {
+        Endianness::Big => bits.load_be::<u64>(),
+        // Logical bytes start at the field, including a nonaligned field.
+        Endianness::Little => bits
+            .chunks(8)
+            .enumerate()
+            .fold(0u64, |value, (index, byte)| {
+                value | (u64::from(byte.load_be::<u8>()) << (index * 8))
+            }),
+    };
+    match signedness {
+        Signedness::Unsigned => i128::from(value),
+        Signedness::Signed => {
+            let shift = 64 - bits.len();
+            i128::from(((value << shift) as i64) >> shift)
+        }
     }
 }
 

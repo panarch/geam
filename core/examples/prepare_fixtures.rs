@@ -109,6 +109,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let numeric_entry =
         PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(numeric_entry)?)?;
 
+    let bit_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/bit_array_entry.gleam",
+                include_str!("../tests/fixtures/prepared/bit_array_entry.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let bit_entry =
+        PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(bit_entry)?)?;
+
     let values = geam_core::compile_typed_program(
         "example",
         [ModuleSource::new(
@@ -168,6 +185,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         "fixed_failure",
     ))?;
 
+    let bit_loops = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/bit_array_loops.gleam"),
+    )?;
+    let (mut bit_loops, _) = ModuleBuilder::new(bit_loops)?
+        .function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            "checksum",
+        ))?;
+    bit_loops.function(FunctionDeclaration::<
+        (BitArrayValue, BigInt, BigInt),
+        Result<BigInt, ()>,
+    >::new("parse"))?;
+    for name in ["wide", "aliases", "little"] {
+        bit_loops.function(FunctionDeclaration::<(BitArrayValue, BigInt), BigInt>::new(
+            name,
+        ))?;
+    }
+    bit_loops.function(FunctionDeclaration::<(BitArrayValue,), BigInt>::new(
+        "late_failure",
+    ))?;
+    bit_loops.function(FunctionDeclaration::<
+        (BitArrayValue, BitArrayValue, BigInt),
+        BigInt,
+    >::new("paired"))?;
+    bit_loops.function(FunctionDeclaration::<(BitArrayValue, bool), bool>::new(
+        "toggle",
+    ))?;
+
     let native = geam_core::compile_typed_host_program(
         "application",
         "main",
@@ -201,6 +247,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
+        ("bit_array_entry.rs", bit_entry.emit_rust()),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (
@@ -219,6 +266,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("sparse_patterns.rs", sparse.prepare().emit_rust()),
         ("bit_array_patterns.rs", bit_arrays.prepare().emit_rust()),
+        ("bit_array_loops.rs", bit_loops.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
         ("work.rs", work_provider::prepare().emit_rust()),
         (

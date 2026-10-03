@@ -1,19 +1,22 @@
-use super::NumericShape;
-use super::shape::{
-    NumericBoolean, NumericComparison, NumericInstruction, NumericInteger, NumericOperation,
-    NumericTerminator, NumericTest,
+mod bit_array;
+pub(super) mod shape;
+
+use self::shape::{
+    CompiledBoolean, CompiledInstruction, CompiledTerminator, CompiledTest, KernelKind,
+    NumericComparison, NumericInteger, NumericOperation,
 };
-use crate::plan::execution::compiled_numeric::NumericCheckpoint;
+use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{
     ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile, ExecutionProfile,
-    FunctionTables,
+    FunctionBodyOwner, FunctionTables,
 };
 use crate::plan::execution::graph::{
     ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, Edge, IntegerOperand, ParamLocal,
 };
 use crate::plan::execution::prepared::rust::{Emit, Rust};
+pub(super) use shape::CompiledShape;
 
-pub(in crate::plan::execution::prepared) struct NumericCodegen<'program, Profile: ExecutionProfile>
+pub(in crate::plan::execution::prepared) struct CompiledCodegen<'program, Profile: ExecutionProfile>
 {
     functions: &'program FunctionTables<Profile>,
 }
@@ -21,7 +24,7 @@ pub(in crate::plan::execution::prepared) struct NumericCodegen<'program, Profile
 struct FunctionCodegen<'graph, Graph: ExecutionGraphProfile> {
     index: usize,
     name: String,
-    shape: NumericShape<'graph, Graph>,
+    shape: CompiledShape<'graph, Graph>,
 }
 
 /// Rust text with explicit nesting. The caller owns every block boundary;
@@ -39,7 +42,7 @@ enum ProgressOutput {
     Resume,
 }
 
-impl<'program, Profile: ExecutionProfile> NumericCodegen<'program, Profile> {
+impl<'program, Profile: ExecutionProfile> CompiledCodegen<'program, Profile> {
     pub(in crate::plan::execution::prepared) fn new(
         functions: &'program FunctionTables<Profile>,
     ) -> Self {
@@ -47,7 +50,7 @@ impl<'program, Profile: ExecutionProfile> NumericCodegen<'program, Profile> {
     }
 }
 
-impl<Profile: ExecutionProfile> Emit for NumericCodegen<'_, Profile> {
+impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
     fn emit(&self, output: &mut Rust) {
         let ints = self
             .functions
@@ -59,10 +62,12 @@ impl<Profile: ExecutionProfile> Emit for NumericCodegen<'_, Profile> {
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
+                let shape = CompiledShape::inspect(function.body())
+                    .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
                     index,
-                    name: format!("numeric_int_{index}"),
-                    shape: NumericShape::inspect(function.body())?,
+                    name: format!("{}_int_{index}", shape.kind.name()),
+                    shape,
                 })
             })
             .collect::<Vec<_>>();
@@ -76,31 +81,52 @@ impl<Profile: ExecutionProfile> Emit for NumericCodegen<'_, Profile> {
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
+                let shape = CompiledShape::inspect(function.body())
+                    .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
                     index,
-                    name: format!("numeric_bool_{index}"),
-                    shape: NumericShape::inspect(function.body())?,
+                    name: format!("{}_bool_{index}", shape.kind.name()),
+                    shape,
                 })
             })
             .collect::<Vec<_>>();
-        if ints.is_empty() && bools.is_empty() {
-            output.call("compiled_numeric::NumericFunctions::interpreted", &[]);
+        let customs = self
+            .functions
+            .value_returns
+            .custom_functions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, function)| {
+                let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
+                    return None;
+                };
+                let shape =
+                    CompiledShape::inspect_bits(FunctionBodyOwner::function_body(function.body()))?;
+                Some(FunctionCodegen {
+                    index,
+                    name: format!("{}_custom_{index}", shape.kind.name()),
+                    shape,
+                })
+            })
+            .collect::<Vec<_>>();
+        if ints.is_empty() && bools.is_empty() && customs.is_empty() {
+            output.call("compiled::CompiledFunctions::interpreted", &[]);
             return;
         }
         let mut source = Code::default();
         source.open("{\n");
         source.push_str(
             r#"
-enum NumericResume {
+enum CompiledResume {
     Next(usize),
-    Exit(data::compiled_numeric::NumericProgress),
+    Exit(data::compiled::CompiledProgress),
 }
 "#,
         );
-        for function in ints.iter().chain(&bools) {
+        for function in ints.iter().chain(&bools).chain(&customs) {
             function.write_code(&mut source);
         }
-        source.open("data::compiled_numeric::NumericFunctions {\n");
+        source.open("data::compiled::CompiledFunctions {\n");
         source.open("ints: data::Storage::Static(&[\n");
         for function in &ints {
             function.write_target(&mut source, "Int");
@@ -109,6 +135,11 @@ enum NumericResume {
         source.open("bools: data::Storage::Static(&[\n");
         for function in &bools {
             function.write_target(&mut source, "Bool");
+        }
+        source.close("]),\n");
+        source.open("customs: data::Storage::Static(&[\n");
+        for function in &customs {
+            function.write_target(&mut source, "Custom");
         }
         source.close("]),\n");
         source.close("}\n");
@@ -120,20 +151,21 @@ enum NumericResume {
 impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     fn write_code(&self, source: &mut Code) {
         let name = &self.name;
+        let values_type = self.values_type();
         let checkpoints = self.shape.checkpoints.len();
         source.open(&format!(
             r#"
 fn {name}(
     point: usize,
-    values: &mut data::compiled_numeric::NumericValues,
+    values: &mut {values_type},
     budget: &mut usize,
-) -> data::compiled_numeric::NumericProgress {{
+) -> data::compiled::CompiledProgress {{
 "#
         ));
         source.open(&format!(
             r#"
 const RESUME: [
-    fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+    fn(&mut {values_type}, &mut usize) -> CompiledResume;
     {checkpoints}
 ] = [
 "#
@@ -142,7 +174,7 @@ const RESUME: [
             if index == self.entry() {
                 let inputs = checkpoint_inputs(*point);
                 source.push_str(&format!(
-                    "|values, budget| NumericResume::Exit({}_entry({inputs}, values, budget)),\n",
+                    "|values, budget| CompiledResume::Exit({}_entry({inputs}, values, budget)),\n",
                     self.name
                 ));
             } else {
@@ -155,8 +187,8 @@ const RESUME: [
 let mut point = point;
 loop {
     match RESUME[point](values, budget) {
-        NumericResume::Next(next) => point = next,
-        NumericResume::Exit(progress) => return progress,
+        CompiledResume::Next(next) => point = next,
+        CompiledResume::Exit(progress) => return progress,
     }
 }
 "#,
@@ -169,7 +201,11 @@ loop {
         if self.shape.repeats {
             source.open("'repeat: loop {\n");
         }
-        self.path(source, entry.block, None);
+        if self.shape.kind == KernelKind::BitArray {
+            self.bit_loop(source);
+        } else {
+            self.path(source, entry.block, None);
+        }
         if self.shape.repeats {
             source.close("}\n");
         }
@@ -184,9 +220,9 @@ loop {
             source.open(&format!(
                 r#"
 fn {name}(
-    values: &mut data::compiled_numeric::NumericValues,
+    values: &mut {values_type},
     budget: &mut usize,
-) -> NumericResume {{
+) -> CompiledResume {{
 "#
             ));
             source.push_str(&format!(
@@ -194,8 +230,16 @@ fn {name}(
                 self.locals(*point, false),
                 checkpoint_inputs(*point)
             ));
+            let block = self.shape.block(point.block);
+            if point.instruction == block.instructions.len()
+                && matches!(block.terminator, CompiledTerminator::Interpreted)
+            {
+                source.push_str("let _ = budget;\n");
+                self.resume_terminator(source, *point, &block.terminator);
+                source.close("}\n");
+                continue;
+            }
             self.tick(source, index, ProgressOutput::Resume);
-            let block = &self.shape.blocks[point.block.index()];
             if let Some(instruction) = block.instructions.get(point.instruction) {
                 self.instruction(source, *point, instruction);
                 let next = self.shape.checkpoints[index + 1];
@@ -207,7 +251,7 @@ fn {name}(
                     ProgressOutput::Resume,
                 );
                 self.save(source, next);
-                source.push_str(&format!("NumericResume::Next({})\n", index + 1));
+                source.push_str(&format!("CompiledResume::Next({})\n", index + 1));
             } else {
                 self.resume_terminator(source, *point, &block.terminator);
             }
@@ -216,12 +260,20 @@ fn {name}(
     }
 
     fn write_target(&self, source: &mut Code, family: &str) {
-        source.open("data::compiled_numeric::NumericFunction {\n");
-        source.push_str(&format!(
-            "function: data::function::{family}FunctionId({}),\n",
-            self.index
+        source.open("data::compiled::CompiledFunction {\n");
+        let function = if family == "Custom" {
+            self.index.to_string()
+        } else {
+            format!("data::function::{family}FunctionId({})", self.index)
+        };
+        source.push_str(&format!("function: {function},\n"));
+        let implementation = match self.shape.kind {
+            KernelKind::Numeric => "Numeric",
+            KernelKind::BitArray => "BitArray",
+        };
+        source.open(&format!(
+            "implementation: data::compiled::CompiledImplementation::{implementation}(data::compiled::{implementation}Implementation {{\n"
         ));
-        source.open("implementation: data::compiled_numeric::NumericImplementation {\n");
         source.push_str(&format!("entry: {},\n", self.entry()));
         source.open("checkpoints: data::Storage::Static(&[\n");
         for point in &self.shape.checkpoints {
@@ -229,37 +281,52 @@ fn {name}(
         }
         source.close("]),\n");
         source.push_str(&format!("run: {},\n", self.name));
-        source.close("},\n");
+        source.close("}),\n");
         source.close("},\n");
     }
 
     fn entry(&self) -> usize {
-        self.shape.starts[self.shape.graph.entry().index()]
+        self.shape.start(self.shape.graph.entry())
     }
 
-    fn signature(&self, source: &mut Code, name: &str, point: NumericCheckpoint) {
+    fn values_type(&self) -> &'static str {
+        if self.shape.kind == KernelKind::BitArray {
+            "data::compiled::bit_array::BitArrayValues"
+        } else {
+            "data::compiled::numeric::NumericValues"
+        }
+    }
+
+    fn signature(&self, source: &mut Code, name: &str, point: CompiledCheckpoint) {
+        let values_type = self.values_type();
         let types = tuple(
             std::iter::repeat_n("i128".to_owned(), point.ints)
-                .chain(std::iter::repeat_n("bool".to_owned(), point.bools)),
+                .chain(std::iter::repeat_n("bool".to_owned(), point.bools))
+                .chain(std::iter::repeat_n(
+                    "data::compiled::bit_array::BitArrayRange".to_owned(),
+                    point.bit_arrays,
+                )),
         );
         source.open(&format!(
             r#"
 fn {name}(
     inputs: {types},
-    values: &mut data::compiled_numeric::NumericValues,
+    values: &mut {values_type},
     budget: &mut usize,
-) -> data::compiled_numeric::NumericProgress {{
+) -> data::compiled::CompiledProgress {{
 "#
         ));
     }
 
-    fn locals(&self, point: NumericCheckpoint, mutable: bool) -> String {
+    fn locals(&self, point: CompiledCheckpoint, mutable: bool) -> String {
         let prefix = if mutable { "mut " } else { "" };
         tuple(
             (0..point.ints)
                 .map(|index| format!("{prefix}b{}_i{index}", point.block.0))
+                .chain((0..point.bools).map(|index| format!("{prefix}b{}_v{index}", point.block.0)))
                 .chain(
-                    (0..point.bools).map(|index| format!("{prefix}b{}_v{index}", point.block.0)),
+                    (0..point.bit_arrays)
+                        .map(|index| format!("{prefix}b{}_b{index}", point.block.0)),
                 ),
         )
     }
@@ -271,15 +338,14 @@ fn {name}(
     fn tick(&self, source: &mut Code, index: usize, output: ProgressOutput) {
         source.open("if *budget == 0 {\n");
         self.save(source, self.shape.checkpoints[index]);
-        let progress = output.expression(format!(
-            "data::compiled_numeric::NumericProgress::Yield({index})"
-        ));
+        let progress =
+            output.expression(format!("data::compiled::CompiledProgress::Yield({index})"));
         source.push_str(&format!("return {progress};\n"));
         source.close("}\n");
         source.push_str("*budget -= 1;\n");
     }
 
-    fn save(&self, source: &mut Code, point: NumericCheckpoint) {
+    fn save(&self, source: &mut Code, point: CompiledCheckpoint) {
         let ints = (0..point.ints)
             .map(|index| format!("b{}_i{index}", point.block.0))
             .collect::<Vec<_>>()
@@ -296,12 +362,39 @@ values.bools.clear();
 values.bools.extend_from_slice(&[{bools}]);
 "#
         ));
+        if self.shape.kind == KernelKind::BitArray {
+            let ranges = (0..point.bit_arrays)
+                .map(|index| format!("b{}_b{index}", point.block.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            source.push_str(&format!(
+                "values.bit_arrays.clear();\nvalues.bit_arrays.extend_from_slice(&[{ranges}]);\n"
+            ));
+        }
+    }
+
+    fn interpreted(
+        &self,
+        source: &mut Code,
+        index: usize,
+        returning: bool,
+        output: ProgressOutput,
+    ) {
+        self.save(source, self.shape.checkpoints[index]);
+        let progress = output.expression(format!(
+            "data::compiled::CompiledProgress::Interpreted({index})"
+        ));
+        if returning {
+            source.push_str(&format!("return {progress};\n"));
+        } else {
+            source.push_str(&format!("{progress}\n"));
+        }
     }
 
     fn path(&self, source: &mut Code, block: BlockId, stop: Option<BlockId>) {
-        let body = &self.shape.blocks[block.index()];
+        let body = self.shape.block(block);
         for (instruction_index, instruction) in body.instructions.iter().enumerate() {
-            let index = self.shape.starts[block.0] + instruction_index;
+            let index = self.shape.start(block) + instruction_index;
             self.tick(source, index, ProgressOutput::Direct);
             self.instruction(source, self.shape.checkpoints[index], instruction);
             self.big_exit(
@@ -312,12 +405,14 @@ values.bools.extend_from_slice(&[{bools}]);
                 ProgressOutput::Direct,
             );
         }
-        let index = self.shape.starts[block.0] + body.instructions.len();
+        let index = self.shape.start(block) + body.instructions.len();
         let point = self.shape.checkpoints[index];
+        // This structured path belongs to scalar generation, whose shape
+        // covers every terminator. Bit-array suffixes use bit_loop instead.
         self.tick(source, index, ProgressOutput::Direct);
         let join = self.shape.joins[block.0];
         if let Some(join) = join {
-            let join_point = self.shape.checkpoints[self.shape.starts[join.0]];
+            let join_point = self.shape.checkpoints[self.shape.start(join)];
             source.push_str(&format!("let {} = ", self.locals(join_point, false)));
         }
         self.branch(
@@ -326,14 +421,13 @@ values.bools.extend_from_slice(&[{bools}]);
             &body.terminator,
             self.shape.repeats,
             ProgressOutput::Direct,
-            |source, edge| self.edge(source, block, edge, join.or(stop)),
+            |source, target, inputs| self.edge(source, target, inputs, join.or(stop)),
         );
         if let Some(join) = join {
             source.finish_statement();
             if Some(join) == stop {
-                source.push_str(
-                    &self.locals(self.shape.checkpoints[self.shape.starts[join.0]], false),
-                );
+                source
+                    .push_str(&self.locals(self.shape.checkpoints[self.shape.start(join)], false));
                 source.push_str("\n");
             } else {
                 self.path(source, join, stop);
@@ -341,9 +435,7 @@ values.bools.extend_from_slice(&[{bools}]);
         }
     }
 
-    fn edge(&self, source: &mut Code, from: BlockId, edge: &Edge, stop: Option<BlockId>) {
-        let inputs = edge_inputs(from, edge);
-        let target = edge.target();
+    fn edge(&self, source: &mut Code, target: BlockId, inputs: String, stop: Option<BlockId>) {
         if target == self.shape.graph.entry() {
             source.push_str(&format!(
                 "{} = {inputs};\ncontinue 'repeat;\n",
@@ -353,7 +445,7 @@ values.bools.extend_from_slice(&[{bools}]);
             source.push_str(&inputs);
             source.push_str("\n");
         } else {
-            let point = self.shape.checkpoints[self.shape.starts[target.0]];
+            let point = self.shape.checkpoints[self.shape.start(target)];
             source.push_str(&format!("let {} = {inputs};\n", self.locals(point, false)));
             self.path(source, target, stop);
         }
@@ -362,41 +454,41 @@ values.bools.extend_from_slice(&[{bools}]);
     fn branch(
         &self,
         source: &mut Code,
-        point: NumericCheckpoint,
-        terminator: &NumericTerminator<'_>,
+        point: CompiledCheckpoint,
+        terminator: &CompiledTerminator<'_>,
         returning: bool,
         output: ProgressOutput,
-        emit_edge: impl Fn(&mut Code, &Edge),
+        mut emit_edge: impl FnMut(&mut Code, BlockId, String),
     ) {
         match terminator {
-            NumericTerminator::Jump(edge) => {
+            CompiledTerminator::Jump(edge) => {
                 source.open("{\n");
-                emit_edge(source, edge);
+                emit_edge(source, edge.target(), edge_inputs(point.block, edge));
                 source.close("}\n");
             }
-            NumericTerminator::Boolean {
+            CompiledTerminator::Boolean {
                 subject,
                 true_,
                 false_,
             } => {
                 source.open(&format!("if b{}_v{} {{\n", point.block.0, subject.0));
-                emit_edge(source, true_);
+                emit_edge(source, true_.target(), edge_inputs(point.block, true_));
                 source.alternative("} else {\n");
-                emit_edge(source, false_);
+                emit_edge(source, false_.target(), edge_inputs(point.block, false_));
                 source.close("}\n");
             }
-            NumericTerminator::Test {
+            CompiledTerminator::Test {
                 test,
                 true_,
                 false_,
             } => {
                 source.open(&format!("if {} {{\n", test_expression(point.block, test)));
-                emit_edge(source, true_);
+                emit_edge(source, true_.target(), edge_inputs(point.block, true_));
                 source.alternative("} else {\n");
-                emit_edge(source, false_);
+                emit_edge(source, false_.target(), edge_inputs(point.block, false_));
                 source.close("}\n");
             }
-            NumericTerminator::Switch {
+            CompiledTerminator::Switch {
                 subject,
                 clauses,
                 fallback,
@@ -409,25 +501,40 @@ values.bools.extend_from_slice(&[{bools}]);
                         "if b{}_i{} == {}_i128 {{\n",
                         point.block.0, subject.0, literal
                     ));
-                    emit_edge(source, edge);
+                    emit_edge(source, edge.target(), edge_inputs(point.block, edge));
                     source.close("} ");
                 }
                 if !clauses.is_empty() {
                     source.push_str("else ");
                 }
                 source.open("{\n");
-                emit_edge(source, fallback);
+                emit_edge(
+                    source,
+                    fallback.target(),
+                    edge_inputs(point.block, fallback),
+                );
                 source.close("}\n");
             }
-            NumericTerminator::Exit(exit) => self.complete(source, point, *exit, returning, output),
+            CompiledTerminator::Exit(exit) => {
+                self.complete(source, point, *exit, returning, output)
+            }
+            CompiledTerminator::BitArray(matcher) => {
+                self.bit_match(source, point, matcher, output, &mut emit_edge)
+            }
+            CompiledTerminator::Interpreted => self.interpreted(
+                source,
+                self.shape.start(point.block) + point.instruction,
+                returning,
+                output,
+            ),
         }
     }
 
     fn resume_terminator(
         &self,
         source: &mut Code,
-        point: NumericCheckpoint,
-        terminator: &NumericTerminator<'_>,
+        point: CompiledCheckpoint,
+        terminator: &CompiledTerminator<'_>,
     ) {
         self.branch(
             source,
@@ -435,13 +542,12 @@ values.bools.extend_from_slice(&[{bools}]);
             terminator,
             false,
             ProgressOutput::Resume,
-            |source, edge| {
-                let next = self.shape.starts[edge.target().0];
+            |source, target, inputs| {
+                let next = self.shape.start(target);
                 let target = self.shape.checkpoints[next];
-                let inputs = edge_inputs(point.block, edge);
                 source.push_str(&format!("let {} = {inputs};\n", self.locals(target, false)));
                 self.save(source, target);
-                source.push_str(&format!("NumericResume::Next({next})\n"));
+                source.push_str(&format!("CompiledResume::Next({next})\n"));
             },
         );
     }
@@ -449,7 +555,7 @@ values.bools.extend_from_slice(&[{bools}]);
     fn complete(
         &self,
         source: &mut Code,
-        point: NumericCheckpoint,
+        point: CompiledCheckpoint,
         exit: BlockGraphExitId,
         returning: bool,
         output: ProgressOutput,
@@ -461,7 +567,7 @@ values.bools.extend_from_slice(&[{bools}]);
             ("", "")
         };
         let progress = output.expression(format!(
-            "data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId({}))",
+            "data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId({}))",
             exit.0
         ));
         source.push_str(&format!("{prefix}{progress}{suffix}\n"));
@@ -470,11 +576,11 @@ values.bools.extend_from_slice(&[{bools}]);
     fn instruction(
         &self,
         source: &mut Code,
-        point: NumericCheckpoint,
-        instruction: &NumericInstruction<'_>,
+        point: CompiledCheckpoint,
+        instruction: &CompiledInstruction<'_>,
     ) {
         match instruction {
-            NumericInstruction::Integer(output, expression) => {
+            CompiledInstruction::Integer(output, expression) => {
                 source.push_str(&format!(
                     "let b{}_i{} = {};\n",
                     point.block.0,
@@ -482,17 +588,17 @@ values.bools.extend_from_slice(&[{bools}]);
                     int_expression(point.block, expression)
                 ));
             }
-            NumericInstruction::Boolean(output, expression) => {
+            CompiledInstruction::Boolean(output, expression) => {
                 let expression = match expression {
-                    NumericBoolean::Value(value) => value.to_string(),
-                    NumericBoolean::Test(test) => test_expression(point.block, test),
+                    CompiledBoolean::Value(value) => value.to_string(),
+                    CompiledBoolean::Test(test) => test_expression(point.block, test),
                 };
                 source.push_str(&format!(
                     "let b{}_v{} = {expression};\n",
                     point.block.0, output.0
                 ));
             }
-            NumericInstruction::Region { region, outputs } => {
+            CompiledInstruction::Region { region, outputs } => {
                 for (index, node) in region.nodes.iter().enumerate() {
                     let operand = |operand| match operand {
                         ArithmeticOperand::Input(index) => {
@@ -539,21 +645,21 @@ values.bools.extend_from_slice(&[{bools}]);
     fn big_exit(
         &self,
         source: &mut Code,
-        point: NumericCheckpoint,
-        instruction: &NumericInstruction<'_>,
+        point: CompiledCheckpoint,
+        instruction: &CompiledInstruction<'_>,
         next: usize,
         output: ProgressOutput,
     ) {
         // A Small remainder (including zero and MIN % -1) stays Small;
         // admitted literals and Boolean outputs likewise need no Big exit.
         let outputs = match instruction {
-            NumericInstruction::Integer(
+            CompiledInstruction::Integer(
                 _,
                 NumericInteger::Value(_) | NumericInteger::Binary(NumericOperation::Remainder, ..),
             )
-            | NumericInstruction::Boolean(..) => return,
-            NumericInstruction::Integer(output, _) => std::slice::from_ref(output),
-            NumericInstruction::Region { outputs, .. } => outputs.as_slice(),
+            | CompiledInstruction::Boolean(..) => return,
+            CompiledInstruction::Integer(output, _) => std::slice::from_ref(output),
+            CompiledInstruction::Region { outputs, .. } => outputs.as_slice(),
         };
         let checks = outputs
             .iter()
@@ -568,7 +674,7 @@ values.bools.extend_from_slice(&[{bools}]);
         source.open(&format!("if {} {{\n", checks.join(" || ")));
         self.save(source, self.shape.checkpoints[next]);
         let progress = output.expression(format!(
-            "data::compiled_numeric::NumericProgress::Interpreted({next})"
+            "data::compiled::CompiledProgress::Interpreted({next})"
         ));
         source.push_str(&format!("return {progress};\n"));
         source.close("}\n");
@@ -579,7 +685,7 @@ impl ProgressOutput {
     fn expression(self, progress: String) -> String {
         match self {
             Self::Direct => progress,
-            Self::Resume => format!("NumericResume::Exit({progress})"),
+            Self::Resume => format!("CompiledResume::Exit({progress})"),
         }
     }
 }
@@ -624,11 +730,21 @@ impl Code {
     }
 }
 
-fn checkpoint_inputs(point: NumericCheckpoint) -> String {
+impl KernelKind {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Numeric => "numeric",
+            Self::BitArray => "bit_array",
+        }
+    }
+}
+
+fn checkpoint_inputs(point: CompiledCheckpoint) -> String {
     tuple(
         (0..point.ints)
             .map(|index| format!("values.ints[{index}]"))
-            .chain((0..point.bools).map(|index| format!("values.bools[{index}]"))),
+            .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
+            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]"))),
     )
 }
 
@@ -650,7 +766,11 @@ fn edge_inputs(block: BlockId, edge: &Edge) -> String {
         ParamLocal::Bool(local) => Some(format!("b{}_v{}", block.0, local.0)),
         _ => None,
     });
-    tuple(ints.chain(bools))
+    let bits = edge.args().iter().filter_map(|local| match local {
+        ParamLocal::BitArray(local) => Some(format!("b{}_b{}", block.0, local.0)),
+        _ => None,
+    });
+    tuple(ints.chain(bools).chain(bits))
 }
 
 fn operand_expression(block: BlockId, operand: IntegerOperand) -> String {
@@ -686,10 +806,10 @@ fn division(left: String, right: String, operator: &str) -> String {
     }
 }
 
-fn test_expression(block: BlockId, test: &NumericTest) -> String {
+fn test_expression(block: BlockId, test: &CompiledTest) -> String {
     match test {
-        NumericTest::Not(value) => format!("!b{}_v{}", block.0, value.0),
-        NumericTest::Compare(comparison, left, right) => {
+        CompiledTest::Not(value) => format!("!b{}_v{}", block.0, value.0),
+        CompiledTest::Compare(comparison, left, right) => {
             let operator = match comparison {
                 NumericComparison::Equal => "==",
                 NumericComparison::NotEqual => "!=",
@@ -709,9 +829,18 @@ fn test_expression(block: BlockId, test: &NumericTest) -> String {
 
 #[cfg(test)]
 mod tests {
+    pub(super) fn emit_edge_expression(
+        source: &mut super::Code,
+        _: super::BlockId,
+        inputs: String,
+    ) {
+        source.push_str(&inputs);
+        source.push_str("\n");
+    }
+
     use super::{
-        Code, FunctionCodegen, NumericCodegen, NumericComparison, NumericInteger, NumericOperation,
-        NumericShape, NumericTerminator, NumericTest, ProgressOutput, Rust, int_expression,
+        Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
+        NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
         test_expression,
     };
     use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
@@ -775,12 +904,12 @@ mod tests {
             (NumericComparison::GreaterEqual, "b3_i2 >= -7_i128"),
         ] {
             assert_eq!(
-                test_expression(block, &NumericTest::Compare(comparison, left, right)),
+                test_expression(block, &CompiledTest::Compare(comparison, left, right)),
                 expected
             );
         }
         assert_eq!(
-            test_expression(block, &NumericTest::Not(BoolLocalId(5))),
+            test_expression(block, &CompiledTest::Not(BoolLocalId(5))),
             "!b3_v5"
         );
     }
@@ -799,8 +928,8 @@ pub fn main() { choose(7) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
-        let shape = NumericShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
-        let point = shape.checkpoints[shape.starts[shape.graph.entry().index()]];
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let function = FunctionCodegen {
             index: 1,
             name: "selected".into(),
@@ -818,7 +947,7 @@ pub fn main() { choose(7) }
                 .into(),
             },
         );
-        let terminator = NumericTerminator::Switch {
+        let terminator = CompiledTerminator::Switch {
             subject: IntLocalId(0),
             clauses: &[],
             fallback: &edge,
@@ -830,7 +959,7 @@ pub fn main() { choose(7) }
             &terminator,
             false,
             ProgressOutput::Direct,
-            |source, _| source.push_str("fallback\n"),
+            |source, _, _| source.push_str("fallback\n"),
         );
         assert_eq!(
             output.as_str(),
@@ -854,7 +983,7 @@ pub fn main() { choose(7) }
     values.ints.extend_from_slice(&[b1_i0]);
     values.bools.clear();
     values.bools.extend_from_slice(&[]);
-    NumericResume::Next(1)
+    CompiledResume::Next(1)
 }
 "#
             .trim_start_matches('\n')
@@ -872,7 +1001,7 @@ pub fn main() { choose(7) }
             outputs: vec![].into(),
             native: true,
         };
-        let instruction = super::NumericInstruction::Region {
+        let instruction = super::CompiledInstruction::Region {
             region: &region,
             outputs: vec![],
         };
@@ -892,8 +1021,8 @@ let _r0_n1 = -_r0_n0;
 
         // Scalar and retained region outputs share the exact next checkpoint.
         // A Small remainder cannot promote; an Add or a retained region can.
-        let next = function.shape.starts[1] + 1;
-        let point = function.shape.checkpoints[function.shape.starts[1]];
+        let next = function.shape.start(BlockId(1)) + 1;
+        let point = function.shape.checkpoints[function.shape.start(BlockId(1))];
         let expected = r#"
 if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
 
@@ -901,7 +1030,7 @@ if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
     values.ints.extend_from_slice(&[b1_i0, b1_i1]);
     values.bools.clear();
     values.bools.extend_from_slice(&[]);
-    return data::compiled_numeric::NumericProgress::Interpreted(2);
+    return data::compiled::CompiledProgress::Interpreted(2);
 }
 "#
         .trim_start_matches('\n');
@@ -909,7 +1038,7 @@ if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
         function.big_exit(
             &mut output,
             point,
-            &function.shape.blocks[1].instructions[0],
+            &function.shape.block(BlockId(1)).instructions[0],
             next,
             ProgressOutput::Direct,
         );
@@ -918,7 +1047,7 @@ if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
         function.big_exit(
             &mut output,
             point,
-            &super::NumericInstruction::Integer(
+            &super::CompiledInstruction::Integer(
                 IntLocalId(1),
                 NumericInteger::Binary(
                     NumericOperation::Remainder,
@@ -944,7 +1073,7 @@ if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
         function.big_exit(
             &mut output,
             point,
-            &super::NumericInstruction::Region {
+            &super::CompiledInstruction::Region {
                 region: &region,
                 outputs: vec![IntLocalId(1)],
             },
@@ -1096,8 +1225,19 @@ if b0_i0 == 0_i128 {
             let function = FunctionCodegen {
                 index: 1,
                 name: "selected".into(),
-                shape: NumericShape::inspect(&body).unwrap(),
+                shape: CompiledShape::inspect(&body).unwrap(),
             };
+            let point = function.shape.checkpoints[function.entry()];
+            let mut branch_output = Code::default();
+            function.branch(
+                &mut branch_output,
+                point,
+                &function.shape.block(BlockId(0)).terminator,
+                false,
+                ProgressOutput::Direct,
+                emit_edge_expression,
+            );
+            assert_eq!(branch_output.as_str(), expected.trim_start_matches('\n'));
             let mut output = Code::default();
             function.path(&mut output, BlockId(0), Some(BlockId(1)));
             let branch = expected.trim_matches('\n');
@@ -1109,7 +1249,7 @@ if *budget == 0 {{
     values.ints.extend_from_slice(&[b0_i0]);
     values.bools.clear();
     values.bools.extend_from_slice(&[b0_v0]);
-    return data::compiled_numeric::NumericProgress::Yield(0);
+    return data::compiled::CompiledProgress::Yield(0);
 }}
 *budget -= 1;
 let (b1_i0, b1_v0,) = {branch};
@@ -1126,22 +1266,22 @@ let (b1_i0, b1_v0,) = {branch};
     const INT_EXPECTED: &str = r#"
 {
 
-    enum NumericResume {
+    enum CompiledResume {
         Next(usize),
-        Exit(data::compiled_numeric::NumericProgress),
+        Exit(data::compiled::CompiledProgress),
     }
 
     fn numeric_int_0(
         point: usize,
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> data::compiled_numeric::NumericProgress {
+    ) -> data::compiled::CompiledProgress {
 
         const RESUME: [
-            fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+            fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
             5
         ] = [
-            |values, budget| NumericResume::Exit(numeric_int_0_entry((values.bools[0],), values, budget)),
+            |values, budget| CompiledResume::Exit(numeric_int_0_entry((values.bools[0],), values, budget)),
             numeric_int_0_resume_1,
             numeric_int_0_resume_2,
             numeric_int_0_resume_3,
@@ -1151,17 +1291,17 @@ let (b1_i0, b1_v0,) = {branch};
         let mut point = point;
         loop {
             match RESUME[point](values, budget) {
-                NumericResume::Next(next) => point = next,
-                NumericResume::Exit(progress) => return progress,
+                CompiledResume::Next(next) => point = next,
+                CompiledResume::Exit(progress) => return progress,
             }
         }
     }
 
     fn numeric_int_0_entry(
         inputs: (bool,),
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> data::compiled_numeric::NumericProgress {
+    ) -> data::compiled::CompiledProgress {
         let (b0_v0,) = inputs;
         if *budget == 0 {
 
@@ -1169,7 +1309,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b0_v0]);
-            return data::compiled_numeric::NumericProgress::Yield(0);
+            return data::compiled::CompiledProgress::Yield(0);
         }
         *budget -= 1;
         if b0_v0 {
@@ -1180,7 +1320,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(1);
+                return data::compiled::CompiledProgress::Yield(1);
             }
             *budget -= 1;
             let b1_i0 = 1_i128;
@@ -1190,7 +1330,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[b1_i0]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(2);
+                return data::compiled::CompiledProgress::Yield(2);
             }
             *budget -= 1;
 
@@ -1198,7 +1338,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[b1_i0]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+            data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
         } else {
             let () = ();
             if *budget == 0 {
@@ -1207,7 +1347,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(3);
+                return data::compiled::CompiledProgress::Yield(3);
             }
             *budget -= 1;
             let b2_i0 = 2_i128;
@@ -1217,7 +1357,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[b2_i0]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(4);
+                return data::compiled::CompiledProgress::Yield(4);
             }
             *budget -= 1;
 
@@ -1225,14 +1365,14 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[b2_i0]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+            data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
         }
     }
 
     fn numeric_int_0_resume_1(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let () = ();
         if *budget == 0 {
 
@@ -1240,7 +1380,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
         }
         *budget -= 1;
         let b1_i0 = 1_i128;
@@ -1249,13 +1389,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[b1_i0]);
         values.bools.clear();
         values.bools.extend_from_slice(&[]);
-        NumericResume::Next(2)
+        CompiledResume::Next(2)
     }
 
     fn numeric_int_0_resume_2(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let (b1_i0,) = (values.ints[0],);
         if *budget == 0 {
 
@@ -1263,7 +1403,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[b1_i0]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
         }
         *budget -= 1;
 
@@ -1271,13 +1411,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[b1_i0]);
         values.bools.clear();
         values.bools.extend_from_slice(&[]);
-        NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+        CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
     }
 
     fn numeric_int_0_resume_3(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let () = ();
         if *budget == 0 {
 
@@ -1285,7 +1425,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
         }
         *budget -= 1;
         let b2_i0 = 2_i128;
@@ -1294,13 +1434,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[b2_i0]);
         values.bools.clear();
         values.bools.extend_from_slice(&[]);
-        NumericResume::Next(4)
+        CompiledResume::Next(4)
     }
 
     fn numeric_int_0_resume_4(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let (b2_i0,) = (values.ints[0],);
         if *budget == 0 {
 
@@ -1308,7 +1448,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[b2_i0]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
         }
         *budget -= 1;
 
@@ -1316,51 +1456,58 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[b2_i0]);
         values.bools.clear();
         values.bools.extend_from_slice(&[]);
-        NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+        CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
     }
-    data::compiled_numeric::NumericFunctions {
+    data::compiled::CompiledFunctions {
         ints: data::Storage::Static(&[
-            data::compiled_numeric::NumericFunction {
+            data::compiled::CompiledFunction {
                 function: data::function::IntFunctionId(0),
-                implementation: data::compiled_numeric::NumericImplementation {
+                implementation: data::compiled::CompiledImplementation::Numeric(data::compiled::NumericImplementation {
                     entry: 0,
                     checkpoints: data::Storage::Static(&[
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(0),
                             instruction: 0,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
                             instruction: 1,
                             ints: 1,
                             bools: 0,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
                             instruction: 1,
                             ints: 1,
                             bools: 0,
+                            bit_arrays: 0,
                         },
                     ]),
                     run: numeric_int_0,
-                },
+                }),
             },
         ]),
         bools: data::Storage::Static(&[
+        ]),
+        customs: data::Storage::Static(&[
         ]),
     }
 }
@@ -1368,22 +1515,22 @@ let (b1_i0, b1_v0,) = {branch};
     const BOOL_EXPECTED: &str = r#"
 {
 
-    enum NumericResume {
+    enum CompiledResume {
         Next(usize),
-        Exit(data::compiled_numeric::NumericProgress),
+        Exit(data::compiled::CompiledProgress),
     }
 
     fn numeric_bool_0(
         point: usize,
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> data::compiled_numeric::NumericProgress {
+    ) -> data::compiled::CompiledProgress {
 
         const RESUME: [
-            fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+            fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
             5
         ] = [
-            |values, budget| NumericResume::Exit(numeric_bool_0_entry((values.bools[0],), values, budget)),
+            |values, budget| CompiledResume::Exit(numeric_bool_0_entry((values.bools[0],), values, budget)),
             numeric_bool_0_resume_1,
             numeric_bool_0_resume_2,
             numeric_bool_0_resume_3,
@@ -1393,17 +1540,17 @@ let (b1_i0, b1_v0,) = {branch};
         let mut point = point;
         loop {
             match RESUME[point](values, budget) {
-                NumericResume::Next(next) => point = next,
-                NumericResume::Exit(progress) => return progress,
+                CompiledResume::Next(next) => point = next,
+                CompiledResume::Exit(progress) => return progress,
             }
         }
     }
 
     fn numeric_bool_0_entry(
         inputs: (bool,),
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> data::compiled_numeric::NumericProgress {
+    ) -> data::compiled::CompiledProgress {
         let (b0_v0,) = inputs;
         if *budget == 0 {
 
@@ -1411,7 +1558,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b0_v0]);
-            return data::compiled_numeric::NumericProgress::Yield(0);
+            return data::compiled::CompiledProgress::Yield(0);
         }
         *budget -= 1;
         if b0_v0 {
@@ -1422,7 +1569,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(1);
+                return data::compiled::CompiledProgress::Yield(1);
             }
             *budget -= 1;
             let b1_v0 = false;
@@ -1432,7 +1579,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[b1_v0]);
-                return data::compiled_numeric::NumericProgress::Yield(2);
+                return data::compiled::CompiledProgress::Yield(2);
             }
             *budget -= 1;
 
@@ -1440,7 +1587,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b1_v0]);
-            data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+            data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
         } else {
             let () = ();
             if *budget == 0 {
@@ -1449,7 +1596,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                return data::compiled_numeric::NumericProgress::Yield(3);
+                return data::compiled::CompiledProgress::Yield(3);
             }
             *budget -= 1;
             let b2_v0 = true;
@@ -1459,7 +1606,7 @@ let (b1_i0, b1_v0,) = {branch};
                 values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[b2_v0]);
-                return data::compiled_numeric::NumericProgress::Yield(4);
+                return data::compiled::CompiledProgress::Yield(4);
             }
             *budget -= 1;
 
@@ -1467,14 +1614,14 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b2_v0]);
-            data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+            data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
         }
     }
 
     fn numeric_bool_0_resume_1(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let () = ();
         if *budget == 0 {
 
@@ -1482,7 +1629,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
         }
         *budget -= 1;
         let b1_v0 = false;
@@ -1491,13 +1638,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[]);
         values.bools.clear();
         values.bools.extend_from_slice(&[b1_v0]);
-        NumericResume::Next(2)
+        CompiledResume::Next(2)
     }
 
     fn numeric_bool_0_resume_2(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let (b1_v0,) = (values.bools[0],);
         if *budget == 0 {
 
@@ -1505,7 +1652,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b1_v0]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
         }
         *budget -= 1;
 
@@ -1513,13 +1660,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[]);
         values.bools.clear();
         values.bools.extend_from_slice(&[b1_v0]);
-        NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+        CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
     }
 
     fn numeric_bool_0_resume_3(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let () = ();
         if *budget == 0 {
 
@@ -1527,7 +1674,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
         }
         *budget -= 1;
         let b2_v0 = true;
@@ -1536,13 +1683,13 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[]);
         values.bools.clear();
         values.bools.extend_from_slice(&[b2_v0]);
-        NumericResume::Next(4)
+        CompiledResume::Next(4)
     }
 
     fn numeric_bool_0_resume_4(
-        values: &mut data::compiled_numeric::NumericValues,
+        values: &mut data::compiled::numeric::NumericValues,
         budget: &mut usize,
-    ) -> NumericResume {
+    ) -> CompiledResume {
         let (b2_v0,) = (values.bools[0],);
         if *budget == 0 {
 
@@ -1550,7 +1697,7 @@ let (b1_i0, b1_v0,) = {branch};
             values.ints.extend_from_slice(&[]);
             values.bools.clear();
             values.bools.extend_from_slice(&[b2_v0]);
-            return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+            return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
         }
         *budget -= 1;
 
@@ -1558,51 +1705,58 @@ let (b1_i0, b1_v0,) = {branch};
         values.ints.extend_from_slice(&[]);
         values.bools.clear();
         values.bools.extend_from_slice(&[b2_v0]);
-        NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+        CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
     }
-    data::compiled_numeric::NumericFunctions {
+    data::compiled::CompiledFunctions {
         ints: data::Storage::Static(&[
         ]),
         bools: data::Storage::Static(&[
-            data::compiled_numeric::NumericFunction {
+            data::compiled::CompiledFunction {
                 function: data::function::BoolFunctionId(0),
-                implementation: data::compiled_numeric::NumericImplementation {
+                implementation: data::compiled::CompiledImplementation::Numeric(data::compiled::NumericImplementation {
                     entry: 0,
                     checkpoints: data::Storage::Static(&[
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(0),
                             instruction: 0,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
                             instruction: 1,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
                             instruction: 0,
                             ints: 0,
                             bools: 0,
+                            bit_arrays: 0,
                         },
-                        data::compiled_numeric::NumericCheckpoint {
+                        data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
                             instruction: 1,
                             ints: 0,
                             bools: 1,
+                            bit_arrays: 0,
                         },
                     ]),
                     run: numeric_bool_0,
-                },
+                }),
             },
+        ]),
+        customs: data::Storage::Static(&[
         ]),
     }
 }
@@ -1620,7 +1774,7 @@ let (b1_i0, b1_v0,) = {branch};
                     .unwrap();
                 let prepared = bindings.prepare();
                 assert_eq!(
-                    Rust::expression(&NumericCodegen::new(&prepared.program.functions)),
+                    Rust::expression(&CompiledCodegen::new(&prepared.program.functions)),
                     $expected.trim_matches('\n')
                 );
 
@@ -1656,7 +1810,9 @@ let (b1_i0, b1_v0,) = {branch};
                         &format!("{}FunctionId(1)", $family.1),
                     );
                 assert_eq!(
-                    Rust::expression(&NumericCodegen::new(&execution.execution.program.functions)),
+                    Rust::expression(&CompiledCodegen::new(
+                        &execution.execution.program.functions
+                    )),
                     expected
                 );
             }};
@@ -1719,8 +1875,8 @@ pub fn main() { choose(True) }
             .unwrap();
         let prepared = bindings.prepare();
         assert_eq!(
-            Rust::expression(&NumericCodegen::new(&prepared.program.functions)),
-            "data::compiled_numeric::NumericFunctions::interpreted()"
+            Rust::expression(&CompiledCodegen::new(&prepared.program.functions)),
+            "data::compiled::CompiledFunctions::interpreted()"
         );
         let typed = crate::compile_typed_host_program(
             "example",
@@ -1737,8 +1893,10 @@ pub fn main() { choose(True) }
             crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
                 .unwrap();
         assert_eq!(
-            Rust::expression(&NumericCodegen::new(&execution.execution.program.functions)),
-            "data::compiled_numeric::NumericFunctions::interpreted()"
+            Rust::expression(&CompiledCodegen::new(
+                &execution.execution.program.functions
+            )),
+            "data::compiled::CompiledFunctions::interpreted()"
         );
     }
 }
