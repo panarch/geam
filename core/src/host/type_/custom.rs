@@ -259,6 +259,10 @@ pub enum HostSchemaType {
         arguments: Box<[HostSchemaType]>,
         return_: Box<HostSchemaType>,
     },
+    OpaqueFunction {
+        arguments: Box<[HostSchemaType]>,
+        return_: Box<HostSchemaType>,
+    },
     Custom {
         package: EcoString,
         module: EcoString,
@@ -332,6 +336,29 @@ impl HostCustomTypeSchema {
     pub fn constructors(&self) -> &[HostCustomConstructorSchema] {
         &self.constructors
     }
+
+    // Linkage has already selected this nominal definition and checked access.
+    // Source function signatures do not declare host invocation permissions.
+    pub(crate) fn matches_source_fields(&self, source: &Self) -> bool {
+        self.parameter_count == source.parameter_count
+            && self.constructors.len() == source.constructors.len()
+            && self
+                .constructors
+                .iter()
+                .zip(&source.constructors)
+                .all(|(host, source)| {
+                    host.name == source.name
+                        && host.fields.len() == source.fields.len()
+                        && host
+                            .fields
+                            .iter()
+                            .zip(&source.fields)
+                            .all(|(host, source)| {
+                                host.label == source.label
+                                    && host.type_.matches_source(&source.type_)
+                            })
+                })
+    }
 }
 
 impl HostCustomConstructorSchema {
@@ -391,6 +418,13 @@ impl HostSchemaType {
         }
     }
 
+    pub fn opaque_function(arguments: impl IntoIterator<Item = Self>, return_: Self) -> Self {
+        Self::OpaqueFunction {
+            arguments: arguments.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            return_: Box::new(return_),
+        }
+    }
+
     pub fn custom(
         package: impl Into<EcoString>,
         module: impl Into<EcoString>,
@@ -417,7 +451,7 @@ impl HostSchemaType {
                     element.collect_external_schemas(output, visited);
                 }
             }
-            Self::Function { arguments, return_ } => {
+            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
                 for argument in arguments {
                     argument.collect_external_schemas(output, visited);
                 }
@@ -450,6 +484,55 @@ impl HostSchemaType {
             | Self::Bool
             | Self::Nil => {}
         }
+    }
+
+    fn matches_source(&self, source: &Self) -> bool {
+        match (self, source) {
+            (Self::List(host), Self::List(source)) => host.matches_source(source),
+            (Self::Tuple(host), Self::Tuple(source)) => Self::arguments_match_source(host, source),
+            (
+                Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ },
+                Self::Function {
+                    arguments: inputs,
+                    return_: output,
+                },
+            ) => Self::arguments_match_source(arguments, inputs) && return_.matches_source(output),
+            (
+                Self::Custom {
+                    package,
+                    module,
+                    name,
+                    arguments,
+                },
+                Self::Custom {
+                    package: source_package,
+                    module: source_module,
+                    name: source_name,
+                    arguments: inputs,
+                },
+            ) => {
+                package == source_package
+                    && module == source_module
+                    && name == source_name
+                    && Self::arguments_match_source(arguments, inputs)
+            }
+            (
+                Self::External { schema, arguments },
+                Self::External {
+                    schema: source_schema,
+                    arguments: inputs,
+                },
+            ) => schema == source_schema && Self::arguments_match_source(arguments, inputs),
+            _ => self == source,
+        }
+    }
+
+    fn arguments_match_source(host: &[Self], source: &[Self]) -> bool {
+        host.len() == source.len()
+            && host
+                .iter()
+                .zip(source)
+                .all(|(host, source)| host.matches_source(source))
     }
 }
 
@@ -847,6 +930,79 @@ mod tests {
     }
 
     #[test]
+    fn source_field_agreement_preserves_nested_signatures_without_host_call_permissions() {
+        let opaque =
+            HostSchemaType::opaque_function([HostSchemaType::Parameter(0)], HostSchemaType::String);
+        let source_function =
+            HostSchemaType::function([HostSchemaType::Parameter(0)], HostSchemaType::String);
+        let external = HostExternalTypeSchema::new("domain", "domain/wrapper", "Wrapper", 1);
+        let host_fields = [
+            opaque.clone(),
+            HostSchemaType::list(opaque.clone()),
+            HostSchemaType::tuple([opaque.clone(), HostSchemaType::Bool]),
+            HostSchemaType::function([opaque.clone()], opaque.clone()),
+            HostSchemaType::custom("domain", "domain/box", "Box", [opaque.clone()]),
+            HostSchemaType::External {
+                schema: external.clone(),
+                arguments: Box::new([opaque]),
+            },
+        ];
+        let source_fields = [
+            source_function.clone(),
+            HostSchemaType::list(source_function.clone()),
+            HostSchemaType::tuple([source_function.clone(), HostSchemaType::Bool]),
+            HostSchemaType::function([source_function.clone()], source_function.clone()),
+            HostSchemaType::custom("domain", "domain/box", "Box", [source_function.clone()]),
+            HostSchemaType::External {
+                schema: external,
+                arguments: Box::new([source_function]),
+            },
+        ];
+        for (host, source) in host_fields.iter().zip(&source_fields) {
+            assert!(host.matches_source(source));
+            assert!(!host.matches_source(&HostSchemaType::Nil));
+        }
+        assert!(
+            !host_fields[0].matches_source(&HostSchemaType::function([], HostSchemaType::String))
+        );
+        assert!(!host_fields[0].matches_source(&HostSchemaType::function(
+            [HostSchemaType::Int],
+            HostSchemaType::String,
+        )));
+        assert!(!host_fields[0].matches_source(&HostSchemaType::function(
+            [HostSchemaType::Parameter(0)],
+            HostSchemaType::Bool,
+        )));
+
+        let host = HostCustomTypeSchema::new(
+            "domain",
+            "domain/handler",
+            "Handler",
+            1,
+            [HostCustomConstructorSchema::new(
+                "Handler",
+                host_fields
+                    .into_iter()
+                    .map(|field| HostCustomFieldSchema::new(None::<&str>, field)),
+            )],
+        );
+        let source = HostCustomTypeSchema::new(
+            "domain",
+            "domain/handler",
+            "Handler",
+            1,
+            [HostCustomConstructorSchema::new(
+                "Handler",
+                source_fields
+                    .into_iter()
+                    .map(|field| HostCustomFieldSchema::new(None::<&str>, field)),
+            )],
+        );
+        assert_ne!(host, source);
+        assert!(host.matches_source_fields(&source));
+    }
+
+    #[test]
     fn external_schema_collection_follows_nested_host_schema_types() {
         let resource = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 0);
         let box_ = HostExternalTypeSchema::new("domain", "domain/box", "Box", 1);
@@ -878,6 +1034,16 @@ mod tests {
                         HostSchemaType::Nil,
                     ],
                 ),
+            ),
+            HostSchemaType::opaque_function(
+                [HostSchemaType::External {
+                    schema: resource.clone(),
+                    arguments: Vec::new().into_boxed_slice(),
+                }],
+                HostSchemaType::External {
+                    schema: box_.clone(),
+                    arguments: vec![HostSchemaType::String].into_boxed_slice(),
+                },
             ),
         ]);
         let mut schemas = Vec::new();

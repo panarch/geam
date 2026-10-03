@@ -19,6 +19,9 @@ mod callable_declarations;
 #[path = "../tests/fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
 
+#[path = "../tests/fixtures/prepared/opaque_provider.rs"]
+mod opaque_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
@@ -202,6 +205,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
+        (
+            "opaque_functions.rs",
+            opaque_provider::prepare().emit_rust(),
+        ),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (
             "callable_embedding.rs",

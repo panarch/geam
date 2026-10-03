@@ -50,6 +50,10 @@ pub enum SchemaType {
         arguments: Table<Self>,
         return_: Node<Self>,
     },
+    OpaqueFunction {
+        arguments: Table<Self>,
+        return_: Node<Self>,
+    },
     Custom {
         package: Text,
         module: Text,
@@ -142,6 +146,10 @@ impl SchemaType {
                 arguments: arguments.iter().map(Self::from_schema).collect(),
                 return_: Box::new(Self::from_schema(return_)).into(),
             },
+            HostSchemaType::OpaqueFunction { arguments, return_ } => Self::OpaqueFunction {
+                arguments: arguments.iter().map(Self::from_schema).collect(),
+                return_: Box::new(Self::from_schema(return_)).into(),
+            },
             HostSchemaType::Custom {
                 package,
                 module,
@@ -178,6 +186,16 @@ impl SchemaType {
                     return_: left_return,
                 },
                 HostSchemaType::Function {
+                    arguments: right,
+                    return_: right_return,
+                },
+            ) => same(left, right, Self::matches) && left_return.matches(right_return),
+            (
+                Self::OpaqueFunction {
+                    arguments: left,
+                    return_: left_return,
+                },
+                HostSchemaType::OpaqueFunction {
                     arguments: right,
                     return_: right_return,
                 },
@@ -291,6 +309,10 @@ impl Emit for SchemaType {
                 "host::SchemaType::Function",
                 &[("arguments", arguments), ("return_", return_)],
             ),
+            Self::OpaqueFunction { arguments, return_ } => output.structure(
+                "host::SchemaType::OpaqueFunction",
+                &[("arguments", arguments), ("return_", return_)],
+            ),
             Self::Custom {
                 package,
                 module,
@@ -369,6 +391,21 @@ data::host::SchemaType::Tuple(data::Storage::Static(&[
                 },
                 r#"
 data::host::SchemaType::Function {
+    arguments: data::Storage::Static(&[
+        data::host::SchemaType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::SchemaType::Bool),
+}"#
+                .trim_start_matches('\n'),
+            ),
+            (
+                H::opaque_function([H::Int], H::Bool),
+                S::OpaqueFunction {
+                    arguments: vec![S::Int].into(),
+                    return_: Box::new(S::Bool).into(),
+                },
+                r#"
+data::host::SchemaType::OpaqueFunction {
     arguments: data::Storage::Static(&[
         data::host::SchemaType::Int,
     ]),
@@ -459,6 +496,17 @@ data::host::SchemaType::External {
                 arguments: arguments.into_boxed_slice(),
                 return_: Box::new(return_),
             }));
+        }
+        let opaque = S::OpaqueFunction {
+            arguments: vec![S::Int].into(),
+            return_: Box::new(S::Bool).into(),
+        };
+        for (arguments, return_) in [
+            (vec![], H::Bool),
+            (vec![H::String], H::Bool),
+            (vec![H::Int], H::String),
+        ] {
+            assert!(!opaque.matches(&H::opaque_function(arguments, return_)));
         }
         let custom = S::Custom {
             package: "app".into(),

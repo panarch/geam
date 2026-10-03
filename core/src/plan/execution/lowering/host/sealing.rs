@@ -415,7 +415,8 @@ fn schema_refinement(
         HostSchemaType::List(item) => {
             FieldRefinement::List(Box::new(schema_refinement(item)).into())
         }
-        HostSchemaType::Function { arguments, return_ } => FieldRefinement::Function {
+        HostSchemaType::Function { arguments, return_ }
+        | HostSchemaType::OpaqueFunction { arguments, return_ } => FieldRefinement::Function {
             arguments: arguments.iter().map(schema_refinement).collect(),
             return_: Box::new(schema_refinement(return_)).into(),
         },

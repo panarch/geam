@@ -218,16 +218,14 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
-                HostSchemaType::Function {
-                    arguments: arguments
-                        .iter()
-                        .map(Self::schema_type)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                    return_: Box::new(return_.schema_type()),
-                }
-            }
+            Self::Function { arguments, return_ } => HostSchemaType::function(
+                arguments.iter().map(Self::schema_type),
+                return_.schema_type(),
+            ),
+            Self::OpaqueFunction { arguments, return_ } => HostSchemaType::opaque_function(
+                arguments.iter().map(Self::schema_type),
+                return_.schema_type(),
+            ),
             Self::Custom { schema, arguments } => HostSchemaType::Custom {
                 package: schema.package().clone(),
                 module: schema.module().clone(),
@@ -912,7 +910,7 @@ mod tests {
                 return_: Box::new(HostTypeDescriptor::Nil),
             }
             .schema_type(),
-            HostSchemaType::function([HostSchemaType::String], HostSchemaType::Nil),
+            HostSchemaType::opaque_function([HostSchemaType::String], HostSchemaType::Nil),
         );
         let external = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1);
         assert_eq!(

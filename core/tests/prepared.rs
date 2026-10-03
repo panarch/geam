@@ -633,6 +633,95 @@ static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/en
 #[path = "fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
 
+#[path = "fixtures/prepared/opaque_provider.rs"]
+mod opaque_provider;
+
+static OPAQUE_FUNCTIONS: data::HostedModuleArtifact =
+    include!("fixtures/prepared/opaque_functions.rs");
+
+#[test]
+fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_roles() {
+    assert_eq!(
+        opaque_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/opaque_functions.rs").trim(),
+    );
+    assert_eq!(
+        OPAQUE_FUNCTIONS
+            .load(opaque_provider::hosts(true))
+            .err()
+            .unwrap()
+            .to_string(),
+        "prepared provider registration mismatch: Registration { package: \"application\", module: \"opaque_functions\", function: \"keep\", reason: Declaration }; regenerate with the matching providers",
+    );
+    OPAQUE_FUNCTIONS
+        .load(opaque_provider::hosts(false))
+        .unwrap();
+
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main, concrete, compound) = if prepared {
+                let mut bindings = OPAQUE_FUNCTIONS
+                    .load(opaque_provider::hosts(false))
+                    .unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal(), main, concrete, compound)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "opaque_functions",
+                    opaque_provider::packages(),
+                    opaque_provider::hosts(false),
+                )
+                .unwrap();
+                let (mut bindings, main) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main, concrete, compound)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            (
+                                scope.call(&main, ()).await.unwrap(),
+                                scope.call(&concrete, ()).await.unwrap(),
+                                scope.call(&compound, ()).await.unwrap(),
+                            )
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(result, (true, (true, "retained".into()), (true, true)));
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
 static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
 
 #[test]
@@ -1184,7 +1273,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 12; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 13; regenerate the prepared program"
     );
 }
 

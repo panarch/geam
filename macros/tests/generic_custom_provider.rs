@@ -630,6 +630,19 @@ pub fn main() {
 }
 
 #[test]
+fn opaque_custom_fields_preserve_symbolic_function_identity_and_captures() {
+    let value = run(r#"
+pub fn main() {
+  let captured = "retained"
+  let callback = fn(_) { captured }
+  let alias = take_handler(handler(callback))
+  alias == callback
+}
+"#);
+    assert_eq!(value.inspect().to_string(), "True");
+}
+
+#[test]
 fn generic_start_callbacks_preserve_nominal_result_types_and_source_failures() {
     let value = run(r#"
 pub fn main() {

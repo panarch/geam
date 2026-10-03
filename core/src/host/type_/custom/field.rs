@@ -230,7 +230,7 @@ where
     Return: CustomFieldType,
 {
     fn schema_type() -> HostSchemaType {
-        HostSchemaType::function(FunctionArguments::schema_types(), Return::schema_type())
+        HostSchemaType::opaque_function(FunctionArguments::schema_types(), Return::schema_type())
     }
 
     fn collect_custom_schemas(
@@ -595,7 +595,7 @@ mod tests {
         type Resolved = <Function as ResolveCustomFieldType<Arguments>>::Type;
         assert_eq!(
             Function::schema_type(),
-            HostSchemaType::function(
+            HostSchemaType::opaque_function(
                 [HostSchemaType::External {
                     schema: HostExternalTypeSchema::of::<ExternalSchema>(),
                     arguments: vec![HostSchemaType::Parameter(0)].into_boxed_slice()

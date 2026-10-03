@@ -186,6 +186,7 @@ impl Walk<'_, '_> {
                 }
             }
             HostSchemaType::Parameter(_)
+            | HostSchemaType::OpaqueFunction { .. }
             | HostSchemaType::Int
             | HostSchemaType::Float
             | HostSchemaType::String

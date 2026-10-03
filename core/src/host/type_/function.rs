@@ -92,7 +92,7 @@ where
     }
 
     fn schema_type() -> HostSchemaType {
-        HostSchemaType::Function {
+        HostSchemaType::OpaqueFunction {
             arguments: <Arguments as HostAbiTypeSequence>::schema_types().into_boxed_slice(),
             return_: Box::new(<Return as HostAbiType>::schema_type()),
         }
@@ -182,7 +182,7 @@ mod tests {
         );
         assert_eq!(
             <Function as HostAbiType>::schema_type(),
-            HostSchemaType::function(
+            HostSchemaType::opaque_function(
                 [HostSchemaType::Int, HostSchemaType::Bool],
                 HostSchemaType::Bool,
             ),
