@@ -36,8 +36,8 @@ struct Query {
     assumptions: Vec<Assumption>,
 }
 
-// Constructor hypotheses are relative to the query's immutable root. They are
-// used only while proving that a failed nested pattern excludes its parent.
+// Proven ancestor constructors and nested pattern hypotheses are relative to
+// the query's immutable root while proving constructor facts and exclusions.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Assumption {
     path: Vec<Projection>,
@@ -164,20 +164,47 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
         };
         let shape = &self.types.shapes.custom_shapes[id.0];
         let type_ = &self.types.customs.types[shape.type_id.index()];
+        let Some(place) = Place::local(Address::of(&slot.local)).normalize(block, self.blocks)
+        else {
+            return;
+        };
+        // A later branch can establish the parent after earlier nested tests.
+        // Carry only independently proved, strict ancestors of this same value
+        // when those earlier failures are queried for the selected field.
+        let assumptions = locals
+            .known_constructors()
+            .filter_map(|(parent, constructor)| {
+                (parent.root == place.root
+                    && parent.path.len() < place.path.len()
+                    && place.path.starts_with(&parent.path))
+                .then_some(Assumption {
+                    path: parent.path.clone(),
+                    constructor,
+                })
+            })
+            .collect::<Vec<_>>();
+        let proves = |fact| {
+            self.proves_query(Query {
+                block,
+                place: place.clone(),
+                fact,
+                assumptions: assumptions.clone(),
+            })
+        };
         let mut possible = Vec::new();
         for constructor in type_.constructors.iter() {
             let index = constructor.id.index;
-            if self.proves(block, &slot.local, Fact::Is(index)) {
-                locals.set_constructor(&slot.local, index);
+            if proves(Fact::Is(index)) {
+                locals.set_constructor(&slot.local, place.clone(), index);
                 locals.restrict_constructors(&slot.local, vec![index]);
                 return;
             }
-            if !self.proves(block, &slot.local, Fact::IsNot(index)) {
+            if !proves(Fact::IsNot(index)) {
                 possible.push(index);
             }
         }
         if possible.len() == 1 && type_.constructors.len() == type_.constructor_count {
-            locals.set_constructor(&slot.local, possible[0]);
+            locals.set_constructor(&slot.local, place, possible[0]);
         }
         if !possible.is_empty() && possible.len() != type_.constructors.len() {
             locals.restrict_constructors(&slot.local, possible);
@@ -1682,7 +1709,91 @@ pub fn main() { #(widen(First(42)), Second(7)) }
             let blocks = Blocks::admit(&graph).unwrap();
             let control = Control::new(&blocks, &types);
             assert!(!control.proves(BlockId(1), &slot.local, Fact::IsNot(1)));
+            let mut locals = Locals::default();
+            locals.define(slot, &types).unwrap();
+            control.refine(BlockId(1), slot, &mut locals);
+            assert!(locals.allows_constructor(&slot.local, 0));
+            assert!(locals.allows_constructor(&slot.local, 1));
+            assert_eq!(locals.known_constructors().count(), 0);
         }
+    }
+
+    #[test]
+    fn common_fields_refine_the_child_without_selecting_the_parent() {
+        use super::{Address, Place};
+        use crate::Value;
+
+        let source = r#"
+pub type Choice { First(Int) Second(Int) }
+pub type Wrap { Left(inner: Choice) Right(inner: Choice) }
+fn choose(value: Wrap) -> Int {
+  case value.inner {
+    First(_) -> 0
+    _ -> {
+      let assert Second(number) = value.inner
+      number
+    }
+  }
+}
+pub fn main() {
+  #(choose(Left(First(1))), choose(Right(First(2))),
+    choose(Left(Second(3))), choose(Right(Second(4))))
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let body = plan.program.functions.value_returns.int_functions[0].body();
+        let blocks = Blocks::admit(body.block_graph()).unwrap();
+        let control = Control::new(&blocks, &types);
+        let mut selected = 0;
+        for (index, block) in blocks.iter().enumerate() {
+            let block_id = BlockId(index);
+            let mut locals = Locals::default();
+            for slot in block.params().iter().chain(
+                block
+                    .instructions()
+                    .iter()
+                    .flat_map(|instruction| instruction.outputs()),
+            ) {
+                locals.define(slot, &types).unwrap();
+                control.refine(block_id, slot, &mut locals);
+                if control.proves(block_id, &slot.local, Fact::IsNot(0))
+                    && !control.proves(block_id, &slot.local, Fact::IsNot(1))
+                    && !control.proves(block_id, &slot.local, Fact::Is(1))
+                {
+                    assert!(!locals.allows_constructor(&slot.local, 0));
+                    assert!(locals.allows_constructor(&slot.local, 1));
+                    let place = Place::local(Address::of(&slot.local))
+                        .normalize(block_id, &blocks)
+                        .unwrap();
+                    assert_eq!(
+                        locals.known_constructors().collect::<Vec<_>>(),
+                        vec![(&place, 1)]
+                    );
+                    selected += 1;
+                }
+            }
+        }
+        assert_eq!(selected, 1);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap(),
+            Value::Tuple(vec![
+                Value::Int(0.into()),
+                Value::Int(0.into()),
+                Value::Int(3.into()),
+                Value::Int(4.into())
+            ]),
+        );
+        assert!(echo.is_empty());
     }
 
     #[test]

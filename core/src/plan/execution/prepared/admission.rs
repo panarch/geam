@@ -426,6 +426,7 @@ mod tests {
         HostExternalStore, HostExternalType, HostProfile, HostProvider, HostProviderModule,
         HostProviderSet,
     };
+    use crate::plan::execution::graph::{Match, ProfiledInstruction, Terminator};
     use crate::plan::execution::host::{HostedExecutionProfile, HostedFunctionMetadata};
     use crate::plan::execution::prepared::{
         FORMAT_VERSION, ModuleArtifact, PreparedModule, ProgramTables,
@@ -1015,6 +1016,160 @@ pub fn main() {
                 }
             }
         }
+    }
+
+    #[test]
+    fn nested_constructor_remainders_admit_the_final_payload() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::instruction::InstructionError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::graph::MatchPattern;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let source = r#"
+pub type Control { Ping }
+pub type InternalMessage {
+  ReceiveMessage(Int)
+  Closed
+  Passive
+  SocketError(Int)
+  Ready
+  Close
+}
+pub type Message { Internal(InternalMessage) User(Control) }
+fn choose(message: Message) -> Int {
+  case message {
+    Internal(Closed) | Internal(Close) -> 0
+    Internal(Ready) -> 1
+    User(_) -> 2
+    Internal(ReceiveMessage(_)) -> 3
+    Internal(Passive) -> 4
+    Internal(SocketError(reason)) -> reason
+  }
+}
+pub fn main() {
+  let assert 0 = choose(Internal(Closed))
+  let assert 0 = choose(Internal(Close))
+  let assert 1 = choose(Internal(Ready))
+  let assert 2 = choose(User(Ping))
+  let assert 3 = choose(Internal(ReceiveMessage(13)))
+  let assert 4 = choose(Internal(Passive))
+  let assert 9 = choose(Internal(SocketError(9)))
+  Nil
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), ()>::new("main"))
+            .unwrap();
+        let mut data = artifact(bindings.prepare());
+        assert_eq!(module(&data, &functions::InfallibleHosts).err(), None);
+
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        let original = owned_mut(&mut graph.blocks)[6].terminator.clone();
+        let matcher = remainder_fixture_matcher(&mut owned_mut(&mut graph.blocks)[6].terminator);
+        matcher.pattern = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(1),
+                index: 0,
+            },
+            fields: vec![MatchPattern::Discard].into(),
+        };
+        assert_eq!(
+            module(&data, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Instruction {
+                    block: 12,
+                    index: 0,
+                    error: InstructionError::OutputType,
+                }),
+            }))
+        );
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        owned_mut(&mut graph.blocks)[6].terminator = original;
+        let index = graph.blocks[12].instructions.start;
+        let field_index =
+            remainder_fixture_field_index(&mut owned_mut(&mut graph.instructions)[index]);
+        assert_eq!(*field_index, 0);
+        *field_index = 1;
+        assert_eq!(
+            module(&data, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Instruction {
+                    block: 12,
+                    index: 0,
+                    error: InstructionError::CustomField { index: 1 },
+                }),
+            }))
+        );
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        *remainder_fixture_field_index(&mut owned_mut(&mut graph.instructions)[index]) = 0;
+
+        let (execution, _) = plain(Box::leak(Box::new(data))).unwrap().into_execution();
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                crate::run_main(&execution, &mut echo).unwrap(),
+                crate::Value::Nil
+            );
+            assert!(echo.is_empty());
+        }
+    }
+
+    fn remainder_fixture_matcher(terminator: &mut Terminator) -> &mut Match {
+        match terminator {
+            Terminator::Match(matcher) => matcher,
+            _ => panic!("expected a constructor remainder match"),
+        }
+    }
+
+    fn remainder_fixture_field_index(
+        instruction: &mut ProfiledInstruction<Infallible>,
+    ) -> &mut usize {
+        use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
+        use crate::plan::execution::graph::{
+            CustomInstruction, ProfiledInstruction, ProfiledInstructionKind,
+        };
+        match instruction {
+            ProfiledInstruction::Value(ProfiledValueInstruction {
+                kind: ProfiledInstructionKind::Custom(CustomInstruction::CustomField { index, .. }),
+                ..
+            }) => index,
+            _ => panic!("expected a constructor remainder field"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a constructor remainder match")]
+    fn remainder_fixture_matcher_rejects_non_matches() {
+        use crate::plan::execution::graph::{BlockGraphExitId, Terminator};
+        remainder_fixture_matcher(&mut Terminator::Exit(BlockGraphExitId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a constructor remainder field")]
+    fn remainder_fixture_field_rejects_non_projections() {
+        use crate::plan::execution::graph::{
+            NilInstruction, NilLocalId, ParamLocal, ParamSlot, ProfiledInstruction,
+            ProfiledInstructionKind,
+        };
+        use crate::plan::execution::type_::ValueShapeId;
+        remainder_fixture_field_index(&mut ProfiledInstruction::new(
+            ParamSlot::new(ParamLocal::Nil(NilLocalId(0)), ValueShapeId(0)),
+            ProfiledInstructionKind::Nil(NilInstruction::Value),
+        ));
     }
 
     #[test]

@@ -4,6 +4,7 @@ import clip_contracts
 import gleam/io
 import gleam/option.{type Option, None, Some}
 import multi_subject_patterns
+import nested_constructor_remainders
 import nested_pattern_bindings
 
 pub type Pair {
@@ -239,5 +240,6 @@ pub fn main() {
   let assert "value" = multi_subject_patterns.main()
   clip_contracts.main()
   nested_pattern_bindings.main()
+  nested_constructor_remainders.main()
   io.println("guard locals, multi-subject patterns and original clip: ok")
 }

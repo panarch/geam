@@ -90,7 +90,48 @@ fn second_custom(input: Result(Payload, String)) -> Int {
   }
 }
 
+pub type Control {
+  Ping
+}
+
+pub type InternalMessage {
+  ReceiveMessage(Int)
+  Closed
+  Passive
+  SocketError(Int)
+  Ready
+  Close
+}
+
+pub type Message {
+  Internal(InternalMessage)
+  User(Control)
+}
+
+fn choose(message: Message) -> Int {
+  case message {
+    Internal(Closed) | Internal(Close) -> 0
+    Internal(Ready) -> 1
+    User(_) -> 2
+    Internal(ReceiveMessage(_)) -> 3
+    Internal(Passive) -> 4
+    Internal(SocketError(reason)) -> reason
+  }
+}
+
+fn nested_constructor_remainders() {
+  let assert 0 = choose(Internal(Closed))
+  let assert 0 = choose(Internal(Close))
+  let assert 1 = choose(Internal(Ready))
+  let assert 2 = choose(User(Ping))
+  let assert 3 = choose(Internal(ReceiveMessage(13)))
+  let assert 4 = choose(Internal(Passive))
+  let assert 9 = choose(Internal(SocketError(9)))
+  Nil
+}
+
 pub fn main() {
+  nested_constructor_remainders()
   let assert 0 = second(Error("invalid"))
   let assert 0 = second(Ok(#(False, [1, 7])))
   let assert 0 = second(Ok(#(True, [])))
