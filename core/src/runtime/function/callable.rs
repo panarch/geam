@@ -416,7 +416,7 @@ pub fn run() {{
                     assert_eq!(result, expected.map(BigInt::from).map_err(str::to_owned), "{source}");
                 }),
             )
-            .unwrap();
+            .unwrap().try_into_value().unwrap();
             assert!(echo.is_empty());
         }
     }

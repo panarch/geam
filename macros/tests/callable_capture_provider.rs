@@ -221,6 +221,8 @@ pub fn main() {
     let mut state = State::default();
     let value = runtime
         .block_on(execution.run_main(&host, &mut state, &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(value.inspect().to_string(), "#(20, 20, 40, 60, 80)");
     assert_eq!(state.reads, [20.into(), 20.into(), 60.into()]);

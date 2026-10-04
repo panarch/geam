@@ -193,6 +193,8 @@ mod tests {
         for _ in 0..2 {
             let result = host
                 .block_on(execution.run_main(&host, &mut events, &mut Vec::new()))
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result.inspect().to_string(), "Ready");
             assert_eq!(

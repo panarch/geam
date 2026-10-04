@@ -30,6 +30,8 @@ pub(crate) fn run_main(
     };
     host.block_on(execution.run_main(&host, &mut state, &mut Vec::new()))
         .unwrap()
+        .try_into_value()
+        .unwrap()
 }
 
 /// Stops inside one native poll while the owner drives real cancellation.
@@ -218,7 +220,11 @@ pub(crate) fn with_units(count: usize, test: impl FnOnce(&[ExecutionUnit])) {
     for unit in &units {
         unit.cancel();
     }
-    let results = host.block_on(execution.as_mut()).unwrap();
+    let results = host
+        .block_on(execution.as_mut())
+        .unwrap()
+        .try_into_value()
+        .unwrap();
     assert_eq!(results.len(), count);
     assert!(
         results
@@ -353,6 +359,8 @@ pub fn main() { check(make()) }
         let mut echo = Vec::new();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut state, &mut echo))
+                .unwrap()
+                .try_into_value()
                 .unwrap(),
             geam_core::Value::Nil
         );

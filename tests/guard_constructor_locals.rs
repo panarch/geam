@@ -140,6 +140,8 @@ fn typed_embedding_reuses_generic_guards_captures_and_nested_remainder_bindings(
             }),
         )
         .unwrap()
+        .try_into_value()
+        .unwrap()
         .unwrap();
     assert_eq!(
         actual,

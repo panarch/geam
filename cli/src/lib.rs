@@ -27,7 +27,7 @@ pub fn run() -> ExitCode {
         .and_then(project::into_utf8_path)
         .and_then(|current_directory| run_command(cli, current_directory));
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(status) => status,
         Err(error) => {
             // A closed stderr must not turn the original failure into a panic.
             let _ = writeln!(std::io::stderr(), "geam: {error}");
@@ -36,14 +36,18 @@ pub fn run() -> ExitCode {
     }
 }
 
-fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<(), CliError> {
+fn run_command(cli: Cli, current_directory: camino::Utf8PathBuf) -> Result<ExitCode, CliError> {
     let command = match cli.command {
         Command::Embedding(command) => match command.command {
-            EmbeddingCommand::Init => return embedding::init(&current_directory),
-            EmbeddingCommand::Check => {
-                return embedding::check(&current_directory);
+            EmbeddingCommand::Init => {
+                return embedding::init(&current_directory).map(|()| ExitCode::SUCCESS);
             }
-            EmbeddingCommand::Sync => return embedding::sync(&current_directory),
+            EmbeddingCommand::Check => {
+                return embedding::check(&current_directory).map(|()| ExitCode::SUCCESS);
+            }
+            EmbeddingCommand::Sync => {
+                return embedding::sync(&current_directory).map(|()| ExitCode::SUCCESS);
+            }
         },
         Command::Prepare(command) => ProjectCommand::Prepare(command),
         Command::Run(command) => ProjectCommand::Run(command),
@@ -63,11 +67,12 @@ enum ProjectCommand {
 fn run_project_command(
     command: ProjectCommand,
     current_directory: camino::Utf8PathBuf,
-) -> Result<(), CliError> {
+) -> Result<ExitCode, CliError> {
     let project_root = project::find_project_root(&current_directory)?;
     match command {
         ProjectCommand::Prepare(command) => project::entry_module(&project_root, command.module)
-            .and_then(|module| standalone::prepare(&project_root, module)),
+            .and_then(|module| standalone::prepare(&project_root, module))
+            .map(|()| ExitCode::SUCCESS),
         ProjectCommand::Run(command) => project::entry_module(&project_root, command.module)
             .and_then(|module| {
                 standalone::run(
@@ -79,14 +84,16 @@ fn run_project_command(
                 )
             }),
         ProjectCommand::Build(command) => project::entry_module(&project_root, command.module)
-            .and_then(|module| standalone::build(&project_root, module, command.release)),
+            .and_then(|module| standalone::build(&project_root, module, command.release))
+            .map(|()| ExitCode::SUCCESS),
         ProjectCommand::Provider(command) => match command.command {
             ProviderCommand::Add(command) => {
                 provider::add(&project_root, current_directory.as_std_path(), command)
             }
             ProviderCommand::List => provider::list(&project_root),
             ProviderCommand::Remove(command) => provider::remove(&project_root, command),
-        },
+        }
+        .map(|()| ExitCode::SUCCESS),
     }
 }
 

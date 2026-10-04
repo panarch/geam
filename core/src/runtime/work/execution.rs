@@ -1,4 +1,5 @@
 use super::{Cancelled, Shared, Work, WorkFactory, WorkScope};
+use crate::execution::ExitStatus;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedProgram;
 use crate::runtime::error::HostCallOrigin;
@@ -51,6 +52,10 @@ impl<Profile: HostProfile> ExecutionWork<Profile> {
         if let Some(work) = self.initialized.get() {
             work.close();
         }
+    }
+
+    pub(in crate::runtime) fn exit_status(&self) -> Option<ExitStatus> {
+        self.execution.exit_status()
     }
 }
 

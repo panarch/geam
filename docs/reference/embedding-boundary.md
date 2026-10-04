@@ -145,6 +145,12 @@ to borrow the sealed module, mutable provider state, and Echo sink for an
 execution scope. Its `ExecutionHost` supplies owned worker scheduling,
 cancellation acknowledgement, and a monotonic clock. The optional `TokioHost`
 adapter uses a caller-supplied Tokio runtime handle.
+The enclosing Future returns `Result<ExecutionOutcome<Output>, DriverError>`:
+`Returned` contains the Rust body's output and `Exited` contains an explicitly
+requested application status. An exit ends this scope after worker cleanup and
+does not terminate the Rust process. A fresh scope can reuse the same module,
+host and caller-owned state. See [application termination](execution-services.md#application-termination)
+for acceptance timing, invalid statuses and failure precedence.
 The module retains its sealed code and function identity across scopes.
 `scope.call(...).await` evaluates the source function and returns its declared
 value; returning an existing Future preserves that work.

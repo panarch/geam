@@ -438,6 +438,8 @@ pub fn read(value: Session) {
                 assert_eq!(scope.call(&read, (item,)).await.unwrap(), BigInt::from(42));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
     }
@@ -616,6 +618,8 @@ pub fn keep(value: Session(Int)) { echo "entered" value }
                 assert!(session.value.same_allocation(&returned.value));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(echo.len(), 1);
     }
@@ -726,6 +730,8 @@ pub fn package(value: Session) { work.ready([value]) }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(
             echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -906,6 +912,8 @@ pub fn inspect(left: Resource, right: Resource) { echo left left == right }
                 assert_eq!(drops.load(Ordering::SeqCst), 1);
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         // Echo owns its retained diagnostic until the caller releases it.
         assert_eq!(drops.load(Ordering::SeqCst), 1);
@@ -1046,6 +1054,8 @@ pub fn check() {
                         scope.call(&check, ()).await.unwrap()
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result, expected, "{source}");
             assert!(echo.is_empty());
@@ -1184,6 +1194,8 @@ pub fn pending(wait: Bool) {
                 assert_eq!(drops.load(Ordering::SeqCst), 10);
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         for (wait, expected) in [(false, 11), (true, 12)] {
             let mut execution =
@@ -1318,6 +1330,8 @@ pub fn read(session: Session) { let Session(value) = session value }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
     }

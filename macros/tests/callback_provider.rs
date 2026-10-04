@@ -564,7 +564,9 @@ fn callbacks_reenter_the_component_and_preserve_typed_results() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(SOURCE).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
-        .expect("typed callbacks should execute");
+        .expect("typed callbacks should execute")
+        .try_into_value()
+        .unwrap();
 
     let RuntimeValue::Tuple(values) = returned else {
         panic!("callback result should preserve the complete tuple");
@@ -634,6 +636,8 @@ pub fn main() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(
         returned.inspect().to_string(),
@@ -674,6 +678,8 @@ pub fn main() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(
         returned.inspect().to_string(),
@@ -708,6 +714,8 @@ pub fn main() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(
         returned.inspect().to_string(),
@@ -740,6 +748,8 @@ pub fn main() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(
         returned.inspect().to_string(),
@@ -830,6 +840,8 @@ pub fn main() {
     let host = TokioHost::new(runtime.handle().clone());
     let returned = runtime
         .block_on(execution(&source).run_main(&host, &mut ProfileState::default(), &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(
         returned.inspect().to_string(),
@@ -904,7 +916,7 @@ pub fn main() {{
             runtime.block_on(execution(&source).run_main(&host, &mut state, &mut Vec::new()));
         assert_eq!(
             result
-                .map(|value| value.inspect().to_string())
+                .map(|outcome| outcome.try_into_value().unwrap().inspect().to_string())
                 .map_err(|error| error.to_string()),
             expected.map(str::to_owned).map_err(str::to_owned),
             "{wrapper}: {body}; {cleanup}"

@@ -15,6 +15,7 @@ pub use geam_builtin as builtin;
 pub use geam_builtin::FutureComponent;
 #[cfg(feature = "provider")]
 pub mod provider {
+    pub use geam_core::execution::{ExitStatus, InvalidExitStatus};
     pub mod advanced {
         pub use geam_core::provider::advanced::{
             DynamicKind, Equality, External, Hashing, Index0, Inspection, NativeKind, NativeMap,
@@ -100,6 +101,7 @@ pub mod __standalone_support;
 pub use geam_core::List;
 #[cfg(feature = "embedding")]
 pub mod embedding;
+pub use geam_core::execution::{ExecutionOutcome, ExitStatus, InvalidExitStatus};
 pub use geam_core::{execution, frontend, host, plan, planner, runtime};
 #[cfg(feature = "provider")]
 pub use geam_macros::{callable, custom, external, function, module, provider};

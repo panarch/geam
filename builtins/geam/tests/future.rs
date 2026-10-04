@@ -204,7 +204,9 @@ pub fn empty() -> future.Future(List(Int)) { future.all([]) }
                     .read(|values| assert!(values.is_empty()));
             }),
         )
-        .expect("caller drives all ready work");
+        .expect("caller drives all ready work")
+        .try_into_value()
+        .unwrap();
     assert_eq!(
         output,
         [

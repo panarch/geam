@@ -396,6 +396,8 @@ fn generated_list_returns_preserve_caller_values_and_scope_cancellation() {
             )
             .await
             .unwrap()
+            .unwrap()
+            .try_into_value()
             .unwrap();
         });
         assert_eq!(outputs.len(), 1);
@@ -539,6 +541,8 @@ fn generated_list_tail_calls_preserve_native_wait_result_identity_and_failure_or
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(
             state,
@@ -1092,6 +1096,8 @@ fn generated_int_list_calls_keep_other_caller_values_and_release_abandoned_execu
             )
             .await
             .unwrap()
+            .unwrap()
+            .try_into_value()
             .unwrap();
         });
         assert_eq!(outputs.len(), 1);
@@ -2311,6 +2317,8 @@ fn generated_hosted_calls_keep_scope_cancellation_captures_and_standalone_output
             )
             .await
             .unwrap()
+            .unwrap()
+            .try_into_value()
             .unwrap();
         });
         assert_eq!(outputs.len(), 1);
@@ -2441,6 +2449,8 @@ fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_ro
                             )
                         }),
                     )
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 assert_eq!(result, (true, (true, "retained".into()), (true, true)));
                 assert!(echo.is_empty());
@@ -2532,6 +2542,8 @@ fn general_function_values_preserve_owned_sources_and_exact_prepared_roles() {
                             )
                         }),
                     )
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 assert_eq!(
                     result,
@@ -2596,6 +2608,8 @@ fn shared_custom_values_preserve_nominal_payloads_and_require_their_producer() {
                             scope.call(&main, ()).await.unwrap()
                         }),
                     )
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 assert_eq!(result, (42.into(), 42.into()));
                 assert!(echo.is_empty());
@@ -3215,6 +3229,8 @@ fn emitted_work_retains_captures_shared_completion_and_scope_ownership() {
                 completed
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(completed.read(Clone::clone), BigInt::from(42));
     let mut other = WORK.load(work_provider::hosts()).unwrap().seal();
@@ -3227,6 +3243,8 @@ fn emitted_work_retains_captures_shared_completion_and_scope_ownership() {
                 ));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert!(echo.is_empty());
 }
@@ -3316,6 +3334,8 @@ fn dynamic_and_prepared_calls_share_captures_through_opaque_values_and_native_wo
                         drop(unobserved);
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
         }
         assert!(echo.is_empty());
@@ -3888,6 +3908,8 @@ fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifac
                     scope.call(&entry, ()).await.unwrap()
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert!(value);
         assert!(echo.is_empty());
@@ -3901,6 +3923,8 @@ fn generic_provider_results_preserve_symbolic_failure_fields_in_compiled_artifac
                     scope.call(&dynamic_entry, ()).await.unwrap()
                 })
             )
+            .unwrap()
+            .try_into_value()
             .unwrap(),
     );
     assert!(echo.is_empty());
@@ -3950,6 +3974,8 @@ fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
                     scope.call(&entry, (input,)).await.unwrap()
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         drop(module);
         assert!(same);
@@ -4040,6 +4066,8 @@ fn dynamic_and_prepared_bit_ranges_preserve_storage_and_canonical_bytes_through_
                     (aligned, unaligned, short, partial_source, empty)
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         drop(input);
         drop(module);
@@ -4118,6 +4146,8 @@ fn emitted_native_program_preserves_recursive_values_and_resuming_callbacks() {
                     scope.call(&run, ()).await.unwrap()
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(value, (true, true, BigInt::from(43)));
         assert!(echo.is_empty());
@@ -4289,6 +4319,8 @@ fn scoped_function_inputs_returns_and_nested_codecs_match_in_dynamic_and_prepare
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
     }
 }
@@ -4372,6 +4404,8 @@ fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_i
                     assert!(scope.call(&check, ()).await.unwrap());
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
     }
 }
@@ -4461,6 +4495,8 @@ fn native_construction_selects_exact_rust_views_in_dynamic_and_prepared_executio
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
     }
 }
@@ -4603,6 +4639,8 @@ fn unresolved_producers_and_created_callables_link_fresh_value_registrations() {
                         scope.call(&function, ()).await
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result.unwrap_err().to_string(), expected);
             assert_eq!(
@@ -4664,6 +4702,8 @@ fn embedding_constructs_failure_only_callables_from_value_declarations() {
                     scope.call(&run, (&native,)).await
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap()
             .unwrap_err();
         assert_eq!(

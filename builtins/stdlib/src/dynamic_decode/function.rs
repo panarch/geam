@@ -549,6 +549,8 @@ pub fn retained_string() {
                 async |scope| scope.call(&main, ()).await,
             ))
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         drop(module);
         assert_eq!(decoded.as_str(), "abcdefghijklmnopqrstuvwxyz:suffix");

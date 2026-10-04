@@ -143,7 +143,12 @@ pub fn main() {{ values({fail_at}) }}
         let result = runtime.block_on(execution.run_main(&host, &mut state, &mut Vec::new()));
         if fail_at == 0 {
             assert_eq!(
-                result.unwrap().inspect().to_string(),
+                result
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap()
+                    .inspect()
+                    .to_string(),
                 "[Value(1), Value(2), Value(3)]"
             );
             assert_eq!(*state.effects.lock().unwrap(), [1, 2, 3]);

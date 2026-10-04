@@ -1,10 +1,12 @@
 //! Host-selected scheduling and clocks for owned Gleam execution.
 
+mod outcome;
 mod services;
 #[cfg(feature = "tokio")]
 mod tokio;
 mod unit;
 
+pub use outcome::{ExecutionOutcome, ExitStatus, InvalidExitStatus};
 pub use services::ExecutionServices;
 #[cfg(feature = "tokio")]
 pub use tokio::TokioHost;
@@ -172,6 +174,8 @@ mod tests {
         let mut observed = Arc::default();
         let value = host
             .block_on(execution.run_main(&host, &mut observed, &mut Vec::new()))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(value.inspect().to_string(), "#(BeforeFirst, HasData(42))");
         assert_eq!(

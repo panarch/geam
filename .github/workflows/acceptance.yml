@@ -361,6 +361,14 @@ jobs:
       - name: Verify resumable native callbacks
         run: cargo test --package geam-core --features tokio --test resumable_embedding --locked
 
+      - name: Verify application exit and worker cleanup
+        run: |
+          cargo test --package geam-core --features tokio --lib runtime::execution::domain::tests --locked
+          cargo test --package geam-core --features tokio --lib runtime::execution::continuation::tests --locked
+          cargo test --package geam-core --features tokio --lib explicit_native_work_exits --locked
+          cargo test --package geam-core --features tokio --lib immediate_and_diverging_exit --locked
+          cargo test --package geam-core --features tokio --lib provider_call_exit --locked
+
       - name: Install Gleam toolchain
         uses: erlef/setup-beam@v1
         with:
@@ -748,6 +756,7 @@ jobs:
             tests/fixtures/dict_service/provider -> target
             tests/fixtures/bytes_tree_service/provider -> target
             tests/fixtures/selective_receive_service/provider -> target
+            tests/fixtures/application_exit/provider -> target
 
       - name: Fetch locked consumer dependencies
         run: |
@@ -755,6 +764,7 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
         run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
@@ -781,6 +791,12 @@ jobs:
         run: |
           gleam format --check tests/fixtures/selective_receive_service/project/src
           gleam format --check tests/fixtures/selective_receive_service/embedding/gleam/src
+
+      - name: Verify public application exit requests
+        run: cargo test --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked
+
+      - name: Verify application exit fixture source formatting
+        run: gleam format --check tests/fixtures/application_exit/project/src
 
   external-provider-sdk:
     name: External provider SDK

@@ -363,6 +363,8 @@ pub fn functions() { fn() { fn(value: Int) { value + 3 } } }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
     }
@@ -406,6 +408,8 @@ pub fn stops() -> fn() -> Empty { fn() { panic as "stopped" } }
                     scope.invoke(&callback, ()).await.err().unwrap()
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         let expression = "panic as \"stopped\"";
         let start = source.find(expression).unwrap();

@@ -135,7 +135,9 @@ fn non_finite_json_preserves_the_host_failure_and_allows_the_next_call() {
             })
         );
     assert!(matches!(
-        execution_host.poll(task.as_mut()),
+        execution_host
+            .poll(task.as_mut())
+            .map(|result| result.map(|outcome| outcome.try_into_value().unwrap())),
         Poll::Ready(Ok(()))
     ));
 }

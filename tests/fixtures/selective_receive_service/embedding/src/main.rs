@@ -2,7 +2,7 @@ mod geam_bindings;
 
 use geam::HostProviderConfiguration;
 use geam::embedding::HostedModuleBuilder;
-use geam::execution::TokioHost;
+use geam::execution::{ExecutionOutcome, TokioHost};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread()
@@ -26,12 +26,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .initialize()?;
         let mut echo = Vec::new();
         for _ in 0..2 {
-            executor.block_on(module.with_execution(
+            let outcome = executor.block_on(module.with_execution(
                 &host,
                 &mut state,
                 &mut echo,
                 async |scope| scope.call(&functions.main, ()).await,
-            ))??;
+            ))?;
+            match outcome {
+                ExecutionOutcome::Returned(result) => result?,
+                ExecutionOutcome::Exited(status) => eprintln!("application exited with {status}"),
+            }
         }
         assert!(echo.is_empty());
         assert_eq!(state.stdlib().io_outputs().len(), 2);

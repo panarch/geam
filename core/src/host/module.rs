@@ -1225,6 +1225,8 @@ pub fn main() { math.add(31, 11) }
                 assert_eq!(scope.call(&main, ()).await.unwrap(), BigInt::from(42));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
     }
@@ -1373,6 +1375,8 @@ pub fn main() { math.add(31, 11) }
                     assert_eq!(scope.invoke(&callback, ()).await.unwrap(), BigInt::from(1));
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.counter, 1);
         }
@@ -1547,6 +1551,8 @@ pub fn main() { math.add(31, 11) }
                     assert_eq!(scope.invoke(&function, ()).await.unwrap(), BigInt::from(1));
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.counter, 1);
             assert!(echo.is_empty());
@@ -2254,7 +2260,9 @@ pub fn answer() { future.ready(identity(42)) }
                         .read(|value| assert_eq!(value, &BigInt::from(42)));
                 },
             ))
-            .expect("ready work");
+            .expect("ready work")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]
@@ -2362,7 +2370,9 @@ pub fn run(fails: Bool) { case fails { True -> stop() False -> construct() } }
                     );
                 },
             ))
-            .expect("ordinary calls need no suspension");
+            .expect("ordinary calls need no suspension")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]
@@ -2576,7 +2586,9 @@ pub fn run(mode: Int) {
                     }
                 },
             ))
-            .expect("all source calls finish immediately");
+            .expect("all source calls finish immediately")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]

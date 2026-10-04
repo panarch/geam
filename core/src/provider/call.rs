@@ -5,6 +5,7 @@ use super::{
     ProviderNoFactories, ProviderOwnedStoredInput, ProviderStoredInput, ProviderStoredOutput,
     ProviderStoredOwner, ProviderValueContext, ProviderValueForms, Stored, Value,
 };
+use crate::execution::ExitStatus;
 use crate::host::{HostExecutionContext, HostExecutionError, HostFutureContext, HostTypeSequence};
 use crate::provider::advanced::{
     NativeValue, ProviderDynamicInput, ProviderDynamicValue, Retained, StoredDynamic,
@@ -23,7 +24,7 @@ pub struct Call<State, Context = ProviderCallPlaceholder> {
     state: PhantomData<fn() -> State>,
 }
 
-/// A provider failure that stops the active source execution.
+/// Native failure or execution control, separate from a source-visible Result.
 pub type HostResult<Value, Error = HostCallError> = Result<Value, Error>;
 
 #[doc(hidden)]
@@ -112,6 +113,11 @@ where
 
     pub fn state(&mut self) -> &Provider::State {
         &*self.context.call.state()
+    }
+
+    /// Propagate this result to terminate the current execution with a status.
+    pub fn exit<Output>(&self, status: ExitStatus) -> HostResult<Output> {
+        self.context.call.exit(status)
     }
 
     pub fn state_mut(&mut self) -> &mut Provider::State {
@@ -430,6 +436,11 @@ where
         &self.context.execution
     }
 
+    /// Propagate this result from a resumable call or explicit Future operation.
+    pub fn exit<Output>(&self, status: ExitStatus) -> Result<Output, HostExecutionError> {
+        self.context.execution.exit(status)
+    }
+
     /// Retains one owned generic value for an external payload returned after
     /// this async provider call completes.
     pub fn store<Type, Host, Owner, Index>(
@@ -604,6 +615,79 @@ mod tests {
         fn project(state: &mut TestRunState) -> &mut Self::State {
             state
         }
+    }
+
+    #[test]
+    fn provider_call_exit_uses_the_immediate_and_owned_execution_protocols() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+        use crate::execution_fixture::TestHost;
+        use crate::{
+            HostCallCompletion, HostCallContinuation, HostCallError, HostConstructions,
+            HostProviderModule, HostProviderSet, HostedExecution, ModuleSource, PackageSource,
+            compile_typed_host_program, plan_host_program,
+        };
+
+        fn immediate<'call>(
+            call: HostCall<'call, TestHostProfile, Provider, ()>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            let mut call = Call::from_host_call(call);
+            call.state_mut().counter += 1;
+            call.exit(ExitStatus::new(7))
+        }
+        fn owned<'call>(
+            call: HostCall<'call, TestHostProfile, Provider, ()>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+        ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
+            Ok(call.resume(constructions, |context| {
+                Box::pin(async move {
+                    let mut call = Call::from_execution_context(context);
+                    call.with_state(|state| state.counter += 1)
+                        .await
+                        .expect("the owned call can access its active state");
+                    call.exit(ExitStatus::new(0))
+                })
+            }))
+        }
+        let host = TestHost::default();
+        let mut state = TestRunState::default();
+        for (name, code) in [("immediate", 7), ("owned", 0)] {
+            let provider = HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_scoped_function::<Provider, (), (), _>("immediate", immediate)
+                .unwrap()
+                .with_resumable_function::<Provider, (), (), HostTypeListEnd, _>("owned", owned)
+                .unwrap();
+            let source = format!(
+                r#"
+@external(erlang, "native", "immediate")
+fn immediate() -> Nil
+@external(erlang, "native", "owned")
+fn owned() -> Nil
+pub fn main() {{ {name}() echo "after" }}
+"#
+            );
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("main", "main.gleam", source)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let mut echo = Vec::new();
+            assert_eq!(
+                host.block_on(execution.run_main(&host, &mut state, &mut echo))
+                    .unwrap(),
+                ExecutionOutcome::Exited(ExitStatus::new(code))
+            );
+            assert!(echo.is_empty());
+        }
+        assert_eq!(state.counter, 2);
     }
 
     struct IntCallbackCodec;

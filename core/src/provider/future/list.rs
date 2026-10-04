@@ -265,6 +265,8 @@ pub fn main() {
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(state.decoded, [BigInt::from(42), BigInt::from(42)]);
         assert_eq!(

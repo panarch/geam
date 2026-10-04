@@ -215,6 +215,8 @@ pub fn main() {
         let mut echo = Vec::new();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut state, &mut echo))
+                .unwrap()
+                .try_into_value()
                 .unwrap(),
             geam_core::Value::Nil
         );
@@ -312,6 +314,8 @@ pub fn main() {
         let mut echo = Vec::new();
         let value = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(value.inspect().to_string(), "#(\"\", True)");
         assert!(echo.is_empty());

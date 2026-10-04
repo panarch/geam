@@ -363,7 +363,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&int, (BigInt::from(3),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(3)),
         );
         assert_eq!(
@@ -374,7 +376,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&float, (1.25,)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(1.25)
         );
         assert_eq!(
@@ -385,7 +389,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&string, ("value".into(),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok("value".into()),
         );
         assert_eq!(
@@ -396,7 +402,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&bits, (bits_value.clone(),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(bits_value.clone()),
         );
         assert_eq!(
@@ -407,7 +415,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&codepoint, ('한',)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok('한')
         );
         assert_eq!(
@@ -418,7 +428,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&bool_, (true,)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(true)
         );
         assert_eq!(
@@ -429,7 +441,9 @@ pub fn mixed(
                     &mut echo,
                     async |scope| scope.call(&nil, ((),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(())
         );
         assert_eq!(
@@ -455,7 +469,9 @@ pub fn mixed(
                             .await
                     }
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(false),
         );
         assert!(echo.is_empty());
@@ -487,7 +503,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
@@ -498,7 +516,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(2)),
         );
         assert_eq!(
@@ -509,7 +529,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(1)),
         );
         assert_eq!(first.calls, 2);
@@ -565,6 +587,8 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
                     async |scope| scope.call(&batch, (rows.clone(),)).await,
                 ))
                 .expect("controlled execution")
+                .try_into_value()
+                .unwrap()
                 .expect("new rows");
             assert_eq!(state.calls, 1);
             assert_eq!(
@@ -575,7 +599,9 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
                         &mut echo,
                         async |scope| scope.call(&inspect, (&retained,)).await
                     ))
-                    .expect("controlled execution"),
+                    .expect("controlled execution")
+                    .try_into_value()
+                    .unwrap(),
                 Ok(BigInt::from(2))
             );
             assert_eq!(state.calls, 2);
@@ -595,7 +621,9 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
                         &mut other_echo,
                         async |scope| scope.call(&other_inspect, (&retained,)).await
                     ))
-                    .expect("controlled execution"),
+                    .expect("controlled execution")
+                    .try_into_value()
+                    .unwrap(),
                 Err(CallError::ForeignValue)
             );
             assert_eq!(other_state.calls, 0);
@@ -608,7 +636,9 @@ pub fn inspect(values: List(Result(#(String, Int), String))) {
                         &mut other_echo,
                         async |scope| scope.call(&other_inspect, (collect_rows(&retained),)).await
                     ))
-                    .expect("controlled execution"),
+                    .expect("controlled execution")
+                    .try_into_value()
+                    .unwrap(),
                 Ok(BigInt::from(1))
             );
             assert_eq!(other_state.calls, 1);
@@ -661,7 +691,9 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
                     &mut first_echo,
                     async |scope| scope.call(&inspect, (success.clone(),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok((success, BigInt::from(1))),
         );
         let failure = Err((true, ()));
@@ -673,7 +705,9 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
                     &mut first_echo,
                     async |scope| scope.call(&inspect, (failure.clone(),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok((failure, BigInt::from(2))),
         );
         assert_eq!(
@@ -684,7 +718,9 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
                     &mut second_echo,
                     async |scope| scope.call(&inspect, (Err((false, ())),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok((Err((false, ())), BigInt::from(1))),
         );
         assert_eq!(first_state.calls, 2);
@@ -707,7 +743,9 @@ pub fn keep_result(value: Result(#(Int, String), #(Bool, Nil))) {
                             .await
                     }
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(Ok((BigInt::from(4), "four".into()))),
         );
         assert_eq!(first_state.calls, 3);
@@ -738,7 +776,9 @@ pub fn keep(value: Maybe(Result(Int, String))) { value }
                     &mut Vec::new(),
                     async |scope| scope.call(&keep, (Some(Ok(BigInt::from(5))),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(Some(Ok(BigInt::from(5)))),
         );
         assert_eq!(
@@ -749,7 +789,9 @@ pub fn keep(value: Maybe(Result(Int, String))) { value }
                     &mut Vec::new(),
                     async |scope| scope.call(&keep, (None,)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(None),
         );
     }
@@ -796,7 +838,9 @@ pub fn increment(value: Int) -> Int
                     &mut Vec::new(),
                     async |scope| scope.call(&increment, (BigInt::from(3),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(4)),
         );
     }
@@ -826,7 +870,9 @@ pub fn around_next() { counter.around(counter.next) }
                     &mut Vec::new(),
                     async |scope| scope.call(&around_next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(1)),
         );
         assert_eq!(state.calls, 1);
@@ -902,6 +948,8 @@ pub fn concrete() -> Int {
                 async |scope| scope.call(&concrete, ()).await,
             ))
             .expect("controlled execution")
+            .try_into_value()
+            .unwrap()
             .expect_err("concrete provider should return its failure");
 
         assert_eq!(
@@ -933,6 +981,8 @@ pub fn selected() {
                 &mut Vec::new(),
                 async |scope| scope.call(&selected, ()).await,
             ))
+            .unwrap()
+            .try_into_value()
             .unwrap()
             .unwrap_err();
         assert_eq!(
@@ -971,7 +1021,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&first_next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Err(CallError::ForeignFunction),
         );
         assert_eq!(state.calls, 0);
@@ -983,7 +1035,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&first_next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
@@ -994,7 +1048,9 @@ pub fn next() { counter.next() }
                     &mut Vec::new(),
                     async |scope| scope.call(&second_next, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(2)),
         );
     }
@@ -1026,7 +1082,9 @@ pub fn explode(_value: String) -> String { panic as "stopped" }
                     &mut Vec::new(),
                     async |scope| scope.call(&explode, ("value".into(),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Err(CallError::Execution(ExecutionError::source_panic(
                 Some(&crate::SourceContext::new("src/library.gleam", source)),
                 PanicKind::Panic,
@@ -1063,6 +1121,8 @@ pub fn fail() { counter.stop() }
                 async |scope| scope.call(&fail, ()).await,
             ))
             .expect("controlled execution")
+            .try_into_value()
+            .unwrap()
             .expect_err("provider failure should cross the embedding boundary");
 
         assert!(matches!(
@@ -1114,6 +1174,8 @@ pub fn nested() { counter.around(counter.stop) }
                 async |scope| scope.call(&nested, ()).await,
             ))
             .expect("controlled execution")
+            .try_into_value()
+            .unwrap()
             .expect_err("nested provider failure should cross the embedding boundary");
 
         assert!(matches!(
@@ -1224,6 +1286,8 @@ pub fn run(value: Int) -> Int {
                 }),
             )
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap_err();
         assert_eq!(
             error.to_string(),
@@ -1298,7 +1362,9 @@ pub fn run(value: Int) -> Int {
                     &mut Vec::new(),
                     async |scope| scope.call(&first, (BigInt::from(1),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(1)),
         );
         assert_eq!(
@@ -1309,7 +1375,9 @@ pub fn run(value: Int) -> Int {
                     &mut Vec::new(),
                     async |scope| scope.call(&second, (BigInt::from(1),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(2)),
         );
         assert_eq!(STORE_DEFAULTS.load(Ordering::SeqCst), before + 1);
@@ -1388,7 +1456,9 @@ pub fn words(value: String) { value }
                     &mut Vec::new(),
                     async |scope| scope.call(&number, (BigInt::from(7),)).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(7)),
         );
     }

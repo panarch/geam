@@ -1,4 +1,5 @@
 use super::HostExecutionError;
+use crate::execution::ExitStatus;
 use crate::host::{
     HostCall, HostCallError, HostCallable, HostCodecScope, HostConstructions, HostFunctionToken,
     HostFunctionValue, HostFunctionValueToken, HostProfile, HostProvider, HostScopedValue,
@@ -65,6 +66,12 @@ where
 
     pub(crate) fn execution(&self) -> &ExecutionContext<Profile> {
         &self.execution
+    }
+
+    /// Returns intentional termination for the original execution domain.
+    /// Propagate this result from the owned native operation.
+    pub fn exit<Output>(&self, status: ExitStatus) -> Result<Output, HostExecutionError> {
+        Err(HostCallError::exited(status).into())
     }
 
     /// Runs one bounded typed value operation. Call-scoped views cannot escape.
@@ -920,9 +927,13 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                             },
                         )
                         .await
+                        .unwrap()
+                        .try_into_value()
                         .unwrap();
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.native_calls.get(), usize::from(native));
             assert_eq!(echoes.len(), usize::from(!native));
@@ -936,6 +947,8 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.native_calls.get(), usize::from(native));
             assert_eq!(echoes.len(), usize::from(!native));
@@ -1000,10 +1013,14 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                             },
                         )
                         .await
+                        .unwrap()
+                        .try_into_value()
                         .unwrap();
                     assert!(scope.call(&later, ()).await.unwrap());
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(
                 state
@@ -1024,6 +1041,8 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.native_calls.get(), 0);
             assert_eq!(foreign_state.native_calls.get(), 0);
@@ -1089,11 +1108,15 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                             );
                         })
                         .await
+                        .unwrap()
+                        .try_into_value()
                         .unwrap();
                     // Rejection in the other live domain does not cancel this function.
                     assert_eq!(scope.call(&later, ()).await.unwrap(), BigInt::from(42));
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             assert_eq!(state.native_calls.get(), 2);
             assert_eq!(foreign_state.native_calls.get(), 0);
@@ -1103,6 +1126,8 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                         scope.call(&later, ()).await
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result, Err(crate::embedding::CallError::Cancelled));
             assert_eq!(state.native_calls.get(), 2);

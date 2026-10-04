@@ -1,9 +1,11 @@
 use super::RuntimeHostCall;
-use crate::host::{HostCallReturn, HostCallRuntime};
+use crate::host::{HostCallError, HostCallErrorKind, HostCallReturn, HostCallRuntime, HostProfile};
+use crate::plan::execution::HostedProgram;
 use crate::plan::execution::function::{ExecutionFunctionBody, FunctionBodyOwner};
-use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::plan::execution::host::HostedFunctionMetadata;
 use crate::runtime::ExecutionError;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
+use crate::runtime::execution::ExecutionContext;
 use crate::runtime::execution::invocation::NativeReturn;
 use crate::runtime::graph::{GraphValue, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
@@ -47,8 +49,9 @@ where
             })))
         }
         Err(error) => {
+            let execution = call.execution();
             drop(call);
-            Err(host_call_error(plan, origin, function.metadata(), error))
+            host_call_error(plan, &execution, origin, function.metadata(), error)
         }
     }
 }
@@ -77,22 +80,28 @@ where
             })))
         }
         Err(error) => {
+            let execution = call.execution();
             drop(call);
-            Err(host_call_error(plan, origin, function.metadata(), error))
+            host_call_error(plan, &execution, origin, function.metadata(), error)
         }
     }
 }
 
-pub(in crate::runtime) fn host_call_error(
-    plan: &impl RuntimeExecutionPlan,
+pub(in crate::runtime) fn host_call_error<Profile: HostProfile, Output>(
+    plan: &HostedProgram<Profile>,
+    execution: &ExecutionContext<Profile>,
     origin: HostCallOrigin,
-    function: &crate::plan::execution::host::HostedFunctionMetadata,
-    error: crate::host::HostCallError,
-) -> ExecutionError {
+    function: &HostedFunctionMetadata,
+    error: HostCallError,
+) -> ExecutionResult<NativeReturn<Output>> {
     match error.into_kind() {
-        crate::host::HostCallErrorKind::Nested(error) => error,
-        crate::host::HostCallErrorKind::Failure(failure) => {
-            ExecutionError::host_failure(plan, origin, function, failure)
+        HostCallErrorKind::Nested(error) => Err(error),
+        HostCallErrorKind::Failure(failure) => Err(ExecutionError::host_failure(
+            plan, origin, function, failure,
+        )),
+        HostCallErrorKind::Exited(status) => {
+            execution.services().request_exit(status);
+            Ok(NativeReturn::Exited)
         }
     }
 }
@@ -109,7 +118,102 @@ mod tests {
         plan_host_program,
     };
     use ecow::EcoString;
+    use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn immediate_and_diverging_exit_stop_source_effects_at_the_native_boundary() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+        use crate::execution_fixture::TestHost;
+        use crate::{HostCallCompletion, HostProfile, HostProvider};
+
+        struct Profile;
+        impl HostProfile for Profile {
+            type RunState = Vec<u8>;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<Profile> for Profile {
+            type State = Vec<u8>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn exit<'call>(
+            mut call: HostCall<'call, Profile, Profile, ()>,
+            status: BigInt,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            let status = ExitStatus::try_from(&status)?;
+            call.state().push(status.code());
+            call.exit(status)
+        }
+        fn diverge<'call>(
+            mut call: HostCall<'call, Profile, Profile, ()>,
+            status: BigInt,
+        ) -> Result<Infallible, HostCallError> {
+            let status = ExitStatus::try_from(&status)?;
+            call.state().push(status.code());
+            call.exit(status)
+        }
+
+        let host = TestHost::default();
+        for diverging in [false, true] {
+            for status in [0, 7, 255, -1, 256] {
+                let provider = HostProviderModule::new("application", "main").unwrap();
+                let provider = if diverging {
+                    provider.with_scoped_diverging_function::<Profile, (BigInt,), (), _>(
+                        "exit", diverge,
+                    )
+                } else {
+                    provider.with_scoped_function::<Profile, (BigInt,), (), _>("exit", exit)
+                }
+                .unwrap();
+                let source = format!(
+                    r#"
+@external(erlang, "native", "exit")
+fn exit(status: Int) -> Nil
+pub fn main() {{ echo "before" exit({status}) echo "after" }}
+"#
+                );
+                let typed = compile_typed_host_program(
+                    "application",
+                    "main",
+                    [PackageSource::new(
+                        "application",
+                        Vec::<String>::new(),
+                        [ModuleSource::new("main", "main.gleam", source)],
+                    )],
+                    HostProviderSet::from_providers([provider]).unwrap(),
+                )
+                .unwrap();
+                let mut execution =
+                    HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap())
+                        .unwrap();
+                let mut state = Vec::new();
+                let mut echo = Vec::new();
+                let result = host.block_on(execution.run_main(&host, &mut state, &mut echo));
+                match ExitStatus::try_from(status) {
+                    Ok(status) => {
+                        assert_eq!(result.unwrap(), ExecutionOutcome::Exited(status));
+                        assert_eq!(state, [status.code()]);
+                    }
+                    Err(_) => {
+                        assert_eq!(
+                            result.unwrap_err().to_string(),
+                            "host function application::main.exit failed: application exit status must be between 0 and 255"
+                        );
+                        assert!(state.is_empty());
+                    }
+                }
+                assert_eq!(
+                    echo.iter()
+                        .map(|output| output.value().inspect().to_string())
+                        .collect::<Vec<_>>(),
+                    ["\"before\""]
+                );
+            }
+        }
+    }
 
     #[test]
     fn an_immediate_provider_can_propagate_a_retained_callback_failure_unchanged() {

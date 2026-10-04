@@ -161,7 +161,9 @@ pub fn check() { let work = recall() snapshot(work) work }
                     }
                 },
             ))
-            .expect("caller drives ready dependencies");
+            .expect("caller drives ready dependencies")
+            .try_into_value()
+            .unwrap();
         assert_eq!(state.observations.len(), 1);
         execution_host
             .block_on(module.with_execution(
@@ -185,7 +187,9 @@ pub fn check() { let work = recall() snapshot(work) work }
                     }
                 },
             ))
-            .expect("no work is restarted");
+            .expect("no work is restarted")
+            .try_into_value()
+            .unwrap();
         assert_eq!(state.observations.len(), 2);
         let (before_hash, before_inspection) = &state.observations[0];
         let (after_hash, after_inspection) = &state.observations[1];

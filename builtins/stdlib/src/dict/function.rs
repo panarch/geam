@@ -646,9 +646,12 @@ pub fn run() -> Nil {
                     }
                 ));
                 assert_eq!(
-                    execution_host
-                        .poll(task.as_mut())
-                        .map(|result| result.expect("controlled execution")),
+                    execution_host.poll(task.as_mut()).map(|result| {
+                        result
+                            .expect("controlled execution")
+                            .try_into_value()
+                            .unwrap()
+                    }),
                     Poll::Ready(())
                 );
             }

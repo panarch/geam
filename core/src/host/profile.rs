@@ -1,10 +1,12 @@
+use crate::execution::ExitStatus;
 use crate::host::{
-    HostCallArguments, HostCallCompletion, HostConstruction, HostCustom, HostCustomArgumentSlot,
-    HostCustomConstructor, HostCustomType, HostExternal, HostExternalArgumentSlot,
-    HostExternalBinding, HostExternalPayloadBuilder, HostExternalPayloadView, HostExternalSchema,
-    HostExternalStorage, HostExternalType, HostFunctionArgumentSlot, HostList,
-    HostListArgumentSlot, HostListType, HostStoredValue, HostTuple, HostTupleArgumentSlot,
-    HostTupleType, HostType, HostTypeSequence, HostValue, HostValueArgumentSlot,
+    HostCallArguments, HostCallCompletion, HostCallError, HostConstruction, HostCustom,
+    HostCustomArgumentSlot, HostCustomConstructor, HostCustomType, HostExternal,
+    HostExternalArgumentSlot, HostExternalBinding, HostExternalPayloadBuilder,
+    HostExternalPayloadView, HostExternalSchema, HostExternalStorage, HostExternalType,
+    HostFunctionArgumentSlot, HostList, HostListArgumentSlot, HostListType, HostStoredValue,
+    HostTuple, HostTupleArgumentSlot, HostTupleType, HostType, HostTypeSequence, HostValue,
+    HostValueArgumentSlot,
 };
 use crate::runtime::{StoredRuntimeList, StoredRuntimeValue};
 use std::marker::PhantomData;
@@ -97,6 +99,12 @@ where
             HostCall::new(self.runtime),
             crate::HostConstructions::with_base(constructions.callable_base()),
         )
+    }
+
+    /// Returns the control result that terminates this call's execution domain.
+    /// Propagate it from the native implementation; no host process is stopped.
+    pub fn exit<Output>(&self, status: ExitStatus) -> Result<Output, HostCallError> {
+        Err(HostCallError::exited(status))
     }
 
     pub fn state(&mut self) -> &mut Provider::State {
@@ -1526,7 +1534,9 @@ pub fn run() {
                     assert_eq!(scope.call(&run, ()).await, Ok(true));
                 },
             ))
-            .expect("ordinary calls share the explicit execution host");
+            .expect("ordinary calls share the explicit execution host")
+            .try_into_value()
+            .unwrap();
         assert_eq!(outputs, ["src/library.gleam:8\n42"]);
     }
 }

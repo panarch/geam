@@ -1,5 +1,5 @@
 use geam::embedding::{BigInt, FunctionDeclaration, HostedModuleBuilder, HostedProject};
-use geam::execution::TokioHost;
+use geam::execution::{ExecutionOutcome, TokioHost};
 use geam::{EchoOutput, HostProfile, HostProviderSet};
 
 struct Profile;
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    executor.block_on(module.with_execution(&host, &mut (), &mut echo, async |scope| {
+    let outcome = executor.block_on(module.with_execution(&host, &mut (), &mut echo, async |scope| {
         let mut spinning = Box::pin(scope.call(&spin, ()));
         tokio::select! {
             result = &mut spinning => return Err(format!("spin returned unexpectedly: {result:?}").into()),
@@ -40,5 +40,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let value = scope.call(&double, (21.into(),)).await?;
         println!("after cancellation: {value}");
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))?
+    }))?;
+    match outcome {
+        ExecutionOutcome::Returned(result) => result,
+        ExecutionOutcome::Exited(status) => {
+            println!("Gleam exited with status {status}");
+            Ok(())
+        }
+    }
 }

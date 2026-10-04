@@ -709,6 +709,8 @@ pub fn list_factory() -> fn(Int) -> List(future.Work(Int)) {
                 assert_eq!(effects.load(Ordering::SeqCst), 1);
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     }
 
@@ -761,7 +763,9 @@ pub fn list_factory() -> fn(Int) -> List(future.Work(Int)) {
                     (list, retained)
                 },
             ))
-            .expect("direct list calls");
+            .expect("direct list calls")
+            .try_into_value()
+            .unwrap();
         drop(module);
         let alias = retained.clone();
         list.read_item(1, |first| {
@@ -936,7 +940,9 @@ pub fn tail(values: List(work.Work(Int))) {
                     assert_eq!(drops.load(Ordering::Relaxed), 65);
                 },
             ))
-            .expect("scope");
+            .expect("scope")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]
@@ -1053,7 +1059,9 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
                     scope.observe(&work).await.expect("shared list").clone()
                 },
             ))
-            .expect("source-only work completes");
+            .expect("source-only work completes")
+            .try_into_value()
+            .unwrap();
         drop(module);
         assert_eq!(
             returned.read(|list| list.read_item(0, |value| value.map(|result| result.cloned()))),
@@ -1170,7 +1178,9 @@ pub fn ready_list(values: List(Option(Result(Int, Nil)))) { future.ready(values)
                         .read(|value| assert_eq!(value, &BigInt::from(42)));
                 },
             ))
-            .expect("ready compositions");
+            .expect("ready compositions")
+            .try_into_value()
+            .unwrap();
         assert_eq!(
             echo.0,
             [
@@ -1384,7 +1394,9 @@ pub fn work(values: List(future.Work(Int))) { values }
                         .read(|value| assert_eq!(value, &BigInt::from(42)));
                 },
             ))
-            .expect("ready work is caller-driven");
+            .expect("ready work is caller-driven")
+            .try_into_value()
+            .unwrap();
         assert!(echo.0.is_empty());
     }
 }

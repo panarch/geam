@@ -1,3 +1,5 @@
+use crate::ExecutionError;
+use crate::execution::{ExitStatus, InvalidExitStatus};
 use ecow::EcoString;
 use std::fmt::{self, Display, Formatter};
 
@@ -14,7 +16,8 @@ pub struct HostCallError {
 #[derive(Debug, PartialEq)]
 pub(crate) enum HostCallErrorKind {
     Failure(HostFailure),
-    Nested(crate::ExecutionError),
+    Nested(ExecutionError),
+    Exited(ExitStatus),
 }
 
 impl HostFailure {
@@ -34,7 +37,13 @@ impl HostFailure {
 }
 
 impl HostCallError {
-    pub(crate) fn nested(error: crate::ExecutionError) -> Self {
+    pub(crate) fn exited(status: ExitStatus) -> Self {
+        Self {
+            kind: HostCallErrorKind::Exited(status),
+        }
+    }
+
+    pub(crate) fn nested(error: ExecutionError) -> Self {
         Self {
             kind: HostCallErrorKind::Nested(error),
         }
@@ -58,6 +67,9 @@ impl Display for HostCallError {
         match &self.kind {
             HostCallErrorKind::Failure(failure) => Display::fmt(failure, formatter),
             HostCallErrorKind::Nested(error) => Display::fmt(error, formatter),
+            HostCallErrorKind::Exited(status) => {
+                write!(formatter, "application requested exit status {status}")
+            }
         }
     }
 }
@@ -75,6 +87,12 @@ impl From<HostFailure> for HostCallError {
 impl From<std::convert::Infallible> for HostCallError {
     fn from(error: std::convert::Infallible) -> Self {
         match error {}
+    }
+}
+
+impl From<InvalidExitStatus> for HostCallError {
+    fn from(error: InvalidExitStatus) -> Self {
+        HostFailure::new(error.to_string()).into()
     }
 }
 
@@ -123,20 +141,13 @@ mod tests {
 
     #[test]
     fn async_host_call_error_preserves_owned_and_nested_failures() {
-        fn classify(error: HostCallError) -> Result<HostFailure, ExecutionError> {
-            match error.into_kind() {
-                HostCallErrorKind::Failure(failure) => Ok(failure),
-                HostCallErrorKind::Nested(error) => Err(error),
-            }
-        }
-
         let failure = HostCallError::from(HostFailure::new("async input rejected"));
 
         assert_eq!(failure.to_string(), "async input rejected");
 
         assert_eq!(
-            classify(failure),
-            Ok(HostFailure::new("async input rejected")),
+            failure.into_kind(),
+            HostCallErrorKind::Failure(HostFailure::new("async input rejected")),
         );
 
         let invariant = InvariantError::ListIndexOutOfBounds {
@@ -151,6 +162,29 @@ mod tests {
             "list index out of bounds for String list (index 2, length 1)",
         );
 
-        assert_eq!(classify(nested), Err(ExecutionError::Invariant(invariant)));
+        assert_eq!(
+            nested.into_kind(),
+            HostCallErrorKind::Nested(ExecutionError::Invariant(invariant))
+        );
+    }
+
+    #[test]
+    fn intentional_termination_and_invalid_status_keep_distinct_protocols() {
+        use crate::execution::{ExitStatus, InvalidExitStatus};
+        let status = ExitStatus::new(7);
+        let exit = HostCallError::exited(status);
+        assert_eq!(exit.to_string(), "application requested exit status 7");
+        assert_eq!(exit.into_kind(), HostCallErrorKind::Exited(status));
+        let invalid = HostCallError::from(InvalidExitStatus);
+        assert_eq!(
+            invalid.to_string(),
+            "application exit status must be between 0 and 255"
+        );
+        assert_eq!(
+            invalid.into_kind(),
+            HostCallErrorKind::Failure(HostFailure::new(
+                "application exit status must be between 0 and 255"
+            ))
+        );
     }
 }

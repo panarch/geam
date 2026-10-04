@@ -1071,7 +1071,9 @@ mod tests {
         let host = crate::execution_fixture::TestHost::default();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut (), &mut echo))
-                .expect("native call"),
+                .expect("native call")
+                .try_into_value()
+                .unwrap(),
             crate::Value::Int(BigInt::from(42)),
         );
         assert!(echo.is_empty());

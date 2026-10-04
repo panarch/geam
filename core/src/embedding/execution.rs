@@ -2,7 +2,7 @@ use super::input::{InputShape, ScopedArgumentsInput};
 use super::work::return_::ScopedReturn;
 use super::work::{ScopeBrand, SharedValue};
 use super::{CallError, Completed, Function, Future, HostedModule};
-use crate::execution::{DriverError, ExecutionHost};
+use crate::execution::{DriverError, ExecutionHost, ExecutionOutcome};
 use crate::host::{HostExternalSchema, HostProfile};
 use crate::runtime::execution::{Domain, EntryContext};
 use crate::runtime::{ObservationError, SharedExecutionError};
@@ -29,7 +29,7 @@ impl<Profile: HostProfile> HostedModule<Profile> {
         state: &mut Profile::RunState,
         echo: &mut (dyn crate::EchoSink + Send),
         run: impl for<'scope> AsyncFnOnce(ExecutionScope<'scope, '_, Profile>) -> Output,
-    ) -> Result<Output, DriverError> {
+    ) -> Result<ExecutionOutcome<Output>, DriverError> {
         let (plan, stores, captures) = self.execution.parts_mut();
         let domain = Domain::new(
             Arc::clone(plan),
@@ -154,6 +154,142 @@ mod tests {
     }
 
     #[test]
+    fn a_nested_native_callback_exits_only_its_scope_and_preserves_caller_state() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+        use crate::execution_fixture::TestHost;
+        use crate::{
+            HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
+            HostConstructions, HostFunctionType, HostOwnedCompletion, HostProvider,
+            HostProviderModule, HostTypeListEnd,
+        };
+
+        struct Profile;
+        impl HostProfile for Profile {
+            type RunState = Vec<&'static str>;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<Profile> for Profile {
+            type State = Vec<&'static str>;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn exit<'call>(
+            mut call: HostCall<'call, Profile, Profile, ()>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            call.state().push("exit");
+            call.exit(ExitStatus::new(7))
+        }
+        fn bridge<'call>(
+            mut call: HostCall<'call, Profile, Profile, ()>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            callback: HostCallable<'call, HostTypeListEnd, ()>,
+        ) -> Result<HostCallContinuation<'call, ()>, HostCallError> {
+            call.state().push("bridge");
+            let callback = call.owned_callable(callback, &constructions);
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    callback
+                        .invoke(&context, |_, _| (), |_, _, ()| Ok(()))
+                        .await?;
+                    context
+                        .with_state(|state| state.push("returned callback"))
+                        .await
+                        .expect("a returned callback keeps the scope active");
+                    Ok(HostOwnedCompletion::new(
+                        |call, _| Ok(call.return_value(())),
+                    ))
+                })
+            }))
+        }
+        let typed = crate::compile_typed_host_program(
+            "application", "library",
+            [PackageSource::new("application", Vec::<String>::new(), [ModuleSource::new("library", "library.gleam", r#"
+@external(erlang, "native", "exit")
+fn exit() -> Nil
+@external(erlang, "native", "bridge")
+fn bridge(callback: fn() -> Nil) -> Nil
+pub fn stop() { echo "before" bridge(fn() { echo "callback" exit() echo "after callback" Nil }) echo "after" Nil }
+pub fn normal_nil() { bridge(fn() { Nil }) Nil }
+pub fn fail() { bridge(fn() { panic as "callback failure" }) Nil }
+pub fn normal() { bridge(fn() { Nil }) echo "normal" 42 }
+"#)])],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "library").unwrap()
+                .with_scoped_function::<Profile, (), (), _>("exit", exit).unwrap()
+                .with_resumable_function::<Profile, (HostFunctionType<HostTypeListEnd, ()>,), (), HostTypeListEnd, _>("bridge", bridge).unwrap()]).unwrap(),
+        ).unwrap();
+        let (mut bindings, stop) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), ()>::new("stop"))
+            .unwrap();
+        let normal = bindings
+            .function(FunctionDeclaration::<(), BigInt>::new("normal"))
+            .unwrap();
+        let normal_nil = bindings
+            .function(FunctionDeclaration::<(), ()>::new("normal_nil"))
+            .unwrap();
+        let fail = bindings
+            .function(FunctionDeclaration::<(), ()>::new("fail"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let mut state = vec!["caller"];
+        let mut echo = Vec::new();
+        for (function, expected) in [
+            (&stop, None),
+            (&normal_nil, Some(Ok(()))),
+            (&fail, Some(Err("panic: callback failure".to_owned()))),
+        ] {
+            let outcome = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(function, ()).await
+                    }),
+                )
+                .unwrap();
+            if expected.is_none() {
+                assert_eq!(outcome, ExecutionOutcome::Exited(ExitStatus::new(7)));
+                assert_eq!(state, ["caller", "bridge", "exit"]);
+            }
+            assert_eq!(
+                outcome
+                    .try_into_value()
+                    .ok()
+                    .map(|result| result.map_err(|error| error.to_string())),
+                expected
+            );
+        }
+        let outcome = host
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope.call(&normal, ()).await
+                }),
+            )
+            .unwrap();
+        assert_eq!(outcome, ExecutionOutcome::Returned(Ok(BigInt::from(42))));
+        assert_eq!(
+            state,
+            [
+                "caller",
+                "bridge",
+                "exit",
+                "bridge",
+                "returned callback",
+                "bridge",
+                "bridge",
+                "returned callback"
+            ]
+        );
+        assert_eq!(
+            echo.iter()
+                .map(|output| output.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["\"before\"", "\"callback\"", "\"normal\""]
+        );
+    }
+
+    #[test]
     fn native_captures_and_callable_inputs_reject_lists_from_another_loaded_owner() {
         use crate::{HostCallableSchema, HostReturns, HostTypeList, HostTypeListEnd};
         struct Profile;
@@ -249,6 +385,8 @@ pub fn empty() -> List(Int) { [] }
                 &mut drop,
                 async |scope| scope.call(&values, ()).await.unwrap(),
             ))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         let (mut module, values, first, factory, empty) = build();
         let mut calls = std::cell::Cell::new(0);
@@ -293,6 +431,8 @@ pub fn empty() -> List(Int) { [] }
                     own
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(calls.get(), 1);
 
@@ -400,6 +540,8 @@ pub fn count(rows: List(#(Int, String))) { rows }
                     retained
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(
@@ -440,6 +582,8 @@ pub fn count(rows: List(#(Int, String))) { rows }
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert!(echo.is_empty());
     }
@@ -538,6 +682,8 @@ pub fn failed_body() { fn() -> Int { panic as "body stopped" } }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     }
 
@@ -609,6 +755,8 @@ pub fn failed_body() { fn() -> Int { panic as "body stopped" } }
                 assert_eq!(scope.invoke(&callback, ()).await.unwrap(), BigInt::from(42));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         let mut state = ();
         let mut echo = Echo::default();
@@ -816,7 +964,9 @@ pub fn keep(values: List(String)) {
                         .expect("fresh input")
                 },
             ))
-            .expect("ordinary calls are immediate");
+            .expect("ordinary calls are immediate")
+            .try_into_value()
+            .unwrap();
         assert_eq!(left_echo.0, ["src/library.gleam:3\n\"entered\""]);
         let mut right_echo = Echo::default();
         execution_host
@@ -831,7 +981,9 @@ pub fn keep(values: List(String)) {
                     );
                 },
             ))
-            .expect("owner check is immediate");
+            .expect("owner check is immediate")
+            .try_into_value()
+            .unwrap();
         assert!(right_echo.0.is_empty());
         let retained = execution_host
             .block_on(left.with_execution(
@@ -849,7 +1001,9 @@ pub fn keep(values: List(String)) {
                         .expect("same loaded owner")
                 },
             ))
-            .expect("later scope is immediate");
+            .expect("later scope is immediate")
+            .try_into_value()
+            .unwrap();
         drop(values);
         drop(left);
         drop(right);
@@ -929,7 +1083,9 @@ pub fn empty() -> List(Int) { [] }
                     assert!(scope.call(&empty, ()).await.expect("empty list").is_empty());
                 },
             ))
-            .expect("every ordinary entry is immediate");
+            .expect("every ordinary entry is immediate")
+            .try_into_value()
+            .unwrap();
         assert!(echo.0.is_empty());
     }
 
@@ -1031,7 +1187,9 @@ pub fn results(value: List(Result(Int, String))) { value }
                     );
                 },
             ))
-            .expect("no Future allocation or suspension for direct entries");
+            .expect("no Future allocation or suspension for direct entries")
+            .try_into_value()
+            .unwrap();
         assert!(echo.0.is_empty());
     }
 }

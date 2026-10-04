@@ -355,20 +355,30 @@ For Tokio, enable Geam's `tokio` feature and connect the adapter to your existin
 runtime:
 
 ```rust
-use geam::execution::TokioHost;
+use geam::execution::{ExecutionOutcome, TokioHost};
 
 let host = TokioHost::new(tokio::runtime::Handle::current());
-module.with_execution(&host, &mut state, &mut echo, async |scope| {
+let outcome = module.with_execution(&host, &mut state, &mut echo, async |scope| {
     let first = scope.call(&functions.double, (21.into(),)).await?;
     println!("{first}");
     Ok::<_, Box<dyn std::error::Error>>(())
-}).await??;
+}).await?;
+match outcome {
+    ExecutionOutcome::Returned(result) => result?,
+    ExecutionOutcome::Exited(status) => println!("Gleam exited with status {status}"),
+}
 ```
 
 The enclosing Rust Future services Gleam calls while the body runs. Returning
 from the body ends the scope and waits for its workers to release their inputs.
 Dropping a pending `scope.call` cancels that call; dropping the enclosing Future
 requests scope shutdown without blocking the dropping thread.
+
+An explicit provider exit ends the scope after cleanup and returns `Exited`;
+the Rust host stays alive and can start another scope with the same module and
+state. Ordinary source errors remain errors inside `Returned`. See
+[application termination](reference/execution-services.md#application-termination)
+for status validation, acceptance timing and failure precedence.
 
 `TokioHost` uses the runtime you provide; it does not create another runtime.
 Other executors can implement `geam::execution::ExecutionHost`, including its
@@ -440,14 +450,20 @@ After initializing the generated `RunStateInputs`, use the same host-driven
 scope for calls and Future observations:
 
 ```rust
-module.with_execution(&host, &mut state, &mut echo, async |scope| {
+use geam::execution::ExecutionOutcome;
+
+let outcome = module.with_execution(&host, &mut state, &mut echo, async |scope| {
     let doubled = scope.call(&functions.double, (21.into(),)).await?;
     let work = scope.call(&functions.greeting, (path.into(),)).await?;
     let result = scope.observe(&work).await?;
     result.read(|value| println!("{value:?}"));
     Ok::<_, Box<dyn std::error::Error>>(())
 })
-.await??;
+.await?;
+match outcome {
+    ExecutionOutcome::Returned(result) => result?,
+    ExecutionOutcome::Exited(status) => println!("Gleam exited with status {status}"),
+}
 ```
 
 The application drives this enclosing Rust Future with its own executor.

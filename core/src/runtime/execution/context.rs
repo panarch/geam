@@ -1,5 +1,6 @@
 use super::service::Request as ServiceRequest;
 use super::{ServiceContext, Services};
+use crate::execution::ExitStatus;
 use crate::host::HostProfile;
 use crate::plan::execution::HostedProgram;
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -88,6 +89,12 @@ impl<Profile: HostProfile> ExecutionServices<Profile> {
             initialized.services.close();
             initialized.callbacks.close();
         }
+    }
+
+    pub(in crate::runtime) fn exit_status(&self) -> Option<ExitStatus> {
+        self.initialized
+            .get()
+            .and_then(|initialized| initialized.services.exit_status())
     }
 }
 

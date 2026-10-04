@@ -1183,6 +1183,8 @@ mod tests {
                 )
             )
             .expect("host cleanup")
+            .try_into_value()
+            .unwrap()
             .expect("native ready")
         );
         assert_eq!(state.counter, 5);
