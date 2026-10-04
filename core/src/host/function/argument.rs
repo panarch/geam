@@ -10,8 +10,8 @@ use crate::BitArrayValue;
 use crate::StringValue;
 use crate::host::{
     HostAbiType, HostAbiTypeSequence, HostCall, HostCustomSchema, HostCustomType,
-    HostExternalSchema, HostExternalType, HostFunctionType, HostListType, HostOpaqueFunctionType,
-    HostProfile, HostProvider, HostTupleType, HostTypeParameter,
+    HostExternalSchema, HostExternalType, HostFunctionType, HostFunctionValueType, HostListType,
+    HostOpaqueFunctionType, HostProfile, HostProvider, HostTupleType, HostTypeParameter,
 };
 use num_bigint::BigInt;
 
@@ -382,6 +382,30 @@ where
         CallReturn: HostAbiType,
     {
         call.value(slot)
+    }
+}
+
+impl<Arguments, Return> HostScopedArgument for HostFunctionValueType<Arguments, Return>
+where
+    Arguments: HostAbiTypeSequence,
+    Return: HostAbiType,
+{
+    type Slot = HostValueArgumentSlot;
+
+    fn register(layout: &mut HostParameterLayout) -> Self::Slot {
+        layout.register_value_parameter()
+    }
+
+    fn read<'call, Profile, Provider, CallReturn>(
+        call: &HostCall<'call, Profile, Provider, CallReturn>,
+        slot: Self::Slot,
+    ) -> Self::Value<'call>
+    where
+        Profile: HostProfile,
+        Provider: HostProvider<Profile>,
+        CallReturn: HostAbiType,
+    {
+        crate::host::type_::from_token::<Self, Profile>(call.runtime, call.runtime.value(slot))
     }
 }
 

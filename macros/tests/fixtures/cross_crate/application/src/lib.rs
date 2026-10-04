@@ -78,6 +78,9 @@ pub type Status {
   Count(Int)
   Tagged(Token)
 }
+
+@external(erlang, "macro_declarations", "keep_status_function")
+pub fn keep_status_function(function: fn(Status) -> Int) -> fn(Status) -> Int
 "#;
 
 const CONSUMER: &str = r#"
@@ -148,6 +151,11 @@ pub fn invoke_twice(
   callback: fn(values.Status) -> Int,
   value: Int,
 ) -> Future(#(Int, Int))
+
+@external(erlang, "macro_consumer", "keep_function")
+pub fn keep_function(function: fn(item) -> String) -> fn(item) -> String
+@external(erlang, "macro_consumer", "invoke_function")
+pub fn invoke_function(function: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
 "#;
 
 const APPLICATION: &str = r#"
@@ -187,6 +195,15 @@ pub fn run(value: Int) {
   }
   use #(first, second) <- future.map(main.invoke_twice(score, value))
   #(description, result, token_text, numbers, first, second)
+}
+
+pub fn retained(value: Int) {
+  let capture = "symbolic"
+  let original = fn(_) { capture }
+  assert main.keep_function(original) == original
+  let forwarded = values.keep_status_function(score)
+  assert forwarded == score
+  main.invoke_function(forwarded, value)
 }
 "#;
 
@@ -306,6 +323,11 @@ mod tests {
                 )>,
             >::new("run"))
             .expect("async cross-crate binding");
+        let retained = bindings
+            .function(
+                FunctionDeclaration::<(BigInt,), FutureType<(BigInt, BigInt)>>::new("retained"),
+            )
+            .expect("retained cross-crate binding");
         let mut module = bindings.seal().expect("cross-crate bindings should seal");
         let mut state = ();
         let mut echo = Echo::default();
@@ -327,6 +349,18 @@ mod tests {
                         .call(&run, (BigInt::from(7),))
                         .await
                         .expect("construct source work");
+                    let retained_work = scope
+                        .call(&retained, (BigInt::from(11),))
+                        .await
+                        .expect("retained entry");
+                    let retained_result = scope
+                        .observe(&retained_work)
+                        .await
+                        .expect("retained function completion");
+                    retained_result.read(|(first, second)| {
+                        assert_eq!(first, &BigInt::from(12));
+                        assert_eq!(second, &BigInt::from(99));
+                    });
                     scope.observe(&work).await
                 }
             ));

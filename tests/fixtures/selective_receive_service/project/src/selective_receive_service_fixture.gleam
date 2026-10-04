@@ -1,3 +1,4 @@
+import generic_selectors
 import gleam/dict
 import gleam/erlang/process
 import gleam/erlang/reference
@@ -5,6 +6,7 @@ import gleam/io
 import selective_receive_service_fixture/native
 
 pub fn main() {
+  generic_selectors.main()
   let owner = process.self()
   let a = reference.new()
   let b = reference.new()

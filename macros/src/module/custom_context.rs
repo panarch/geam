@@ -397,7 +397,8 @@ fn value_type(
         StaticValueType::Callback(callback) => {
             if matches!(form, ValueForm::Marker) {
                 let signature = &callback.signature;
-                return quote!(#support::Callback<#signature>);
+                let wrapper = callback.role.wrapper(support);
+                return quote!(#wrapper<#signature>);
             }
             let value =
                 super::signature::callback_signature_type(callback, customs, profile, support);

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 13,
+    format: 16,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1198,7 +1198,7 @@ data::ModuleArtifact {
                                         params: 0..2,
                                         instructions: 0..0,
                                         terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
-                                            test: data::graph::BoolTest::NotEqualInt {
+                                            test: data::graph::BoolTest::EqualInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                                 right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                             },
@@ -1213,7 +1213,57 @@ data::ModuleArtifact {
                                                 },
                                             },
                                             false_: data::graph::Edge {
+                                                target: data::graph::BlockId(5),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..4,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
                                                 target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 4..7,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
+                                            subject: data::graph::BoolLocalId(0),
+                                            true_: data::graph::Edge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            false_: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
@@ -1224,20 +1274,42 @@ data::ModuleArtifact {
                                                             length: 1,
                                                             steps: data::Storage::Static(&[]),
                                                         },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
                                                     ]),
                                                 },
                                             },
                                         }),
                                     },
                                     data::graph::BlockHeader {
-                                        params: 2..4,
-                                        instructions: 0..1,
+                                        params: 7..9,
+                                        instructions: 1..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
-                                        params: 4..5,
-                                        instructions: 1..1,
+                                        params: 9..10,
+                                        instructions: 2..2,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 10..12,
+                                        instructions: 2..3,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
                                     },
                                 ]),
                                 params: data::Storage::Static(&[
@@ -1258,11 +1330,46 @@ data::ModuleArtifact {
                                         shape: data::type_::ValueShapeId(0),
                                     },
                                     data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        shape: data::type_::ValueShapeId(1),
+                                    },
+                                    data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         shape: data::type_::ValueShapeId(0),
                                     },
                                 ]),
                                 instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(false)),
+                                    }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
@@ -1272,6 +1379,13 @@ data::ModuleArtifact {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
                                             right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
                                         }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
                                     }),
                                 ]),
                             },
@@ -1348,7 +1462,7 @@ data::ModuleArtifact {
                                             args: data::Storage::Static(&[
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1822, 1838)),
+                                            site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)),
                                         }),
                                     }),
                                 ]),
@@ -1407,7 +1521,7 @@ data::ModuleArtifact {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2101, 2118)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2174, 2191)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1466,7 +1580,7 @@ data::ModuleArtifact {
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2121, 2144)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2194, 2217)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1501,7 +1615,7 @@ data::ModuleArtifact {
                                             args: data::Storage::Static(&[
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2147, 2156)),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2220, 2229)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1946,7 +2060,7 @@ data::ModuleArtifact {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(1991, 2019)),
+                                            site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2064, 2092)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1960,7 +2074,7 @@ data::ModuleArtifact {
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                             ]),
-                                            site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2045, 2071)),
+                                            site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2118, 2144)),
                                         }),
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3977,12 +4091,17 @@ data::ModuleArtifact {
 
                 const RESUME: [
                     fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
-                    4
+                    9
                 ] = [
                     |values, budget| CompiledResume::Exit(numeric_int_6_entry((values.ints[0], values.ints[1],), values, budget)),
                     numeric_int_6_resume_1,
                     numeric_int_6_resume_2,
                     numeric_int_6_resume_3,
+                    numeric_int_6_resume_4,
+                    numeric_int_6_resume_5,
+                    numeric_int_6_resume_6,
+                    numeric_int_6_resume_7,
+                    numeric_int_6_resume_8,
                 ];
 
                 let mut point = point;
@@ -4009,7 +4128,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if b0_i0 != b0_i1 {
+                let (b2_i0, b2_i1, b2_v0,) = if b0_i0 == b0_i1 {
                     let (b1_i0, b1_i1,) = (b0_i0, b0_i1,);
                     if *budget == 0 {
 
@@ -4020,44 +4139,104 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(1);
                     }
                     *budget -= 1;
-                    let b1_i2 = b1_i0 * b1_i1;
-                    if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
+                    let b1_v0 = false;
+                    if *budget == 0 {
 
                         values.ints.clear();
-                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b1_v0]);
+                        return data::compiled::CompiledProgress::Yield(2);
+                    }
+                    *budget -= 1;
+                    let (b2_i0, b2_i1, b2_v0,) = {
+                        (b1_i0, b1_i1, b1_v0,)
+                    };
+                    (b2_i0, b2_i1, b2_v0,)
+                } else {
+                    let (b5_i0, b5_i1,) = (b0_i0, b0_i1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b5_i0, b5_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Interpreted(2);
+                        return data::compiled::CompiledProgress::Yield(7);
+                    }
+                    *budget -= 1;
+                    let b5_v0 = true;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b5_i0, b5_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[b5_v0]);
+                        return data::compiled::CompiledProgress::Yield(8);
+                    }
+                    *budget -= 1;
+                    let (b2_i0, b2_i1, b2_v0,) = {
+                        (b5_i0, b5_i1, b5_v0,)
+                    };
+                    (b2_i0, b2_i1, b2_v0,)
+                };
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b2_v0]);
+                    return data::compiled::CompiledProgress::Yield(3);
+                }
+                *budget -= 1;
+                if b2_v0 {
+                    let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled::CompiledProgress::Yield(4);
+                    }
+                    *budget -= 1;
+                    let b3_i2 = b3_i0 * b3_i1;
+                    if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        return data::compiled::CompiledProgress::Interpreted(5);
                     }
                     if *budget == 0 {
 
                         values.ints.clear();
-                        values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Yield(2);
+                        return data::compiled::CompiledProgress::Yield(5);
                     }
                     *budget -= 1;
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
                     data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
                 } else {
-                    let (b2_i0,) = (b0_i0,);
+                    let (b4_i0,) = (b2_i0,);
                     if *budget == 0 {
 
                         values.ints.clear();
-                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.ints.extend_from_slice(&[b4_i0]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Yield(3);
+                        return data::compiled::CompiledProgress::Yield(6);
                     }
                     *budget -= 1;
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.ints.extend_from_slice(&[b4_i0]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
                     data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
@@ -4078,20 +4257,12 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                let b1_i2 = b1_i0 * b1_i1;
-                if b1_i2 < i128::from(i64::MIN) || b1_i2 > i128::from(i64::MAX) {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(2));
-                }
+                let b1_v0 = false;
 
                 values.ints.clear();
-                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                 values.bools.clear();
-                values.bools.extend_from_slice(&[]);
+                values.bools.extend_from_slice(&[b1_v0]);
                 CompiledResume::Next(2)
             }
 
@@ -4099,44 +4270,181 @@ data::ModuleArtifact {
                 values: &mut data::compiled::numeric::NumericValues,
                 budget: &mut usize,
             ) -> CompiledResume {
-                let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                let (b1_i0, b1_i1, b1_v0,) = (values.ints[0], values.ints[1], values.bools[0],);
                 if *budget == 0 {
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                     values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
+                    values.bools.extend_from_slice(&[b1_v0]);
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
                 }
                 *budget -= 1;
+                {
+                    let (b2_i0, b2_i1, b2_v0,) = (b1_i0, b1_i1, b1_v0,);
 
-                values.ints.clear();
-                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
-                values.bools.clear();
-                values.bools.extend_from_slice(&[]);
-                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b2_v0]);
+                    CompiledResume::Next(3)
+                }
             }
 
             fn numeric_int_6_resume_3(
                 values: &mut data::compiled::numeric::NumericValues,
                 budget: &mut usize,
             ) -> CompiledResume {
-                let (b2_i0,) = (values.ints[0],);
+                let (b2_i0, b2_i1, b2_v0,) = (values.ints[0], values.ints[1], values.bools[0],);
                 if *budget == 0 {
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b2_v0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                }
+                *budget -= 1;
+                if b2_v0 {
+                    let (b3_i0, b3_i1,) = (b2_i0, b2_i1,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                    CompiledResume::Next(4)
+                } else {
+                    let (b4_i0,) = (b2_i0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    CompiledResume::Next(6)
+                }
+            }
+
+            fn numeric_int_6_resume_4(
+                values: &mut data::compiled::numeric::NumericValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
+                }
+                *budget -= 1;
+                let b3_i2 = b3_i0 * b3_i1;
+                if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(5));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                CompiledResume::Next(5)
+            }
+
+            fn numeric_int_6_resume_5(
+                values: &mut data::compiled::numeric::NumericValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b3_i0, b3_i1, b3_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
                 }
                 *budget -= 1;
 
                 values.ints.clear();
-                values.ints.extend_from_slice(&[b2_i0]);
+                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn numeric_int_6_resume_6(
+                values: &mut data::compiled::numeric::NumericValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b4_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(6));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
                 CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn numeric_int_6_resume_7(
+                values: &mut data::compiled::numeric::NumericValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b5_i0, b5_i1,) = (values.ints[0], values.ints[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b5_i0, b5_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(7));
+                }
+                *budget -= 1;
+                let b5_v0 = true;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b5_i0, b5_i1]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[b5_v0]);
+                CompiledResume::Next(8)
+            }
+
+            fn numeric_int_6_resume_8(
+                values: &mut data::compiled::numeric::NumericValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b5_i0, b5_i1, b5_v0,) = (values.ints[0], values.ints[1], values.bools[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b5_i0, b5_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b5_v0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(8));
+                }
+                *budget -= 1;
+                {
+                    let (b2_i0, b2_i1, b2_v0,) = (b5_i0, b5_i1, b5_v0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[b2_v0]);
+                    CompiledResume::Next(3)
+                }
             }
 
             fn numeric_int_9(
@@ -4859,6 +5167,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4866,6 +5175,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4873,6 +5183,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4880,6 +5191,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4887,6 +5199,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4894,6 +5207,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4901,6 +5215,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4908,6 +5223,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -4924,6 +5240,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4931,6 +5248,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4938,6 +5256,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4945,6 +5264,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4952,6 +5272,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4959,6 +5280,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4966,6 +5288,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4973,6 +5296,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -4980,6 +5304,7 @@ data::ModuleArtifact {
                                     instruction: 2,
                                     ints: 4,
                                     bools: 2,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -4996,6 +5321,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5003,6 +5329,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5010,6 +5337,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5017,6 +5345,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5024,6 +5353,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5031,6 +5361,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5038,6 +5369,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5045,6 +5377,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5052,6 +5385,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5059,6 +5393,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5066,6 +5401,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5082,6 +5418,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5089,6 +5426,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5096,6 +5434,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5103,6 +5442,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5110,6 +5450,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5126,6 +5467,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5133,6 +5475,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5140,6 +5483,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5147,6 +5491,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5154,6 +5499,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5161,6 +5507,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5177,6 +5524,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5184,6 +5532,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5191,6 +5540,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5198,6 +5548,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5205,6 +5556,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5221,6 +5573,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5228,20 +5581,63 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
                                     instruction: 1,
-                                    ints: 3,
-                                    bools: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
                                     instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5258,6 +5654,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5265,6 +5662,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5272,6 +5670,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5279,6 +5678,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5286,6 +5686,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5302,6 +5703,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5309,6 +5711,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5316,6 +5719,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5323,6 +5727,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5330,6 +5735,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 3,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -5348,6 +5754,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5355,6 +5762,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5362,6 +5770,7 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 0,
                                     bools: 2,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5369,6 +5778,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5376,6 +5786,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5383,6 +5794,7 @@ data::ModuleArtifact {
                                     instruction: 0,
                                     ints: 0,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -5390,12 +5802,17 @@ data::ModuleArtifact {
                                     instruction: 1,
                                     ints: 0,
                                     bools: 1,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
                             run: numeric_bool_0,
                         }),
                     },
+                ]),
+                customs: data::Storage::Static(&[
+                ]),
+                int_lists: data::Storage::Static(&[
                 ]),
             }
         },

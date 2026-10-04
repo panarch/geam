@@ -4,8 +4,8 @@ use crate::BitArrayValue;
 use crate::StringValue;
 use crate::host::{
     HostAbiType, HostExternalSchema, HostExternalType, HostExternalTypeSchema, HostFunctionType,
-    HostListType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0, HostTypeIndexNext,
-    HostTypeList, HostTypeListEnd, HostTypeSequence,
+    HostFunctionValueType, HostListType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
+    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeSequence,
 };
 use num_bigint::BigInt;
 use std::collections::HashSet;
@@ -223,6 +223,34 @@ where
     type Type = HostFunctionType<FunctionArguments::Types, Return::Type>;
 }
 
+impl<FunctionArguments, Return> CustomFieldType for HostFunctionValueType<FunctionArguments, Return>
+where
+    FunctionArguments: CustomFieldTypeSequence,
+    Return: CustomFieldType,
+{
+    fn schema_type() -> HostSchemaType {
+        HostSchemaType::function_value(FunctionArguments::schema_types(), Return::schema_type())
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomSchemaId>,
+    ) {
+        FunctionArguments::collect_custom_schemas(output, visited);
+        Return::collect_custom_schemas(output, visited);
+    }
+}
+
+impl<Arguments, FunctionArguments, Return> ResolveCustomFieldType<Arguments>
+    for HostFunctionValueType<FunctionArguments, Return>
+where
+    Arguments: HostTypeSequence,
+    FunctionArguments: ResolveCustomFieldTypeSequence<Arguments>,
+    Return: ResolveCustomFieldType<Arguments>,
+{
+    type Type = HostFunctionValueType<FunctionArguments::Types, Return::Type>;
+}
+
 impl<FunctionArguments, Return> CustomFieldType
     for crate::provider_support::HostOpaqueFunctionType<FunctionArguments, Return>
 where
@@ -230,7 +258,7 @@ where
     Return: CustomFieldType,
 {
     fn schema_type() -> HostSchemaType {
-        HostSchemaType::function(FunctionArguments::schema_types(), Return::schema_type())
+        HostSchemaType::opaque_function(FunctionArguments::schema_types(), Return::schema_type())
     }
 
     fn collect_custom_schemas(
@@ -595,7 +623,7 @@ mod tests {
         type Resolved = <Function as ResolveCustomFieldType<Arguments>>::Type;
         assert_eq!(
             Function::schema_type(),
-            HostSchemaType::function(
+            HostSchemaType::opaque_function(
                 [HostSchemaType::External {
                     schema: HostExternalTypeSchema::of::<ExternalSchema>(),
                     arguments: vec![HostSchemaType::Parameter(0)].into_boxed_slice()

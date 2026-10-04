@@ -1,11 +1,12 @@
 use super::HostExecutionError;
 use crate::execution::ExitStatus;
 use crate::host::{
-    HostCall, HostCallError, HostCallable, HostCodecScope, HostConstructions, HostProfile,
-    HostProvider, HostType, HostTypeSequence,
+    HostCall, HostCallError, HostCallable, HostCodecScope, HostConstructions, HostFunctionToken,
+    HostFunctionValue, HostFunctionValueToken, HostProfile, HostProvider, HostScopedValue,
+    HostType, HostTypeSequence,
 };
 use crate::runtime::execution::ExecutionContext;
-use crate::runtime::{HostCallOrigin, RetainedCallable};
+use crate::runtime::{HostCallOrigin, RetainedCallable, RetainedFunctionValue};
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -191,6 +192,21 @@ impl<Profile: HostProfile, Provider: HostProvider<Profile>> CallableRetention<Pr
             signature: PhantomData,
         }
     }
+
+    pub(crate) fn bind_function_value<
+        Arguments: HostTypeSequence,
+        Return: HostType,
+        Constructions: HostTypeSequence,
+    >(
+        self,
+        function: RetainedFunctionValue,
+    ) -> HostOwnedFunctionValue<Profile, Provider, Arguments, Return, Constructions> {
+        HostOwnedFunctionValue {
+            retention: self,
+            function,
+            signature: PhantomData,
+        }
+    }
 }
 
 /// A retained executable Gleam callback with its original execution endpoint.
@@ -224,6 +240,84 @@ where
             callable: self.callable.clone(),
             signature: PhantomData,
         }
+    }
+}
+
+/// An owned exact source function with its original codec and execution endpoint.
+/// Symbolic functions can be restored and forwarded without acquiring a callable.
+pub struct HostOwnedFunctionValue<Profile, Provider, Arguments, Return, Constructions>
+where
+    Profile: HostProfile,
+    Arguments: HostTypeSequence,
+    Return: HostType,
+    Constructions: HostTypeSequence,
+{
+    retention: CallableRetention<Profile, Provider>,
+    function: RetainedFunctionValue,
+    signature: PhantomData<fn(Arguments, Constructions) -> Return>,
+}
+
+impl<Profile, Provider, Arguments, Return, Constructions> Clone
+    for HostOwnedFunctionValue<Profile, Provider, Arguments, Return, Constructions>
+where
+    Profile: HostProfile,
+    Arguments: HostTypeSequence,
+    Return: HostType,
+    Constructions: HostTypeSequence,
+{
+    fn clone(&self) -> Self {
+        Self {
+            retention: self.retention.clone(),
+            function: self.function.clone(),
+            signature: PhantomData,
+        }
+    }
+}
+
+impl<Profile, Provider, Arguments, Return, Constructions>
+    HostOwnedFunctionValue<Profile, Provider, Arguments, Return, Constructions>
+where
+    Profile: HostProfile,
+    Provider: HostProvider<Profile>,
+    Arguments: HostTypeSequence,
+    Return: HostType,
+    Constructions: HostTypeSequence,
+{
+    /// Projects the existing typed target without changing its originating proof.
+    pub fn callable(
+        &self,
+    ) -> Option<HostOwnedCallable<Profile, Provider, Arguments, Return, Constructions>> {
+        match &self.function {
+            RetainedFunctionValue::Invocable(callable) => {
+                Some(self.retention.clone().bind(callable.clone()))
+            }
+            RetainedFunctionValue::Symbolic(_) => None,
+        }
+    }
+
+    /// Restores the original function and captures within its execution domain.
+    pub fn restore<'call, CallerProvider, Output>(
+        &self,
+        call: &mut HostCall<'call, Profile, CallerProvider, Output>,
+    ) -> Result<HostFunctionValue<'call, Arguments, Return>, HostCallError>
+    where
+        CallerProvider: HostProvider<Profile>,
+        Output: HostType,
+    {
+        self.retention
+            .execution
+            .for_invocation(&call.runtime.execution())
+            .map_err(|_| crate::HostFailure::new("callback belongs to another execution"))?;
+        let token = match &self.function {
+            RetainedFunctionValue::Invocable(callable) => {
+                HostFunctionValueToken::Invocable(call.runtime.restore_callable(callable.clone()).0)
+            }
+            RetainedFunctionValue::Symbolic(value) => {
+                let value = call.runtime.restore_stored(value);
+                call.runtime.function_value_token(value)
+            }
+        };
+        Ok(HostFunctionValue::new(token))
     }
 }
 
@@ -271,6 +365,44 @@ where
     ) -> HostOwnedCallable<Profile, CodecProvider, Arguments, CallbackReturn, Constructions> {
         self.callable_retention_with::<CodecProvider, _>(constructions)
             .bind(self.runtime.callable(callback.token))
+    }
+
+    /// Retains an exact function value without requiring invocation capability.
+    pub fn owned_function_value<
+        Arguments: HostTypeSequence,
+        CallbackReturn: HostType,
+        Constructions: HostTypeSequence,
+    >(
+        &self,
+        function: HostFunctionValue<'call, Arguments, CallbackReturn>,
+        constructions: &HostConstructions<'call, Constructions>,
+    ) -> HostOwnedFunctionValue<Profile, Provider, Arguments, CallbackReturn, Constructions> {
+        self.owned_function_value_with::<Provider, _, _, _>(function, constructions)
+    }
+
+    #[doc(hidden)]
+    pub fn owned_function_value_with<
+        CodecProvider: HostProvider<Profile>,
+        Arguments: HostTypeSequence,
+        CallbackReturn: HostType,
+        Constructions: HostTypeSequence,
+    >(
+        &self,
+        function: HostFunctionValue<'call, Arguments, CallbackReturn>,
+        constructions: &HostConstructions<'call, Constructions>,
+    ) -> HostOwnedFunctionValue<Profile, CodecProvider, Arguments, CallbackReturn, Constructions>
+    {
+        let retained = match function.token {
+            HostFunctionValueToken::Invocable(index) => {
+                RetainedFunctionValue::Invocable(self.runtime.callable(HostFunctionToken(index)))
+            }
+            HostFunctionValueToken::Symbolic(_) => RetainedFunctionValue::Symbolic(
+                self.runtime
+                    .retain_stored(HostScopedValue::Value(function.token.value_token())),
+            ),
+        };
+        self.callable_retention_with::<CodecProvider, _>(constructions)
+            .bind_function_value(retained)
     }
 
     pub(crate) fn callable_retention_with<
@@ -427,8 +559,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::HostOwnedCallable;
+    use super::{HostOwnedCallable, HostOwnedFunctionValue};
     use crate::embedding::{CallableType, FunctionDeclaration, HostedModuleBuilder};
+    use crate::host::{HostFunctionValue, HostFunctionValueType, HostTypeParameter};
     use crate::{
         HostCall, HostCallCompletion, HostCallError, HostCallable, HostCallableSchema,
         HostCaptures, HostConstructions, HostFunctionType, HostProfile, HostProvider,
@@ -443,6 +576,11 @@ mod tests {
     type One<T> = HostTypeList<T, End>;
     type Function = HostFunctionType<One<BigInt>, BigInt>;
     type Retained = HostOwnedCallable<Profile, Producer, One<BigInt>, BigInt, End>;
+    type GeneralFunction = HostFunctionValueType<One<BigInt>, BigInt>;
+    type RetainedGeneral = HostOwnedFunctionValue<Profile, Producer, One<BigInt>, BigInt, End>;
+    type PolymorphicFunction = HostFunctionValueType<One<HostTypeParameter<0>>, BigInt>;
+    type RetainedPolymorphic =
+        HostOwnedFunctionValue<Profile, Producer, One<HostTypeParameter<0>>, BigInt, End>;
     type EmbeddedFunction = CallableType<(BigInt,), BigInt>;
     type OpaqueFunction = crate::provider_support::HostOpaqueFunctionType<One<BigInt>, BigInt>;
     type SavedOpaque = crate::provider::Value<
@@ -454,6 +592,8 @@ mod tests {
     #[derive(Default)]
     struct State {
         saved: Arc<Mutex<Option<Retained>>>,
+        general: Arc<Mutex<Option<RetainedGeneral>>>,
+        polymorphic: Arc<Mutex<Option<RetainedPolymorphic>>>,
         opaque: Arc<Mutex<Option<SavedOpaque>>>,
         native_calls: Cell<usize>,
     }
@@ -542,6 +682,57 @@ mod tests {
         Ok(call.return_value(restored))
     }
 
+    fn save_general<'call>(
+        mut call: HostCall<'call, Profile, Producer, ()>,
+        constructions: HostConstructions<'call, End>,
+        function: HostFunctionValue<'call, One<BigInt>, BigInt>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        let function = call.owned_function_value(function, &constructions);
+        assert!(function.callable().is_some());
+        *call.state().general.lock().unwrap() = Some(function);
+        Ok(call.return_value(()))
+    }
+
+    fn restore_general<'call>(
+        mut call: HostCall<'call, Profile, Receiver, GeneralFunction>,
+    ) -> Result<HostCallCompletion<'call, GeneralFunction>, HostCallError> {
+        let function = call
+            .state()
+            .general
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .clone();
+        let restored = function.restore(&mut call)?;
+        Ok(call.return_value(restored))
+    }
+
+    fn save_polymorphic<'call>(
+        mut call: HostCall<'call, Profile, Producer, ()>,
+        constructions: HostConstructions<'call, End>,
+        function: HostFunctionValue<'call, One<HostTypeParameter<0>>, BigInt>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        let function = call.owned_function_value(function, &constructions);
+        *call.state().polymorphic.lock().unwrap() = Some(function);
+        Ok(call.return_value(()))
+    }
+
+    fn restore_polymorphic<'call>(
+        mut call: HostCall<'call, Profile, Receiver, PolymorphicFunction>,
+    ) -> Result<HostCallCompletion<'call, PolymorphicFunction>, HostCallError> {
+        let function = call
+            .state()
+            .polymorphic
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .clone();
+        let restored = function.restore(&mut call)?;
+        Ok(call.return_value(restored))
+    }
+
     fn save_opaque<'call>(
         mut call: HostCall<'call, Profile, Producer, ()>,
         callback: <OpaqueFunction as crate::HostType>::Value<'call>,
@@ -570,6 +761,26 @@ mod tests {
             .unwrap()
             .with_scoped_function::<Receiver, (), Function, _>("restore", restore)
             .unwrap()
+            .with_scoped_function_and_constructions::<Producer, (GeneralFunction,), (), End, _>(
+                "save_general",
+                save_general,
+            )
+            .unwrap()
+            .with_scoped_function::<Receiver, (), GeneralFunction, _>(
+                "restore_general",
+                restore_general,
+            )
+            .unwrap()
+            .with_scoped_function_and_constructions::<Producer, (PolymorphicFunction,), (), End, _>(
+                "save_polymorphic",
+                save_polymorphic,
+            )
+            .unwrap()
+            .with_scoped_function::<Receiver, (), PolymorphicFunction, _>(
+                "restore_polymorphic",
+                restore_polymorphic,
+            )
+            .unwrap()
             .with_scoped_function::<Producer, (OpaqueFunction,), (), _>("save_opaque", save_opaque)
             .unwrap()
             .with_scoped_function::<Producer, (), OpaqueFunction, _>(
@@ -594,6 +805,10 @@ mod tests {
                         r#"
 @external(erlang, "native", "save") fn save(callback: fn(Int) -> Int) -> Nil
 @external(erlang, "native", "restore") fn restore() -> fn(Int) -> Int
+@external(erlang, "native", "save_general") fn save_general(function: fn(Int) -> Int) -> Nil
+@external(erlang, "native", "restore_general") fn restore_general() -> fn(Int) -> Int
+@external(erlang, "native", "save_polymorphic") fn save_polymorphic(function: fn(item) -> Int) -> Nil
+@external(erlang, "native", "restore_polymorphic") fn restore_polymorphic() -> fn(item) -> Int
 @external(erlang, "native", "save_opaque") fn save_opaque(callback: fn(Int) -> Int) -> Nil
 @external(erlang, "native", "restore_opaque") fn restore_opaque() -> fn(Int) -> Int
 pub fn source(offset: Int) -> fn(Int) -> Int {
@@ -605,6 +820,27 @@ pub fn roundtrip(callback: fn(Int) -> Int) {
   #(callback == restored, restored(2))
 }
 pub fn later() { restore()(2) }
+pub fn roundtrip_general(function: fn(Int) -> Int) {
+  save_general(function)
+  let restored = restore_general()
+  #(function == restored, restored(2))
+}
+pub fn later_general() { restore_general()(2) }
+pub fn roundtrip_polymorphic() {
+  let capture = 42
+  let function = fn(_) { echo "must not run" capture }
+  save_polymorphic(function)
+  #(function == restore_polymorphic(), capture)
+}
+pub fn roundtrip_polymorphic_concrete() {
+  let capture = 40
+  let function = fn(value) { echo "source" value + capture }
+  save_polymorphic(function)
+  let restored = restore_polymorphic()
+  #(function == restored, restored(2))
+}
+pub fn later_polymorphic() { let _ = restore_polymorphic() True }
+pub fn later_polymorphic_concrete() { let _ = restore_polymorphic()(2) True }
 pub fn stash(callback: fn(Int) -> Int) { save_opaque(callback) }
 pub fn later_opaque() { restore_opaque()(2) }
 pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
@@ -620,8 +856,21 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
 
     #[test]
     fn restoration_preserves_identity_and_rejects_live_foreign_and_closed_executions() {
-        const REJECTED: &str = "host function application::library.restore failed: callback belongs to another execution";
-        for native in [false, true] {
+        for (native, general) in [(false, false), (true, false), (false, true), (true, true)] {
+            let restore_name = if general {
+                "restore_general"
+            } else {
+                "restore"
+            };
+            let rejected = format!(
+                "host function application::library.{restore_name} failed: callback belongs to another execution"
+            );
+            let roundtrip_name = if general {
+                "roundtrip_general"
+            } else {
+                "roundtrip"
+            };
+            let later_name = if general { "later_general" } else { "later" };
             let (mut bindings, source) = program()
                 .function(FunctionDeclaration::<(BigInt,), EmbeddedFunction>::new(
                     "source",
@@ -629,21 +878,22 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                 .unwrap();
             let roundtrip = bindings
                 .function(
-                    FunctionDeclaration::<(EmbeddedFunction,), (bool, BigInt)>::new("roundtrip"),
+                    FunctionDeclaration::<(EmbeddedFunction,), (bool, BigInt)>::new(roundtrip_name),
                 )
                 .unwrap();
             let later = bindings
-                .function(FunctionDeclaration::<(), BigInt>::new("later"))
+                .function(FunctionDeclaration::<(), BigInt>::new(later_name))
                 .unwrap();
             let factory = bindings.callable::<Add>().unwrap();
             let mut module = bindings.seal().unwrap();
             let (foreign, foreign_later) = program()
-                .function(FunctionDeclaration::<(), BigInt>::new("later"))
+                .function(FunctionDeclaration::<(), BigInt>::new(later_name))
                 .unwrap();
             let mut foreign = foreign.seal().unwrap();
             let mut state = State::default();
             let mut foreign_state = State {
                 saved: Arc::clone(&state.saved),
+                general: Arc::clone(&state.general),
                 ..State::default()
             };
             let mut echoes = Vec::new();
@@ -672,7 +922,7 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                                         .await
                                         .unwrap_err()
                                         .to_string(),
-                                    REJECTED
+                                    rejected
                                 );
                             },
                         )
@@ -693,7 +943,7 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
                 module.with_execution(&host, &mut state, &mut echoes, async |scope| {
                     assert_eq!(
                         scope.call(&later, ()).await.unwrap_err().to_string(),
-                        REJECTED
+                        rejected
                     );
                 }),
             )
@@ -702,6 +952,105 @@ pub fn wrap(callback: fn(Int) -> Int) { fn(value) { callback(value) } }
             .unwrap();
             assert_eq!(state.native_calls.get(), usize::from(native));
             assert_eq!(echoes.len(), usize::from(!native));
+        }
+    }
+
+    #[test]
+    fn polymorphic_function_restoration_preserves_capability_identity_and_execution_ownership() {
+        const REJECTED: &str = "host function application::library.restore_polymorphic failed: callback belongs to another execution";
+        for concrete in [false, true] {
+            let roundtrip_name = if concrete {
+                "roundtrip_polymorphic_concrete"
+            } else {
+                "roundtrip_polymorphic"
+            };
+            let later_name = if concrete {
+                "later_polymorphic_concrete"
+            } else {
+                "later_polymorphic"
+            };
+            let (mut bindings, roundtrip) = program()
+                .function(FunctionDeclaration::<(), (bool, BigInt)>::new(
+                    roundtrip_name,
+                ))
+                .unwrap();
+            let later = bindings
+                .function(FunctionDeclaration::<(), bool>::new(later_name))
+                .unwrap();
+            let mut module = bindings.seal().unwrap();
+            let (bindings, foreign_later) = program()
+                .function(FunctionDeclaration::<(), bool>::new(later_name))
+                .unwrap();
+            let mut foreign = bindings.seal().unwrap();
+            let host = crate::execution_fixture::TestHost::default();
+            let mut state = State::default();
+            let mut foreign_state = State {
+                polymorphic: Arc::clone(&state.polymorphic),
+                ..State::default()
+            };
+            let mut echoes = Vec::new();
+            let mut foreign_echoes = Vec::new();
+            host.block_on(
+                module.with_execution(&host, &mut state, &mut echoes, async |scope| {
+                    assert_eq!(
+                        scope.call(&roundtrip, ()).await.unwrap(),
+                        (true, BigInt::from(42))
+                    );
+                    foreign
+                        .with_execution(
+                            &host,
+                            &mut foreign_state,
+                            &mut foreign_echoes,
+                            async |other| {
+                                assert_eq!(
+                                    other
+                                        .call(&foreign_later, ())
+                                        .await
+                                        .unwrap_err()
+                                        .to_string(),
+                                    REJECTED
+                                );
+                            },
+                        )
+                        .await
+                        .unwrap()
+                        .try_into_value()
+                        .unwrap();
+                    assert!(scope.call(&later, ()).await.unwrap());
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+            assert_eq!(
+                state
+                    .polymorphic
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .callable()
+                    .is_some(),
+                concrete
+            );
+            host.block_on(
+                module.with_execution(&host, &mut state, &mut echoes, async |scope| {
+                    assert_eq!(
+                        scope.call(&later, ()).await.unwrap_err().to_string(),
+                        REJECTED
+                    );
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+            assert_eq!(state.native_calls.get(), 0);
+            assert_eq!(foreign_state.native_calls.get(), 0);
+            assert_eq!(echoes.len(), 2 * usize::from(concrete));
+            for echo in echoes {
+                assert_eq!(echo.value(), &crate::Value::String("source".into()));
+            }
+            assert!(foreign_echoes.is_empty());
         }
     }
 

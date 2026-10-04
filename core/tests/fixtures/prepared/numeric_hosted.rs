@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 13,
+        format: 16,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -78,7 +78,11 @@ pub fn divmod(left: Int, right: Int, flag: Bool) -> Int {
 }
 
 pub fn product(left: Int, right: Int) -> Int {
-  case left != right {
+  let multiply = case left == right {
+    True -> False
+    False -> True
+  }
+  case multiply {
     True -> left * right
     False -> left
   }
@@ -451,7 +455,7 @@ pub fn running() -> Int {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2101, 2118)),
+                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2174, 2191)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -510,7 +514,7 @@ pub fn running() -> Int {
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2121, 2144)),
+                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2194, 2217)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -545,7 +549,7 @@ pub fn running() -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2147, 2156)),
+                                                site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2220, 2229)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -579,7 +583,7 @@ pub fn running() -> Int {
                                             terminator: data::graph::Terminator::Echo(data::graph::Echo {
                                                 subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 message: None,
-                                                site: data::source::EchoSite::from_static("example", "running", data::source::SourceSpan::new(2188, 2202)),
+                                                site: data::source::EchoSite::from_static("example", "running", data::source::SourceSpan::new(2261, 2275)),
                                                 next: data::graph::Edge {
                                                     target: data::graph::BlockId(1),
                                                     args: data::Storage::Static(&[]),
@@ -638,7 +642,7 @@ pub fn running() -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::IntFunctionId(0),
-                                            site: data::source::HostCallSite::from_static("example", "running", data::source::SourceSpan::new(2205, 2222)),
+                                            site: data::source::HostCallSite::from_static("example", "running", data::source::SourceSpan::new(2278, 2295)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -718,7 +722,7 @@ pub fn running() -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1822, 1838)),
+                                                site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)),
                                             }),
                                         }),
                                     ]),
@@ -1525,7 +1529,7 @@ pub fn running() -> Int {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(1991, 2019)),
+                                                site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2064, 2092)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1539,7 +1543,7 @@ pub fn running() -> Int {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2045, 2071)),
+                                                site: data::source::HostCallSite::from_static("example", "caller", data::source::SourceSpan::new(2118, 2144)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3346,6 +3350,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3353,6 +3358,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3360,6 +3366,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3367,6 +3374,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3374,6 +3382,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3381,6 +3390,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 4,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3388,6 +3398,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3395,6 +3406,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 4,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                 ]),
@@ -3411,6 +3423,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 3,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3418,6 +3431,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3425,6 +3439,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3432,6 +3447,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3439,6 +3455,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3446,6 +3463,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3453,6 +3471,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 3,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3460,6 +3479,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 4,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3467,6 +3487,7 @@ pub fn running() -> Int {
                                         instruction: 2,
                                         ints: 4,
                                         bools: 2,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                 ]),
@@ -3483,6 +3504,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3490,6 +3512,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3497,6 +3520,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3504,6 +3528,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3511,6 +3536,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3518,6 +3544,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3525,6 +3552,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3532,6 +3560,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3539,6 +3568,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3546,6 +3576,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3553,6 +3584,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                 ]),
@@ -3569,6 +3601,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3576,6 +3609,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3583,6 +3617,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3590,6 +3625,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3597,6 +3633,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 3,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                 ]),
@@ -3615,6 +3652,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3622,6 +3660,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3629,6 +3668,7 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 0,
                                         bools: 2,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3636,6 +3676,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 1,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3643,6 +3684,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3650,6 +3692,7 @@ pub fn running() -> Int {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 0,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
@@ -3657,12 +3700,17 @@ pub fn running() -> Int {
                                         instruction: 1,
                                         ints: 0,
                                         bools: 1,
+                                        bit_arrays: 0,
                                         int_lists: 0,
                                     },
                                 ]),
                                 run: numeric_bool_0,
                             }),
                         },
+                    ]),
+                    customs: data::Storage::Static(&[
+                    ]),
+                    int_lists: data::Storage::Static(&[
                     ]),
                 }
             },

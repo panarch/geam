@@ -14,9 +14,9 @@ use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
     HostConstructions, HostCustom, HostExecutionContext, HostExecutionError, HostExternal,
-    HostFunctionType, HostOwnedCompletion, HostProviderModule, HostRegistrationError, HostTuple,
-    HostTupleType, HostType, HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter,
-    HostValue,
+    HostFunctionType, HostFunctionValueType, HostOwnedCompletion, HostProviderModule,
+    HostRegistrationError, HostTuple, HostTupleType, HostType, HostTypeIndex0, HostTypeList,
+    HostTypeListEnd, HostTypeParameter, HostValue,
 };
 use geam_core::provider::advanced::NativeValue;
 use geam_stdlib::provider_support::{Dynamic, GleamError, GleamOk, GleamResult};
@@ -29,7 +29,7 @@ type B = HostTypeParameter<1>;
 type C = HostTypeParameter<2>;
 type One<T> = HostTypeList<T, HostTypeListEnd>;
 type Pair<L, R> = HostTupleType<HostTypeList<L, One<R>>>;
-type Unary<T, R> = HostFunctionType<One<T>, R>;
+type Unary<T, R> = HostFunctionValueType<One<T>, R>;
 type Call<'call, Profile, Return> = HostCall<'call, Profile, Component<Profile>, Return>;
 type Native<'call, Profile, Return, Target> =
     NativeCall<'call, Profile, Component<Profile>, Return, One<Target>>;

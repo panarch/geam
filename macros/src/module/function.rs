@@ -805,10 +805,12 @@ fn decode_callback(
     let value = names.next("callback");
     let (codec, constructions) =
         input_codec_binding(&callback.codec, &callback.generics, environment);
+    let wrapper = callback.role.wrapper(support);
+    let context = callback.role.owned_context(support);
     let statements = quote! {
-            let #value = #support::Callback::<
+            let #value = #wrapper::<
                 _,
-                #support::ProviderOwnedCallbackContext<
+                #context<
                     __GeamProfile,
                     __GeamProvider,
                     #codec,

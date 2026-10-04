@@ -198,7 +198,8 @@ fn generate_list_decoder(
         support,
         &|callback| {
             let (signature, decoder, _) = super::list_capability::names(callback);
-            quote!(<#decoder as #support::ProviderTypedListItemDecoder<#support::Callback<#signature>>>::Host)
+            let wrapper = callback.role.wrapper(support);
+            quote!(<#decoder as #support::ProviderTypedListItemDecoder<#wrapper<#signature>>>::Host)
         },
         &|future| {
             let (source, decoder, _) = super::list_capability::future_names(future);
@@ -273,7 +274,8 @@ fn validated_list_item_type(
         }
         StaticValueType::Callback(callback) => {
             let (signature, _, _) = super::list_capability::names(callback);
-            quote!(#support::Callback<#signature>)
+            let wrapper = callback.role.wrapper(support);
+            quote!(#wrapper<#signature>)
         }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => {
@@ -607,9 +609,10 @@ fn decode_list_item(
         }
         StaticValueType::Callback(callback) => {
             let (signature, decoder, field) = super::list_capability::names(callback);
+            let wrapper = callback.role.wrapper(support);
             GeneratedValue {
                 statements: TokenStream::new(),
-                value: quote!(<#decoder as #support::ProviderListItemDecoder<#support::Callback<#signature>>>::decode(&self.#field, #input)),
+                value: quote!(<#decoder as #support::ProviderListItemDecoder<#wrapper<#signature>>>::decode(&self.#field, #input)),
             }
         }
 
@@ -950,7 +953,8 @@ fn list_item_view_type_with_flavor(
         }
         StaticValueType::Callback(callback) => {
             let (signature, decoder, _) = super::list_capability::names(callback);
-            quote!(<#decoder as #support::ProviderListItemDecoder<#support::Callback<#signature>>>::View)
+            let wrapper = callback.role.wrapper(support);
+            quote!(<#decoder as #support::ProviderListItemDecoder<#wrapper<#signature>>>::View)
         }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => {

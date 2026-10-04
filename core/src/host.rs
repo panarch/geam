@@ -32,7 +32,7 @@ pub use error::HostRegistrationError;
 pub(crate) use execution::CallableRetention;
 pub use execution::{
     HostCallContinuation, HostExecutionContext, HostExecutionError, HostNeverContinuation,
-    HostOwnedCallable, HostOwnedCompletion, SharedExecutionError,
+    HostOwnedCallable, HostOwnedCompletion, HostOwnedFunctionValue, SharedExecutionError,
 };
 pub(crate) use external::{ExternalPayloadLease, ExternalPayloadView, HostStoredValueFamily};
 pub use external::{
@@ -60,9 +60,10 @@ pub use type_::{
     HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
     HostCustomConstructorSchema, HostCustomField, HostCustomFieldList, HostCustomFieldListEnd,
     HostCustomFieldSchema, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema, HostCustomType,
-    HostCustomTypeArgument, HostCustomTypeSchema, HostFunctionType, HostListType,
-    HostNominalCustomField, HostSchemaType, HostTupleType, HostType, HostTypeAt, HostTypeIndex0,
-    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostTypeSequence,
+    HostCustomTypeArgument, HostCustomTypeSchema, HostFunctionType, HostFunctionValueType,
+    HostListType, HostNominalCustomField, HostSchemaType, HostTupleType, HostType, HostTypeAt,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter,
+    HostTypeSequence,
 };
 #[doc(hidden)]
 pub use type_::{
@@ -70,7 +71,8 @@ pub use type_::{
     HostCustomIndexLeft, HostCustomIndexRight,
 };
 pub use value::{
-    HostCallCompletion, HostCallable, HostCustom, HostExternal, HostList, HostTuple, HostValue,
+    HostCallCompletion, HostCallable, HostCustom, HostExternal, HostFunctionValue, HostList,
+    HostTuple, HostValue,
 };
 
 #[cfg(test)]
@@ -105,6 +107,6 @@ pub(crate) use type_::{
     construction_callable_count,
 };
 pub(crate) use value::{
-    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
-    HostTupleToken, HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostFunctionValueToken, HostListToken,
+    HostScopedValue, HostTupleToken, HostValueFamily, HostValueToken,
 };

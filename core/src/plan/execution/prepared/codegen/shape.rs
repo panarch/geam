@@ -1,3 +1,4 @@
+use super::bit_array::BitArrayMatch;
 use super::int_list::{IntListInstruction, IntListMatch, IntListTest};
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{ExecutionGraphProfile, FunctionExit, ProfiledFunctionBody};
@@ -7,25 +8,27 @@ use crate::plan::execution::graph::{
     ListLocal, MatchEdge, ParamLocal, ParamSlot, ProfiledInstruction, ProfiledInstructionKind,
     Terminator, TypedListInstruction,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Borrowed inspection used only while emitting or admitting prepared data.
 /// None of the structuring work survives in the executable program.
 pub(in crate::plan::execution::prepared) struct CompiledShape<'graph, Graph: ExecutionGraphProfile>
 {
     pub graph: BlockGraphView<'graph, Graph>,
-    pub(super) blocks: Vec<CompiledBlock<'graph>>,
+    pub(super) blocks: BTreeMap<usize, CompiledBlock<'graph>>,
     pub checkpoints: Vec<CompiledCheckpoint>,
-    pub starts: Vec<usize>,
+    pub(super) starts: BTreeMap<usize, usize>,
     pub(super) joins: Vec<Option<BlockId>>,
     pub(super) repeats: bool,
     pub kind: KernelKind,
+    pub(super) order: Vec<BlockId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::plan::execution::prepared) enum KernelKind {
     Numeric,
     IntList,
+    BitArray,
 }
 
 // These are preparation-local views. They borrow the canonical graph and
@@ -43,7 +46,7 @@ pub(super) enum CompiledInstruction<'graph> {
         region: &'graph ArithmeticRegion,
         outputs: Vec<IntLocalId>,
     },
-    IntList(IntListInstruction),
+    IntList(IntListInstruction<'graph>),
 }
 
 pub(super) enum NumericInteger<'graph> {
@@ -99,6 +102,7 @@ pub(super) enum CompiledTerminator<'graph> {
         fallback: &'graph Edge,
     },
     Exit(BlockGraphExitId),
+    BitArray(BitArrayMatch<'graph>),
     Match(IntListMatch<'graph>),
     Interpreted,
 }
@@ -122,36 +126,75 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
     pub(in crate::plan::execution::prepared) fn inspect<Return, Tail>(
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
     ) -> Option<Self> {
+        Self::inspect_supported(body, KernelKind::Numeric)
+    }
+
+    pub(in crate::plan::execution::prepared) fn inspect_bits<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+    ) -> Option<Self> {
+        Self::inspect_supported(body, KernelKind::BitArray)
+    }
+
+    pub(in crate::plan::execution::prepared) fn start(&self, block: BlockId) -> usize {
+        self.starts[&block.index()]
+    }
+
+    pub(super) fn block(&self, block: BlockId) -> &CompiledBlock<'graph> {
+        &self.blocks[&block.index()]
+    }
+
+    fn inspect_supported<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+        kind: KernelKind,
+    ) -> Option<Self> {
+        let bit_arrays = kind == KernelKind::BitArray;
         let graph = body.block_graph().as_view();
         let count = graph.blocks().len();
-        if body
-            .exits
-            .iter()
-            .any(|exit| !matches!(exit, FunctionExit::Return(_)))
-        {
-            return None;
-        }
         let mut checkpoints = Vec::new();
-        let mut blocks = Vec::with_capacity(count);
-        let mut starts = Vec::with_capacity(count);
+        let mut blocks = BTreeMap::new();
+        let mut starts = BTreeMap::new();
         let mut successors = Vec::with_capacity(count);
         let mut repeats = false;
+        let can_repeat = if bit_arrays {
+            repeating_blocks(graph)
+        } else {
+            vec![false; count]
+        };
         for (index, block) in graph.blocks().enumerate() {
             let mut point = CompiledCheckpoint {
                 block: BlockId(index),
                 instruction: 0,
                 ints: 0,
                 bools: 0,
+                bit_arrays: 0,
                 int_lists: 0,
             };
-            for slot in block.params() {
-                add_slot(&mut point, slot)?;
+            if block
+                .params()
+                .iter()
+                .try_for_each(|slot| add_slot(&mut point, slot, bit_arrays))
+                .is_none()
+            {
+                if !bit_arrays {
+                    return None;
+                }
+                successors.push(Vec::new());
+                continue;
             }
-            starts.push(checkpoints.len());
+            starts.insert(index, checkpoints.len());
             checkpoints.push(point);
             let mut instructions = Vec::with_capacity(block.instructions().len());
             for instruction in block.instructions() {
-                let instruction = CompiledInstruction::inspect(instruction)?;
+                let Some(instruction) =
+                    CompiledInstruction::inspect(instruction).filter(|instruction| {
+                        !bit_arrays || !matches!(instruction, CompiledInstruction::IntList(_))
+                    })
+                else {
+                    if !bit_arrays || can_repeat[index] {
+                        return None;
+                    }
+                    break;
+                };
                 match &instruction {
                     CompiledInstruction::Integer(..) => point.ints += 1,
                     CompiledInstruction::Boolean(..) => point.bools += 1,
@@ -159,28 +202,49 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                     CompiledInstruction::IntList(IntListInstruction::Index { .. }) => {
                         point.ints += 1
                     }
-                    CompiledInstruction::IntList(IntListInstruction::Tail { .. }) => {
-                        point.int_lists += 1
-                    }
+                    CompiledInstruction::IntList(
+                        IntListInstruction::Value { .. }
+                        | IntListInstruction::Spread { .. }
+                        | IntListInstruction::Tail { .. },
+                    ) => point.int_lists += 1,
                 }
                 instructions.push(instruction);
                 point.instruction += 1;
                 checkpoints.push(point);
             }
-            let terminator = CompiledTerminator::inspect(block.terminator())?;
-            let edges = terminator.edges();
-            repeats |= edges.iter().any(|edge| edge.target() == graph.entry());
-            successors.push(
-                edges
-                    .iter()
-                    .map(|edge| edge.target().index())
-                    .collect::<Vec<_>>(),
+            let terminator = if instructions.len() < block.instructions().len() {
+                CompiledTerminator::Interpreted
+            } else {
+                let inspected = CompiledTerminator::inspect(block.terminator()).or_else(|| {
+                    if bit_arrays && let Terminator::Match(matcher) = block.terminator() {
+                        return BitArrayMatch::inspect(matcher).map(CompiledTerminator::BitArray);
+                    }
+                    None
+                }).filter(|terminator| {
+                    !bit_arrays || !matches!(terminator, CompiledTerminator::Exit(exit) if !matches!(body.exit(*exit), FunctionExit::Return(_)))
+                });
+                match inspected {
+                    Some(terminator) => terminator,
+                    None if bit_arrays && !can_repeat[index] => CompiledTerminator::Interpreted,
+                    None => return None,
+                }
+            };
+            let edges = terminator.targets();
+            repeats |= edges.contains(&graph.entry());
+            successors.push(edges.iter().map(|edge| edge.index()).collect::<Vec<_>>());
+            blocks.insert(
+                index,
+                CompiledBlock {
+                    instructions,
+                    terminator,
+                },
             );
-            blocks.push(CompiledBlock {
-                instructions,
-                terminator,
-            });
         }
+        // Every retained edge forwards supported locals or supported match
+        // bindings. The typed graph therefore gives its destination the same
+        // supported families. A custom suffix stops at its first instruction,
+        // before it can produce a custom value or forward it along an edge.
+        starts.get(&graph.entry().index())?;
         let mut order = Vec::with_capacity(count);
         let mut visited = vec![0; count];
         visit(
@@ -190,9 +254,20 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             &mut visited,
             &mut order,
         )?;
-        // A frozen graph contains only reachable blocks. Requiring all of them
-        // also makes the checkpoint layout complete rather than a partial view.
-        if order.len() != count {
+        // Scalar generation covers the complete frozen graph. Bit generation
+        // stops before unsupported terminal suffixes; each retained checkpoint
+        // still records an exact canonical prefix.
+        if !bit_arrays && order.len() != count {
+            return None;
+        }
+        if bit_arrays
+            && !order.iter().any(|&index| {
+                matches!(
+                    blocks.get(&index).map(|block| &block.terminator),
+                    Some(CompiledTerminator::BitArray(_))
+                )
+            })
+        {
             return None;
         }
         // Entry back-edges and returns lead to one virtual exit. In reverse
@@ -230,7 +305,9 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 joins[block] = shared_suffix(block, graph.entry().index(), &successors, &ranks);
             }
         }
-        let kind = if checkpoints.iter().any(|point| point.int_lists > 0) {
+        let kind = if bit_arrays {
+            KernelKind::BitArray
+        } else if checkpoints.iter().any(|point| point.int_lists > 0) {
             KernelKind::IntList
         } else {
             KernelKind::Numeric
@@ -246,9 +323,12 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             joins,
             repeats,
             kind,
+            order: order.iter().rev().copied().map(BlockId).collect(),
         };
-        let mut emitted = BTreeSet::new();
-        shape.structured_path(graph.entry(), None, &mut emitted)?;
+        if !bit_arrays {
+            let mut emitted = BTreeSet::new();
+            shape.structured_path(graph.entry(), None, &mut emitted)?;
+        }
         Some(shape)
     }
 
@@ -264,11 +344,11 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
         if !emitted.insert(block.index()) {
             return None;
         }
-        let outgoing = self.blocks[block.index()].terminator.edges();
+        let outgoing = self.block(block).terminator.targets();
         let join = self.joins[block.index()];
         for edge in outgoing {
-            if edge.target() != self.graph.entry() {
-                self.structured_path(edge.target(), join.or(stop), emitted)?;
+            if edge != self.graph.entry() {
+                self.structured_path(edge, join.or(stop), emitted)?;
             }
         }
         if let Some(join) = join {
@@ -276,6 +356,53 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
         }
         Some(())
     }
+}
+
+fn repeating_blocks<Graph: ExecutionGraphProfile>(graph: BlockGraphView<'_, Graph>) -> Vec<bool> {
+    let mut predecessors = vec![Vec::new(); graph.blocks().len()];
+    for (index, block) in graph.blocks().enumerate() {
+        let targets = match block.terminator() {
+            Terminator::Jump(jump) => vec![jump.edge.target()],
+            Terminator::BoolBranch(branch) => vec![branch.true_.target(), branch.false_.target()],
+            Terminator::TestBranch(branch) => vec![branch.true_.target(), branch.false_.target()],
+            Terminator::IntSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::FloatSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::StringSwitch(switch) => switch
+                .clauses
+                .iter()
+                .map(|(_, edge)| edge.target())
+                .chain(std::iter::once(switch.fallback.target()))
+                .collect(),
+            Terminator::Match(matcher) => vec![matcher.success.target(), matcher.failure.target()],
+            Terminator::Echo(echo) => vec![echo.next.target()],
+            Terminator::Exit(_)
+            | Terminator::SourceStop(_)
+            | Terminator::LetAssertPanic(_)
+            | Terminator::NeverCall(_) => Vec::new(),
+        };
+        for target in targets {
+            predecessors[target.index()].push(index);
+        }
+    }
+    let mut repeating = vec![false; predecessors.len()];
+    let mut pending = vec![graph.entry().index()];
+    while let Some(block) = pending.pop() {
+        if !repeating[block] {
+            repeating[block] = true;
+            pending.extend_from_slice(&predecessors[block]);
+        }
+    }
+    repeating
 }
 
 fn shared_suffix(
@@ -323,11 +450,12 @@ fn common_postdominator(
     left
 }
 
-fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot) -> Option<()> {
+fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, bit_arrays: bool) -> Option<()> {
     match slot.local() {
         ParamLocal::Int(_) => point.ints += 1,
         ParamLocal::Bool(_) => point.bools += 1,
-        ParamLocal::List(ListLocal::Int { .. }) => point.int_lists += 1,
+        ParamLocal::List(ListLocal::Int { .. }) if !bit_arrays => point.int_lists += 1,
+        ParamLocal::BitArray(_) if bit_arrays => point.bit_arrays += 1,
         _ => return None,
     }
     Some(())
@@ -366,6 +494,29 @@ impl<'graph> CompiledInstruction<'graph> {
                 (ProfiledInstructionKind::Int(instruction), ParamLocal::Int(output)) => Some(
                     Self::Integer(*output, NumericInteger::inspect(instruction)?),
                 ),
+                (
+                    ProfiledInstructionKind::List(ListInstruction::Int(
+                        type_id,
+                        TypedListInstruction::Value(elements),
+                    )),
+                    ParamLocal::List(ListLocal::Int { local, .. }),
+                ) => Some(Self::IntList(IntListInstruction::Value {
+                    output: *local,
+                    type_id: *type_id,
+                    elements,
+                })),
+                (
+                    ProfiledInstructionKind::List(ListInstruction::Int(
+                        type_id,
+                        TypedListInstruction::Spread { elements, tail },
+                    )),
+                    ParamLocal::List(ListLocal::Int { local, .. }),
+                ) => Some(Self::IntList(IntListInstruction::Spread {
+                    output: *local,
+                    type_id: *type_id,
+                    elements,
+                    tail: *tail,
+                })),
                 (
                     ProfiledInstructionKind::List(ListInstruction::Int(
                         type_id,
@@ -463,6 +614,13 @@ impl<'graph> CompiledTerminator<'graph> {
         })
     }
 
+    fn targets(&self) -> Vec<BlockId> {
+        match self {
+            Self::BitArray(matcher) => vec![matcher.success.target(), matcher.failure.target()],
+            _ => self.edges().iter().map(|edge| edge.target()).collect(),
+        }
+    }
+
     fn edges(&self) -> Vec<CompiledEdge<'graph>> {
         match self {
             Self::Jump(edge) => vec![CompiledEdge::Ordinary(edge)],
@@ -483,7 +641,7 @@ impl<'graph> CompiledTerminator<'graph> {
                 CompiledEdge::Match(view.matcher.success()),
                 CompiledEdge::Ordinary(view.matcher.failure()),
             ],
-            Self::Exit(_) | Self::Interpreted => vec![],
+            Self::BitArray(_) | Self::Exit(_) | Self::Interpreted => vec![],
         }
     }
 }
@@ -519,12 +677,351 @@ mod tests {
         BlockGraphExitId, BlockId, Edge, IntLocalId, IntSwitch, IntegerLiteral, Jump, ParamLocal,
         ProfiledBlock, ProfiledBlockGraph, StringLocalId, Terminator,
     };
-    use std::collections::BTreeSet;
+    use crate::plan::execution::prepared::rust::Rust;
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::convert::Infallible;
 
     fn source_plan(source: &str) -> crate::ExecutionPlan {
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap())
+    }
+
+    #[test]
+    fn construction_without_list_inputs_keeps_each_completed_list_output_in_its_checkpoint() {
+        use super::KernelKind;
+        for (source, expected) in [
+            (
+                "pub fn main() -> List(Int) { [] }",
+                vec![(0, 0, 0), (1, 0, 1)],
+            ),
+            (
+                "pub fn main() -> List(Int) { [7, -9] }",
+                vec![(0, 0, 0), (1, 1, 0), (2, 2, 0), (3, 2, 1)],
+            ),
+        ] {
+            let plan = source_plan(source);
+            let body = plan.int_list_function(plan.int_list_function_id(0)).body();
+            let shape = CompiledShape::inspect(body).unwrap();
+            assert_eq!(shape.kind, KernelKind::IntList);
+            assert_eq!(shape.starts, BTreeMap::from([(0, 0)]));
+            assert!(!shape.repeats);
+            assert_eq!(
+                shape.checkpoints,
+                expected
+                    .into_iter()
+                    .map(|(instruction, ints, int_lists)| CompiledCheckpoint {
+                        block: BlockId(0),
+                        instruction,
+                        ints,
+                        bools: 0,
+                        bit_arrays: 0,
+                        int_lists,
+                    })
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn list_creation_keeps_bit_kernel_repetition_closed_and_terminal_suffixes_interpreted() {
+        for (source, compiled) in [
+            (
+                r#"
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> -> {
+      let assert [head, ..] = [value, value]
+      walk(rest, total + head)
+    }
+    _ -> total
+  }
+}
+pub fn main() { walk(<<1, 2>>, 0) }
+"#,
+                false,
+            ),
+            (
+                r#"
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> -> walk(rest, total + value)
+    _ -> {
+      let assert [head, ..] = [total, 7]
+      head
+    }
+  }
+}
+pub fn main() { walk(<<1, 2>>, 0) }
+"#,
+                true,
+            ),
+        ] {
+            let plan = source_plan(source);
+            let shape = CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body());
+            assert_eq!(shape.is_some(), compiled);
+            if let Some(shape) = shape {
+                assert_eq!(shape.kind, super::KernelKind::BitArray);
+                assert!(shape.repeats);
+                assert!(shape.blocks.values().any(|block| {
+                    matches!(block.terminator, super::CompiledTerminator::Interpreted)
+                }));
+                assert!(shape.checkpoints.iter().all(|point| point.int_lists == 0));
+            }
+            assert_eq!(
+                crate::runtime::run_main(&plan, &mut Vec::new()).unwrap(),
+                crate::Value::Int(3.into())
+            );
+        }
+    }
+
+    #[test]
+    fn typed_tail_exits_are_supported_without_generating_the_callee_call() {
+        use super::KernelKind;
+        let plan = source_plan(
+            "fn prepend(first: Int, second: Int, tail: List(Int)) { [first, second, ..tail] } pub fn main() { prepend(7, -9, []) }",
+        );
+        let entry = plan.int_list_function(plan.int_list_function_id(0)).body();
+        let callee = plan.int_list_function(plan.int_list_function_id(1)).body();
+        let shape = CompiledShape::inspect(entry).unwrap();
+        assert_eq!(shape.kind, KernelKind::IntList);
+        assert_eq!(entry.exits.len(), 1);
+        assert_eq!(
+            Rust::expression(&entry.exits[0]),
+            r#"
+data::function::FunctionExit::TailCall {
+    function: data::source::FunctionCallTarget {
+        function: data::function::IntListFunctionId {
+            index: 1,
+            type_id: data::type_::IntListTypeId {
+                list_type: data::type_::ListTypeId(0),
+            },
+        },
+        site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(97, 115)),
+    },
+    args: data::Storage::Static(&[
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+        data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+            local: data::graph::IntListLocalId(0),
+            type_id: data::type_::IntListTypeId {
+                list_type: data::type_::ListTypeId(0),
+            },
+        }),
+    ]),
+    transfer: data::graph::Transfer {
+        families: data::Storage::Static(&[]),
+    },
+}
+"#.trim_matches('\n')
+        );
+        let shape = CompiledShape::inspect(callee).unwrap();
+        assert_eq!(shape.kind, KernelKind::IntList);
+        assert_eq!(
+            shape.checkpoints,
+            [
+                CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 0,
+                    ints: 2,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 1
+                },
+                CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 1,
+                    ints: 2,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 2
+                },
+            ]
+        );
+        assert_eq!(
+            Rust::expression(&callee.exits[0]),
+            "data::function::FunctionExit::Return(data::graph::IntListLocalId(1))"
+        );
+    }
+
+    #[test]
+    fn numeric_int_and_bool_branches_keep_the_same_canonical_tail_exit_rule() {
+        use super::KernelKind;
+        use crate::plan::execution::function::BoolFunctionId;
+        let plan = source_plan(
+            "fn other(value: Int) { value + 2 } fn choose(value: Int, flag: Bool) { case flag { True -> other(value) False -> value } } pub fn main() { choose(7, True) }",
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        let shape = CompiledShape::inspect(body).unwrap();
+        assert_eq!(shape.kind, KernelKind::Numeric);
+        assert_eq!(shape.starts.len(), 3);
+        assert!(
+            body.exits
+                .iter()
+                .any(|exit| matches!(exit, FunctionExit::TailCall { .. }))
+        );
+        let plan = source_plan(
+            "fn other(value: Bool) { !value } fn choose(value: Bool, flag: Bool) { case flag { True -> other(value) False -> value } } pub fn main() { choose(True, False) }",
+        );
+        let body = plan.bool_function(BoolFunctionId(1)).body();
+        let shape = CompiledShape::inspect(body).unwrap();
+        assert_eq!(shape.kind, KernelKind::Numeric);
+        assert_eq!(shape.starts.len(), 3);
+        assert!(
+            body.exits
+                .iter()
+                .any(|exit| matches!(exit, FunctionExit::TailCall { .. }))
+        );
+    }
+
+    #[test]
+    fn fixed_bit_fields_repeat_with_shared_guard_failure_and_terminal_panic_prefixes() {
+        let plan = source_plan(
+            r#"
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> if value > 0 -> walk(rest, total + value)
+    <<0:8, rest:bits>> -> walk(rest, total)
+    <<>> -> total
+    _ -> panic as "incomplete"
+  }
+}
+pub fn main() { walk(<<1, 0, 2>>, 0) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        assert!(CompiledShape::inspect(body).is_none());
+        let shape = CompiledShape::inspect_bits(body).unwrap();
+        assert!(shape.repeats);
+        assert_eq!(
+            shape.checkpoints[shape.start(shape.graph.entry())].bit_arrays,
+            1
+        );
+        assert_eq!(shape.order.first(), Some(&shape.graph.entry()));
+        let matches = shape
+            .blocks
+            .values()
+            .filter(|block| matches!(block.terminator, super::CompiledTerminator::BitArray(_)))
+            .count();
+        assert_eq!(matches, 3);
+        for block in shape.blocks.values() {
+            if let super::CompiledTerminator::BitArray(matcher) = &block.terminator {
+                assert_eq!(
+                    block.terminator.targets(),
+                    [matcher.success.target(), matcher.failure.target()]
+                );
+                assert!(block.terminator.edges().is_empty());
+            }
+        }
+        assert!(
+            shape
+                .blocks
+                .values()
+                .any(|block| matches!(block.terminator, super::CompiledTerminator::Interpreted))
+        );
+        for point in &shape.checkpoints {
+            assert!(point.instruction <= shape.block(point.block).instructions.len());
+        }
+    }
+
+    #[test]
+    fn boolean_short_circuit_edges_participate_in_the_entry_repeat() {
+        let plan = source_plan(
+            r#"
+fn walk(input: BitArray, total: Int, flag: Bool) {
+  case flag && total < 10 {
+    True -> case input {
+      <<value:8, rest:bits>> -> walk(rest, total + value, flag)
+      _ -> total
+    }
+    False -> total
+  }
+}
+pub fn main() { walk(<<1, 2>>, 0, True) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        let graph = body.block_graph().as_view();
+        assert!(
+            graph
+                .blocks()
+                .any(|block| matches!(block.terminator(), Terminator::BoolBranch(_)))
+        );
+        let shape = CompiledShape::inspect_bits(body).unwrap();
+        assert!(shape.repeats);
+        assert_eq!(
+            crate::runtime::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(3.into())
+        );
+    }
+
+    #[test]
+    fn terminal_calls_keep_their_original_exit_and_scalar_bodies_need_no_bit_kernel() {
+        let plan = source_plan(
+            r#"
+fn other(total: Int) { total + 1 }
+fn walk(input: BitArray, total: Int) {
+  case input {
+    <<value:8, rest:bits>> -> walk(rest, total + value)
+    _ -> other(total)
+  }
+}
+pub fn main() { walk(<<1>>, 0) }
+"#,
+        );
+        let shapes = (0..3)
+            .map(|index| {
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(index)).body())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shapes.iter().filter(|shape| shape.is_some()).count(), 1);
+        let shape = shapes.into_iter().flatten().next().unwrap();
+        assert!(
+            shape
+                .blocks
+                .values()
+                .any(|block| matches!(block.terminator, super::CompiledTerminator::Interpreted))
+        );
+        let scalar = source_plan(
+            "fn choose(value: Int) { case value { 0 -> 1 _ -> value } } pub fn main() { choose(2) }",
+        );
+        assert!(
+            CompiledShape::inspect_bits(scalar.int_function(IntFunctionId(1)).body()).is_none()
+        );
+    }
+
+    #[test]
+    fn nonnumeric_switches_and_big_integer_switches_cannot_enter_a_generated_repeat() {
+        for source in [
+            "fn walk(input: BitArray, total: Int, flag: Float) { case flag { 0.0 -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value, flag) _ -> total } } } pub fn main() { walk(<<1>>, 0, 1.0) }",
+            "fn walk(input: BitArray, total: Int, flag: String) { case flag { \"\" -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value, flag) _ -> total } } } pub fn main() { walk(<<1>>, 0, \"x\") }",
+            "fn walk(input: BitArray, total: Int) { case total { 9223372036854775808 -> total _ -> case input { <<value:8, rest:bits>> -> walk(rest, total + value) _ -> total } } } pub fn main() { walk(<<1>>, 0) }",
+        ] {
+            let plan = source_plan(source);
+            assert!(
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_bit_fields_and_interpreted_work_inside_repetition_keep_the_original_executor() {
+        for source in [
+            "fn walk(input: BitArray, total: Int, width: Int) { case input { <<value:size(width), rest:bits>> -> walk(rest, total + value, width) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0, 8) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<value:65, rest:bits>> -> walk(rest, total + value) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:64-float, rest:bits>> -> walk(rest, total + 1) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:utf8, rest:bits>> -> walk(rest, total + 1) <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<_:8, rest:bits>> -> walk(rest, other(total)) <<>> -> total _ -> -1 } } fn other(total: Int) { total + 1 } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(input: BitArray, total: Int) { case input { <<value:8, rest:bits>> -> { echo value walk(rest, total + value) } <<>> -> total _ -> -1 } } pub fn main() { walk(<<1>>, 0) }",
+            "fn walk(left: BitArray, right: BitArray, total: Int) { case left, right { <<a:8, l:bits>>, <<b:8, r:bits>> -> walk(l, r, total + a + b) _, _ -> total } } pub fn main() { walk(<<1>>, <<2>>, 0) }",
+        ] {
+            let plan = source_plan(source);
+            assert!(
+                CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                "{source}"
+            );
+        }
     }
 
     #[test]
@@ -560,7 +1057,7 @@ pub fn main() { walk(3, 0) }
         );
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         assert!(shape.repeats);
-        assert_eq!(shape.starts, [0, 1, 2]);
+        assert_eq!(shape.starts, BTreeMap::from([(0, 0), (1, 1), (2, 2)]));
         assert_eq!(shape.joins, [None, None, None]);
         assert_eq!(
             shape.checkpoints,
@@ -570,6 +1067,7 @@ pub fn main() { walk(3, 0) }
                     instruction: 0,
                     ints: 2,
                     bools: 0,
+                    bit_arrays: 0,
                     int_lists: 0,
                 },
                 CompiledCheckpoint {
@@ -577,6 +1075,7 @@ pub fn main() { walk(3, 0) }
                     instruction: 0,
                     ints: 1,
                     bools: 0,
+                    bit_arrays: 0,
                     int_lists: 0,
                 },
                 CompiledCheckpoint {
@@ -584,6 +1083,7 @@ pub fn main() { walk(3, 0) }
                     instruction: 0,
                     ints: 2,
                     bools: 0,
+                    bit_arrays: 0,
                     int_lists: 0,
                 },
                 CompiledCheckpoint {
@@ -591,6 +1091,7 @@ pub fn main() { walk(3, 0) }
                     instruction: 1,
                     ints: 4,
                     bools: 0,
+                    bit_arrays: 0,
                     int_lists: 0,
                 },
             ]
@@ -619,7 +1120,7 @@ pub fn main() { choose(7, True) }
         assert!(!shape.repeats);
         let join = shape.joins[0].unwrap();
         assert_ne!(join, shape.graph.entry());
-        let point = shape.checkpoints[shape.starts[join.index()]];
+        let point = shape.checkpoints[shape.start(join)];
         assert_eq!((point.instruction, point.ints, point.bools), (0, 1, 0));
         assert_eq!(
             shape.checkpoints.len(),
@@ -655,8 +1156,9 @@ pub fn main() { choose(7, True) }
 fn other(value: Int) { value + 2 }
 
 fn choose(value: Int, flag: Bool) {
+  let result = other(value)
   case flag {
-    True -> other(value)
+    True -> result
     False -> value
   }
 }
@@ -1114,7 +1616,7 @@ pub fn main() { select([7], True) }
         assert_eq!(
             shape
                 .blocks
-                .iter()
+                .values()
                 .flat_map(|block| &block.instructions)
                 .filter(|instruction| matches!(
                     instruction,
@@ -1126,7 +1628,7 @@ pub fn main() { select([7], True) }
         assert_eq!(
             shape
                 .blocks
-                .iter()
+                .values()
                 .flat_map(|block| &block.instructions)
                 .filter(|instruction| matches!(
                     instruction,

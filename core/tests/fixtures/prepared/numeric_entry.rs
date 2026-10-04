@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 13,
+    format: 16,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -512,6 +512,7 @@ pub fn main() {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -519,6 +520,7 @@ pub fn main() {
                                     instruction: 0,
                                     ints: 1,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -526,6 +528,7 @@ pub fn main() {
                                     instruction: 0,
                                     ints: 2,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
@@ -533,6 +536,7 @@ pub fn main() {
                                     instruction: 1,
                                     ints: 4,
                                     bools: 0,
+                                    bit_arrays: 0,
                                     int_lists: 0,
                                 },
                             ]),
@@ -541,6 +545,10 @@ pub fn main() {
                     },
                 ]),
                 bools: data::Storage::Static(&[
+                ]),
+                customs: data::Storage::Static(&[
+                ]),
+                int_lists: data::Storage::Static(&[
                 ]),
             }
         },

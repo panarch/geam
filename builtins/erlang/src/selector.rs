@@ -1,7 +1,7 @@
 use crate::schema::SelectorSchema;
 use crate::{Component, GleamErlangHostProfile};
 use ecow::EcoString;
-use geam_core::host::native::NativeCallable;
+use geam_core::host::native::NativeFunctionValue;
 use geam_core::host::{
     HostComponentProfile, HostExternalEquality, HostExternalHashing, HostExternalInspection,
     HostExternalStorage, HostExternalStore, HostProfile,
@@ -20,8 +20,8 @@ pub(crate) struct Entry<Profile: HostProfile> {
 }
 
 pub(crate) struct Handler<Profile: HostProfile> {
-    pub(crate) callback: NativeCallable<Profile>,
-    pub(crate) mappings: im::OrdMap<usize, NativeCallable<Profile>>,
+    pub(crate) callback: NativeFunctionValue<Profile>,
+    pub(crate) mappings: im::OrdMap<usize, NativeFunctionValue<Profile>>,
     pub(crate) native: NativeValue,
 }
 

@@ -1,7 +1,53 @@
 use super::{
-    CallbackType, FunctionInputType, FunctionInputValueType, FunctionModel,
+    CallbackRole, CallbackType, FunctionInputType, FunctionInputValueType, FunctionModel,
     FunctionOutputValueType, FunctionReturnType, FunctionRootOutputValueType, ProviderValueType,
 };
+use proc_macro2::TokenStream;
+use quote::quote;
+
+impl CallbackRole {
+    pub(super) fn wrapper(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::Callback),
+            Self::Retained => quote!(#support::FunctionValue),
+        }
+    }
+
+    pub(super) fn context(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::ProviderCallbackContext),
+            Self::Retained => quote!(#support::ProviderFunctionValueContext),
+        }
+    }
+
+    pub(super) fn owned_context(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::ProviderOwnedCallbackContext),
+            Self::Retained => quote!(#support::ProviderOwnedFunctionValueContext),
+        }
+    }
+
+    pub(super) fn host(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::HostFunctionType),
+            Self::Retained => quote!(#support::HostFunctionValueType),
+        }
+    }
+
+    pub(super) fn decoder(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::ProviderCallbackListDecoder),
+            Self::Retained => quote!(#support::ProviderFunctionValueListDecoder),
+        }
+    }
+
+    pub(super) fn owned_decoder(self, support: &TokenStream) -> TokenStream {
+        match self {
+            Self::Strict => quote!(#support::ProviderOwnedCallbackListDecoder),
+            Self::Retained => quote!(#support::ProviderOwnedFunctionValueListDecoder),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum InputCodec<'model> {

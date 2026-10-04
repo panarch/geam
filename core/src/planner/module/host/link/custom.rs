@@ -194,7 +194,7 @@ fn validate_host_custom_schema_with_constructions(
         });
     }
     let expected = expected.with_shared_access(actual.requires_shared_access());
-    if actual != &expected {
+    if !actual.matches_source_fields(&expected) {
         return Err(PlanError::HostProviderLink {
             package: package.clone(),
             module: site.module().into(),

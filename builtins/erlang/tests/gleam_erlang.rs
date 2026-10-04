@@ -114,6 +114,11 @@ fn normal_and_kill_exit_signals_distinguish_self_other_and_trapping_processes() 
 }
 
 #[test]
+fn generic_selectors_preserve_symbolic_handlers_and_inhabited_list_inputs() {
+    run_fixture("generic_selectors");
+}
+
+#[test]
 fn persistent_selector_operations_agree_with_their_native_dynamic_views() {
     run_fixture("selectors");
 }

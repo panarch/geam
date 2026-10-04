@@ -1,17 +1,19 @@
 use ecow::EcoString;
+use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
 use geam_core::{
-    ExecutionError, HostCall, HostCallCompletion, HostCallError, HostCallable, HostConstructions,
-    HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
-    HostExternalInspection, HostExternalSchema, HostExternalStorage, HostExternalStore,
-    HostExternalType, HostFailure, HostFunctionType, HostProfile, HostProvider, HostProviderModule,
-    HostProviderSet, HostStoredType, HostStoredValue, HostTupleType, HostTypeIndex0,
-    HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+    ExecutionError, HostCall, HostCallCompletion, HostCallContinuation, HostCallError,
+    HostCallable, HostConstructions, HostExternal, HostExternalBinding, HostExternalEquality,
+    HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
+    HostExternalStore, HostExternalType, HostFailure, HostFunctionType, HostFunctionValue,
+    HostFunctionValueType, HostOwnedCompletion, HostOwnedFunctionValue, HostProfile, HostProvider,
+    HostProviderModule, HostProviderSet, HostStoredType, HostStoredValue, HostTupleType,
+    HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
     HostedExecution, ListValue, ModuleSource, PackageSource, PanicKind, Value,
     compile_typed_host_program, plan_host_program,
 };
 use num_bigint::BigInt;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 struct StoredProfile;
 
@@ -635,6 +637,179 @@ pub fn main() {
         ),
         Ok(expected),
     );
+}
+
+#[test]
+fn retained_function_values_reject_foreign_invocation_before_input_conversion() {
+    struct Profile;
+    struct Provider;
+    type Function =
+        HostOwnedFunctionValue<Profile, Provider, IntFunctionArguments, BigInt, HostTypeListEnd>;
+    #[derive(Default)]
+    struct State {
+        function: Arc<Mutex<Option<Function>>>,
+        conversions: Arc<AtomicUsize>,
+    }
+    impl HostProfile for Profile {
+        type RunState = State;
+        type ExternalStores = ();
+        type ExecutionState = ();
+    }
+    impl HostProvider<Profile> for Provider {
+        type State = State;
+
+        fn project(state: &mut State) -> &mut State {
+            state
+        }
+    }
+    fn keep<'call>(
+        mut call: HostCall<'call, Profile, Provider, ()>,
+        constructions: HostConstructions<'call, HostTypeListEnd>,
+        function: HostFunctionValue<'call, IntFunctionArguments, BigInt>,
+    ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+        let function = call.owned_function_value(function, &constructions);
+        *call.state().function.lock().unwrap() = Some(function);
+        Ok(call.return_value(()))
+    }
+    fn invoke<'call>(
+        mut call: HostCall<'call, Profile, Provider, BigInt>,
+        constructions: HostConstructions<'call, HostTypeListEnd>,
+        value: BigInt,
+    ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+        let function = call
+            .state()
+            .function
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .callable()
+            .unwrap();
+        let conversions = Arc::clone(&call.state().conversions);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let value = function
+                    .try_invoke(
+                        &context,
+                        move |_, _| {
+                            conversions.fetch_add(1, Ordering::SeqCst);
+                            Ok((value, ()))
+                        },
+                        |_, _, value| Ok(value),
+                    )
+                    .await?;
+                Ok(HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(value))
+                }))
+            })
+        }))
+    }
+    fn program() -> HostedModuleBuilder<Profile> {
+        let provider = HostProviderModule::<Profile>::new("application", "main")
+            .unwrap()
+            .with_scoped_function_and_constructions::<
+                Provider,
+                (HostFunctionValueType<IntFunctionArguments, BigInt>,),
+                (),
+                HostTypeListEnd,
+                _,
+            >("keep", keep)
+            .unwrap()
+            .with_resumable_function::<Provider, (BigInt,), BigInt, HostTypeListEnd, _>(
+                "invoke", invoke,
+            )
+            .unwrap();
+        let source = r#"
+@external(erlang, "host", "keep") fn keep(function: fn(Int) -> Int) -> Nil
+@external(erlang, "host", "invoke") fn invoke(value: Int) -> Int
+pub fn save() { keep(fn(value) { echo value value + 1 }) }
+pub fn apply(value: Int) { invoke(value) }
+"#;
+        let typed = compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<EcoString>::new(),
+                [ModuleSource::new("main", "main.gleam", source)],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        HostedModuleBuilder::new(typed).unwrap()
+    }
+
+    let (mut bindings, save) = program()
+        .function(FunctionDeclaration::<(), ()>::new("save"))
+        .unwrap();
+    let apply = bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("apply"))
+        .unwrap();
+    let mut module = bindings.seal().unwrap();
+    let (bindings, foreign_apply) = program()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("apply"))
+        .unwrap();
+    let mut foreign = bindings.seal().unwrap();
+    let mut state = State::default();
+    let mut foreign_state = State {
+        function: Arc::clone(&state.function),
+        conversions: Arc::clone(&state.conversions),
+    };
+    let conversions = Arc::clone(&state.conversions);
+    let mut echo = Vec::new();
+    let mut foreign_echo = Vec::new();
+    let host = crate::execution_fixture::TestHost::default();
+    host.block_on(
+        module.with_execution(&host, &mut state, &mut echo, async |scope| {
+            scope.call(&save, ()).await.unwrap();
+            assert_eq!(
+                scope.call(&apply, (41.into(),)).await.unwrap(),
+                BigInt::from(42)
+            );
+            assert_eq!(conversions.load(Ordering::SeqCst), 1);
+            foreign
+                .with_execution(
+                    &host,
+                    &mut foreign_state,
+                    &mut foreign_echo,
+                    async |other| {
+                        assert_eq!(
+                            other.call(&foreign_apply, (99.into(),)).await,
+                            Err(CallError::Cancelled)
+                        );
+                        assert_eq!(conversions.load(Ordering::SeqCst), 1);
+                    },
+                )
+                .await
+                .unwrap()
+                .try_into_value()
+                .unwrap();
+            assert_eq!(
+                scope.call(&apply, (42.into(),)).await.unwrap(),
+                BigInt::from(43)
+            );
+        }),
+    )
+    .unwrap()
+    .try_into_value()
+    .unwrap();
+    assert_eq!(conversions.load(Ordering::SeqCst), 2);
+    assert!(foreign_echo.is_empty());
+    assert_eq!(echo.len(), 2);
+    assert_eq!(echo[0].value(), &Value::Int(41.into()));
+    assert_eq!(echo[1].value(), &Value::Int(42.into()));
+    let closed = host
+        .block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                scope.call(&apply, (99.into(),)).await
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    assert_eq!(closed, Err(CallError::Cancelled));
+    assert_eq!(conversions.load(Ordering::SeqCst), 2);
+    assert_eq!(echo.len(), 2);
 }
 
 #[test]

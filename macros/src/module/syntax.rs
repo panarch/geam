@@ -1995,20 +1995,33 @@ pub(super) fn callback_type(
     support: &TokenStream,
 ) -> syn::Result<Option<CallbackType>> {
     if let Type::Reference(reference) = type_
-        && is_collection(&reference.elem, "Callback")
+        && (is_collection(&reference.elem, "Callback")
+            || is_collection(&reference.elem, "FunctionValue"))
     {
         return Err(syn::Error::new_spanned(
             type_,
-            "Callback arguments must be passed by value",
+            format!(
+                "{} arguments must be passed by value",
+                if is_collection(&reference.elem, "FunctionValue") {
+                    "FunctionValue"
+                } else {
+                    "Callback"
+                }
+            ),
         ));
     }
-    let Some((signature, path)) = collection_item_with_path(type_, "Callback")? else {
+    let (role, wrapper) = if is_collection(type_, "FunctionValue") {
+        (super::CallbackRole::Retained, "FunctionValue")
+    } else {
+        (super::CallbackRole::Strict, "Callback")
+    };
+    let Some((signature, path)) = collection_item_with_path(type_, wrapper)? else {
         return Ok(None);
     };
     let Type::BareFn(signature) = signature else {
         return Err(syn::Error::new_spanned(
             type_,
-            "Callback<T> requires a safe non-variadic Rust fn signature",
+            format!("{wrapper}<T> requires a safe non-variadic Rust fn signature"),
         ));
     };
     if signature.lifetimes.is_some()
@@ -2018,7 +2031,9 @@ pub(super) fn callback_type(
     {
         return Err(syn::Error::new_spanned(
             &signature,
-            "Callback<T> requires a safe non-variadic Rust fn signature without lifetimes",
+            format!(
+                "{wrapper}<T> requires a safe non-variadic Rust fn signature without lifetimes"
+            ),
         ));
     }
     if signature.inputs.len() > 7 {
@@ -2065,6 +2080,7 @@ pub(super) fn callback_type(
     )?;
 
     Ok(Some(CallbackType {
+        role,
         signature,
         path,
         arguments,

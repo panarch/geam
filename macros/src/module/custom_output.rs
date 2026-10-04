@@ -146,7 +146,8 @@ fn output_type(
         }
         StaticValueType::Callback(callback) => {
             let signature = &callback.signature;
-            quote!(#support::Callback<#signature>)
+            let wrapper = callback.role.wrapper(support);
+            quote!(#wrapper<#signature>)
         }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_ } => {

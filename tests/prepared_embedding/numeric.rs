@@ -69,7 +69,7 @@ geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
     fs::write(
         application.join("src/main.rs"),
         r#"
-use data::compiled::CompiledProgress;
+use data::compiled::{CompiledImplementation, CompiledProgress};
 use data::compiled::numeric::NumericValues;
 use geam::__prepared_support as data;
 use geam::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
@@ -104,7 +104,10 @@ fn main() {
                     .unwrap(),
                 BigInt::from(7)
             );
-            let data::compiled::CompiledImplementation::Numeric(implementation) = &PROGRAM.program.compiled.ints[0].implementation else { panic!("numeric target"); };
+            let implementation = &PROGRAM.program.compiled.ints[0].implementation;
+            let CompiledImplementation::Numeric(implementation) = implementation else {
+                panic!("Boolean fixture must select the scalar kernel");
+            };
             assert_eq!(implementation.checkpoints.len(), 504);
             for allowance in [1, 1024] {
                 for (flag, expected) in [(true, 7), (false, -7)] {
@@ -113,8 +116,7 @@ fn main() {
                         bools: vec![flag],
                     };
                     let mut budget = 1;
-                    let first =
-                        (implementation.run)(implementation.entry, &mut values, &mut budget);
+                    let first = (implementation.run)(implementation.entry, &mut values, &mut budget);
                     assert_eq!(first, CompiledProgress::Yield(1));
                     assert_eq!(budget, 0);
                     assert_eq!(values.bools, [flag, !flag]);
@@ -131,6 +133,7 @@ fn main() {
                                 let checkpoint = implementation.checkpoints[next];
                                 assert_eq!(values.ints.len(), checkpoint.ints);
                                 assert_eq!(values.bools.len(), checkpoint.bools);
+                                assert_eq!(checkpoint.bit_arrays, 0);
                                 point = next;
                             }
                             CompiledProgress::Complete(_) => {

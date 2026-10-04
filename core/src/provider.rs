@@ -19,11 +19,14 @@ pub use call::{
     ProviderActiveCall, ProviderCallPlaceholder, ProviderExecutionCall, ProviderFutureCall,
     ProviderSharedCall, ProviderWorkObservation,
 };
-pub use callback::Callback;
+pub use callback::{Callback, FunctionValue};
 #[doc(hidden)]
 pub use callback::{
-    MissingCallbackContext, ProviderCallbackCodec, ProviderCallbackContext,
-    ProviderCallbackListDecoder, ProviderOwnedCallbackContext, ProviderOwnedCallbackListDecoder,
+    MissingCallbackContext, MissingFunctionValueContext, ProviderCallbackCodec,
+    ProviderCallbackContext, ProviderCallbackListDecoder, ProviderFunctionValueContext,
+    ProviderFunctionValueListDecoder, ProviderOwnedCallbackContext,
+    ProviderOwnedCallbackListDecoder, ProviderOwnedFunctionValueContext,
+    ProviderOwnedFunctionValueListDecoder,
 };
 #[doc(hidden)]
 pub use codec::{

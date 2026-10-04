@@ -168,6 +168,7 @@ pub(super) fn is_qualified_generic_declaration(type_: &Type) -> bool {
                         | "List"
                         | "Vec"
                         | "Callback"
+                        | "FunctionValue"
                         | "Future"
                         | "Option"
                         | "Result"

@@ -241,8 +241,8 @@ pub mod source {
 }
 pub mod compiled {
     pub use crate::plan::execution::compiled::{
-        CompiledCheckpoint, CompiledFunction, CompiledFunctions, CompiledImplementation,
-        IntListImplementation, NumericImplementation,
+        BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
+        CompiledImplementation, IntListImplementation, NumericImplementation,
     };
     pub use crate::runtime::compiled::CompiledProgress;
 
@@ -253,6 +253,12 @@ pub mod compiled {
     pub mod int_list {
         pub use crate::runtime::compiled::int_list::{
             IntList, IntListElement, IntListKernel, IntListOps, IntListReader, IntListValues,
+        };
+    }
+
+    pub mod bit_array {
+        pub use crate::runtime::compiled::bit_array::{
+            BitArrayKernel, BitArrayRange, BitArrayValues,
         };
     }
 }

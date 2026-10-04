@@ -876,7 +876,8 @@ fn host_type(type_: &HostTypeDescriptor) -> std::sync::Arc<gleam_compiler_core::
         HostTypeDescriptor::Function { arguments, return_ } => {
             host_function_type(arguments, return_)
         }
-        HostTypeDescriptor::OpaqueFunction { arguments, return_ } => {
+        HostTypeDescriptor::OpaqueFunction { arguments, return_ }
+        | HostTypeDescriptor::FunctionValue { arguments, return_ } => {
             host_function_type(arguments, return_)
         }
         HostTypeDescriptor::Custom { schema, arguments } => named(
@@ -1305,6 +1306,13 @@ mod tests {
                     return_: Box::new(HostTypeDescriptor::Nil),
                 },
                 fn_(vec![string()], nil()),
+            ),
+            (
+                HostTypeDescriptor::FunctionValue {
+                    arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::String),
+                },
+                fn_(vec![generic_var(0)], string()),
             ),
             (
                 HostTypeDescriptor::Custom {
