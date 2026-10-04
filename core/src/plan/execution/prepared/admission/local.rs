@@ -3,6 +3,7 @@ mod output;
 pub(super) use output::Output;
 
 use super::pattern::BindingValue;
+use super::place::Place;
 use super::type_::{ListSlot, Slot, TupleSlot, TypeError, Types};
 use crate::plan::execution::graph::{self, ParamLocal, ParamSlot};
 use std::collections::HashMap;
@@ -13,7 +14,7 @@ pub(super) struct Locals<'data> {
     tuples: Vec<TupleSlot<'data>>,
     lists: HashMap<Family, Vec<ListSlot<'data>>>,
     constructors: HashMap<Address, Vec<usize>>,
-    exact_constructors: HashMap<Address, usize>,
+    exact_constructors: HashMap<Address, (Place, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,9 +98,15 @@ impl<'data> Locals<'data> {
             .filter_map(ParamLocal::storage_slot)
     }
 
-    pub(super) fn set_constructor(&mut self, local: &ParamLocal, constructor: usize) {
+    pub(super) fn set_constructor(&mut self, local: &ParamLocal, place: Place, constructor: usize) {
         self.exact_constructors
-            .insert(Address::of(local), constructor);
+            .insert(Address::of(local), (place, constructor));
+    }
+
+    pub(super) fn known_constructors(&self) -> impl Iterator<Item = (&Place, usize)> + '_ {
+        self.exact_constructors
+            .values()
+            .map(|(place, constructor)| (place, *constructor))
     }
 
     pub(super) fn value(&self, slot: Slot<'_, '_>) -> BindingValue {
@@ -116,7 +123,7 @@ impl<'data> Locals<'data> {
             constructor: self
                 .exact_constructors
                 .get(&Address::of(&slot.local))
-                .copied(),
+                .map(|(_, constructor)| *constructor),
         }
     }
 
