@@ -2334,6 +2334,9 @@ static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/va
 static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/nested_patterns.rs");
 
+static SYMBOLIC_PATTERNS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/symbolic_patterns.rs");
+
 static MULTI_SUBJECT_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/multi_subject_patterns.rs");
 
@@ -2356,6 +2359,189 @@ static ENTRY_FAILURE: data::HostedEntryArtifact = include!("fixtures/prepared/en
 
 #[path = "fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
+
+#[path = "fixtures/prepared/opaque_provider.rs"]
+mod opaque_provider;
+
+static OPAQUE_FUNCTIONS: data::HostedModuleArtifact =
+    include!("fixtures/prepared/opaque_functions.rs");
+
+#[test]
+fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_roles() {
+    assert_eq!(
+        opaque_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/opaque_functions.rs").trim(),
+    );
+    assert_eq!(
+        OPAQUE_FUNCTIONS
+            .load(opaque_provider::hosts(true))
+            .err()
+            .unwrap()
+            .to_string(),
+        "prepared provider registration mismatch: Registration { package: \"application\", module: \"opaque_functions\", function: \"keep\", reason: Declaration }; regenerate with the matching providers",
+    );
+    OPAQUE_FUNCTIONS
+        .load(opaque_provider::hosts(false))
+        .unwrap();
+
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main, concrete, compound) = if prepared {
+                let mut bindings = OPAQUE_FUNCTIONS
+                    .load(opaque_provider::hosts(false))
+                    .unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal(), main, concrete, compound)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "opaque_functions",
+                    opaque_provider::packages(),
+                    opaque_provider::hosts(false),
+                )
+                .unwrap();
+                let (mut bindings, main) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main, concrete, compound)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            (
+                                scope.call(&main, ()).await.unwrap(),
+                                scope.call(&concrete, ()).await.unwrap(),
+                                scope.call(&compound, ()).await.unwrap(),
+                            )
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(result, (true, (true, "retained".into()), (true, true)));
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
+#[path = "fixtures/prepared/function_value_provider.rs"]
+mod function_value_provider;
+
+static FUNCTION_VALUES: data::HostedModuleArtifact =
+    include!("fixtures/prepared/function_values.rs");
+
+#[test]
+fn general_function_values_preserve_owned_sources_and_exact_prepared_roles() {
+    use function_value_provider::FieldRole;
+    assert_eq!(
+        function_value_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/function_values.rs").trim()
+    );
+    for role in [FieldRole::Opaque, FieldRole::Strict] {
+        assert_eq!(
+            FUNCTION_VALUES
+                .load(function_value_provider::hosts(role))
+                .err()
+                .unwrap()
+                .to_string(),
+            "prepared provider registration mismatch: Registration { package: \"application\", module: \"function_values\", function: \"keep_holder\", reason: Declaration }; regenerate with the matching providers"
+        );
+    }
+    FUNCTION_VALUES
+        .load(function_value_provider::hosts(FieldRole::General))
+        .unwrap();
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main, concrete, compound) = if prepared {
+                let mut bindings = FUNCTION_VALUES
+                    .load(function_value_provider::hosts(FieldRole::General))
+                    .unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal(), main, concrete, compound)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "function_values",
+                    function_value_provider::packages(),
+                    function_value_provider::hosts(FieldRole::General),
+                )
+                .unwrap();
+                let (mut bindings, main) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main, concrete, compound)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            (
+                                scope.call(&main, ()).await.unwrap(),
+                                scope.call(&concrete, ()).await.unwrap(),
+                                scope.call(&compound, ()).await.unwrap(),
+                            )
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    result,
+                    (true, (true, true, "retained".into()), (true, true))
+                );
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
 
 static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
 
@@ -2486,6 +2672,41 @@ fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_resu
                 module.call(&main, (), &mut echo).unwrap().as_str(),
                 "present:missing:failed:nested:empty:none:done"
             );
+            assert!(echo.is_empty());
+        }
+    }
+}
+
+#[test]
+fn symbolic_nested_patterns_preserve_dynamic_and_compiled_prepared_results() {
+    let source = include_str!("fixtures/prepared/symbolic_patterns.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), ()>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/symbolic_patterns.rs").trim()
+    );
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = SYMBOLIC_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            module.call(&main, (), &mut echo).unwrap();
             assert!(echo.is_empty());
         }
     }
@@ -2908,7 +3129,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 15; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 16; regenerate the prepared program"
     );
 }
 

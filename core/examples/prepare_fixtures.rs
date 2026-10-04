@@ -22,6 +22,12 @@ mod callable_declarations;
 #[path = "../tests/fixtures/prepared/shared_provider.rs"]
 mod shared_provider;
 
+#[path = "../tests/fixtures/prepared/opaque_provider.rs"]
+mod opaque_provider;
+
+#[path = "../tests/fixtures/prepared/function_value_provider.rs"]
+mod function_value_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
@@ -328,6 +334,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let symbolic_patterns = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/symbolic_patterns.gleam"),
+    )?;
+    let (symbolic_patterns, _) = ModuleBuilder::new(symbolic_patterns)?
+        .function(FunctionDeclaration::<(), ()>::new("main"))?;
+
     let multi_subject = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -437,6 +451,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("int_list_hosted.rs", hosted_int_list.prepare()?.emit_rust()),
         ("int_list_entry.rs", int_list_entry.emit_rust()),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
+        (
+            "opaque_functions.rs",
+            opaque_provider::prepare().emit_rust(),
+        ),
+        (
+            "function_values.rs",
+            function_value_provider::prepare().emit_rust(),
+        ),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (
             "callable_embedding.rs",
@@ -453,18 +475,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             construction_hosted.prepare()?.emit_rust(),
         ),
         ("list_native.rs", list_native.prepare()?.emit_rust()),
-        ("shared_custom.rs", shared_provider::prepare().emit_rust()),
-        ("callables.rs", callable_declarations::prepare().emit_rust()),
-        (
-            "callable_embedding.rs",
-            callable_declarations::prepare_scoped().emit_rust(),
-        ),
-        (
-            "callable_views.rs",
-            callable_declarations::prepare_native_views().emit_rust(),
-        ),
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
+        (
+            "symbolic_patterns.rs",
+            symbolic_patterns.prepare().emit_rust(),
+        ),
         (
             "multi_subject_patterns.rs",
             multi_subject.prepare().emit_rust(),

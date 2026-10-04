@@ -9,8 +9,8 @@ use geam::{
     HostCustomIndex0, HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding,
     HostExternalEquality, HostExternalHashing, HostExternalInspection, HostExternalSchema,
     HostExternalStorage, HostExternalStore, HostExternalType, HostFailure, HostFunctionType,
-    HostListType, HostOwnedCompletion, HostProvider, HostProviderComponent,
-    HostProviderComponentInitialization, HostProviderComponentRegistration,
+    HostFunctionValue, HostFunctionValueType, HostListType, HostOwnedCompletion, HostProvider,
+    HostProviderComponent, HostProviderComponentInitialization, HostProviderComponentRegistration,
     HostProviderConfiguration, HostProviderInitializationError, HostProviderModule,
     HostRegistrationError, HostReturns, HostTypeIndex0, HostTypeIndexNext, HostTypeList,
     HostTypeListEnd, HostTypeParameter,
@@ -53,6 +53,7 @@ type Cleanup = HostTypeParameter<1>;
 type UnitArguments = HostTypeList<(), HostTypeListEnd>;
 type GenericTargets = HostTypeList<(), HostTypeList<Output, HostTypeListEnd>>;
 type OutputTarget = HostTypeList<Output, HostTypeListEnd>;
+type GeneralFunction = HostFunctionValueType<OutputTarget, StringValue>;
 
 type TransformArguments = HostTypeList<StringValue, HostTypeListEnd>;
 type Transform = HostFunctionType<TransformArguments, StringValue>;
@@ -149,6 +150,8 @@ where
             .and_then(|provider| provider.with_scoped_function::<Provider, (), Output, _>("produce", produce::<Profile>))
             .and_then(|provider| provider.with_resumable_function::<Provider, (), Output, HostTypeListEnd, _>("late_failure", late_failure::<Profile>))
             .and_then(|provider| provider.with_resumable_native_function::<Provider, (), Output, OutputTarget, _>("native_value", NativeRules::default(), native_value::<Profile>))
+            .and_then(|provider| provider.with_scoped_function::<Provider, (GeneralFunction,), GeneralFunction, _>("keep_function", keep_function::<Profile>))
+            .and_then(|provider| provider.with_scoped_function::<Provider, (GeneralFunction,), bool, _>("function_is_callable", function_is_callable::<Profile>))
             .map(|provider| vec![provider])
     }
 }
@@ -162,6 +165,20 @@ where
     fn project(state: &mut Profile::RunState) -> &mut Self::State {
         Profile::component_state(state)
     }
+}
+
+fn keep_function<'call, Profile: HostComponentProfile<Component>>(
+    call: HostCall<'call, Profile, Provider, GeneralFunction>,
+    function: HostFunctionValue<'call, OutputTarget, StringValue>,
+) -> Result<HostCallCompletion<'call, GeneralFunction>, HostCallError> {
+    Ok(call.return_value(function))
+}
+
+fn function_is_callable<'call, Profile: HostComponentProfile<Component>>(
+    call: HostCall<'call, Profile, Provider, bool>,
+    function: HostFunctionValue<'call, OutputTarget, StringValue>,
+) -> Result<HostCallCompletion<'call, bool>, HostCallError> {
+    Ok(call.return_value(function.callable().is_some()))
 }
 
 impl HostCallableSchema for Prefix {

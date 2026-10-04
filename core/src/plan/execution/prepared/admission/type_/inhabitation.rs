@@ -78,6 +78,42 @@ impl Types<'_> {
             })
     }
 
+    pub(in crate::plan::execution::prepared::admission) fn has_all_inhabited_constructors(
+        &self,
+        shape: &CustomValueShapeDescriptor,
+    ) -> bool {
+        let type_ = &self.customs.types[shape.type_id.index()];
+        if type_.constructors.len() == type_.constructor_count {
+            return true;
+        }
+        let mut active = HashSet::new();
+        let mut known = HashSet::new();
+        let arguments = shape
+            .arguments
+            .iter()
+            .map(|argument| {
+                self.shape_inhabited(
+                    &self.shapes.shapes[argument.index()],
+                    &mut active,
+                    &mut known,
+                )
+            })
+            .collect::<Vec<_>>();
+        self.definition_of(shape.type_id)
+            .constructors
+            .iter()
+            .enumerate()
+            .all(|(index, constructor)| {
+                type_
+                    .constructors
+                    .iter()
+                    .any(|stored| stored.id.index == index)
+                    || !constructor.fields.iter().all(|field| {
+                        self.template_inhabited(&field.type_, &arguments, &mut active, &mut known)
+                    })
+            })
+    }
+
     fn shape_inhabited(
         &self,
         shape: &ValueShapeDescriptor,

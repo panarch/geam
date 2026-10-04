@@ -135,12 +135,19 @@ struct GenericValueType {
 
 #[derive(Clone)]
 struct CallbackType {
+    role: CallbackRole,
     signature: TypeBareFn,
     path: TypePath,
     arguments: Vec<FunctionReturnType>,
     return_: Box<FunctionInputType>,
     codec: Ident,
     generics: Vec<Ident>,
+}
+
+#[derive(Clone, Copy)]
+enum CallbackRole {
+    Strict,
+    Retained,
 }
 
 #[derive(Clone)]
@@ -3156,6 +3163,46 @@ mod tests {
             "Callback :: < _ , geam_core :: __macro_support :: ProviderOwnedCallbackContext"
         ));
         assert!(expansion.contains("with_resumable_function"));
+    }
+
+    #[test]
+    fn retained_function_shape_diagnostics_name_the_declared_role() {
+        for (type_, expected) in [
+            (
+                quote!(&FunctionValue<fn() -> bool>),
+                "FunctionValue arguments must be passed by value",
+            ),
+            (
+                quote!(FunctionValue<bool>),
+                "FunctionValue<T> requires a safe non-variadic Rust fn signature",
+            ),
+            (
+                quote!(FunctionValue<unsafe fn() -> bool>),
+                "FunctionValue<T> requires a safe non-variadic Rust fn signature without lifetimes",
+            ),
+            (
+                quote!(FunctionValue<for<'a> fn(&'a bool) -> bool>),
+                "FunctionValue<T> requires a safe non-variadic Rust fn signature without lifetimes",
+            ),
+            (
+                quote!(FunctionValue<fn(bool, bool, bool, bool, bool, bool, bool, bool)>),
+                "provider callbacks support at most seven source arguments",
+            ),
+            (
+                quote!(FunctionValue<bool, bool>),
+                "FunctionValue requires exactly one type argument",
+            ),
+        ] {
+            assert_eq!(
+                expansion_error(quote! {
+                    mod counter {
+                        #[geam::function]
+                        fn retain(_function: #type_) -> () {}
+                    }
+                }),
+                expected,
+            );
+        }
     }
 
     #[test]

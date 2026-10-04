@@ -2,8 +2,8 @@ use crate::host::HostCodecScope;
 use crate::host::{
     ExternalPayloadLease, HostCallArguments, HostCustomArgumentSlot, HostCustomToken,
     HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot, HostFunctionToken,
-    HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue, HostTupleArgumentSlot,
-    HostTupleToken, HostValueArgumentSlot, HostValueToken,
+    HostFunctionValueToken, HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue,
+    HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
 use crate::runtime::{StoredRuntimeList, StoredRuntimeValue};
 
@@ -20,6 +20,7 @@ pub(crate) trait HostTokenRuntime {
     fn custom_token(&self, value: HostValueToken) -> HostCustomToken;
     fn external_token(&self, value: HostValueToken) -> HostExternalToken;
     fn function_token(&self, value: HostValueToken) -> HostFunctionToken;
+    fn function_value_token(&self, value: HostValueToken) -> HostFunctionValueToken;
 }
 
 pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {

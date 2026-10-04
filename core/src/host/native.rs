@@ -13,7 +13,7 @@ use std::sync::Arc;
 mod callback;
 
 pub use crate::runtime::NativeValues;
-pub use callback::NativeCallable;
+pub use callback::{NativeCallable, NativeFunctionValue};
 
 /// Native external conversions paired with a single host registration.
 ///

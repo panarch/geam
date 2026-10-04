@@ -35,6 +35,26 @@ impl HostTypeDescriptor {
                     .collect(),
                 return_: Box::new(Self::from_schema(return_, arguments, schemas)),
             },
+            HostSchemaType::OpaqueFunction {
+                arguments: inputs,
+                return_,
+            } => Self::OpaqueFunction {
+                arguments: inputs
+                    .iter()
+                    .map(|item| Self::from_schema(item, arguments, schemas))
+                    .collect(),
+                return_: Box::new(Self::from_schema(return_, arguments, schemas)),
+            },
+            HostSchemaType::FunctionValue {
+                arguments: inputs,
+                return_,
+            } => Self::FunctionValue {
+                arguments: inputs
+                    .iter()
+                    .map(|item| Self::from_schema(item, arguments, schemas))
+                    .collect(),
+                return_: Box::new(Self::from_schema(return_, arguments, schemas)),
+            },
             HostSchemaType::Custom {
                 package,
                 module,
@@ -117,6 +137,23 @@ mod tests {
             (
                 HostSchemaType::function([HostSchemaType::Parameter(0)], HostSchemaType::Int),
                 HostTypeDescriptor::Function {
+                    arguments: Box::new([opaque.clone()]),
+                    return_: Box::new(HostTypeDescriptor::Int),
+                },
+            ),
+            (
+                HostSchemaType::opaque_function(
+                    [HostSchemaType::Parameter(0)],
+                    HostSchemaType::Int,
+                ),
+                HostTypeDescriptor::OpaqueFunction {
+                    arguments: Box::new([opaque.clone()]),
+                    return_: Box::new(HostTypeDescriptor::Int),
+                },
+            ),
+            (
+                HostSchemaType::function_value([HostSchemaType::Parameter(0)], HostSchemaType::Int),
+                HostTypeDescriptor::FunctionValue {
                     arguments: Box::new([opaque.clone()]),
                     return_: Box::new(HostTypeDescriptor::Int),
                 },

@@ -1,11 +1,14 @@
 mod list;
 
-pub use list::{ProviderCallbackListDecoder, ProviderOwnedCallbackListDecoder};
+pub use list::{
+    ProviderCallbackListDecoder, ProviderFunctionValueListDecoder,
+    ProviderOwnedCallbackListDecoder, ProviderOwnedFunctionValueListDecoder,
+};
 
 use super::{ProviderConstructionRequirements, ProviderConstructions};
 use crate::host::{
-    HostExecutionContext, HostExecutionError, HostOwnedCallable, HostProfile, HostProvider,
-    HostType, HostTypeListEnd, HostTypeSequence,
+    HostExecutionContext, HostExecutionError, HostFunctionValue, HostOwnedCallable,
+    HostOwnedFunctionValue, HostProfile, HostProvider, HostType, HostTypeListEnd, HostTypeSequence,
 };
 use crate::{HostCall, HostCallable};
 use std::future::Future;
@@ -23,6 +26,16 @@ pub struct Callback<Signature, Context = MissingCallbackContext> {
 
 #[doc(hidden)]
 pub struct MissingCallbackContext;
+
+/// An owned exact Gleam function that can also retain symbolic arguments.
+/// Use [`Self::callback`] to obtain an invocation capability when available.
+pub struct FunctionValue<Signature, Context = MissingFunctionValueContext> {
+    context: Context,
+    signature: PhantomData<fn() -> Signature>,
+}
+
+#[doc(hidden)]
+pub struct MissingFunctionValueContext;
 
 /// Owned Rust and transferable-host conversion selected by one generated
 /// callback declaration.
@@ -79,6 +92,43 @@ where
     decode: ReturnCodec<Profile, Returned, HostReturn>,
 }
 
+type CallbackView<Signature, Profile, Arguments, Returned, HostArguments, HostReturn> = Callback<
+    Signature,
+    ProviderCallbackContext<Profile, Arguments, Returned, HostArguments, HostReturn>,
+>;
+
+/// A function's concrete input/output views; its declaration codec remains private.
+#[doc(hidden)]
+pub type ProviderOwnedFunctionValueContext<Profile, Provider, Codec> = ProviderFunctionValueContext<
+    Profile,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::Arguments,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::Returned,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostArguments,
+    <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostReturn,
+>;
+
+/// Owned function storage shared by declarations with the same exact typed views.
+///
+/// The input/output codec pointers retain their originating declaration's proof.
+/// Forwarding a callback never substitutes the receiving declaration's codec.
+#[doc(hidden)]
+pub struct ProviderFunctionValueContext<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    function: HostOwnedFunctionValue<
+        Profile,
+        CallbackProvider,
+        HostArguments,
+        HostReturn,
+        HostTypeListEnd,
+    >,
+    encode: ArgumentCodec<Profile, Arguments, HostArguments>,
+    decode: ReturnCodec<Profile, Returned, HostReturn>,
+}
+
 // Stored callbacks use one neutral projection. Their codec function pointers
 // retain the declaring provider without exposing it in a transferable view.
 struct CallbackProvider;
@@ -115,6 +165,22 @@ where
     fn clone(&self) -> Self {
         Self {
             callable: self.callable.clone(),
+            encode: self.encode,
+            decode: self.decode,
+        }
+    }
+}
+
+impl<Profile, Arguments, Returned, HostArguments, HostReturn> Clone
+    for ProviderFunctionValueContext<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    fn clone(&self) -> Self {
+        Self {
+            function: self.function.clone(),
             encode: self.encode,
             decode: self.decode,
         }
@@ -222,6 +288,77 @@ where
     }
 }
 
+impl<Signature, Profile, Arguments, Returned, HostArguments, HostReturn>
+    FunctionValue<
+        Signature,
+        ProviderFunctionValueContext<Profile, Arguments, Returned, HostArguments, HostReturn>,
+    >
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    #[doc(hidden)]
+    pub fn from_owned_host_with<'call, Codec, Provider, CallerProvider, Return>(
+        call: &HostCall<'call, Profile, CallerProvider, Return>,
+        function: HostFunctionValue<'call, HostArguments, HostReturn>,
+        constructions: ProviderConstructions<'call, Codec::Requirements>,
+    ) -> Self
+    where
+        Provider: HostProvider<Profile>,
+        CallerProvider: HostProvider<Profile>,
+        Return: HostType,
+        Codec: ProviderCallbackCodec<
+                Profile,
+                Provider,
+                (),
+                HostArguments = HostArguments,
+                HostReturn = HostReturn,
+                Arguments = Arguments,
+                Returned = Returned,
+            >,
+    {
+        Self {
+            context: ProviderFunctionValueContext {
+                function: call.owned_function_value_with::<CallbackProvider, _, _, _>(
+                    function,
+                    &crate::HostConstructions::with_base(constructions.host().callable_base()),
+                ),
+                encode: encode_arguments::<Profile, Provider, Codec>,
+                decode: decode_return::<Profile, Provider, Codec>,
+            },
+            signature: PhantomData,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_host<'call, CallerProvider, Return>(
+        self,
+        call: &mut HostCall<'call, Profile, CallerProvider, Return>,
+    ) -> Result<HostFunctionValue<'call, HostArguments, HostReturn>, crate::HostCallError>
+    where
+        CallerProvider: HostProvider<Profile>,
+        Return: HostType,
+    {
+        self.context.function.restore(call)
+    }
+
+    /// Obtains the typed callback only when the retained representation is invocable.
+    pub fn callback(
+        &self,
+    ) -> Option<CallbackView<Signature, Profile, Arguments, Returned, HostArguments, HostReturn>>
+    {
+        self.context.function.callable().map(|callable| Callback {
+            context: ProviderCallbackContext {
+                callable,
+                encode: self.context.encode,
+                decode: self.context.decode,
+            },
+            signature: PhantomData,
+        })
+    }
+}
+
 fn encode_arguments<'call, Profile, Provider, Codec>(
     arguments: Codec::Arguments,
     call: HostCall<'call, Profile, CallbackProvider, ()>,
@@ -273,6 +410,15 @@ where
 }
 
 impl<Signature, Context> Copy for Callback<Signature, Context> where Context: Copy {}
+
+impl<Signature, Context: Clone> Clone for FunctionValue<Signature, Context> {
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+            signature: PhantomData,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

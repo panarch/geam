@@ -12,7 +12,7 @@ pub struct Component;
 #[geam_macros::module(path = "macro_declarations/values", crate_path = geam_core)]
 pub mod values {
     use geam_core::StringValue;
-    use geam_core::provider::ExternalPayload;
+    use geam_core::provider::{ExternalPayload, FunctionValue};
     use num_bigint::BigInt;
     use std::sync::Arc;
 
@@ -71,6 +71,13 @@ pub mod values {
         Ready,
         Count(BigInt),
         Tagged(Token),
+    }
+
+    #[geam_macros::function]
+    fn keep_status_function(
+        function: FunctionValue<fn(Status) -> BigInt>,
+    ) -> FunctionValue<fn(Status) -> BigInt> {
+        function
     }
 
     #[geam_macros::callable(factory = AddOffset)]

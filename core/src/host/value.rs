@@ -66,6 +66,21 @@ pub struct HostCallable<'call, Arguments, Return> {
     marker: PhantomData<&'call (Arguments, Return)>,
 }
 
+/// An exact source function retained without requiring inhabited arguments.
+///
+/// [`Self::callable`] projects the existing typed invocation capability only
+/// when this function's sealed representation can accept its declared inputs.
+///
+/// ```compile_fail
+/// use geam_core::{HostFunctionValue, HostTypeListEnd};
+/// fn escape<'call>(value: HostFunctionValue<'call, HostTypeListEnd, ()>)
+///     -> HostFunctionValue<'static, HostTypeListEnd, ()> { value }
+/// ```
+pub struct HostFunctionValue<'call, Arguments, Return> {
+    pub(crate) token: HostFunctionValueToken,
+    marker: PhantomData<&'call (Arguments, Return)>,
+}
+
 /// A typed value completed by one active [`crate::HostCall`].
 ///
 /// The completion cannot be retained beyond the invocation that owns its
@@ -127,6 +142,55 @@ pub(crate) struct HostExternalToken(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HostFunctionToken(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostFunctionValueToken {
+    Invocable(usize),
+    Symbolic(usize),
+}
+
+impl HostFunctionValueToken {
+    pub(crate) fn value_token(self) -> HostValueToken {
+        match self {
+            Self::Invocable(index) => HostValueToken {
+                family: HostValueFamily::Function,
+                index,
+            },
+            Self::Symbolic(index) => HostValueToken {
+                family: HostValueFamily::SymbolicFunction,
+                index,
+            },
+        }
+    }
+}
+
+impl<'call, Arguments, Return> HostFunctionValue<'call, Arguments, Return> {
+    pub(crate) fn new(token: HostFunctionValueToken) -> Self {
+        Self {
+            token,
+            marker: PhantomData,
+        }
+    }
+
+    /// Returns a callable for the already sealed target, or no capability when
+    /// its arguments cannot be represented. This does not specialize a function.
+    pub fn callable(self) -> Option<HostCallable<'call, Arguments, Return>> {
+        match self.token {
+            HostFunctionValueToken::Invocable(index) => {
+                Some(HostCallable::new(HostFunctionToken(index)))
+            }
+            HostFunctionValueToken::Symbolic(_) => None,
+        }
+    }
+}
+
+impl<Arguments, Return> Clone for HostFunctionValue<'_, Arguments, Return> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Arguments, Return> Copy for HostFunctionValue<'_, Arguments, Return> {}
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum HostScopedValue {

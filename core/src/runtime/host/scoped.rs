@@ -1,6 +1,6 @@
 use crate::host::{
-    HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostScopedValue,
-    HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
+    HostCustomToken, HostExternalToken, HostFunctionToken, HostFunctionValueToken, HostListToken,
+    HostScopedValue, HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
 use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::borrowed::SharedIntegerReads;
@@ -38,26 +38,19 @@ pub(super) struct ScopedValues {
     externals: Vec<EvaluatedExternalValue>,
     functions: Vec<crate::runtime::RetainedCallable>,
     symbolic_functions: Vec<EvaluatedGenericFunction>,
-    function_indices: HashMap<HostValueToken, FunctionIndex>,
+    function_indices: HashMap<HostValueToken, HostFunctionValueToken>,
 }
 
-#[derive(Clone, Copy)]
-enum FunctionIndex {
-    Invocable(usize),
-    Symbolic(usize),
+pub(crate) enum RetainedFunctionValue {
+    Invocable(crate::runtime::RetainedCallable),
+    Symbolic(StoredRuntimeValue),
 }
 
-impl FunctionIndex {
-    fn token(self) -> HostValueToken {
+impl Clone for RetainedFunctionValue {
+    fn clone(&self) -> Self {
         match self {
-            Self::Invocable(index) => HostValueToken {
-                family: HostValueFamily::Function,
-                index,
-            },
-            Self::Symbolic(index) => HostValueToken {
-                family: HostValueFamily::SymbolicFunction,
-                index,
-            },
+            Self::Invocable(callable) => Self::Invocable(callable.clone()),
+            Self::Symbolic(value) => Self::Symbolic(value.clone_retained()),
         }
     }
 }
@@ -345,6 +338,17 @@ impl<'value> StoredRuntimeListItem<'value> {
 
     pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
         self.values.function(self.values.function_token(self.token))
+    }
+
+    pub(crate) fn into_function_value(self, retention: &ValueRetention) -> RetainedFunctionValue {
+        match self.values.function_value_token(self.token) {
+            HostFunctionValueToken::Invocable(index) => {
+                RetainedFunctionValue::Invocable(self.values.function(HostFunctionToken(index)))
+            }
+            HostFunctionValueToken::Symbolic(_) => {
+                RetainedFunctionValue::Symbolic(self.into_stored(retention))
+            }
+        }
     }
 
     pub(crate) fn into_tuple_items(self) -> StoredRuntimeListTupleItems<'value> {
@@ -644,101 +648,101 @@ impl ScopedValues {
             EvaluatedFunctionValueKind::Generic(function) => {
                 let index = self.symbolic_functions.len();
                 self.symbolic_functions.push(function);
-                FunctionIndex::Symbolic(index)
+                HostFunctionValueToken::Symbolic(index)
             }
             EvaluatedFunctionValueKind::Never(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Never(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Int(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Int(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Float(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Float(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::String(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::String(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::BitArray(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::BitArray(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::UtfCodepoint(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::UtfCodepoint(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Custom(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Custom(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::External(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::External(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Bool(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Bool(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Nil(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Nil(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Tuple(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Tuple(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::List(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::List(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
             EvaluatedFunctionValueKind::Function(function) => {
                 let index = self.functions.len();
                 self.functions.push(crate::runtime::RetainedCallable::new(
                     InvocableFunctionValue::Function(function),
                 ));
-                FunctionIndex::Invocable(index)
+                HostFunctionValueToken::Invocable(index)
             }
         };
-        let token = index.token();
+        let token = index.value_token();
         self.function_indices.insert(token, index);
         token
     }
@@ -848,10 +852,10 @@ impl ScopedValues {
                     values
                         .iter()
                         .map(|token| match self.function_indices[token] {
-                            FunctionIndex::Invocable(index) => {
+                            HostFunctionValueToken::Invocable(index) => {
                                 self.functions[index].clone().into_evaluated()
                             }
-                            FunctionIndex::Symbolic(index) => {
+                            HostFunctionValueToken::Symbolic(index) => {
                                 self.symbolic_functions[index].clone().into()
                             }
                         })
@@ -912,6 +916,10 @@ impl ScopedValues {
 
     pub(super) fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
         HostFunctionToken(value.index)
+    }
+
+    pub(super) fn function_value_token(&self, value: HostValueToken) -> HostFunctionValueToken {
+        self.function_indices[&value]
     }
 
     pub(super) fn int(&self, value: HostValueToken) -> BigInt {
@@ -1006,8 +1014,8 @@ impl ScopedValues {
     ) -> HostFunctionToken {
         let token = HostFunctionToken(self.functions.len());
         self.functions.push(value);
-        let index = FunctionIndex::Invocable(token.0);
-        self.function_indices.insert(index.token(), index);
+        let index = HostFunctionValueToken::Invocable(token.0);
+        self.function_indices.insert(index.value_token(), index);
         token
     }
 
@@ -1091,9 +1099,9 @@ mod tests {
         let retained = callable.clone();
         let mut restored = super::ScopedValues::default();
         let restored_token = restored.push_callable(retained.clone());
-        let index = super::FunctionIndex::Invocable(restored_token.0);
+        let index = super::HostFunctionValueToken::Invocable(restored_token.0);
         assert_eq!(
-            restored.function_indices[&index.token()].token(),
+            restored.function_indices[&index.value_token()].value_token(),
             crate::host::HostValueToken {
                 family: crate::host::HostValueFamily::Function,
                 index: 0

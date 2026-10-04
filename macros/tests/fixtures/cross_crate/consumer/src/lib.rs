@@ -20,7 +20,7 @@ mod execution_fixture;
 #[geam_macros::module(path = "macro_consumer/main", crate_path = geam_core)]
 mod main {
     use geam_core::StringValue;
-    use geam_core::provider::{Call, Callback};
+    use geam_core::provider::{Call, Callback, Value};
     use geam_macro_cross_crate_declarations::values;
     use num_bigint::BigInt;
     use std::future::poll_fn;
@@ -176,6 +176,35 @@ mod main {
         Ok((first, second))
     }
 
+    #[geam_macros::function]
+    fn keep_function<Item>(
+        function: geam_core::provider::FunctionValue<fn(Value<Item>) -> StringValue>,
+    ) -> geam_core::provider::FunctionValue<fn(Value<Item>) -> StringValue> {
+        assert!(function.callback().is_none());
+        function.clone()
+    }
+
+    #[geam_macros::function]
+    async fn invoke_function(
+        #[geam_macros::call] call: &mut Call<()>,
+        function: geam_core::provider::FunctionValue<fn(values::Status) -> BigInt>,
+        value: BigInt,
+    ) -> geam_core::provider::HostResult<(BigInt, BigInt)> {
+        let callback = function.callback().expect("Status input is inhabited");
+        drop(function);
+        let first = call
+            .invoke(&callback, (values::Status::Count(value),))
+            .await?;
+        pending_once().await;
+        let second = call
+            .invoke(
+                &callback,
+                (values::Status::Tagged(values::Token("function".into())),),
+            )
+            .await?;
+        Ok((first, second))
+    }
+
     async fn pending_once() {
         let mut pending = true;
         poll_fn(move |context| {
@@ -283,6 +312,8 @@ pub type Status {
   Count(Int)
   Tagged(Token)
 }
+@external(erlang, "macro_declarations", "keep_status_function")
+pub fn keep_status_function(function: fn(Status) -> Int) -> fn(Status) -> Int
 "#;
 
     const CONSUMER: &str = r#"
@@ -337,8 +368,15 @@ fn describe_async(value: values.Status) -> Future(String)
 fn rich(value: Int) -> Future(#(values.Status, Result(Int, String), Option(values.Token), List(Int)))
 @external(erlang, "macro_consumer", "invoke_twice")
 fn invoke_twice(callback: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
+@external(erlang, "macro_consumer", "keep_function")
+fn keep_function(function: fn(item) -> String) -> fn(item) -> String
+@external(erlang, "macro_consumer", "invoke_function")
+fn invoke_function(function: fn(values.Status) -> Int, value: Int) -> Future(#(Int, Int))
 
 pub fn main() {
+  let label = "symbolic"
+  let original = fn(_) { label }
+  assert keep_function(original) == original
   assert saved_text(saved("local")) == "local"
   assert saved_text(SavedOne(values.Empty)) == "empty"
   assert saved_text(SavedMany([])) == "many:0"

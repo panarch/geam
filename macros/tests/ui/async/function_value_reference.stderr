@@ -1,0 +1,13 @@
+error: FunctionValue arguments must be passed by value
+ --> tests/ui/async/function_value_reference.rs:8:28
+  |
+8 |     fn borrowed(_function: &FunctionValue<fn(BigInt) -> BigInt>) -> () {}
+  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `BigInt` and `FunctionValue`
+ --> tests/ui/async/function_value_reference.rs:1:27
+  |
+1 | use geam_core::provider::{BigInt, FunctionValue};
+  |                           ^^^^^^  ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

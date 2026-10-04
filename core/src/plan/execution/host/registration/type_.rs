@@ -23,6 +23,10 @@ pub enum RegistrationType {
         arguments: Table<Self>,
         return_: Node<Self>,
     },
+    FunctionValue {
+        arguments: Table<Self>,
+        return_: Node<Self>,
+    },
     Custom {
         schema: CustomSchema,
         arguments: Table<Self>,
@@ -55,6 +59,10 @@ impl RegistrationType {
                 return_: Box::new(Self::from_descriptor(return_)).into(),
             },
             HostTypeDescriptor::OpaqueFunction { arguments, return_ } => Self::OpaqueFunction {
+                arguments: arguments.iter().map(Self::from_descriptor).collect(),
+                return_: Box::new(Self::from_descriptor(return_)).into(),
+            },
+            HostTypeDescriptor::FunctionValue { arguments, return_ } => Self::FunctionValue {
                 arguments: arguments.iter().map(Self::from_descriptor).collect(),
                 return_: Box::new(Self::from_descriptor(return_)).into(),
             },
@@ -104,6 +112,16 @@ impl RegistrationType {
                 },
             ) => same(left, right, Self::matches) && left_return.matches(right_return),
             (
+                Self::FunctionValue {
+                    arguments: left,
+                    return_: left_return,
+                },
+                HostTypeDescriptor::FunctionValue {
+                    arguments: right,
+                    return_: right_return,
+                },
+            ) => same(left, right, Self::matches) && left_return.matches(right_return),
+            (
                 Self::Custom { schema, arguments },
                 HostTypeDescriptor::Custom {
                     schema: actual_schema,
@@ -141,6 +159,10 @@ impl Emit for RegistrationType {
             ),
             Self::OpaqueFunction { arguments, return_ } => output.structure(
                 "host::RegistrationType::OpaqueFunction",
+                &[("arguments", arguments), ("return_", return_)],
+            ),
+            Self::FunctionValue { arguments, return_ } => output.structure(
+                "host::RegistrationType::FunctionValue",
                 &[("arguments", arguments), ("return_", return_)],
             ),
             Self::Custom { schema, arguments } => output.structure(
@@ -190,6 +212,10 @@ mod tests {
                 schema: crate::HostExternalTypeSchema::new("app", "types", "Resource", 1),
                 arguments: Box::new([D::Int]),
             },
+            D::FunctionValue {
+                arguments: Box::new([D::Int]),
+                return_: Box::new(D::String),
+            },
         ];
         let frozen = types
             .iter()
@@ -207,6 +233,9 @@ mod tests {
         }
         assert_eq!(types[11].value_type(), types[12].value_type());
         assert_ne!(frozen[11], frozen[12]);
+        assert_eq!(types[11].value_type(), types[15].value_type());
+        assert_ne!(frozen[11], frozen[15]);
+        assert_ne!(frozen[12], frozen[15]);
         for (index, text) in [
             (0, "data::host::RegistrationType::Parameter(0)"),
             (2, "data::host::RegistrationType::Int"),
@@ -285,12 +314,33 @@ data::host::RegistrationType::External {
 }"#
                 .trim_start_matches('\n'),
             ),
+            (
+                15,
+                r#"
+data::host::RegistrationType::FunctionValue {
+    arguments: data::Storage::Static(&[
+        data::host::RegistrationType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::RegistrationType::String),
+}"#
+                .trim_start_matches('\n'),
+            ),
         ] {
             assert_eq!(Rust::expression(&frozen[index]), text);
         }
         static CYCLE: RegistrationType = RegistrationType::List(Node::Static(&CYCLE));
         assert!(!CYCLE.matches(&D::List(Box::new(D::Int))));
         assert!(!frozen[10].matches(&D::Tuple(Box::new([D::Int]))));
+        for (arguments, return_) in [
+            (vec![], D::String),
+            (vec![D::Bool], D::String),
+            (vec![D::Int], D::Int),
+        ] {
+            assert!(!frozen[15].matches(&D::FunctionValue {
+                arguments: arguments.into_boxed_slice(),
+                return_: Box::new(return_),
+            }));
+        }
     }
 
     #[test]

@@ -2,7 +2,7 @@ use super::{
     HostAbiType, HostAbiTypeSequence, HostCustomSchemaId, HostCustomTypeSchema, HostSchemaType,
     HostType, HostTypeDescriptor, HostTypeSequence, private,
 };
-use crate::host::{HostCallable, HostScopedValue, HostValue};
+use crate::host::{HostCallable, HostFunctionValue, HostScopedValue, HostValue};
 use crate::provider_support::HostOpaqueFunctionType;
 use std::collections::HashSet;
 use std::marker::PhantomData;
@@ -10,7 +10,18 @@ use std::marker::PhantomData;
 /// The host ABI type for a Gleam function with a recursive argument sequence.
 pub struct HostFunctionType<Arguments, Return>(PhantomData<(Arguments, Return)>);
 
+/// An exact Gleam function value that may have symbolic arguments.
+/// Invocation is available only through its sealed callable projection.
+pub struct HostFunctionValueType<Arguments, Return>(PhantomData<(Arguments, Return)>);
+
 impl<Arguments, Return> private::Sealed for HostFunctionType<Arguments, Return>
+where
+    Arguments: HostTypeSequence,
+    Return: HostType,
+{
+}
+
+impl<Arguments, Return> private::Sealed for HostFunctionValueType<Arguments, Return>
 where
     Arguments: HostTypeSequence,
     Return: HostType,
@@ -30,6 +41,14 @@ where
     Return: HostType,
 {
     type Value<'call> = HostCallable<'call, Arguments, Return>;
+}
+
+impl<Arguments, Return> HostType for HostFunctionValueType<Arguments, Return>
+where
+    Arguments: HostTypeSequence,
+    Return: HostType,
+{
+    type Value<'call> = HostFunctionValue<'call, Arguments, Return>;
 }
 
 impl<Arguments, Return> HostType for HostOpaqueFunctionType<Arguments, Return>
@@ -79,6 +98,45 @@ where
     }
 }
 
+impl<Arguments, Return> private::Abi for HostFunctionValueType<Arguments, Return>
+where
+    Arguments: HostAbiTypeSequence,
+    Return: HostAbiType,
+{
+    fn descriptor() -> HostTypeDescriptor {
+        HostTypeDescriptor::FunctionValue {
+            arguments: <Arguments as HostAbiTypeSequence>::descriptors().into_boxed_slice(),
+            return_: Box::new(<Return as HostAbiType>::descriptor()),
+        }
+    }
+
+    fn schema_type() -> HostSchemaType {
+        HostSchemaType::FunctionValue {
+            arguments: <Arguments as HostAbiTypeSequence>::schema_types().into_boxed_slice(),
+            return_: Box::new(<Return as HostAbiType>::schema_type()),
+        }
+    }
+
+    fn collect_custom_schemas(
+        output: &mut Vec<HostCustomTypeSchema>,
+        visited: &mut HashSet<HostCustomSchemaId>,
+    ) {
+        <Arguments as HostAbiTypeSequence>::collect_custom_schemas(output, visited);
+        <Return as HostAbiType>::collect_custom_schemas(output, visited);
+    }
+
+    fn into_scoped(value: <Self as HostType>::Value<'_>) -> HostScopedValue {
+        HostScopedValue::Value(value.token.value_token())
+    }
+
+    fn from_token<'call, Runtime: crate::host::HostTokenRuntime + ?Sized>(
+        runtime: &Runtime,
+        token: crate::host::HostValueToken,
+    ) -> <Self as HostType>::Value<'call> {
+        HostFunctionValue::new(runtime.function_value_token(token))
+    }
+}
+
 impl<Arguments, Return> private::Abi for HostOpaqueFunctionType<Arguments, Return>
 where
     Arguments: HostAbiTypeSequence,
@@ -92,7 +150,7 @@ where
     }
 
     fn schema_type() -> HostSchemaType {
-        HostSchemaType::Function {
+        HostSchemaType::OpaqueFunction {
             arguments: <Arguments as HostAbiTypeSequence>::schema_types().into_boxed_slice(),
             return_: Box::new(<Return as HostAbiType>::schema_type()),
         }
@@ -168,6 +226,52 @@ mod tests {
     }
 
     #[test]
+    fn function_value_abi_preserves_symbolic_storage_and_projects_only_sealed_callables() {
+        use crate::host::{HostFunctionValue, HostFunctionValueToken};
+        type Arguments = HostTypeList<BigInt, HostTypeListEnd>;
+        type Function = super::HostFunctionValueType<Arguments, bool>;
+        assert_eq!(
+            <Function as HostAbiType>::descriptor(),
+            HostTypeDescriptor::FunctionValue {
+                arguments: Box::new([HostTypeDescriptor::Int]),
+                return_: Box::new(HostTypeDescriptor::Bool),
+            }
+        );
+        assert_eq!(
+            <Function as HostAbiType>::schema_type(),
+            HostSchemaType::function_value([HostSchemaType::Int], HostSchemaType::Bool)
+        );
+        let mut state = TestRunState::default();
+        let runtime =
+            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+        for (token, callable) in [
+            (
+                HostFunctionValueToken::Invocable(3),
+                Some(HostFunctionToken(3)),
+            ),
+            (HostFunctionValueToken::Symbolic(2), None),
+        ] {
+            let value = HostFunctionValue::<Arguments, bool>::new(token);
+            assert_eq!(
+                Clone::clone(&value).callable().map(|value| value.token),
+                callable
+            );
+            assert_eq!(
+                <Function as HostAbiType>::into_scoped(value),
+                HostScopedValue::Value(token.value_token())
+            );
+            assert_eq!(
+                crate::host::type_::from_token::<Function, TestHostProfile>(
+                    &runtime,
+                    token.value_token()
+                )
+                .token,
+                token
+            );
+        }
+    }
+
+    #[test]
     fn opaque_function_abi_preserves_its_signature_without_invocation_capability() {
         type Arguments = HostTypeList<BigInt, HostTypeList<bool, HostTypeListEnd>>;
         type Function = HostOpaqueFunctionType<Arguments, bool>;
@@ -182,7 +286,7 @@ mod tests {
         );
         assert_eq!(
             <Function as HostAbiType>::schema_type(),
-            HostSchemaType::function(
+            HostSchemaType::opaque_function(
                 [HostSchemaType::Int, HostSchemaType::Bool],
                 HostSchemaType::Bool,
             ),

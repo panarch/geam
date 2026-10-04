@@ -22,7 +22,7 @@ pub use custom::{
     HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
     HostCustomIndexLeft, HostCustomIndexRight,
 };
-pub use function::HostFunctionType;
+pub use function::{HostFunctionType, HostFunctionValueType};
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
 pub use sequence::{
@@ -65,6 +65,10 @@ pub(crate) enum HostTypeDescriptor {
         return_: Box<HostTypeDescriptor>,
     },
     OpaqueFunction {
+        arguments: Box<[HostTypeDescriptor]>,
+        return_: Box<HostTypeDescriptor>,
+    },
+    FunctionValue {
         arguments: Box<[HostTypeDescriptor]>,
         return_: Box<HostTypeDescriptor>,
     },
@@ -159,7 +163,9 @@ impl HostTypeDescriptor {
                     element.collect_external_schemas(output, visited);
                 }
             }
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => {
                 for argument in arguments {
                     argument.collect_external_schemas(output, visited);
                 }
@@ -218,16 +224,18 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
-                HostSchemaType::Function {
-                    arguments: arguments
-                        .iter()
-                        .map(Self::schema_type)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
-                    return_: Box::new(return_.schema_type()),
-                }
-            }
+            Self::Function { arguments, return_ } => HostSchemaType::function(
+                arguments.iter().map(Self::schema_type),
+                return_.schema_type(),
+            ),
+            Self::OpaqueFunction { arguments, return_ } => HostSchemaType::opaque_function(
+                arguments.iter().map(Self::schema_type),
+                return_.schema_type(),
+            ),
+            Self::FunctionValue { arguments, return_ } => HostSchemaType::function_value(
+                arguments.iter().map(Self::schema_type),
+                return_.schema_type(),
+            ),
             Self::Custom { schema, arguments } => HostSchemaType::Custom {
                 package: schema.package().clone(),
                 module: schema.module().clone(),
@@ -269,7 +277,9 @@ impl HostTypeDescriptor {
                     .collect::<Vec<_>>()
                     .into_boxed_slice(),
             ),
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => {
                 crate::plan::ValueShape::Function(Box::new(crate::plan::FunctionShape::new(
                     arguments.iter().map(Self::value_shape).collect(),
                     return_.value_shape(),
@@ -324,17 +334,17 @@ impl HostTypeDescriptor {
                     .map(|element| element.resolve(type_argument))
                     .collect::<Option<Vec<_>>>()?,
             )),
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
-                Some(ValueType::Function(Box::new(
-                    crate::plan::FunctionType::new(
-                        arguments
-                            .iter()
-                            .map(|argument| argument.resolve(type_argument))
-                            .collect::<Option<Vec<_>>>()?,
-                        return_.resolve(type_argument)?,
-                    ),
-                )))
-            }
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => Some(ValueType::Function(Box::new(
+                crate::plan::FunctionType::new(
+                    arguments
+                        .iter()
+                        .map(|argument| argument.resolve(type_argument))
+                        .collect::<Option<Vec<_>>>()?,
+                    return_.resolve(type_argument)?,
+                ),
+            ))),
             Self::Custom { schema, arguments } => {
                 Some(ValueType::Custom(crate::plan::CustomType::new(
                     crate::plan::CustomTypeName::new(
@@ -386,7 +396,9 @@ impl HostTypeDescriptor {
                     .map(|element| element.resolve_sealed(type_argument))
                     .collect(),
             ),
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => {
                 ValueType::Function(Box::new(crate::plan::FunctionType::new(
                     arguments
                         .iter()
@@ -433,7 +445,9 @@ impl HostTypeDescriptor {
                     element.collect_type_parameters(output);
                 }
             }
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => {
                 for argument in arguments {
                     argument.collect_type_parameters(output);
                 }
@@ -787,6 +801,10 @@ mod tests {
                     arguments: vec![HostTypeDescriptor::Parameter(1)].into_boxed_slice(),
                     return_: Box::new(HostTypeDescriptor::Parameter(0)),
                 },
+                HostTypeDescriptor::FunctionValue {
+                    arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+                    return_: Box::new(HostTypeDescriptor::Parameter(1)),
+                },
                 HostTypeDescriptor::Custom {
                     schema: custom_schema,
                     arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
@@ -816,6 +834,10 @@ mod tests {
             ValueType::Function(Box::new(FunctionType::new(
                 vec![ValueType::Bool],
                 ValueType::String,
+            ))),
+            ValueType::Function(Box::new(FunctionType::new(
+                vec![ValueType::String],
+                ValueType::Bool,
             ))),
             ValueType::Custom(CustomType::new(
                 CustomTypeName::new("domain".into(), "domain/box".into(), "Boxed".into()),
@@ -912,7 +934,15 @@ mod tests {
                 return_: Box::new(HostTypeDescriptor::Nil),
             }
             .schema_type(),
-            HostSchemaType::function([HostSchemaType::String], HostSchemaType::Nil),
+            HostSchemaType::opaque_function([HostSchemaType::String], HostSchemaType::Nil),
+        );
+        assert_eq!(
+            HostTypeDescriptor::FunctionValue {
+                arguments: Box::new([HostTypeDescriptor::Int]),
+                return_: Box::new(HostTypeDescriptor::Bool),
+            }
+            .schema_type(),
+            HostSchemaType::function_value([HostSchemaType::Int], HostSchemaType::Bool),
         );
         let external = HostExternalTypeSchema::new("domain", "domain/resource", "Resource", 1);
         assert_eq!(

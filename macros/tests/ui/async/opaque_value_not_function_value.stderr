@@ -1,0 +1,5 @@
+error[E0599]: no method named `callback` found for struct `geam_core::provider::Value<Type, Context>` in the current scope
+  --> tests/ui/async/opaque_value_not_function_value.rs:16:18
+   |
+16 |         function.callback().is_some()
+   |                  ^^^^^^^^ method not found in `geam_core::provider::Value<fn(Item) -> Item, geam_core::provider::ProviderValueContext<geam_core::__macro_support::HostOpaqueFunctionType<HostTypeList<HostTypeParameter<0>, HostTypeListEnd>, HostTypeParameter<0>>>>`

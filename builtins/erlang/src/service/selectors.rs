@@ -10,7 +10,7 @@ use crate::selector::{Entry, Handler, Selector as SelectorValue};
 use crate::{Component, GleamErlangHostProfile};
 use geam_core::host::native::NativeCall;
 use geam_core::host::{
-    HostCall, HostCallCompletion, HostCallError, HostCallable, HostExternal, HostProvider,
+    HostCall, HostCallCompletion, HostCallError, HostExternal, HostFunctionValue, HostProvider,
     HostType, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
 use geam_core::provider::advanced::NativeValue;
@@ -44,7 +44,7 @@ pub fn insert<
     mut call: NativeCall<'call, Profile, Provider, Selector<A>, HostTypeList<C, One<Down>>>,
     selector: HostExternal<'call, Selector<A>>,
     key: B::Value<'call>,
-    callback: HostCallable<'call, One<C>, A>,
+    callback: HostFunctionValue<'call, One<C>, A>,
 ) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
     let mut selector = call
         .call()
@@ -52,7 +52,7 @@ pub fn insert<
         .clone();
     let key = call.source::<B>(key);
     let hash = call.call().native_hash(&key);
-    let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
+    let callback = call.owned_function_value::<HostTypeIndex0, A>(callback);
     let entry = Arc::new(Entry {
         key,
         handler: Arc::new(Handler {
@@ -152,13 +152,13 @@ pub fn map_selector<
 >(
     mut call: Native<'call, Profile, Provider, Selector<A>, B>,
     selector: HostExternal<'call, Selector<B>>,
-    callback: HostCallable<'call, One<B>, A>,
+    callback: HostFunctionValue<'call, One<B>, A>,
 ) -> Result<HostCallCompletion<'call, Selector<A>>, HostCallError> {
     let source = call
         .call()
         .external_payload_with::<Component<Profile>, SelectorSchema, One<B>>(selector)
         .clone();
-    let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
+    let callback = call.owned_function_value::<HostTypeIndex0, A>(callback);
     let entries = source
         .entries
         .iter()

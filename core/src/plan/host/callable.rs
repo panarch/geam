@@ -76,6 +76,16 @@ fn bind_types(
                     arguments: actual,
                     return_: actual_return,
                 },
+            )
+            | (
+                T::FunctionValue {
+                    arguments: expected,
+                    return_: expected_return,
+                },
+                T::FunctionValue {
+                    arguments: actual,
+                    return_: actual_return,
+                },
             ) => {
                 pending.push((expected_return, actual_return));
                 (expected, actual)
@@ -160,6 +170,16 @@ mod tests {
                 },
             ),
             (
+                T::FunctionValue {
+                    arguments: Box::new([T::Parameter(0)]),
+                    return_: Box::new(T::Parameter(0)),
+                },
+                T::FunctionValue {
+                    arguments: Box::new([T::Int]),
+                    return_: Box::new(T::Int),
+                },
+            ),
+            (
                 T::External {
                     schema: external.clone(),
                     arguments: Box::new([T::Parameter(0)]),
@@ -228,6 +248,23 @@ mod tests {
         }
         assert!(bind_types(&T::Bool, &T::Bool, &mut []));
         assert!(!bind_types(&T::Bool, &T::Int, &mut []));
+        for actual in [
+            T::Function {
+                arguments: Box::new([]),
+                return_: Box::new(T::Int),
+            },
+            T::OpaqueFunction {
+                arguments: Box::new([]),
+                return_: Box::new(T::Int),
+            },
+        ] {
+            let retained = T::FunctionValue {
+                arguments: Box::new([]),
+                return_: Box::new(T::Int),
+            };
+            assert!(!bind_types(&retained, &actual, &mut []));
+            assert!(!bind_types(&actual, &retained, &mut []));
+        }
         // The caller's parameter zero and the body's parameter zero belong to
         // separate scopes, so an identity substitution is valid and finite.
         let mut arguments = [None];
