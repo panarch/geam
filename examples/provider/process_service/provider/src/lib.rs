@@ -28,18 +28,23 @@ mod service {
         destination: service::Subject<Message>,
         message: Value<Message>,
         reply: service::Subject<Reply>,
-        timeout_ms: BigInt,
+        timeout_ms: Option<BigInt>,
     ) -> HostResult<Result<Value<Reply>, RequestError>> {
-        let Ok(timeout_ms) = u64::try_from(timeout_ms) else {
-            return Ok(Err(RequestError::InvalidTimeout));
+        let timeout = match timeout_ms {
+            Some(timeout_ms) => {
+                let Ok(timeout_ms) = u64::try_from(timeout_ms) else {
+                    return Ok(Err(RequestError::InvalidTimeout));
+                };
+                Some(Duration::from_millis(timeout_ms))
+            }
+            None => None,
         };
         let request = call
             .with_call(move |call| {
                 let Some(target) = call.named(&name) else {
                     return Ok::<_, geam::HostCallError>(None);
                 };
-                let receive =
-                    call.receive_subject(reply, Some(Duration::from_millis(timeout_ms)))?;
+                let receive = call.receive_subject(reply, timeout)?;
                 call.send_subject(destination, message);
                 Ok(Some((target, receive)))
             })
