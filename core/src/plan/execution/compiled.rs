@@ -1,5 +1,7 @@
 use super::prepared::rust::{Emit, Rust};
-use crate::plan::execution::function::{BoolFunctionId, CustomFunctionId, IntFunctionId};
+use crate::plan::execution::function::{
+    BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
+};
 use crate::plan::execution::graph::BlockId;
 use crate::plan::execution::storage::Table;
 use crate::runtime::compiled::bit_array::BitArrayKernel;
@@ -14,6 +16,7 @@ pub struct CompiledFunctions {
     pub ints: Table<CompiledFunction<IntFunctionId>>,
     pub bools: Table<CompiledFunction<BoolFunctionId>>,
     pub customs: Table<CompiledFunction<usize>>,
+    pub int_lists: Table<CompiledFunction<IntListFunctionId>>,
 }
 
 pub struct CompiledFunction<Id> {
@@ -79,6 +82,7 @@ impl CompiledFunctions {
             ints: Table::Static(&[]),
             bools: Table::Static(&[]),
             customs: Table::Static(&[]),
+            int_lists: Table::Static(&[]),
         }
     }
 
@@ -87,6 +91,7 @@ impl CompiledFunctions {
             ints: Table::Static(&self.ints),
             bools: Table::Static(&self.bools),
             customs: Table::Static(&self.customs),
+            int_lists: Table::Static(&self.int_lists),
         }
     }
 
@@ -109,6 +114,15 @@ impl CompiledFunctions {
             .binary_search_by_key(&id.index(), |entry| entry.function)
             .ok()
             .map(|index| &self.customs[index].implementation)
+    }
+
+    pub(crate) fn int_list(&self, id: IntListFunctionId) -> Option<&CompiledImplementation> {
+        self.int_lists
+            .binary_search_by_key(&(id.index, id.type_id.list_type.0), |entry| {
+                (entry.function.index, entry.function.type_id.list_type.0)
+            })
+            .ok()
+            .map(|index| &self.int_lists[index].implementation)
     }
 }
 
@@ -134,10 +148,14 @@ mod tests {
         BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
         CompiledImplementation, IntListImplementation, NumericImplementation, Rust,
     };
-    use crate::plan::execution::function::{BoolFunctionId, CustomFunctionId, IntFunctionId};
+    use crate::plan::execution::function::{
+        BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
+    };
     use crate::plan::execution::graph::BlockId;
     use crate::plan::execution::storage::Table;
-    use crate::plan::execution::type_::{CustomTypeId, CustomValueShape, CustomValueShapeId};
+    use crate::plan::execution::type_::{
+        CustomTypeId, CustomValueShape, CustomValueShapeId, IntListTypeId, ListTypeId,
+    };
     use crate::runtime::compiled::tests::{
         metadata_bit_array, metadata_int_list, metadata_numeric,
     };
@@ -167,6 +185,19 @@ mod tests {
                 run: metadata_bit_array,
             }),
         }]),
+        int_lists: Table::Static(&[CompiledFunction {
+            function: IntListFunctionId {
+                index: 5,
+                type_id: IntListTypeId {
+                    list_type: ListTypeId(2),
+                },
+            },
+            implementation: CompiledImplementation::IntList(IntListImplementation {
+                entry: 2,
+                checkpoints: Table::Static(&[]),
+                run: metadata_int_list,
+            }),
+        }]),
     };
 
     #[test]
@@ -181,19 +212,51 @@ mod tests {
             FUNCTIONS.bools.as_ptr()
         ));
         assert!(std::ptr::eq(
+            borrowed.int_lists.as_ptr(),
+            FUNCTIONS.int_lists.as_ptr()
+        ));
+        let list_id = FUNCTIONS.int_lists[0].function;
+        assert!(std::ptr::eq(
+            borrowed.int_list(list_id).unwrap(),
+            &FUNCTIONS.int_lists[0].implementation
+        ));
+        assert!(
+            borrowed
+                .int_list(IntListFunctionId {
+                    index: 4,
+                    ..list_id
+                })
+                .is_none()
+        );
+        assert!(
+            borrowed
+                .int_list(IntListFunctionId {
+                    type_id: IntListTypeId {
+                        list_type: ListTypeId(3)
+                    },
+                    ..list_id
+                })
+                .is_none()
+        );
+        assert!(std::ptr::eq(
             borrowed.int(IntFunctionId(2)).unwrap(),
-            &FUNCTIONS.ints[0].implementation,
+            &FUNCTIONS.ints[0].implementation
         ));
         assert!(std::ptr::eq(
             borrowed.bool(BoolFunctionId(3)).unwrap(),
-            &FUNCTIONS.bools[0].implementation,
+            &FUNCTIONS.bools[0].implementation
         ));
         assert!(borrowed.int(IntFunctionId(3)).is_none());
         assert!(borrowed.bool(BoolFunctionId(2)).is_none());
+        // Borrowing retains the kernel pointer and metadata without executing it.
         assert_eq!(borrowed.int(IntFunctionId(2)).unwrap().entry(), 0);
         assert_eq!(borrowed.bool(BoolFunctionId(3)).unwrap().entry(), 1);
         assert_eq!(borrowed.int(IntFunctionId(2)).unwrap().checkpoints(), []);
         assert_eq!(borrowed.bool(BoolFunctionId(3)).unwrap().checkpoints(), []);
+        assert_eq!(borrowed.int_list(list_id).unwrap().entry(), 2);
+        assert_eq!(borrowed.int_list(list_id).unwrap().checkpoints(), []);
+        assert!(CompiledFunctions::interpreted().int_list(list_id).is_none());
+
         assert!(
             CompiledFunctions::interpreted()
                 .int(IntFunctionId(2))

@@ -8,8 +8,8 @@ use self::shape::{
 };
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{
-    ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile, ExecutionProfile,
-    FunctionBodyOwner, FunctionTables,
+    BoolFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
+    ExecutionProfile, FunctionBodyOwner, FunctionTables, IntFunctionId,
 };
 use crate::plan::execution::graph::{
     ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, IntegerOperand, ListLocal,
@@ -24,8 +24,8 @@ pub(in crate::plan::execution::prepared) struct CompiledCodegen<'program, Profil
     functions: &'program FunctionTables<Profile>,
 }
 
-struct FunctionCodegen<'graph, Graph: ExecutionGraphProfile> {
-    index: usize,
+struct FunctionCodegen<'graph, Graph: ExecutionGraphProfile, Id> {
+    function: Id,
     name: String,
     shape: CompiledShape<'graph, Graph>,
 }
@@ -68,7 +68,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let shape = CompiledShape::inspect(function.body())
                     .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
-                    index,
+                    function: IntFunctionId(index),
                     name: format!("{}_int_{index}", shape.kind.name()),
                     shape,
                 })
@@ -87,7 +87,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let shape = CompiledShape::inspect(function.body())
                     .or_else(|| CompiledShape::inspect_bits(function.body()))?;
                 Some(FunctionCodegen {
-                    index,
+                    function: BoolFunctionId(index),
                     name: format!("{}_bool_{index}", shape.kind.name()),
                     shape,
                 })
@@ -106,13 +106,30 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 let shape =
                     CompiledShape::inspect_bits(FunctionBodyOwner::function_body(function.body()))?;
                 Some(FunctionCodegen {
-                    index,
+                    function: index,
                     name: format!("{}_custom_{index}", shape.kind.name()),
                     shape,
                 })
             })
             .collect::<Vec<_>>();
-        if ints.is_empty() && bools.is_empty() && customs.is_empty() {
+        let int_lists = self
+            .functions
+            .list_returns
+            .int_list_functions
+            .iter()
+            .filter_map(|(id, function)| {
+                let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
+                    return None;
+                };
+                let shape = CompiledShape::inspect(function.body())?;
+                Some(FunctionCodegen {
+                    function: *id,
+                    name: format!("{}_int_list_{}", shape.kind.name(), id.index),
+                    shape,
+                })
+            })
+            .collect::<Vec<_>>();
+        if ints.is_empty() && bools.is_empty() && customs.is_empty() && int_lists.is_empty() {
             output.call("compiled::CompiledFunctions::interpreted", &[]);
             return;
         }
@@ -126,23 +143,37 @@ enum CompiledResume {
 }
 "#,
         );
-        for function in ints.iter().chain(&bools).chain(&customs) {
+        for function in &ints {
+            function.write_code(&mut source);
+        }
+        for function in &bools {
+            function.write_code(&mut source);
+        }
+        for function in &customs {
+            function.write_code(&mut source);
+        }
+        for function in &int_lists {
             function.write_code(&mut source);
         }
         source.open("data::compiled::CompiledFunctions {\n");
         source.open("ints: data::Storage::Static(&[\n");
         for function in &ints {
-            function.write_target(&mut source, "Int");
+            function.write_target(&mut source);
         }
         source.close("]),\n");
         source.open("bools: data::Storage::Static(&[\n");
         for function in &bools {
-            function.write_target(&mut source, "Bool");
+            function.write_target(&mut source);
         }
         source.close("]),\n");
         source.open("customs: data::Storage::Static(&[\n");
         for function in &customs {
-            function.write_target(&mut source, "Custom");
+            function.write_target(&mut source);
+        }
+        source.close("]),\n");
+        source.open("int_lists: data::Storage::Static(&[\n");
+        for function in &int_lists {
+            function.write_target(&mut source);
         }
         source.close("]),\n");
         source.close("}\n");
@@ -151,7 +182,7 @@ enum CompiledResume {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
     fn write_code(&self, source: &mut Code) {
         let name = &self.name;
         let checkpoints = self.shape.checkpoints.len();
@@ -286,14 +317,15 @@ fn {name}(
         }
     }
 
-    fn write_target(&self, source: &mut Code, family: &str) {
+    fn write_target(&self, source: &mut Code)
+    where
+        Id: Emit,
+    {
         source.open("data::compiled::CompiledFunction {\n");
-        let function = if family == "Custom" {
-            self.index.to_string()
-        } else {
-            format!("data::function::{family}FunctionId({})", self.index)
-        };
-        source.push_str(&format!("function: {function},\n"));
+        source.push_str(&format!(
+            "function: {},\n",
+            Rust::expression(&self.function)
+        ));
         let implementation = match self.shape.kind {
             KernelKind::Numeric => "Numeric",
             KernelKind::BitArray => "BitArray",
@@ -1023,6 +1055,7 @@ mod tests {
         source.push_str("\n");
     }
 
+    use super::int_list::IntListTest;
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
         NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
@@ -1041,6 +1074,47 @@ mod tests {
     };
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::convert::Infallible;
+
+    #[test]
+    fn integer_return_keeps_a_boolean_literal_before_shared_branches() {
+        let typed = crate::compile_typed_module(
+            "example",
+            "src/example.gleam",
+            r#"
+fn choose(first: Int, second: Int) -> Int {
+  let flag = True
+  case first {
+    0 -> case flag {
+      True -> second
+      False -> first
+    }
+    _ -> case flag {
+      True -> first
+      False -> second
+    }
+  }
+}
+
+pub fn main() { choose(3, 8) }
+"#,
+        )
+        .unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let id = IntFunctionId(1);
+        let function = FunctionCodegen {
+            function: id,
+            name: "numeric_int_1".to_owned(),
+            shape: CompiledShape::inspect(plan.int_function(id).body()).unwrap(),
+        };
+        let mut source = Code::default();
+        let point = function.shape.checkpoints[0];
+        function.instruction(
+            &mut source,
+            point,
+            &function.shape.block(point.block).instructions[0],
+        );
+        assert_eq!(source.as_str(), "let b0_v0 = true;\n");
+    }
 
     #[test]
     fn block_locals_emit_only_the_supported_typed_families() {
@@ -1090,7 +1164,7 @@ pub fn main() { choose([7], [2], True, 3) }
         assert_eq!(point.block, BlockId(0));
         assert_eq!((point.ints, point.bools, point.int_lists), (1, 1, 2));
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "choose".into(),
             shape,
         };
@@ -1147,7 +1221,7 @@ pub fn main() { walk([7], [2], 1) }
         let prefix = shape.checkpoints[shape.start(BlockId(0))];
         assert_eq!((prefix.ints, prefix.bools, prefix.int_lists), (1, 0, 2));
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "walk".into(),
             shape,
         };
@@ -1223,7 +1297,7 @@ pub fn main() { same([7]) }
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            index: 1,
+            function: BoolFunctionId(1),
             name: "same".into(),
             shape: CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap(),
         };
@@ -1312,6 +1386,34 @@ pub fn main() { same([7]) }
     }
 
     #[test]
+    fn integer_list_boolean_tests_route_to_exact_rust_expressions() {
+        let block = BlockId(3);
+        for (test, expected) in [
+            (
+                IntListTest::Length {
+                    list: IntListLocalId(2),
+                    length: 4,
+                    at_least: true,
+                },
+                "b3_l2.len() >= 4",
+            ),
+            (
+                IntListTest::Equal {
+                    left: IntListLocalId(2),
+                    right: IntListLocalId(5),
+                    negate: true,
+                },
+                "!_lists.equal(&b3_l2, &b3_l5)",
+            ),
+        ] {
+            assert_eq!(
+                test_expression(block, &CompiledTest::IntList(test)),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn list_match_and_source_failure_paths_have_exact_structured_code() {
         let typed = crate::compile_typed_module(
             "example",
@@ -1327,7 +1429,7 @@ pub fn main() { head([7], 3) }
         .unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "head".into(),
             shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
@@ -1463,7 +1565,7 @@ pub fn main() { choose(0) }
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "choose".into(),
             shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
@@ -1524,7 +1626,7 @@ pub fn main() { choose(7) }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let mut function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "selected".into(),
             shape,
         };
@@ -1844,7 +1946,7 @@ if b0_i0 == 0_i128 {
                     vec![FunctionExit::Return(IntLocalId(0))].into(),
                 );
             let function = FunctionCodegen {
-                index: 1,
+                function: IntFunctionId(1),
                 name: "selected".into(),
                 shape: CompiledShape::inspect(&body).unwrap(),
             };
@@ -2135,6 +2237,8 @@ let (b1_i0, b1_v0,) = {branch};
         ]),
         customs: data::Storage::Static(&[
         ]),
+        int_lists: data::Storage::Static(&[
+        ]),
     }
 }
 "#;
@@ -2388,6 +2492,8 @@ let (b1_i0, b1_v0,) = {branch};
             },
         ]),
         customs: data::Storage::Static(&[
+        ]),
+        int_lists: data::Storage::Static(&[
         ]),
     }
 }

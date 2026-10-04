@@ -205,7 +205,8 @@ entry_target!(
     ExecutionIntListFunctionBody,
     int_list_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_int_list_function
 );
 entry_target!(
     function::StringListFunctionId,

@@ -27,6 +27,597 @@ static INT_LIST: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/
 static INT_LIST_HOSTED: data::HostedModuleArtifact =
     include!("fixtures/prepared/int_list_hosted.rs");
 static INT_LIST_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/int_list_entry.rs");
+static LIST_CONSTRUCTION: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/list_construction.rs");
+static LIST_CONSTRUCTION_ENTRY: data::HostedEntryArtifact =
+    include!("fixtures/prepared/list_construction_entry.rs");
+static LIST_CONSTRUCTION_HOSTED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/list_construction_hosted.rs");
+static LIST_NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/list_native.rs");
+
+#[path = "fixtures/prepared/list_provider.rs"]
+mod list_provider;
+
+macro_rules! construction_functions {
+    ($bindings:ident, $empty:expr) => {
+        (
+            $empty,
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, BigInt, List<BigInt>),
+                    List<BigInt>,
+                >::new("prefix"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (bool, BigInt, BigInt, List<BigInt>, List<BigInt>),
+                    List<BigInt>,
+                >::new("choose"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
+                    "reverse",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, List<BigInt>),
+                    List<BigInt>,
+                >::new("selected_reverse"))
+                .unwrap(),
+            $bindings
+                .function(
+                    FunctionDeclaration::<(BigInt, List<BigInt>), List<BigInt>>::new("promoted"),
+                )
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, List<BigInt>, bool),
+                    List<BigInt>,
+                >::new("interpreted_tail"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("main"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+                    "numeric_tail",
+                ))
+                .unwrap(),
+        )
+    };
+}
+
+#[test]
+fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_values() {
+    let source = include_str!("fixtures/prepared/list_construction.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, empty) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))
+        .unwrap();
+    let _ = construction_functions!(bindings, empty);
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/list_construction.rs").trim()
+    );
+    let kinds = LIST_CONSTRUCTION
+        .program
+        .compiled
+        .int_lists
+        .iter()
+        .map(|target| match target.implementation {
+            data::compiled::CompiledImplementation::Numeric(_) => "numeric",
+            data::compiled::CompiledImplementation::BitArray(_) => "bit_array",
+            data::compiled::CompiledImplementation::IntList(_) => "int_list",
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        [
+            "int_list", "int_list", "int_list", "int_list", "int_list", "int_list", "int_list",
+            "int_list", "numeric", "int_list", "int_list",
+        ]
+    );
+    for prepared in [false, true] {
+        let (module, functions) = if prepared {
+            let mut bindings = LIST_CONSTRUCTION.load().unwrap();
+            let empty = bindings
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))
+                .unwrap();
+            let functions = construction_functions!(bindings, empty);
+            (bindings.seal(), functions)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, empty) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))
+                .unwrap();
+            let functions = construction_functions!(bindings, empty);
+            (bindings.seal(), functions)
+        };
+        let (empty, prefix, choose, reverse, selected, promoted, interpreted, main, numeric_tail) =
+            functions;
+        let list = module.call(&empty, (), &mut Vec::new()).unwrap();
+        assert!(list.to_vec().is_empty());
+        let big: BigInt = BigInt::from(1) << 180;
+        for tail in [vec![], vec![BigInt::from(3), big.clone(), BigInt::from(4)]] {
+            let result = module
+                .call(
+                    &prefix,
+                    (7.into(), (-9).into(), tail.clone()),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            let mut expected = vec![7.into(), (-9).into()];
+            expected.extend(tail.clone());
+            assert_eq!(result.to_vec(), expected);
+            for flag in [false, true] {
+                let result = module
+                    .call(
+                        &choose,
+                        (flag, 7.into(), (-9).into(), tail.clone(), vec![2.into()]),
+                        &mut Vec::new(),
+                    )
+                    .unwrap();
+                let expected = if flag {
+                    let mut values = vec![7.into(), 7.into(), (-9).into()];
+                    values.extend(tail.clone());
+                    values
+                } else {
+                    vec![7.into(), (-9).into(), 7.into(), 2.into()]
+                };
+                assert_eq!(result.to_vec(), expected);
+            }
+            let result = module
+                .call(
+                    &promoted,
+                    (BigInt::from(i64::MAX), tail.clone()),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            let mut expected = vec![BigInt::from(i64::MAX) + 1];
+            expected.extend(tail.clone());
+            assert_eq!(result.to_vec(), expected);
+            let result = module
+                .call(
+                    &prefix,
+                    (big.clone(), (-9).into(), tail.clone()),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            let mut expected = vec![big.clone(), (-9).into()];
+            expected.extend(tail.clone());
+            assert_eq!(result.to_vec(), expected);
+            let result = module
+                .call(
+                    &interpreted,
+                    (7.into(), tail.clone(), false),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            let mut expected = vec![(-7).into()];
+            expected.extend(tail);
+            assert_eq!(result.to_vec(), expected);
+        }
+        for input in [
+            vec![],
+            vec![1.into(), 2.into(), 3.into()],
+            vec![1.into(), big.clone(), 2.into()],
+        ] {
+            let result = module
+                .call(&reverse, (input.clone(),), &mut Vec::new())
+                .unwrap();
+            assert_eq!(result.to_vec(), input.into_iter().rev().collect::<Vec<_>>());
+        }
+        let result = module
+            .call(
+                &selected,
+                (
+                    vec![1.into(), 2.into(), big.clone(), 4.into()],
+                    vec![(-3).into()],
+                ),
+                &mut Vec::new(),
+            )
+            .unwrap();
+        assert_eq!(result.to_vec(), vec![(-3).into(), 2.into(), big, 4.into()]);
+        assert_eq!(
+            module.call(&main, (), &mut Vec::new()).unwrap().to_vec(),
+            vec![4.into(), 6.into()]
+        );
+        for (flag, expected) in [(true, vec![]), (false, vec![7.into(), (-9).into()])] {
+            assert_eq!(
+                module
+                    .call(&numeric_tail, (flag,), &mut Vec::new())
+                    .unwrap()
+                    .to_vec(),
+                expected
+            );
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_list_return_root_entry_follows_the_existing_tail_chain() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    assert_eq!(LIST_CONSTRUCTION_ENTRY.program.compiled.int_lists.len(), 4);
+    let mut entry = LIST_CONSTRUCTION_ENTRY
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let mut echo = Vec::new();
+    runtime
+        .block_on(entry.run(&host, &mut (), &mut echo))
+        .unwrap();
+    assert!(echo.is_empty());
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_list_returns_preserve_caller_values_and_scope_cancellation() {
+    use std::future::{Future, poll_fn};
+    let source = include_str!("fixtures/prepared/list_construction.gleam");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, caller, running, numeric_tail) = if prepared {
+            let mut bindings = LIST_CONSTRUCTION_HOSTED
+                .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+                .unwrap();
+            let caller = bindings
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, List<BigInt>),
+                >::new("caller"))
+                .unwrap();
+            let running = bindings
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("running"))
+                .unwrap();
+            let numeric_tail = bindings
+                .function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+                    "numeric_tail",
+                ))
+                .unwrap();
+            (bindings.seal(), caller, running, numeric_tail)
+        } else {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("example", "src/example.gleam", source)],
+                )],
+                HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let (mut bindings, caller) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<
+                    (List<BigInt>, BigInt, StringValue),
+                    (StringValue, BigInt, List<BigInt>, List<BigInt>),
+                >::new("caller"))
+                .unwrap();
+            let running = bindings
+                .function(FunctionDeclaration::<(), List<BigInt>>::new("running"))
+                .unwrap();
+            let numeric_tail = bindings
+                .function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+                    "numeric_tail",
+                ))
+                .unwrap();
+            (bindings.seal().unwrap(), caller, running, numeric_tail)
+        };
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let mut started = Some(started);
+        let mut outputs = Vec::new();
+        let mut echo = |output: EchoOutput| {
+            outputs.push(output.to_string());
+            if let Some(started) = started.take() {
+                started.send(()).unwrap();
+            }
+        };
+        runtime.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    for (flag, expected) in [(true, vec![]), (false, vec![7.into(), (-9).into()])] {
+                        let result = scope.call(&numeric_tail, (flag,)).await.unwrap();
+                        assert_eq!(
+                            (0..result.len())
+                                .map(|index| result.read_item(index, Clone::clone).unwrap())
+                                .collect::<Vec<_>>(),
+                            expected
+                        );
+                    }
+                    let (text, offset, original, result) = scope
+                        .call(
+                            &caller,
+                            (vec![1.into(), 2.into()], 7.into(), "caller".into()),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(offset, BigInt::from(7));
+                    assert_eq!(
+                        (0..original.len())
+                            .map(|index| original.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![1.into(), 2.into()]
+                    );
+                    assert_eq!(
+                        (0..result.len())
+                            .map(|index| result.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![2.into(), 1.into(), 7.into()]
+                    );
+                    let address = original
+                        .read_item(0, |value| std::ptr::from_ref(value).addr())
+                        .unwrap();
+                    let mut pending = Box::pin(scope.call(&running, ()));
+                    let mut ready = Box::pin(ready);
+                    poll_fn(|context| {
+                        if pending.as_mut().poll(context).is_ready() {
+                            panic!("infinite list construction returned");
+                        }
+                        ready.as_mut().poll(context)
+                    })
+                    .await
+                    .unwrap();
+                    drop(pending);
+                    let (_, _, _, after) = scope
+                        .call(&caller, (&original, 0.into(), "after".into()))
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        (0..after.len())
+                            .map(|index| after.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![2.into(), 1.into(), 0.into()]
+                    );
+                    assert_eq!(
+                        original.read_item(0, |value| std::ptr::from_ref(value).addr()),
+                        Some(address)
+                    );
+                    assert_eq!(
+                        (0..result.len())
+                            .map(|index| result.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![2.into(), 1.into(), 7.into()]
+                    );
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        });
+        assert_eq!(outputs.len(), 1);
+        assert!(outputs[0].ends_with("\"entered-construction\""));
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_list_tail_calls_preserve_native_wait_result_identity_and_failure_origin() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, native_tail, caller) = if prepared {
+            let mut bindings = LIST_NATIVE.load(list_provider::hosts()).unwrap();
+            let native_tail = bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, List<BigInt>, bool),
+                    List<BigInt>,
+                >::new("native_tail"))
+                .unwrap();
+            let caller = bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, List<BigInt>, StringValue, bool),
+                    (StringValue, BigInt, List<BigInt>, List<BigInt>),
+                >::new("caller"))
+                .unwrap();
+            (bindings.seal(), native_tail, caller)
+        } else {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new(
+                        "example",
+                        "src/example.gleam",
+                        include_str!("fixtures/prepared/list_native.gleam"),
+                    )],
+                )],
+                list_provider::hosts(),
+            )
+            .unwrap();
+            let (mut bindings, native_tail) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<
+                    (BigInt, List<BigInt>, bool),
+                    List<BigInt>,
+                >::new("native_tail"))
+                .unwrap();
+            let caller = bindings
+                .function(FunctionDeclaration::<
+                    (BigInt, List<BigInt>, StringValue, bool),
+                    (StringValue, BigInt, List<BigInt>, List<BigInt>),
+                >::new("caller"))
+                .unwrap();
+            (bindings.seal().unwrap(), native_tail, caller)
+        };
+        let mut state = Vec::new();
+        let mut echo = Vec::new();
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    let big: BigInt = BigInt::from(1) << 180;
+                    let (text, value, original, result) = scope
+                        .call(
+                            &caller,
+                            (
+                                7.into(),
+                                vec![big.clone(), 2.into()],
+                                "native".into(),
+                                false,
+                            ),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(text.as_str(), "native");
+                    assert_eq!(value, BigInt::from(7));
+                    assert_eq!(
+                        (0..result.len())
+                            .map(|index| result.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![7.into(), big.clone(), 2.into()]
+                    );
+                    let original_address = original
+                        .read_item(0, |value| std::ptr::from_ref(value).addr())
+                        .unwrap();
+                    assert_eq!(
+                        result.read_item(1, |value| std::ptr::from_ref(value).addr()),
+                        Some(original_address)
+                    );
+                    let repeated = scope
+                        .call(&native_tail, (big.clone(), &original, false))
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        (0..repeated.len())
+                            .map(|index| repeated.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![big.clone(), big, 2.into()]
+                    );
+                    let error = scope
+                        .call(&caller, (7.into(), &original, "failure".into(), true))
+                        .await
+                        .err()
+                        .expect("native failure must reach the caller")
+                        .into_materialized();
+                    let CallError::Execution(ExecutionError::Host(error)) = error else {
+                        panic!("native failure must keep its host domain");
+                    };
+                    assert_eq!(
+                        (
+                            error.package().as_str(),
+                            error.module().as_str(),
+                            error.function().as_str()
+                        ),
+                        ("example", "example", "hold")
+                    );
+                    assert_eq!(error.failure().to_string(), "list native failure");
+                    let site = error.location().site().unwrap();
+                    assert_eq!(site.module(), "example");
+                    let source = include_str!("fixtures/prepared/list_native.gleam");
+                    let span = site.span();
+                    assert_eq!(
+                        source[span.start()..span.end()].trim(),
+                        "hold(values, True)"
+                    );
+                    assert_eq!(
+                        (0..original.len())
+                            .map(|index| original.read_item(index, Clone::clone).unwrap())
+                            .collect::<Vec<_>>(),
+                        vec![(BigInt::from(1) << 180), 2.into()]
+                    );
+                    assert_eq!(
+                        result.read_item(1, |value| std::ptr::from_ref(value).addr()),
+                        Some(original_address)
+                    );
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            state,
+            ["entered", "completed", "entered", "completed", "entered"]
+        );
+        assert!(echo.is_empty());
+    }
+}
+
+#[test]
+fn list_construction_hosted_artifacts_match_the_public_preparation_pipeline() {
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/list_construction.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<
+            (List<BigInt>, BigInt, StringValue),
+            (StringValue, BigInt, List<BigInt>, List<BigInt>),
+        >::new("caller"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), List<BigInt>>::new("running"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+            "numeric_tail",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/list_construction_hosted.rs").trim()
+    );
+
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("fixtures/prepared/list_native.gleam"),
+            )],
+        )],
+        list_provider::hosts(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<
+            (BigInt, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("native_tail"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (BigInt, List<BigInt>, StringValue, bool),
+            (StringValue, BigInt, List<BigInt>, List<BigInt>),
+        >::new("caller"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/list_native.rs").trim()
+    );
+}
 
 macro_rules! int_list_functions {
     ($bindings:ident, $count:expr) => {
@@ -2317,7 +2908,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 14; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 15; regenerate the prepared program"
     );
 }
 

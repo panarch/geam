@@ -40,6 +40,40 @@ pub fn zero_tail(values: List(Int)) -> Bool {{
   let assert [..tail] as original = values
   tail == original
 }}
+
+pub fn construct(value: Int, tail: List(Int), flag: Bool) -> List(Int) {{
+  let discarded: List(Int) = []
+  let discarded_pair = [value, 0]
+  let output = case flag {{
+    True -> [value, ..tail]
+    False -> [0, value, ..tail]
+  }}
+  [value, ..output]
+}}
+
+pub fn rebuild(values: List(Int), result: List(Int), flag: Bool) -> List(Int) {{
+  case values {{
+    [] -> result
+    [head, ..tail] -> {{
+      let result = case flag {{
+        True -> [head, head, ..result]
+        False -> [head, ..result]
+      }}
+      rebuild(tail, result, !flag)
+    }}
+  }}
+}}
+
+pub fn reverse(values: List(Int)) -> List(Int) {{ reverse_loop(values, []) }}
+
+fn reverse_loop(values: List(Int), result: List(Int)) -> List(Int) {{
+  case values {{
+    [] -> result
+    [head, ..tail] -> reverse_loop(tail, [head, ..result])
+  }}
+}}
+
+pub fn promote(value: Int, tail: List(Int)) -> List(Int) {{ [value + 1, ..tail] }}
 "#
     );
     let typed = geam::compile_typed_module("example", "src/example.gleam", &source).unwrap();
@@ -61,6 +95,26 @@ pub fn zero_tail(values: List(Int)) -> Bool {{
         .function(FunctionDeclaration::<(List<BigInt>,), bool>::new(
             "zero_tail",
         ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (BigInt, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("construct"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (List<BigInt>, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("rebuild"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
+            "reverse",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt, List<BigInt>), List<BigInt>>::new("promote"))
         .unwrap();
     let artifact = bindings.prepare().emit_rust();
     let directory = tempfile::tempdir().unwrap();
@@ -120,6 +174,7 @@ use std::sync::Mutex;
 const ARTIFACT: data::ModuleArtifact<Infallible> = include!("program.rs");
 static ORIGINAL: data::ModuleArtifact<Infallible> = ARTIFACT;
 static VISITED: Mutex<Vec<Vec<bool>>> = Mutex::new(Vec::new());
+static LIST_VISITED: Mutex<Vec<Vec<bool>>> = Mutex::new(Vec::new());
 
 // This observes the actual emitted function; it does not implement its graph.
 // Limiting a batch to one canonical step forces every cold resume boundary.
@@ -200,9 +255,110 @@ fn choose_kernel(
     checked_kernel(1, point, values, lists, budget)
 }
 
+fn checked_list_kernel(
+    index: usize,
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    let CompiledImplementation::IntList(kernel) =
+        &ORIGINAL.program.compiled.int_lists[index].implementation
+    else {
+        panic!("list return target");
+    };
+    let mut visited = LIST_VISITED.lock().unwrap();
+    if visited.is_empty() {
+        *visited = ORIGINAL
+            .program
+            .compiled
+            .int_lists
+            .iter()
+            .map(|target| {
+                let CompiledImplementation::IntList(kernel) = &target.implementation else {
+                    panic!("list return target");
+                };
+                vec![false; kernel.checkpoints.len()]
+            })
+            .collect();
+    }
+    visited[index][point] = true;
+    drop(visited);
+    let prefix = kernel.checkpoints[point];
+    assert_eq!(
+        (
+            values.ints.len(),
+            values.bools.len(),
+            values.int_lists.len()
+        ),
+        (prefix.ints, prefix.bools, prefix.int_lists)
+    );
+    let allowance = (*budget).min(1);
+    let mut remaining = allowance;
+    let progress = (kernel.run)(point, values, lists, &mut remaining);
+    *budget -= allowance - remaining;
+    if let CompiledProgress::Yield(next) | CompiledProgress::Interpreted(next) = progress {
+        let prefix = kernel.checkpoints[next];
+        assert_eq!(
+            (
+                values.ints.len(),
+                values.bools.len(),
+                values.int_lists.len()
+            ),
+            (prefix.ints, prefix.bools, prefix.int_lists)
+        );
+        if matches!(progress, CompiledProgress::Yield(_)) {
+            assert_eq!(remaining, 0);
+        }
+    }
+    progress
+}
+
+fn construct_kernel(
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    checked_list_kernel(0, point, values, lists, budget)
+}
+fn rebuild_kernel(
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    checked_list_kernel(1, point, values, lists, budget)
+}
+fn reverse_kernel(
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    checked_list_kernel(2, point, values, lists, budget)
+}
+fn reverse_loop_kernel(
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    checked_list_kernel(3, point, values, lists, budget)
+}
+fn promote_kernel(
+    point: usize,
+    values: &mut IntListValues,
+    lists: &IntListOps<'_>,
+    budget: &mut usize,
+) -> CompiledProgress {
+    checked_list_kernel(4, point, values, lists, budget)
+}
+
 fn main() {
     assert_eq!(ORIGINAL.program.compiled.ints.len(), 2);
     assert_eq!(ORIGINAL.program.compiled.bools.len(), 2);
+    assert_eq!(ORIGINAL.program.compiled.int_lists.len(), 5);
     let mut artifact = ARTIFACT;
     artifact.program.compiled.ints = ORIGINAL
         .program
@@ -217,6 +373,33 @@ fn main() {
             let run = [
                 sum_kernel as data::compiled::int_list::IntListKernel,
                 choose_kernel,
+            ][index];
+            CompiledFunction {
+                function: target.function,
+                implementation: CompiledImplementation::IntList(IntListImplementation {
+                    entry: kernel.entry,
+                    checkpoints: kernel.checkpoints.clone(),
+                    run,
+                }),
+            }
+        })
+        .collect();
+    artifact.program.compiled.int_lists = ORIGINAL
+        .program
+        .compiled
+        .int_lists
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            let CompiledImplementation::IntList(kernel) = &target.implementation else {
+                panic!("list return target");
+            };
+            let run = [
+                construct_kernel as data::compiled::int_list::IntListKernel,
+                rebuild_kernel,
+                reverse_kernel,
+                reverse_loop_kernel,
+                promote_kernel,
             ][index];
             CompiledFunction {
                 function: target.function,
@@ -243,7 +426,29 @@ fn main() {
         .function(FunctionDeclaration::<(List<BigInt>, List<BigInt>), bool>::new("same"))
         .unwrap();
     let zero_tail = bindings
-        .function(FunctionDeclaration::<(List<BigInt>,), bool>::new("zero_tail"))
+        .function(FunctionDeclaration::<(List<BigInt>,), bool>::new(
+            "zero_tail",
+        ))
+        .unwrap();
+    let construct = bindings
+        .function(FunctionDeclaration::<
+            (BigInt, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("construct"))
+        .unwrap();
+    let rebuild = bindings
+        .function(FunctionDeclaration::<
+            (List<BigInt>, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("rebuild"))
+        .unwrap();
+    let reverse = bindings
+        .function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
+            "reverse",
+        ))
+        .unwrap();
+    let promote = bindings
+        .function(FunctionDeclaration::<(BigInt, List<BigInt>), List<BigInt>>::new("promote"))
         .unwrap();
     let module = bindings.seal();
     std::thread::Builder::new()
@@ -256,6 +461,96 @@ fn main() {
                     .unwrap(),
                 BigInt::from(1205)
             );
+            for flag in [false, true] {
+                let result = module
+                    .call(
+                        &construct,
+                        (7.into(), vec![3.into()], flag),
+                        &mut Vec::new(),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    result.to_vec(),
+                    if flag {
+                        vec![7.into(), 7.into(), 3.into()]
+                    } else {
+                        vec![7.into(), 0.into(), 7.into(), 3.into()]
+                    }
+                );
+                let result = module
+                    .call(
+                        &rebuild,
+                        (vec![1.into(), 2.into()], vec![9.into()], flag),
+                        &mut Vec::new(),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    result.to_vec(),
+                    if flag {
+                        vec![2.into(), 1.into(), 1.into(), 9.into()]
+                    } else {
+                        vec![2.into(), 2.into(), 1.into(), 9.into()]
+                    }
+                );
+            }
+            let empty = module
+                .call(&reverse, (Vec::<BigInt>::new(),), &mut Vec::new())
+                .unwrap();
+            assert!(empty.is_empty());
+            let long: Vec<BigInt> = (0..1200).map(BigInt::from).collect();
+            let reversed = module
+                .call(&reverse, (long.clone(),), &mut Vec::new())
+                .unwrap();
+            assert_eq!(
+                reversed.to_vec(),
+                long.into_iter().rev().collect::<Vec<_>>()
+            );
+            let result = module
+                .call(&promote, (7.into(), vec![3.into()]), &mut Vec::new())
+                .unwrap();
+            assert_eq!(result.to_vec(), vec![8.into(), 3.into()]);
+            let missed: Vec<_> = LIST_VISITED
+                .lock()
+                .unwrap()
+                .iter()
+                .enumerate()
+                .flat_map(|(index, points)| {
+                    let CompiledImplementation::IntList(kernel) =
+                        &ORIGINAL.program.compiled.int_lists[index].implementation
+                    else {
+                        panic!("list return target");
+                    };
+                    points
+                        .iter()
+                        .enumerate()
+                        .filter_map(move |(point, visited)| {
+                            (!visited).then_some((index, point, kernel.checkpoints[point]))
+                        })
+                })
+                .collect();
+            assert_eq!(missed, vec![], "list return checkpoints left unvisited");
+            let big: BigInt = BigInt::from(1) << 180;
+            let input = vec![1.into(), big.clone(), 2.into()];
+            let result = module
+                .call(&reverse, (input.clone(),), &mut Vec::new())
+                .unwrap();
+            assert_eq!(result.to_vec(), input.into_iter().rev().collect::<Vec<_>>());
+            let result = module
+                .call(
+                    &construct,
+                    (big.clone(), vec![3.into()], true),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            assert_eq!(result.to_vec(), vec![big.clone(), big, 3.into()]);
+            let result = module
+                .call(
+                    &promote,
+                    (BigInt::from(i64::MAX), vec![3.into()]),
+                    &mut Vec::new(),
+                )
+                .unwrap();
+            assert_eq!(result.to_vec(), vec![BigInt::from(i64::MAX) + 1, 3.into()]);
             for flag in [false, true] {
                 assert_eq!(
                     module
@@ -341,11 +636,7 @@ fn main() {
                     .call(&same, (vec![1.into()], vec![]), &mut Vec::new())
                     .unwrap()
             );
-            assert!(
-                module
-                    .call(&zero_tail, (vec![],), &mut Vec::new())
-                    .unwrap()
-            );
+            assert!(module.call(&zero_tail, (vec![],), &mut Vec::new()).unwrap());
             assert!(
                 module
                     .call(&zero_tail, (vec![BigInt::from(1) << 180],), &mut Vec::new())
