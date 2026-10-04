@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 16,
+        format: 17,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -6102,6 +6102,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -6110,6 +6111,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -6118,6 +6120,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -6126,6 +6129,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -6134,6 +6138,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: numeric_int_1,
@@ -6151,6 +6156,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -6159,6 +6165,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -6167,6 +6174,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(3),
@@ -6175,6 +6183,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(3),
@@ -6183,6 +6192,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(4),
@@ -6191,6 +6201,7 @@ fn integer_comparisons() {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_5,

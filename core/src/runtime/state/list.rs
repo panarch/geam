@@ -1510,6 +1510,7 @@ pub fn main() -> List(Counter) {
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 1,
+                    strings: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(0),
@@ -1518,6 +1519,7 @@ pub fn main() -> List(Counter) {
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 2,
+                    strings: 0,
                 },
             ]
             .into(),

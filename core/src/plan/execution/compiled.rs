@@ -7,6 +7,7 @@ use crate::plan::execution::storage::Table;
 use crate::runtime::compiled::bit_array::BitArrayKernel;
 use crate::runtime::compiled::int_list::IntListKernel;
 use crate::runtime::compiled::numeric::NumericKernel;
+use crate::runtime::compiled::string::StringKernel;
 
 /// Compiler-generated implementations, separate from the canonical graph.
 ///
@@ -28,6 +29,7 @@ pub enum CompiledImplementation {
     Numeric(NumericImplementation),
     BitArray(BitArrayImplementation),
     IntList(IntListImplementation),
+    String(StringImplementation),
 }
 
 impl CompiledImplementation {
@@ -36,6 +38,7 @@ impl CompiledImplementation {
             Self::Numeric(value) => value.entry,
             Self::BitArray(value) => value.entry,
             Self::IntList(value) => value.entry,
+            Self::String(value) => value.entry,
         }
     }
 
@@ -44,6 +47,7 @@ impl CompiledImplementation {
             Self::Numeric(value) => &value.checkpoints,
             Self::BitArray(value) => &value.checkpoints,
             Self::IntList(value) => &value.checkpoints,
+            Self::String(value) => &value.checkpoints,
         }
     }
 }
@@ -66,6 +70,12 @@ pub struct IntListImplementation {
     pub run: IntListKernel,
 }
 
+pub struct StringImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: StringKernel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompiledCheckpoint {
     pub block: BlockId,
@@ -74,6 +84,7 @@ pub struct CompiledCheckpoint {
     pub bools: usize,
     pub bit_arrays: usize,
     pub int_lists: usize,
+    pub strings: usize,
 }
 
 impl CompiledFunctions {
@@ -137,6 +148,7 @@ impl Emit for CompiledCheckpoint {
                 ("bools", &self.bools),
                 ("bit_arrays", &self.bit_arrays),
                 ("int_lists", &self.int_lists),
+                ("strings", &self.strings),
             ],
         );
     }
@@ -147,6 +159,7 @@ mod tests {
     use super::{
         BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
         CompiledImplementation, IntListImplementation, NumericImplementation, Rust,
+        StringImplementation,
     };
     use crate::plan::execution::function::{
         BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
@@ -157,7 +170,7 @@ mod tests {
         CustomTypeId, CustomValueShape, CustomValueShapeId, IntListTypeId, ListTypeId,
     };
     use crate::runtime::compiled::tests::{
-        metadata_bit_array, metadata_int_list, metadata_numeric,
+        metadata_bit_array, metadata_int_list, metadata_numeric, metadata_string,
     };
 
     static FUNCTIONS: CompiledFunctions = CompiledFunctions {
@@ -171,10 +184,10 @@ mod tests {
         }]),
         bools: Table::Static(&[CompiledFunction {
             function: BoolFunctionId(3),
-            implementation: CompiledImplementation::IntList(IntListImplementation {
+            implementation: CompiledImplementation::String(StringImplementation {
                 entry: 1,
                 checkpoints: Table::Static(&[]),
-                run: metadata_int_list,
+                run: metadata_string,
             }),
         }]),
         customs: Table::Static(&[CompiledFunction {
@@ -302,6 +315,7 @@ mod tests {
                 bools: 1,
                 bit_arrays: 3,
                 int_lists: 2,
+                strings: 4,
             }),
             r#"
 data::compiled::CompiledCheckpoint {
@@ -311,6 +325,7 @@ data::compiled::CompiledCheckpoint {
     bools: 1,
     bit_arrays: 3,
     int_lists: 2,
+    strings: 4,
 }
 "#
             .trim_matches('\n')

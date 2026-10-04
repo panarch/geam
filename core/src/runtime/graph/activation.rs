@@ -13,6 +13,7 @@ use crate::runtime::compiled::CompiledProgress;
 use crate::runtime::compiled::bit_array::BitArrayValues;
 use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
 use crate::runtime::compiled::numeric::NumericValues;
+use crate::runtime::compiled::string::StringValues;
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
 use crate::runtime::evaluated::{
     EvaluatedBitArray, EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionValue,
@@ -40,6 +41,7 @@ pub(in crate::runtime) struct Storage<'plan, Plan: ExecutableRuntimePlan> {
     numeric: NumericValues,
     bit_array_loop: Option<Box<BitArrayValues>>,
     int_list: Option<Box<IntListValues>>,
+    string: Option<Box<StringValues>>,
 }
 
 pub(in crate::runtime) enum Progress<'plan, Plan: ExecutableRuntimePlan + 'plan> {
@@ -220,6 +222,18 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                         frame.resume_compiled(progress, implementation, storage)?
                     }
                 }
+                CompiledImplementation::String(string) => {
+                    let values = storage.string.get_or_insert_with(Box::default);
+                    if !frame.position.environment.load_string(values) {
+                        frame.advance(plan, state, storage, remaining)?
+                    } else {
+                        let mut budget = *remaining + 1;
+                        let progress = (string.run)(point, values, &mut budget);
+                        *remaining = budget;
+                        frame.position.environment.restore_string(values);
+                        frame.resume_compiled(progress, implementation, storage)?
+                    }
+                }
                 CompiledImplementation::BitArray(bit_array) => {
                     let values = storage.bit_array_loop.get_or_insert_with(Default::default);
                     if !frame.position.environment.load_bit_array(values) {
@@ -257,6 +271,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> Storage<'plan, Plan> {
             numeric: Default::default(),
             bit_array_loop: None,
             int_list: None,
+            string: None,
         }
     }
 }
@@ -764,6 +779,7 @@ mod tests {
             bools: 0,
             bit_arrays: 1,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -772,6 +788,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -780,6 +797,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
     ];
 
@@ -951,6 +969,7 @@ mod tests {
             bools: 1,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -959,6 +978,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -967,6 +987,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -975,6 +996,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -983,6 +1005,7 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
         },
     ];
 
@@ -1323,6 +1346,97 @@ mod tests {
     }
 
     #[test]
+    fn string_small_and_big_returns_preserve_the_fallible_mapper_and_release_scratch() {
+        use crate::plan::execution::compiled::StringImplementation;
+        use crate::plan::execution::function::FunctionReturnFamily;
+        use crate::runtime::compiled::string::StringValues;
+        use crate::runtime::error::{ExecutionError, InvariantError};
+
+        fn complete_return(_: usize, _: &mut StringValues, budget: &mut usize) -> CompiledProgress {
+            *budget -= 1;
+            CompiledProgress::Complete(BlockGraphExitId(0))
+        }
+
+        let source = r#"
+fn choose(text: String, value: Int) {
+  case text == "λ" { True -> value False -> value }
+}
+pub fn main() { choose("λ", 7) }
+"#;
+        with_source_plans!(source, plan, {
+            let body = int_body(plan, IntFunctionId(1));
+            let graph = body.block_graph().as_view();
+            assert_eq!(graph.blocks().len(), 3);
+            let implementation = CompiledImplementation::String(StringImplementation {
+                entry: 0,
+                checkpoints: vec![CompiledCheckpoint {
+                    block: BlockId(1),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                }]
+                .into(),
+                run: complete_return,
+            });
+            let expected = InvariantError::FunctionReturnFamilyMismatch {
+                expected: FunctionReturnFamily::Int,
+                actual: FunctionReturnFamily::Float,
+            };
+            for value in [BigInt::from(7), BigInt::from(1) << 100_usize] {
+                let mut storage = Storage::new();
+                let destination = storage.returns.suspend(Frame {
+                    graph,
+                    position: GraphPosition::new(BlockId(1), RetainedValues::empty()),
+                    exit: Box::new(RootExit),
+                });
+                let mapped = Arc::new(AtomicUsize::new(0));
+                let observed = mapped.clone();
+                let failure = expected.clone();
+                let continuation = FunctionContinuation {
+                    plan,
+                    id: IntFunctionId(1),
+                    body,
+                    destination,
+                    // The existing return adapter can fail on either path.
+                    map: move |_: IntegerValue| -> Result<IntegerValue, ExecutionError> {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        Err(ExecutionError::Invariant(failure))
+                    },
+                };
+                let mut values = RetainedValues::empty();
+                values.push_int(value.into());
+                let execution = Execution {
+                    active: Activation::Compiled {
+                        frame: Frame {
+                            graph,
+                            position: GraphPosition::new(BlockId(1), values),
+                            exit: Box::new(continuation),
+                        },
+                        implementation: &implementation,
+                        point: 0,
+                    },
+                };
+                let mut echo = Vec::new();
+                let mut state = RuntimeState::new(&mut echo);
+                let error = execution
+                    .advance(plan, &mut state, &mut storage, &mut 0)
+                    .err()
+                    .unwrap();
+                assert_eq!(error, ExecutionError::Invariant(expected.clone()));
+                assert_eq!(mapped.load(Ordering::SeqCst), 1);
+                let scratch = storage.string.as_ref().unwrap();
+                assert!(scratch.ints.is_empty());
+                assert!(scratch.bools.is_empty());
+                assert!(scratch.strings.is_empty());
+                assert!(echo.is_empty());
+            }
+        });
+    }
+
+    #[test]
     fn list_returns_preserve_the_fallible_return_mapper_and_release_scratch() {
         use crate::plan::execution::function::FunctionReturnFamily;
         use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
@@ -1343,6 +1457,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1351,6 +1466,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1359,6 +1475,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(2),
@@ -1367,6 +1484,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                strings: 0,
             },
         ];
         with_source_plans!(source, plan, {
@@ -1477,6 +1595,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1485,6 +1604,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1493,6 +1613,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                strings: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(2),
@@ -1501,6 +1622,7 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                strings: 0,
             },
         ];
         with_source_plans!(source, plan, {

@@ -1,6 +1,7 @@
 mod bit_array;
 mod int_list;
 pub(super) mod shape;
+mod string;
 
 use self::shape::{
     CompiledBoolean, CompiledEdge, CompiledInstruction, CompiledTerminator, CompiledTest,
@@ -122,6 +123,9 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                     return None;
                 };
                 let shape = CompiledShape::inspect(function.body())?;
+                if shape.kind == KernelKind::String {
+                    return None;
+                }
                 Some(FunctionCodegen {
                     function: *id,
                     name: format!("{}_int_list_{}", shape.kind.name(), id.index),
@@ -135,25 +139,30 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         }
         let mut source = Code::default();
         source.open("{\n");
-        source.push_str(
-            r#"
-enum CompiledResume {
-    Next(usize),
-    Exit(data::compiled::CompiledProgress),
-}
-"#,
-        );
+        let resumes_forward = ints
+            .iter()
+            .map(|function| &function.shape)
+            .chain(bools.iter().map(|function| &function.shape))
+            .chain(customs.iter().map(|function| &function.shape))
+            .chain(int_lists.iter().map(|function| &function.shape))
+            .any(CompiledShape::resumes_forward);
+        source.open("\nenum CompiledResume {\n");
+        if resumes_forward {
+            source.push_str("Next(usize),\n");
+        }
+        source.push_str("Exit(data::compiled::CompiledProgress),\n");
+        source.close("}\n");
         for function in &ints {
-            function.write_code(&mut source);
+            function.write_code(&mut source, resumes_forward);
         }
         for function in &bools {
-            function.write_code(&mut source);
+            function.write_code(&mut source, resumes_forward);
         }
         for function in &customs {
-            function.write_code(&mut source);
+            function.write_code(&mut source, resumes_forward);
         }
         for function in &int_lists {
-            function.write_code(&mut source);
+            function.write_code(&mut source, resumes_forward);
         }
         source.open("data::compiled::CompiledFunctions {\n");
         source.open("ints: data::Storage::Static(&[\n");
@@ -183,7 +192,7 @@ enum CompiledResume {
 }
 
 impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
-    fn write_code(&self, source: &mut Code) {
+    fn write_code(&self, source: &mut Code, resumes_forward: bool) {
         let name = &self.name;
         let checkpoints = self.shape.checkpoints.len();
         let values = self.shape.kind.values();
@@ -229,8 +238,9 @@ const RESUME: [
             }
         }
         source.close("];\n");
-        source.push_str(&format!(
-            r#"
+        if resumes_forward {
+            source.push_str(&format!(
+                r#"
 let mut point = point;
 loop {{
     match RESUME[point](values{argument}, budget) {{
@@ -239,7 +249,16 @@ loop {{
     }}
 }}
 "#,
-        ));
+            ));
+        } else {
+            source.push_str(&format!(
+                r#"
+match RESUME[point](values{argument}, budget) {{
+    CompiledResume::Exit(progress) => progress,
+}}
+"#
+            ));
+        }
         source.close("}\n");
         let entry = self.shape.checkpoints[self.entry()];
         self.signature(source, &format!("{}_entry", self.name), entry);
@@ -330,6 +349,7 @@ fn {name}(
             KernelKind::Numeric => "Numeric",
             KernelKind::BitArray => "BitArray",
             KernelKind::IntList => "IntList",
+            KernelKind::String => "String",
         };
         source.open(&format!(
             "implementation: data::compiled::CompiledImplementation::{implementation}(data::compiled::{implementation}Implementation {{\n"
@@ -360,6 +380,10 @@ fn {name}(
                 .chain(std::iter::repeat_n(
                     "data::compiled::int_list::IntList".to_owned(),
                     point.int_lists,
+                ))
+                .chain(std::iter::repeat_n(
+                    "data::compiled::string::StringRange".to_owned(),
+                    point.strings,
                 )),
         );
         let values = self.shape.kind.values();
@@ -388,6 +412,9 @@ fn {name}(
                 .chain(
                     (0..point.int_lists)
                         .map(|index| format!("{prefix}b{}_l{index}", point.block.0)),
+                )
+                .chain(
+                    (0..point.strings).map(|index| format!("{prefix}b{}_s{index}", point.block.0)),
                 ),
         )
     }
@@ -414,7 +441,8 @@ fn {name}(
                 .map(|index| format!("values.ints[{index}]"))
                 .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
                 .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]")))
-                .chain((0..point.int_lists).map(|index| format!("_list{index}"))),
+                .chain((0..point.int_lists).map(|index| format!("_list{index}")))
+                .chain((0..point.strings).map(|index| format!("values.strings[{index}]"))),
         )
     }
 
@@ -467,7 +495,11 @@ fn {name}(
                 .iter()
                 .filter(|(family, _)| *family == StorageFamily::BitArray)
                 .map(|(_, expression)| expression.clone());
-            return tuple(ints.chain(bools).chain(bits));
+            let strings = inputs
+                .iter()
+                .filter(|(family, _)| *family == StorageFamily::String)
+                .map(|(_, expression)| expression.clone());
+            return tuple(ints.chain(bools).chain(bits).chain(strings));
         }
         let mut uses = BTreeSet::new();
         // The last edge use moves the handle; preceding uses retain it.
@@ -557,6 +589,18 @@ values.bools.extend_from_slice(&[{bools}]);
                 "values.int_lists.clear();\nvalues.int_lists.extend([{lists}]);\n"
             ));
         }
+        if self.shape.kind == KernelKind::String {
+            let strings = (0..point.strings)
+                .map(|index| format!("b{}_s{index}", point.block.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            source.push_str(&format!(
+                r#"
+values.strings.clear();
+values.strings.extend_from_slice(&[{strings}]);
+"#
+            ));
+        }
     }
 
     fn path(&self, source: &mut Code, block: BlockId, stop: Option<BlockId>) {
@@ -588,7 +632,9 @@ values.bools.extend_from_slice(&[{bools}]);
         let join = self.shape.joins[block.0];
         if let Some(join) = join {
             let join_point = self.shape.checkpoints[self.shape.start(join)];
-            source.push_str(&format!("let {} = ", self.locals(join_point, false)));
+            if !self.shape.graph.block(join).params().is_empty() {
+                source.push_str(&format!("let {} = ", self.locals(join_point, false)));
+            }
         }
         self.branch(
             source,
@@ -601,9 +647,12 @@ values.bools.extend_from_slice(&[{bools}]);
         if let Some(join) = join {
             source.finish_statement();
             if Some(join) == stop {
-                source
-                    .push_str(&self.locals(self.shape.checkpoints[self.shape.start(join)], false));
-                source.push_str("\n");
+                if !self.shape.graph.block(join).params().is_empty() {
+                    source.push_str(
+                        &self.locals(self.shape.checkpoints[self.shape.start(join)], false),
+                    );
+                    source.push_str("\n");
+                }
             } else {
                 self.path(source, join, stop);
             }
@@ -617,8 +666,10 @@ values.bools.extend_from_slice(&[{bools}]);
                 self.locals(self.shape.checkpoints[self.entry()], false)
             ));
         } else if Some(target) == stop {
-            source.push_str(&inputs);
-            source.push_str("\n");
+            if !self.shape.graph.block(target).params().is_empty() {
+                source.push_str(&inputs);
+                source.push_str("\n");
+            }
         } else {
             let point = self.shape.checkpoints[self.shape.start(target)];
             source.push_str(&format!("let {} = {inputs};\n", self.locals(point, false)));
@@ -692,6 +743,26 @@ values.bools.extend_from_slice(&[{bools}]);
             CompiledTerminator::Exit(exit) => {
                 self.complete(source, point, *exit, returning, output)
             }
+            CompiledTerminator::StringSwitch {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                let subject = format!("values.text(b{}_s{})", point.block.0, subject.0);
+                for (literal, edge) in clauses.iter() {
+                    let condition = string::literal_condition(&subject, literal.as_str());
+                    source.open(&format!("if {condition} {{\n"));
+                    let inputs =
+                        self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                    emit_edge(source, edge.target(), inputs);
+                    source.close("} else ");
+                }
+                source.open("{\n");
+                let inputs =
+                    self.edge_inputs(source, point.block, CompiledEdge::Ordinary(fallback));
+                emit_edge(source, fallback.target(), inputs);
+                source.close("}\n");
+            }
             CompiledTerminator::Match(view) => {
                 self.match_branch(
                     source,
@@ -704,6 +775,12 @@ values.bools.extend_from_slice(&[{bools}]);
                         emit_edge(source, edge.target(), inputs);
                     },
                 );
+            }
+            CompiledTerminator::StringMatch(view) => {
+                self.string_match(source, point, view, |source, edge| {
+                    let inputs = self.edge_inputs(source, point.block, edge);
+                    emit_edge(source, edge.target(), inputs);
+                });
             }
             CompiledTerminator::BitArray(matcher) => {
                 self.bit_match(source, point, matcher, output, &mut emit_edge)
@@ -829,6 +906,9 @@ values.bools.extend_from_slice(&[{bools}]);
             CompiledInstruction::IntList(instruction) => {
                 self.list_instruction(source, point, instruction)
             }
+            CompiledInstruction::String(output, instruction) => {
+                self.string_instruction(source, point, *output, instruction)
+            }
         }
     }
 
@@ -848,6 +928,7 @@ values.bools.extend_from_slice(&[{bools}]);
                 NumericInteger::Value(_) | NumericInteger::Binary(NumericOperation::Remainder, ..),
             )
             | CompiledInstruction::Boolean(..)
+            | CompiledInstruction::String(..)
             | CompiledInstruction::IntList(_) => return,
             CompiledInstruction::Integer(output, _) => std::slice::from_ref(output),
             CompiledInstruction::Region { outputs, .. } => outputs.as_slice(),
@@ -926,7 +1007,8 @@ fn checkpoint_inputs(point: CompiledCheckpoint) -> String {
         (0..point.ints)
             .map(|index| format!("values.ints[{index}]"))
             .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
-            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]"))),
+            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]")))
+            .chain((0..point.strings).map(|index| format!("values.strings[{index}]"))),
     )
 }
 
@@ -943,6 +1025,7 @@ fn local_expression(block: BlockId, local: &ParamLocal) -> Option<(StorageFamily
     Some(match local {
         ParamLocal::Int(local) => (StorageFamily::Int, format!("b{}_i{}", block.0, local.0)),
         ParamLocal::Bool(local) => (StorageFamily::Bool, format!("b{}_v{}", block.0, local.0)),
+        ParamLocal::String(local) => (StorageFamily::String, format!("b{}_s{}", block.0, local.0)),
         ParamLocal::BitArray(local) => (
             StorageFamily::BitArray,
             format!("b{}_b{}", block.0, local.0),
@@ -960,6 +1043,7 @@ impl KernelKind {
             Self::Numeric => "numeric",
             Self::IntList => "int_list",
             Self::BitArray => "bit_array",
+            Self::String => "string",
         }
     }
     fn values(self) -> &'static str {
@@ -967,23 +1051,24 @@ impl KernelKind {
             Self::Numeric => "data::compiled::numeric::NumericValues",
             Self::IntList => "data::compiled::int_list::IntListValues",
             Self::BitArray => "data::compiled::bit_array::BitArrayValues",
+            Self::String => "data::compiled::string::StringValues",
         }
     }
     fn operations_parameter(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray => "",
+            Self::Numeric | Self::BitArray | Self::String => "",
             Self::IntList => "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
         }
     }
     fn operations_argument(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray => "",
+            Self::Numeric | Self::BitArray | Self::String => "",
             Self::IntList => ", _lists",
         }
     }
     fn operations_type(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray => "",
+            Self::Numeric | Self::BitArray | Self::String => "",
             Self::IntList => "&data::compiled::int_list::IntListOps<'_>, ",
         }
     }
@@ -1022,7 +1107,7 @@ fn division(left: String, right: String, operator: &str) -> String {
     }
 }
 
-fn test_expression(block: BlockId, test: &CompiledTest) -> String {
+fn test_expression(block: BlockId, test: &CompiledTest<'_>) -> String {
     match test {
         CompiledTest::Not(value) => format!("!b{}_v{}", block.0, value.0),
         CompiledTest::Compare(comparison, left, right) => {
@@ -1041,6 +1126,19 @@ fn test_expression(block: BlockId, test: &CompiledTest) -> String {
             )
         }
         CompiledTest::IntList(test) => int_list::test_expression(block, test),
+        CompiledTest::String(test) => string::test_expression(block, test),
+        CompiledTest::BoolEqual {
+            left,
+            right,
+            negate,
+        } => format!(
+            "b{}_v{} {} b{}_v{}",
+            block.0,
+            left.0,
+            if *negate { "!=" } else { "==" },
+            block.0,
+            right.0
+        ),
     }
 }
 
@@ -1056,12 +1154,13 @@ mod tests {
     }
 
     use super::int_list::IntListTest;
+    use super::string::StringTest;
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
-        NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
-        local_expression, test_expression,
+        KernelKind, NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust,
+        int_expression, local_expression, test_expression,
     };
-    use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
+    use crate::embedding::{BigInt, FunctionDeclaration, List, ModuleBuilder};
     use crate::plan::execution::function::{
         BoolFunctionId, ExecutionIntFunctionBody, FunctionExit, IntFunctionId,
     };
@@ -1069,11 +1168,109 @@ mod tests {
         ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BlockGraphExitId,
         BlockId, BoolBranch, BoolLocalId, BoolTest, Edge, FamilyTransfer, FloatLocalId,
         IntListLocalId, IntLocalId, IntSwitch, IntegerLiteral, IntegerOperand, Jump, ListLocal,
-        ParamLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph, StorageFamily, Terminator,
-        TestBranch, Transfer, TransferStep,
+        ParamLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph, StorageFamily, StringLocalId,
+        Terminator, TestBranch, Transfer, TransferStep,
     };
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::convert::Infallible;
+
+    #[test]
+    fn string_and_boolean_tests_have_exact_borrowed_expressions() {
+        for (test, expected) in [
+            (
+                CompiledTest::String(StringTest::Prefix {
+                    value: StringLocalId(2),
+                    prefix: "λ\"",
+                }),
+                "values.text(b3_s2).starts_with(\"λ\\\"\")",
+            ),
+            (
+                CompiledTest::String(StringTest::Equal {
+                    left: StringLocalId(2),
+                    right: StringLocalId(5),
+                    negate: false,
+                }),
+                "values.text(b3_s2) == values.text(b3_s5)",
+            ),
+            (
+                CompiledTest::BoolEqual {
+                    left: BoolLocalId(2),
+                    right: BoolLocalId(5),
+                    negate: false,
+                },
+                "b3_v2 == b3_v5",
+            ),
+            (
+                CompiledTest::BoolEqual {
+                    left: BoolLocalId(2),
+                    right: BoolLocalId(5),
+                    negate: true,
+                },
+                "b3_v2 != b3_v5",
+            ),
+        ] {
+            assert_eq!(test_expression(BlockId(3), &test), expected);
+        }
+    }
+
+    #[test]
+    fn kernel_signatures_keep_each_storage_family_and_list_operations_explicit() {
+        for (kind, name, values, parameter, argument, type_) in [
+            (
+                KernelKind::Numeric,
+                "numeric",
+                "data::compiled::numeric::NumericValues",
+                "",
+                "",
+                "",
+            ),
+            (
+                KernelKind::IntList,
+                "int_list",
+                "data::compiled::int_list::IntListValues",
+                "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
+                ", _lists",
+                "&data::compiled::int_list::IntListOps<'_>, ",
+            ),
+            (
+                KernelKind::BitArray,
+                "bit_array",
+                "data::compiled::bit_array::BitArrayValues",
+                "",
+                "",
+                "",
+            ),
+            (
+                KernelKind::String,
+                "string",
+                "data::compiled::string::StringValues",
+                "",
+                "",
+                "",
+            ),
+        ] {
+            assert_eq!(kind.name(), name);
+            assert_eq!(kind.values(), values);
+            assert_eq!(kind.operations_parameter(), parameter);
+            assert_eq!(kind.operations_argument(), argument);
+            assert_eq!(kind.operations_type(), type_);
+        }
+    }
+
+    #[test]
+    fn string_diagnostics_do_not_select_a_string_kernel_for_list_returns() {
+        let source = r#"pub fn main() -> List(Int) { panic as "required" }"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), List<BigInt>>::new("main"))
+            .unwrap();
+        let prepared = bindings.prepare();
+        assert_eq!(
+            Rust::expression(&CompiledCodegen::new(&prepared.program.functions)),
+            "data::compiled::CompiledFunctions::interpreted()"
+        );
+    }
 
     #[test]
     fn integer_return_keeps_a_boolean_literal_before_shared_branches() {
@@ -2195,6 +2392,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -2203,6 +2401,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -2211,6 +2410,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -2219,6 +2419,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -2227,6 +2428,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                     ]),
                     run: numeric_int_0,
@@ -2453,6 +2655,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -2461,6 +2664,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(1),
@@ -2469,6 +2673,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -2477,6 +2682,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                         data::compiled::CompiledCheckpoint {
                             block: data::graph::BlockId(2),
@@ -2485,6 +2691,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                         },
                     ]),
                     run: numeric_bool_0,
