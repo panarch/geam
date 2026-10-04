@@ -50,6 +50,23 @@ impl<'runtime> IntListOps<'runtime> {
         Self { storage }
     }
 
+    /// Generated arithmetic has already established the Small range. Convert
+    /// only this prefix once; allocation and retained sharing stay with storage.
+    pub fn value(&self, type_id: IntListTypeId, elements: &[i64]) -> IntList {
+        IntList(self.storage.int(
+            type_id,
+            elements.iter().copied().map(IntegerValue::from).collect(),
+        ))
+    }
+
+    pub fn prepend(&self, type_id: IntListTypeId, elements: &[i64], tail: &IntList) -> IntList {
+        IntList(self.storage.prepend_int(
+            type_id,
+            elements.iter().copied().map(IntegerValue::from).collect(),
+            &tail.0,
+        ))
+    }
+
     /// None returns before the canonical instruction runs, including an
     /// invalid index whose original graph owner supplies the diagnostic.
     pub fn index(&self, value: &IntList, index: usize) -> Option<i128> {
@@ -108,9 +125,52 @@ mod tests {
     use super::{IntList, IntListOps};
     use crate::plan::execution::graph::IntegerLiteral;
     use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
+    use crate::runtime::integer::IntegerValue;
     use crate::runtime::state::list::RuntimeListStorage;
     use num_bigint::BigInt;
     use std::ptr;
+
+    #[test]
+    fn small_construction_keeps_prefix_order_and_shares_the_existing_tail_and_cache() {
+        let storage = RuntimeListStorage::default();
+        let ops = IntListOps::new(&storage);
+        let plan = crate::runtime::plan_src("pub fn main() { [1] }");
+        let type_id = plan.int_list_function_id(0).type_id();
+        let empty = ops.value(type_id, &[]);
+        assert!(empty.is_empty());
+        let tail = ops.value(type_id, &[i64::MIN, 0, i64::MAX]);
+        assert_eq!(tail.len(), 3);
+        assert_eq!(ops.index(&tail, 0), Some(i128::from(i64::MIN)));
+        assert_eq!(ops.index(&tail, 1), Some(0));
+        assert_eq!(ops.index(&tail, 2), Some(i128::from(i64::MAX)));
+        let (original, cache) = tail.0.values().get_with_cache(1).unwrap();
+        let cached = cache.get_or_init(|| Box::new(BigInt::from(0)));
+        let combined = ops.prepend(type_id, &[7, -9], &tail);
+        assert_eq!(
+            combined
+                .0
+                .values()
+                .iter()
+                .map(IntegerValue::small)
+                .collect::<Vec<_>>(),
+            [Some(7), Some(-9), Some(i64::MIN), Some(0), Some(i64::MAX)]
+        );
+        assert_eq!(combined.0.type_id(), type_id);
+        let (retained, retained_cache) = combined.0.values().get_with_cache(3).unwrap();
+        assert!(ptr::eq(original, retained));
+        assert!(ptr::eq(cache, retained_cache));
+        assert!(ptr::eq(
+            cached.as_ref(),
+            retained_cache.get().unwrap().as_ref()
+        ));
+        let no_prefix = ops.prepend(type_id, &[], &tail);
+        assert!(ops.equal(&no_prefix, &tail));
+        assert!(ptr::eq(original, no_prefix.0.values().get(1).unwrap()));
+        let only_prefix = ops.prepend(type_id, &[7, -9], &empty);
+        assert!(ops.equal(&only_prefix, &ops.value(type_id, &[7, -9])));
+        drop(tail);
+        assert_eq!(ops.index(&combined, 4), Some(i128::from(i64::MAX)));
+    }
 
     #[test]
     fn typed_reads_keep_big_values_prefix_order_and_shared_tail_cache_identity() {

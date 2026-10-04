@@ -6,6 +6,9 @@ use geam_core::{HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntr
 use std::error::Error;
 use std::path::Path;
 
+#[path = "../tests/fixtures/prepared/list_provider.rs"]
+mod list_provider;
+
 #[path = "../tests/fixtures/prepared/native_provider.rs"]
 mod native_provider;
 #[path = "../tests/support/work_fixture.rs"]
@@ -210,6 +213,100 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bit_entry =
         PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(bit_entry)?)?;
 
+    let construction_source = include_str!("../tests/fixtures/prepared/list_construction.gleam");
+    let construction =
+        geam_core::compile_typed_module("example", "src/example.gleam", construction_source)?;
+    let (mut construction, _) = ModuleBuilder::new(construction)?
+        .function(FunctionDeclaration::<(), List<BigInt>>::new("empty"))?;
+    construction.function(FunctionDeclaration::<
+        (BigInt, BigInt, List<BigInt>),
+        List<BigInt>,
+    >::new("prefix"))?;
+    construction.function(FunctionDeclaration::<
+        (bool, BigInt, BigInt, List<BigInt>, List<BigInt>),
+        List<BigInt>,
+    >::new("choose"))?;
+    construction.function(FunctionDeclaration::<(List<BigInt>,), List<BigInt>>::new(
+        "reverse",
+    ))?;
+    construction.function(FunctionDeclaration::<
+        (List<BigInt>, List<BigInt>),
+        List<BigInt>,
+    >::new("selected_reverse"))?;
+    construction
+        .function(FunctionDeclaration::<(BigInt, List<BigInt>), List<BigInt>>::new("promoted"))?;
+    construction.function(FunctionDeclaration::<
+        (BigInt, List<BigInt>, bool),
+        List<BigInt>,
+    >::new("interpreted_tail"))?;
+    construction.function(FunctionDeclaration::<(), List<BigInt>>::new("main"))?;
+    construction.function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+        "numeric_tail",
+    ))?;
+    let construction_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                construction_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let construction_entry = PreparedHostedEntry::try_from_module_plan(
+        geam_core::plan_host_program(construction_entry)?,
+    )?;
+    let construction_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                construction_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let (mut construction_hosted, _) =
+        HostedModuleBuilder::new(construction_hosted)?.function(FunctionDeclaration::<
+            (List<BigInt>, BigInt, StringValue),
+            (StringValue, BigInt, List<BigInt>, List<BigInt>),
+        >::new("caller"))?;
+    construction_hosted.function(FunctionDeclaration::<(), List<BigInt>>::new("running"))?;
+    construction_hosted.function(FunctionDeclaration::<(bool,), List<BigInt>>::new(
+        "numeric_tail",
+    ))?;
+    let list_native = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                include_str!("../tests/fixtures/prepared/list_native.gleam"),
+            )],
+        )],
+        list_provider::hosts(),
+    )?;
+    let (mut list_native, _) =
+        HostedModuleBuilder::new(list_native)?.function(FunctionDeclaration::<
+            (BigInt, List<BigInt>, bool),
+            List<BigInt>,
+        >::new("native_tail"))?;
+    list_native.function(FunctionDeclaration::<
+        (BigInt, List<BigInt>, StringValue, bool),
+        (StringValue, BigInt, List<BigInt>, List<BigInt>),
+    >::new("caller"))?;
+
     let values = geam_core::compile_typed_program(
         "example",
         [ModuleSource::new(
@@ -339,6 +436,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("int_list.rs", int_list.prepare().emit_rust()),
         ("int_list_hosted.rs", hosted_int_list.prepare()?.emit_rust()),
         ("int_list_entry.rs", int_list_entry.emit_rust()),
+        ("shared_custom.rs", shared_provider::prepare().emit_rust()),
+        ("callables.rs", callable_declarations::prepare().emit_rust()),
+        (
+            "callable_embedding.rs",
+            callable_declarations::prepare_scoped().emit_rust(),
+        ),
+        (
+            "callable_views.rs",
+            callable_declarations::prepare_native_views().emit_rust(),
+        ),
+        ("list_construction.rs", construction.prepare().emit_rust()),
+        ("list_construction_entry.rs", construction_entry.emit_rust()),
+        (
+            "list_construction_hosted.rs",
+            construction_hosted.prepare()?.emit_rust(),
+        ),
+        ("list_native.rs", list_native.prepare()?.emit_rust()),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (

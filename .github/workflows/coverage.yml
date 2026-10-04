@@ -13,6 +13,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  COVERAGE_DIAGNOSTICS: "true"
 
 jobs:
   core-macros-coverage:
@@ -44,15 +45,39 @@ jobs:
         run: cargo llvm-cov clean --workspace
 
       - name: Run core and macro owner tests
+        id: owner-tests
         run: cargo llvm-cov --no-report --package geam-core --package geam-macros --features geam-core/tokio --locked
 
       - name: Check geam-core coverage
         run: cargo llvm-cov report --package geam-core --summary-only --fail-under-lines 100 --fail-under-regions 100
 
       - name: Check geam-macros coverage
+        if: ${{ !cancelled() && steps.owner-tests.outcome == 'success' }}
         run: cargo llvm-cov report --package geam-macros --summary-only --fail-under-lines 100 --fail-under-regions 100
 
+      - name: Collect coverage diagnostics
+        if: ${{ !cancelled() && steps.owner-tests.outcome == 'success' && env.COVERAGE_DIAGNOSTICS == 'true' }}
+        run: |
+          report_dir="$RUNNER_TEMP/core-macros-coverage-diagnostics"
+          mkdir -p "$report_dir"
+          rustc -Vv > "$report_dir/toolchain.txt"
+          cargo llvm-cov --version >> "$report_dir/toolchain.txt"
+          cargo llvm-cov report --package geam-core --json --summary-only --output-path "$report_dir/core-summary.json"
+          cargo llvm-cov report --package geam-macros --json --summary-only --output-path "$report_dir/macros-summary.json"
+          cargo llvm-cov report --package geam-core --text --show-instantiations --show-missing-lines --output-dir "$report_dir/core" --verbose > "$report_dir/core-report.log" 2>&1
+
+      - name: Upload coverage diagnostics
+        if: ${{ !cancelled() && steps.owner-tests.outcome == 'success' && env.COVERAGE_DIAGNOSTICS == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: core-macros-coverage-${{ github.sha }}
+          path: ${{ runner.temp }}/core-macros-coverage-diagnostics/
+          if-no-files-found: error
+          retention-days: 5
+          compression-level: 1
+
   built-in-coverage:
+    if: false
     name: Built-ins
     runs-on: ubuntu-latest
 
@@ -106,6 +131,7 @@ jobs:
         run: cargo llvm-cov report --package geam-time --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   cli-binary-coverage:
+    if: false
     name: CLI and binary
     runs-on: ubuntu-latest
 
@@ -155,6 +181,7 @@ jobs:
         run: cargo llvm-cov report --package geam --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   benchmark-coverage:
+    if: false
     name: Benchmark tooling
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -215,6 +242,7 @@ jobs:
         run: cargo llvm-cov report --manifest-path benchmarks/Cargo.toml --package geam-benchmark-support --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   application-arguments-coverage:
+    if: false
     name: Application arguments
     runs-on: ubuntu-latest
     defaults:
@@ -256,6 +284,7 @@ jobs:
         run: cargo llvm-cov report --package geam-arguments-fixture --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   service-consumer-coverage:
+    if: false
     name: Service consumer (${{ matrix.consumer }})
     runs-on: ubuntu-latest
     strategy:

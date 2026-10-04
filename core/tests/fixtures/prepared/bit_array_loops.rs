@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 14,
+    format: 15,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -8289,6 +8289,8 @@ data::ModuleArtifact {
                             run: bit_array_custom_0,
                         }),
                     },
+                ]),
+                int_lists: data::Storage::Static(&[
                 ]),
             }
         },

@@ -8,7 +8,18 @@ use crate::plan::execution::graph::{
 };
 use crate::plan::execution::type_::IntListTypeId;
 
-pub(super) enum IntListInstruction {
+pub(super) enum IntListInstruction<'graph> {
+    Value {
+        output: IntListLocalId,
+        type_id: IntListTypeId,
+        elements: &'graph [IntLocalId],
+    },
+    Spread {
+        output: IntListLocalId,
+        type_id: IntListTypeId,
+        elements: &'graph [IntLocalId],
+        tail: IntListLocalId,
+    },
     Index {
         output: IntLocalId,
         list: IntListLocalId,
@@ -163,7 +174,7 @@ impl<'graph> IntListElement<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
     pub(super) fn preflight(
         &self,
         source: &mut Code,
@@ -195,9 +206,34 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
         &self,
         source: &mut Code,
         point: CompiledCheckpoint,
-        instruction: &IntListInstruction,
+        instruction: &IntListInstruction<'_>,
     ) {
         match instruction {
+            IntListInstruction::Value {
+                output,
+                type_id,
+                elements,
+            } => source.push_str(&format!(
+                "let b{}_l{} = _lists.value({}, &[{}]);\n",
+                point.block.0,
+                output.0,
+                Rust::expression(type_id),
+                list_elements(point.block, elements),
+            )),
+            IntListInstruction::Spread {
+                output,
+                type_id,
+                elements,
+                tail,
+            } => source.push_str(&format!(
+                "let b{}_l{} = _lists.prepend({}, &[{}], &b{}_l{});\n",
+                point.block.0,
+                output.0,
+                Rust::expression(type_id),
+                list_elements(point.block, elements),
+                point.block.0,
+                tail.0,
+            )),
             // Index is read before charging its step so an unrepresentable
             // head returns to the unexecuted canonical instruction.
             IntListInstruction::Index { .. } => {}
@@ -345,6 +381,14 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     }
 }
 
+fn list_elements(block: BlockId, elements: &[IntLocalId]) -> String {
+    elements
+        .iter()
+        .map(|element| format!("b{}_i{} as i64", block.0, element.0))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub(super) fn test_expression(block: BlockId, test: &IntListTest) -> String {
     match test {
         IntListTest::Length {
@@ -389,8 +433,93 @@ mod tests {
         MatchEdgeArgument, MatchPattern, MatchPatternBinding, MatchPatternList,
         MatchPatternListTail, ParamLocal, Transfer,
     };
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
     use num_bigint::BigInt;
+
+    #[test]
+    fn list_constructors_emit_the_exact_small_prefix_and_existing_storage_calls() {
+        let typed = crate::compile_typed_module("example", "src/example.gleam",
+            "fn create(first: Int, second: Int, tail: List(Int)) { let empty: List(Int) = [] let pair = [first, second] [first, second, ..tail] } pub fn main() { create(7, -9, []) }",
+        ).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let id = plan.int_list_function_id(1);
+        let function = FunctionCodegen {
+            function: id,
+            name: "int_list_int_list_1".to_owned(),
+            shape: CompiledShape::inspect(plan.int_list_function(id).body()).unwrap(),
+        };
+        let mut source = Code::default();
+        let block = function.shape.block(BlockId(0));
+        for (index, instruction) in block.instructions.iter().enumerate() {
+            function.instruction(&mut source, function.shape.checkpoints[index], instruction);
+        }
+        assert_eq!(
+            source.as_str(),
+            r#"
+let b0_l1 = _lists.value(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(0),
+}, &[]);
+let b0_l2 = _lists.value(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(0),
+}, &[b0_i0 as i64, b0_i1 as i64]);
+let b0_l3 = _lists.prepend(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(0),
+}, &[b0_i0 as i64, b0_i1 as i64], &b0_l0);
+"#
+            .trim_start_matches('\n')
+        );
+        let mut source = Code::default();
+        function.write_target(&mut source);
+        assert_eq!(source.as_str(), r#"
+data::compiled::CompiledFunction {
+    function: data::function::IntListFunctionId {
+        index: 1,
+        type_id: data::type_::IntListTypeId {
+            list_type: data::type_::ListTypeId(0),
+        },
+    },
+    implementation: data::compiled::CompiledImplementation::IntList(data::compiled::IntListImplementation {
+        entry: 0,
+        checkpoints: data::Storage::Static(&[
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 1,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 1,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 2,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 2,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 3,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 3,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 4,
+            },
+        ]),
+        run: int_list_int_list_1,
+    }),
+},
+"#.trim_start_matches('\n'));
+    }
 
     #[test]
     fn pattern_views_keep_aliases_selected_bindings_and_the_actual_read_prefix() {
@@ -469,7 +598,7 @@ mod tests {
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         assert_eq!((point.ints, point.bools, point.int_lists), (0, 0, 1));
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "head".into(),
             shape,
         };
@@ -554,7 +683,7 @@ match _matched {
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "head".into(),
             shape,
         };
@@ -788,7 +917,7 @@ let _matched = {
             "fn head(values: List(Int)) { let assert [first, ..] = values first } pub fn main() { head([1]) }").unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "head".into(),
             shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };
