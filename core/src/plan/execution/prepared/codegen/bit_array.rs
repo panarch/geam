@@ -193,7 +193,7 @@ fn inspect_range(pattern: &BitArrayBindingPattern, bindings: &mut BTreeMap<usize
     }
 }
 
-impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
     /// Forward labels preserve shared failure/guard joins without copying blocks
     /// or adding dispatch to the entry loop. Entry back-edges remain `continue`.
     pub(super) fn bit_loop(&self, source: &mut Code) {
@@ -932,7 +932,7 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             }]));
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let codegen = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "numeric_int_1".to_owned(),
             shape,
         };
@@ -985,7 +985,7 @@ pub fn main() { read(<<7:64, 2>>, 3, True, <<1>>) }
         );
         let body = plan.int_function(IntFunctionId(1)).body();
         let function = FunctionCodegen {
-            index: 1,
+            function: IntFunctionId(1),
             name: "selected".into(),
             shape: CompiledShape::inspect_bits(body).unwrap(),
         };

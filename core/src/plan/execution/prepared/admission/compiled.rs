@@ -20,12 +20,14 @@ enum Family {
     Int,
     Bool,
     Custom,
+    IntList,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum Reason {
     UnorderedTarget,
     MissingFunction,
+    TargetIdentity,
     HostFunction,
     UnsupportedGraph,
     ImplementationKind,
@@ -41,32 +43,73 @@ pub(super) fn all<Profile: ExecutionProfile>(
 ) -> Result<(), CompiledError> {
     targets(
         &compiled.ints,
-        &functions.value_returns.int_functions,
         Family::Int,
         |id| id.0,
+        |id| {
+            functions
+                .value_returns
+                .int_functions
+                .get(id.0)
+                .map(ExecutionFunctionEntry::as_ref)
+                .ok_or(Reason::MissingFunction)
+        },
         value_shape,
     )?;
     targets(
         &compiled.bools,
-        &functions.value_returns.bool_functions,
         Family::Bool,
         |id| id.0,
+        |id| {
+            functions
+                .value_returns
+                .bool_functions
+                .get(id.0)
+                .map(ExecutionFunctionEntry::as_ref)
+                .ok_or(Reason::MissingFunction)
+        },
         value_shape,
     )?;
     targets(
         &compiled.customs,
-        &functions.value_returns.custom_functions,
         Family::Custom,
         |id| *id,
+        |id| {
+            functions
+                .value_returns
+                .custom_functions
+                .get(*id)
+                .map(ExecutionFunctionEntry::as_ref)
+                .ok_or(Reason::MissingFunction)
+        },
         custom_shape,
+    )?;
+    targets(
+        &compiled.int_lists,
+        Family::IntList,
+        |id| id.index,
+        |id| {
+            let (expected, function) = functions
+                .list_returns
+                .int_list_functions
+                .get(id.index)
+                .ok_or(Reason::MissingFunction)?;
+            if id != expected {
+                return Err(Reason::TargetIdentity);
+            }
+            Ok(function.as_ref())
+        },
+        |body, implementation| match implementation {
+            CompiledImplementation::BitArray(_) => Err(Reason::Kernel),
+            _ => value_shape(body, implementation),
+        },
     )
 }
 
-fn targets<Id, Body: ExecutionFunctionBody, Entry: ExecutionFunctionEntry<Body>>(
+fn targets<'function, Id, Body: ExecutionFunctionBody + 'function, HostTarget: 'function>(
     targets: &[CompiledFunction<Id>],
-    functions: &[Entry],
     family: Family,
     index: impl Fn(&Id) -> usize,
+    entry: impl Fn(&Id) -> Result<ExecutionFunctionRef<'function, Body, HostTarget>, Reason>,
     inspect: impl for<'body> Fn(
         &'body Body,
         &CompiledImplementation,
@@ -84,10 +127,7 @@ fn targets<Id, Body: ExecutionFunctionBody, Entry: ExecutionFunctionEntry<Body>>
             return Err(error(Reason::UnorderedTarget));
         }
         previous = Some(function);
-        let entry = functions
-            .get(function)
-            .ok_or_else(|| error(Reason::MissingFunction))?;
-        let ExecutionFunctionRef::Graph(entry) = entry.as_ref() else {
+        let ExecutionFunctionRef::Graph(entry) = entry(&target.function).map_err(&error)? else {
             return Err(error(Reason::HostFunction));
         };
         let implementation = &target.implementation;
@@ -147,6 +187,7 @@ fn custom_shape<'body, Body: ExecutionFunctionBody>(
 #[cfg(test)]
 mod tests {
     use super::super::tests::{graph_body, owned_mut};
+    use super::ExecutionFunctionEntry;
     use super::{CompiledError, Family, Reason, all, targets, value_shape};
     use super::{CompiledShape, KernelKind};
     use crate::plan::execution::compiled::{
@@ -189,6 +230,81 @@ mod tests {
     }
 
     #[test]
+    fn list_return_targets_admit_the_full_identity_and_reject_wrong_types_and_positions() {
+        use crate::plan::execution::type_::ListTypeId;
+        let plan = source_plan("pub fn main() -> List(Int) { [7, -9] }");
+        let functions = &plan.program.functions;
+        let (id, body) = &functions.list_returns.int_list_functions[0];
+        let shape = CompiledShape::inspect(body.body()).unwrap();
+        for (change, expected) in [
+            (0, None),
+            (1, Some(Reason::TargetIdentity)),
+            (2, Some(Reason::MissingFunction)),
+            (3, Some(Reason::UnorderedTarget)),
+            (4, Some(Reason::ImplementationKind)),
+            (5, Some(Reason::Entry)),
+            (6, Some(Reason::CheckpointCount)),
+            (7, Some(Reason::Checkpoint(3))),
+            (8, Some(Reason::Kernel)),
+        ] {
+            let mut function = *id;
+            let mut points = shape.checkpoints.clone();
+            if change == 1 {
+                function.type_id.list_type = ListTypeId(999);
+            }
+            if change == 2 {
+                function.index = 999;
+            }
+            if change == 6 {
+                points.pop();
+            }
+            if change == 7 {
+                points[3].int_lists += 1;
+            }
+            let make = || CompiledFunction {
+                function,
+                implementation: if change == 8 {
+                    CompiledImplementation::BitArray(BitArrayImplementation {
+                        entry: 0,
+                        checkpoints: points.clone().into(),
+                        run: metadata_bit_array,
+                    })
+                } else if change == 4 {
+                    CompiledImplementation::Numeric(NumericImplementation {
+                        entry: 0,
+                        checkpoints: points.clone().into(),
+                        run: metadata_numeric,
+                    })
+                } else {
+                    CompiledImplementation::IntList(IntListImplementation {
+                        entry: if change == 5 { 999 } else { 0 },
+                        checkpoints: points.clone().into(),
+                        run: metadata_int_list,
+                    })
+                },
+            };
+            let mut entries = vec![make()];
+            if change == 3 {
+                entries.push(make());
+            }
+            let compiled = CompiledFunctions {
+                ints: vec![].into(),
+                bools: vec![].into(),
+                customs: vec![].into(),
+                int_lists: entries.into(),
+            };
+            assert_eq!(
+                all(&compiled, functions),
+                expected.map_or(Ok(()), |reason| Err(CompiledError {
+                    family: Family::IntList,
+                    function: function.index,
+                    reason,
+                }))
+            );
+        }
+    }
+
+    #[test]
     fn bit_array_and_custom_targets_require_their_exact_kernel_and_bit_prefixes() {
         use crate::plan::execution::function::FunctionBodyOwner;
         let execution = hosted_plan(
@@ -228,6 +344,7 @@ pub fn main() { scan(<<1, 2>>, 0) }
             ints: vec![].into(),
             bools: vec![].into(),
             customs: vec![target].into(),
+            int_lists: vec![].into(),
         };
         assert_eq!(all(&compiled, functions), Ok(()));
         let mut points = shape.checkpoints.clone();
@@ -290,6 +407,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             .unwrap();
         let mut compiled = CompiledFunctions {
             customs: vec![].into(),
+            int_lists: vec![].into(),
             ints: vec![CompiledFunction {
                 function: IntFunctionId(index),
                 implementation: CompiledImplementation::BitArray(BitArrayImplementation {
@@ -382,6 +500,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             }
             let compiled = CompiledFunctions {
                 customs: vec![].into(),
+                int_lists: vec![].into(),
                 ints: entries.into(),
                 bools: vec![].into(),
             };
@@ -448,6 +567,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
             };
             let compiled = CompiledFunctions {
                 customs: vec![].into(),
+                int_lists: vec![].into(),
                 ints: vec![CompiledFunction {
                     function: IntFunctionId(0),
                     implementation,
@@ -490,6 +610,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
         let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
         let mut compiled = CompiledFunctions {
             customs: vec![].into(),
+            int_lists: vec![].into(),
             ints: vec![].into(),
             bools: vec![CompiledFunction {
                 function: BoolFunctionId(1),
@@ -506,9 +627,12 @@ pub fn main() { #(head([1]), same([1], [1])) }
         assert_eq!(
             targets(
                 &compiled.bools,
-                &plan.program.functions.value_returns.bool_functions[..0],
                 Family::Bool,
                 |id| id.0,
+                |id| plan.program.functions.value_returns.bool_functions[..0]
+                    .get(id.0)
+                    .map(ExecutionFunctionEntry::as_ref)
+                    .ok_or(Reason::MissingFunction),
                 value_shape,
             ),
             Err(CompiledError {
@@ -552,7 +676,16 @@ pub fn main() { #(head([1]), same([1], [1])) }
         }];
 
         assert_eq!(
-            targets(&compiled, &functions, Family::Int, |id| id.0, value_shape),
+            targets(
+                &compiled,
+                Family::Int,
+                |id| id.0,
+                |id| functions
+                    .get(id.0)
+                    .map(ExecutionFunctionEntry::as_ref)
+                    .ok_or(Reason::MissingFunction),
+                value_shape
+            ),
             Err(CompiledError {
                 family: Family::Int,
                 function: 0,
@@ -568,6 +701,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
             all(
                 &CompiledFunctions {
                     customs: vec![].into(),
+                    int_lists: vec![].into(),
                     ints: Vec::from(compiled).into(),
                     bools: vec![].into(),
                 },

@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 15,
+    format: 16,
     program: data::ProgramTables {
         root: data::source::module_id(1),
         modules: data::Storage::Static(&[
@@ -1035,6 +1035,8 @@ pub fn main() {
                 bools: data::Storage::Static(&[
                 ]),
                 customs: data::Storage::Static(&[
+                ]),
+                int_lists: data::Storage::Static(&[
                 ]),
             }
         },

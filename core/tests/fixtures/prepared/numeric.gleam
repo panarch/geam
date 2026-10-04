@@ -69,7 +69,11 @@ pub fn divmod(left: Int, right: Int, flag: Bool) -> Int {
 }
 
 pub fn product(left: Int, right: Int) -> Int {
-  case left != right {
+  let multiply = case left == right {
+    True -> False
+    False -> True
+  }
+  case multiply {
     True -> left * right
     False -> left
   }

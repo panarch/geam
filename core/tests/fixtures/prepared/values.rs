@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 15,
+    format: 16,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -16448,6 +16448,60 @@ fn integer_comparisons() {
                     CompiledResume::Next(0)
                 }
             }
+
+            fn int_list_int_list_0(
+                point: usize,
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled::int_list::IntListValues, &data::compiled::int_list::IntListOps<'_>, &mut usize) -> CompiledResume;
+                    1
+                ] = [
+                    |values, _lists, budget| {
+                        let _list0 = values.int_lists.remove(0);
+                        CompiledResume::Exit(int_list_int_list_0_entry((_list0,), values, _lists, budget))
+                    },
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, _lists, budget) {
+                        CompiledResume::Next(next) => point = next,
+                        CompiledResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn int_list_int_list_0_entry(
+                inputs: (data::compiled::int_list::IntList,),
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+                let (b0_l0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b0_l0]);
+                    return data::compiled::CompiledProgress::Yield(0);
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([b0_l0]);
+                data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+            }
             data::compiled::CompiledFunctions {
                 ints: data::Storage::Static(&[
                     data::compiled::CompiledFunction {
@@ -16503,6 +16557,30 @@ fn integer_comparisons() {
                 bools: data::Storage::Static(&[
                 ]),
                 customs: data::Storage::Static(&[
+                ]),
+                int_lists: data::Storage::Static(&[
+                    data::compiled::CompiledFunction {
+                        function: data::function::IntListFunctionId {
+                            index: 0,
+                            type_id: data::type_::IntListTypeId {
+                                list_type: data::type_::ListTypeId(0),
+                            },
+                        },
+                        implementation: data::compiled::CompiledImplementation::IntList(data::compiled::IntListImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                            ]),
+                            run: int_list_int_list_0,
+                        }),
+                    },
                 ]),
             }
         },
