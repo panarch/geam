@@ -118,6 +118,256 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn scalar_and_custom_captures_release_when_a_driven_turn_is_abandoned() {
+        use crate::plan::execution::function::IntFunctionId;
+        use crate::runtime::execution::Services;
+        use crate::runtime::function::Execution;
+        use num_bigint::BigInt;
+        use std::future::Future;
+        use std::num::NonZeroUsize;
+        use std::task::{Context, Poll, Waker};
+
+        for source in [
+            r#"
+type Item { Add(Int) Subtract(Int) Skip }
+fn fold(items: List(Item), total: Int, apply: fn(Int, Item) -> Int) -> Int {
+  case items {
+    [] -> total
+    [head, ..tail] -> fold(tail, apply(total, head), apply)
+  }
+}
+fn calculate(bias: Int, enabled: Bool) -> Int {
+  fold([Add(7), Subtract(2), Skip], 3, fn(total, item) {
+    case enabled {
+      True -> case item {
+        Add(value) -> total + value + bias
+        Subtract(value) -> total - value - bias
+        Skip -> total + bias
+      }
+      False -> total
+    }
+  })
+}
+pub fn main() { calculate(BIAS, True) }
+"#,
+            r#"
+type Item { Add(Int) Subtract(Int) Skip }
+type Bias { Bias(Int, Bool) }
+fn fold(items: List(Item), total: Int, apply: fn(Int, Item) -> Int) -> Int {
+  case items {
+    [] -> total
+    [head, ..tail] -> fold(tail, apply(total, head), apply)
+  }
+}
+fn calculate(value: Int) -> Int {
+  let bias = Bias(value, True)
+  fold([Add(7), Subtract(2), Skip], 3, fn(total, item) {
+    let Bias(amount, enabled) = bias
+    case enabled {
+      True -> case item {
+        Add(value) -> total + value + amount
+        Subtract(value) -> total - value - amount
+        Skip -> total + amount
+      }
+      False -> total
+    }
+  })
+}
+pub fn main() { calculate(BIAS) }
+"#,
+        ] {
+            for bias in [BigInt::from(4), BigInt::from(1) << 180] {
+                let plan = crate::runtime::plan_src(&source.replace("BIAS", &bias.to_string()));
+                let mut retained_capture_seen = false;
+                let mut completion_seen = false;
+                for abandon_after in 1..100 {
+                    let captures = CaptureStorage::default();
+                    let services = Services::<crate::ExecutionPlan>::new(captures.clone());
+                    let context = services.context();
+                    assert_eq!(Arc::strong_count(&captures.releases), 3);
+                    let mut pending = Box::pin(
+                        Execution::new(
+                            IntFunctionId(0),
+                            HostCallOrigin::Entry,
+                            RetainedValues::empty(),
+                        )
+                        .drive(&plan, &context, NonZeroUsize::MIN),
+                    );
+                    let mut cx = Context::from_waker(Waker::noop());
+                    for _ in 0..abandon_after {
+                        let progress = pending.as_mut().poll(&mut cx);
+                        retained_capture_seen |= Arc::strong_count(&captures.releases) > 4;
+                        if let Poll::Ready(value) = progress {
+                            assert_eq!(value.unwrap().unwrap(), &bias + 8);
+                            completion_seen = true;
+                            break;
+                        }
+                    }
+                    drop(pending);
+                    assert_eq!(Arc::strong_count(&captures.releases), 3);
+                    drop(context);
+                    drop(services);
+                    assert_eq!(Arc::strong_count(&captures.releases), 1);
+                }
+                assert!(retained_capture_seen && completion_seen);
+            }
+        }
+    }
+
+    #[test]
+    fn compiled_callback_captures_release_at_every_abandoned_turn() {
+        use crate::__prepared_support as data;
+        use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
+        use crate::plan::execution::compiled::CompiledImplementation;
+        use crate::runtime::execution::Services;
+        use crate::runtime::function::Execution;
+        use std::convert::Infallible;
+        use std::future::Future;
+        use std::num::NonZeroUsize;
+        use std::task::{Context, Poll, Waker};
+
+        const ARTIFACT: data::ModuleArtifact<Infallible> =
+            include!("../../tests/fixtures/prepared/custom_loop_boundaries.rs");
+        let source = r#"type Item {
+  Item(Int)
+}
+
+fn walk(
+  items: List(Item),
+  total: Int,
+  fail: Bool,
+  apply: fn(Int, Item) -> Int,
+) {
+  case items {
+    [] ->
+      case fail {
+        True -> panic
+        False -> {
+          echo total
+          let assert [result] = [total]
+          result
+        }
+      }
+    [head, ..tail] -> walk(tail, apply(total + 1, head), fail, apply)
+  }
+}
+
+fn add(total: Int, item: Item) {
+  let Item(value) = item
+  total + value
+}
+
+fn relay(total: Int, item: Item) {
+  add(total, item)
+}
+
+pub fn integer(count: Int, fail: Bool, connected: Bool, initial: Int) {
+  let apply = case connected {
+    True -> add
+    False -> relay
+  }
+  walk(items(count, []), initial, fail, apply)
+}
+
+fn any(items: List(Item), seen: Bool, apply: fn(Bool, Item) -> Bool) {
+  case items {
+    [] -> seen
+    [head, ..tail] -> any(tail, apply(seen, head), apply)
+  }
+}
+
+pub fn boolean(bias: Int) {
+  any([Item(1)], False, fn(_seen, item) {
+    let Item(value) = item
+    value + bias > 0
+  })
+}
+
+pub fn main() {
+  integer(1, False, True, 3)
+}
+
+fn items(count: Int, result: List(Item)) {
+  case count {
+    0 -> result
+    _ -> items(count - 1, [Item(2), ..result])
+  }
+}
+"#;
+        let typed =
+            crate::compile_typed_module("example", "src/custom_loop_boundaries.gleam", source)
+                .unwrap();
+        let (mut bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))
+            .unwrap();
+        bindings
+            .function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))
+            .unwrap();
+        assert_eq!(
+            bindings.prepare().emit_rust(),
+            include_str!("../../tests/fixtures/prepared/custom_loop_boundaries.rs").trim()
+        );
+        assert!(!ARTIFACT.program.compiled.callbacks.bools.is_empty());
+        assert!(
+            ARTIFACT
+                .program
+                .compiled
+                .bools
+                .iter()
+                .any(|function| matches!(
+                    function.implementation,
+                    CompiledImplementation::CustomLoop(_)
+                ))
+        );
+        for compiled in [false, true] {
+            let mut artifact = ARTIFACT;
+            if !compiled {
+                artifact.program.compiled = data::compiled::CompiledFunctions::interpreted();
+            }
+            let (plan, entries) = Box::leak(Box::new(artifact))
+                .admit()
+                .unwrap()
+                .into_execution();
+            let function = *entries.bools[0].function();
+            for bias in [BigInt::from(4), BigInt::from(1) << 180] {
+                let mut retained_capture_seen = false;
+                let mut completion_seen = false;
+                for abandon_after in 1..100 {
+                    let captures = CaptureStorage::default();
+                    let services = Services::<crate::ExecutionPlan>::new(captures.clone());
+                    let context = services.context();
+                    let mut inputs = RetainedValues::empty();
+                    inputs.push_int(bias.clone().into());
+                    let mut pending = Box::pin(
+                        Execution::new(function, HostCallOrigin::Entry, inputs).drive(
+                            &plan,
+                            &context,
+                            NonZeroUsize::MIN,
+                        ),
+                    );
+                    let mut cx = Context::from_waker(Waker::noop());
+                    for _ in 0..abandon_after {
+                        let progress = pending.as_mut().poll(&mut cx);
+                        retained_capture_seen |= Arc::strong_count(&captures.releases) > 4;
+                        if let Poll::Ready(value) = progress {
+                            assert!(value.unwrap().unwrap());
+                            completion_seen = true;
+                            break;
+                        }
+                    }
+                    drop(pending);
+                    assert_eq!(Arc::strong_count(&captures.releases), 3);
+                    drop(context);
+                    drop(services);
+                    assert_eq!(Arc::strong_count(&captures.releases), 1);
+                }
+                assert!(retained_capture_seen && completion_seen);
+            }
+        }
+    }
+
+    #[test]
     fn empty_storage_has_no_lease_and_nonempty_copies_keep_the_same_owner() {
         let storage = CaptureStorage::default();
         let empty = storage.capture(Vec::new());

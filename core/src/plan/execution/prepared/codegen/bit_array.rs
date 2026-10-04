@@ -193,7 +193,7 @@ fn inspect_range(pattern: &BitArrayBindingPattern, bindings: &mut BTreeMap<usize
     }
 }
 
-impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     /// Forward labels preserve shared failure/guard joins without copying blocks
     /// or adding dispatch to the entry loop. Entry back-edges remain `continue`.
     pub(super) fn bit_loop(&self, source: &mut Code) {
@@ -213,7 +213,12 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
             for (instruction_index, instruction) in body.instructions.iter().enumerate() {
                 let index = self.shape.start(block) + instruction_index;
                 self.tick(source, index, ProgressOutput::Direct);
-                self.instruction(source, self.shape.checkpoints[index], instruction);
+                self.instruction(
+                    source,
+                    self.shape.checkpoints[index],
+                    instruction,
+                    ProgressOutput::Direct,
+                );
                 self.big_exit(
                     source,
                     self.shape.checkpoints[index],
@@ -233,7 +238,7 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
                 &body.terminator,
                 self.shape.repeats || self.shape.order.last() != Some(&block),
                 ProgressOutput::Direct,
-                |source, target, inputs| {
+                &mut |source, target, inputs| {
                     if target == self.shape.graph.entry() {
                         source.push_str(&format!(
                             "{} = {inputs};\ncontinue 'repeat;\n",
@@ -254,7 +259,7 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
         source: &mut Code,
         point: CompiledCheckpoint,
         matcher: &BitArrayMatch<'_>,
-        output: ProgressOutput,
+        output: ProgressOutput<'_>,
         emit_edge: &mut impl FnMut(&mut Code, BlockId, String),
     ) {
         let types = tuple(matcher.bindings.values().map(|binding| match binding {
@@ -334,9 +339,10 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
             let target = self.shape.checkpoints[next];
             source.push_str(&format!("let {} = {inputs};\n", self.locals(target, false)));
             self.save(source, target);
-            let progress = output.expression(format!(
-                "data::compiled::CompiledProgress::Interpreted({next})"
-            ));
+            let progress = output.for_kind(
+                format!("data::compiled::CompiledProgress::Interpreted({next})"),
+                self.shape.kind,
+            );
             source.push_str(&format!("return {progress};\n"));
             source.close("}\n");
         }
@@ -520,6 +526,52 @@ pub fn main() { walk(<<1, 2, 3>>, 0) }
 "#;
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let shape =
+            CompiledShape::inspect_bits(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        let function = FunctionCodegen {
+            name: "walk".into(),
+            shape,
+        };
+        let mut code = Code::default();
+        function.write_code(&mut code, function.resumes_next());
+        assert_eq!(
+            code.as_str().split("\nfn walk_entry(").next().unwrap(),
+            r#"
+fn walk(
+    point: usize,
+    values: &mut data::compiled::bit_array::BitArrayValues,
+    budget: &mut usize,
+) -> data::compiled::CompiledProgress {
+
+    const RESUME: [
+        fn(&mut data::compiled::bit_array::BitArrayValues, &mut usize) -> CompiledResume;
+        13
+    ] = [
+        |values, budget| CompiledResume::Exit(walk_entry((values.ints[0], values.bit_arrays[0],), values, budget)),
+        walk_resume_1,
+        walk_resume_2,
+        walk_resume_3,
+        walk_resume_4,
+        walk_resume_5,
+        walk_resume_6,
+        walk_resume_7,
+        walk_resume_8,
+        walk_resume_9,
+        walk_resume_10,
+        walk_resume_11,
+        walk_resume_12,
+    ];
+
+    let mut point = point;
+    loop {
+        match RESUME[point](values, budget) {
+            CompiledResume::Next(next) => point = next,
+            CompiledResume::Exit(progress) => return progress,
+        }
+    }
+}
+"#
+        );
         let graph = plan
             .int_function(IntFunctionId(1))
             .body()
@@ -932,7 +984,6 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             }]));
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let codegen = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "numeric_int_1".to_owned(),
             shape,
         };
@@ -943,7 +994,7 @@ pub fn main() { read(<<7:64>>, 3, True, <<1>>) }
             &CompiledTerminator::BitArray(BitArrayMatch::inspect(&matcher).unwrap()),
             false,
             ProgressOutput::Direct,
-            emit_edge_expression,
+            &mut emit_edge_expression,
         );
         assert_eq!(
             code.as_str(),
@@ -985,10 +1036,218 @@ pub fn main() { read(<<7:64, 2>>, 3, True, <<1>>) }
         );
         let body = plan.int_function(IntFunctionId(1)).body();
         let function = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "selected".into(),
             shape: CompiledShape::inspect_bits(body).unwrap(),
         };
+        let mut dispatcher = Code::default();
+        function.write_code(&mut dispatcher, function.resumes_next());
+        assert_eq!(
+            dispatcher
+                .as_str()
+                .split("\nfn selected_entry(")
+                .next()
+                .unwrap(),
+            r#"
+fn selected(
+    point: usize,
+    values: &mut data::compiled::bit_array::BitArrayValues,
+    budget: &mut usize,
+) -> data::compiled::CompiledProgress {
+
+    const RESUME: [
+        fn(&mut data::compiled::bit_array::BitArrayValues, &mut usize) -> CompiledResume;
+        11
+    ] = [
+        |values, budget| CompiledResume::Exit(selected_entry((values.ints[0], values.bools[0], values.bit_arrays[0], values.bit_arrays[1],), values, budget)),
+        selected_resume_1,
+        selected_resume_2,
+        selected_resume_3,
+        selected_resume_4,
+        selected_resume_5,
+        selected_resume_6,
+        selected_resume_7,
+        selected_resume_8,
+        selected_resume_9,
+        selected_resume_10,
+    ];
+
+    let mut point = point;
+    loop {
+        match RESUME[point](values, budget) {
+            CompiledResume::Next(next) => point = next,
+            CompiledResume::Exit(progress) => return progress,
+        }
+    }
+}
+"#
+        );
+
+        assert_eq!(
+            dispatcher.as_str().rsplit("\nfn ").next().unwrap(),
+            r#"selected_resume_10(
+    values: &mut data::compiled::bit_array::BitArrayValues,
+    budget: &mut usize,
+) -> CompiledResume {
+    let () = ();
+    let _ = budget;
+
+    values.ints.clear();
+    values.ints.extend_from_slice(&[]);
+    values.bools.clear();
+    values.bools.extend_from_slice(&[]);
+    values.bit_arrays.clear();
+    values.bit_arrays.extend_from_slice(&[]);
+    CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(10))
+}
+"#
+        );
+        let mut target = Code::default();
+        function.write_target(&mut target, "data::function::IntFunctionId(1)");
+        assert_eq!(
+            target.as_str(),
+            r#"data::compiled::CompiledFunction {
+    function: data::function::IntFunctionId(1),
+    implementation: data::compiled::CompiledImplementation::BitArray(data::compiled::BitArrayImplementation {
+        entry: 0,
+        checkpoints: data::Storage::Static(&[
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 0,
+                ints: 1,
+                bools: 1,
+                bit_arrays: 2,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(1),
+                instruction: 0,
+                ints: 2,
+                bools: 1,
+                bit_arrays: 2,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(2),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 1,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(3),
+                instruction: 0,
+                ints: 2,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(3),
+                instruction: 1,
+                ints: 3,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(4),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(5),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 1,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(6),
+                instruction: 0,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(7),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(7),
+                instruction: 1,
+                ints: 1,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(8),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+        ]),
+        run: selected,
+    }),
+},
+"#
+        );
         let expected = [
             (
                 0,
@@ -1169,7 +1428,7 @@ data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
                 &body.terminator,
                 false,
                 ProgressOutput::Direct,
-                emit_edge_expression,
+                &mut emit_edge_expression,
             );
             assert_eq!(output.as_str(), expected_source, "block {block:?}");
         }

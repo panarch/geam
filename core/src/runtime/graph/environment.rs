@@ -1,5 +1,7 @@
 mod bit_array;
 mod capture;
+mod custom;
+mod custom_loop;
 mod int_list;
 mod match_results;
 mod numeric;

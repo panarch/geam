@@ -1,10 +1,15 @@
 use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{
-    BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
+    BoolFunctionId, CustomFunctionId, ExecutionBoolFunctionBody, ExecutionIntFunctionBody,
+    ExecutionProfile, IntFunctionId, IntListFunctionId,
 };
-use crate::plan::execution::graph::BlockId;
-use crate::plan::execution::storage::Table;
+use crate::plan::execution::graph::{
+    BlockId, BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, ParamLocal,
+};
+use crate::plan::execution::storage::{Node, Table};
+use crate::plan::execution::type_::FunctionType;
 use crate::runtime::compiled::bit_array::BitArrayKernel;
+use crate::runtime::compiled::custom_loop::{CallbackKernel, CustomLoopKernel};
 use crate::runtime::compiled::int_list::IntListKernel;
 use crate::runtime::compiled::numeric::NumericKernel;
 
@@ -17,6 +22,7 @@ pub struct CompiledFunctions {
     pub bools: Table<CompiledFunction<BoolFunctionId>>,
     pub customs: Table<CompiledFunction<usize>>,
     pub int_lists: Table<CompiledFunction<IntListFunctionId>>,
+    pub callbacks: CompiledCallbacks,
 }
 
 pub struct CompiledFunction<Id> {
@@ -28,6 +34,7 @@ pub enum CompiledImplementation {
     Numeric(NumericImplementation),
     BitArray(BitArrayImplementation),
     IntList(IntListImplementation),
+    CustomLoop(Node<CustomLoopImplementation>),
 }
 
 impl CompiledImplementation {
@@ -36,6 +43,7 @@ impl CompiledImplementation {
             Self::Numeric(value) => value.entry,
             Self::BitArray(value) => value.entry,
             Self::IntList(value) => value.entry,
+            Self::CustomLoop(value) => value.entry,
         }
     }
 
@@ -44,6 +52,7 @@ impl CompiledImplementation {
             Self::Numeric(value) => &value.checkpoints,
             Self::BitArray(value) => &value.checkpoints,
             Self::IntList(value) => &value.checkpoints,
+            Self::CustomLoop(value) => &value.checkpoints,
         }
     }
 }
@@ -66,6 +75,72 @@ pub struct IntListImplementation {
     pub run: IntListKernel,
 }
 
+pub struct CustomLoopImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub calls: Table<CompiledLoopCall>,
+    pub run: CustomLoopKernel,
+}
+
+/// Leaf bodies shared by supported callers. No caller/callee cross product is
+/// retained; a caller binds its actual typed function value once on entry.
+pub struct CompiledCallbacks {
+    pub ints: Table<CompiledCallback<IntFunctionId, i128, IntLocalId>>,
+    pub bools: Table<CompiledCallback<BoolFunctionId, bool, BoolLocalId>>,
+}
+
+pub struct CompiledCallback<Id, Value, Local: 'static> {
+    pub function: Id,
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: CallbackKernel<Value>,
+    pub returns: Table<Local>,
+}
+
+/// Admission resolves these views once against the same immutable function
+/// tables. Runtime connections borrow them without classifying targets again.
+pub(crate) struct CompiledCallbackBodies<'data, Profile: ExecutionProfile> {
+    pub(crate) ints:
+        Vec<CompiledCallbackBody<'data, ExecutionIntFunctionBody<Profile>, IntLocalId>>,
+    pub(crate) bools:
+        Vec<CompiledCallbackBody<'data, ExecutionBoolFunctionBody<Profile>, BoolLocalId>>,
+}
+
+pub(crate) struct CompiledCallbackBody<'data, Body, Local> {
+    pub(crate) body: &'data Body,
+    pub(crate) checkpoints: &'data [CompiledCheckpoint],
+    pub(crate) returns: &'data [Local],
+}
+
+impl<Profile: ExecutionProfile> CompiledCallbackBodies<'_, Profile> {
+    pub(in crate::plan::execution) const fn interpreted() -> Self {
+        Self {
+            ints: Vec::new(),
+            bools: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledLoopCall {
+    pub point: usize,
+    pub function: CompiledLoopFunction,
+    pub args: Table<ParamLocal>,
+    pub output: ParamLocal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompiledLoopFunction {
+    Int {
+        local: IntFunctionLocalId,
+        type_: FunctionType,
+    },
+    Bool {
+        local: BoolFunctionLocalId,
+        type_: FunctionType,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompiledCheckpoint {
     pub block: BlockId,
@@ -74,6 +149,10 @@ pub struct CompiledCheckpoint {
     pub bools: usize,
     pub bit_arrays: usize,
     pub int_lists: usize,
+    pub customs: usize,
+    pub custom_lists: usize,
+    pub int_functions: usize,
+    pub bool_functions: usize,
 }
 
 impl CompiledFunctions {
@@ -83,6 +162,7 @@ impl CompiledFunctions {
             bools: Table::Static(&[]),
             customs: Table::Static(&[]),
             int_lists: Table::Static(&[]),
+            callbacks: CompiledCallbacks::interpreted(),
         }
     }
 
@@ -92,6 +172,7 @@ impl CompiledFunctions {
             bools: Table::Static(&self.bools),
             customs: Table::Static(&self.customs),
             int_lists: Table::Static(&self.int_lists),
+            callbacks: self.callbacks.borrowed(),
         }
     }
 
@@ -126,6 +207,42 @@ impl CompiledFunctions {
     }
 }
 
+impl CompiledCallbacks {
+    pub const fn interpreted() -> Self {
+        Self {
+            ints: Table::Static(&[]),
+            bools: Table::Static(&[]),
+        }
+    }
+
+    fn borrowed(&'static self) -> Self {
+        Self {
+            ints: Table::Static(&self.ints),
+            bools: Table::Static(&self.bools),
+        }
+    }
+
+    pub(crate) fn int(
+        &self,
+        id: IntFunctionId,
+    ) -> Option<&CompiledCallback<IntFunctionId, i128, IntLocalId>> {
+        self.ints
+            .binary_search_by_key(&id.0, |entry| entry.function.0)
+            .ok()
+            .map(|index| &self.ints[index])
+    }
+
+    pub(crate) fn bool(
+        &self,
+        id: BoolFunctionId,
+    ) -> Option<&CompiledCallback<BoolFunctionId, bool, BoolLocalId>> {
+        self.bools
+            .binary_search_by_key(&id.0, |entry| entry.function.0)
+            .ok()
+            .map(|index| &self.bools[index])
+    }
+}
+
 impl Emit for CompiledCheckpoint {
     fn emit(&self, output: &mut Rust) {
         output.structure(
@@ -137,8 +254,41 @@ impl Emit for CompiledCheckpoint {
                 ("bools", &self.bools),
                 ("bit_arrays", &self.bit_arrays),
                 ("int_lists", &self.int_lists),
+                ("customs", &self.customs),
+                ("custom_lists", &self.custom_lists),
+                ("int_functions", &self.int_functions),
+                ("bool_functions", &self.bool_functions),
             ],
         );
+    }
+}
+
+impl Emit for CompiledLoopCall {
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "compiled::CompiledLoopCall",
+            &[
+                ("point", &self.point),
+                ("function", &self.function),
+                ("args", &self.args),
+                ("output", &self.output),
+            ],
+        );
+    }
+}
+
+impl Emit for CompiledLoopFunction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Int { local, type_ } => output.structure(
+                "compiled::CompiledLoopFunction::Int",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::Bool { local, type_ } => output.structure(
+                "compiled::CompiledLoopFunction::Bool",
+                &[("local", local), ("type_", type_)],
+            ),
+        }
     }
 }
 
@@ -198,6 +348,7 @@ mod tests {
                 run: metadata_int_list,
             }),
         }]),
+        callbacks: crate::plan::execution::compiled::CompiledCallbacks::interpreted(),
     };
 
     #[test]
@@ -302,6 +453,10 @@ mod tests {
                 bools: 1,
                 bit_arrays: 3,
                 int_lists: 2,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             }),
             r#"
 data::compiled::CompiledCheckpoint {
@@ -311,6 +466,10 @@ data::compiled::CompiledCheckpoint {
     bools: 1,
     bit_arrays: 3,
     int_lists: 2,
+    customs: 0,
+    custom_lists: 0,
+    int_functions: 0,
+    bool_functions: 0,
 }
 "#
             .trim_matches('\n')

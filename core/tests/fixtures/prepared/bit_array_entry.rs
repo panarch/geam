@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 16,
+    format: 17,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -960,6 +960,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 1,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -968,6 +972,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 1,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -976,6 +984,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 1,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -984,6 +996,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 1,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -992,6 +1008,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -1000,6 +1020,10 @@ pub fn main() {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                             ]),
                             run: bit_array_custom_0,
@@ -1008,6 +1032,7 @@ pub fn main() {
                 ]),
                 int_lists: data::Storage::Static(&[
                 ]),
+                callbacks: data::compiled::CompiledCallbacks::interpreted(),
             }
         },
         constants: data::constant::ProfiledConstantTable {

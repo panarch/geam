@@ -1,3 +1,6 @@
+mod custom_loop;
+
+use self::custom_loop::CustomLoopExecution;
 use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
 use super::{BlockEnvironment, CompletedGraph, GraphPosition, RetainedValues};
@@ -55,6 +58,7 @@ pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
         implementation: &'plan CompiledImplementation,
         point: usize,
     },
+    CustomLoop(Box<CustomLoopExecution<'plan, Plan>>),
     Host(Plan::HostInvocation<'plan, Activation<'plan, Plan>>),
     Return(Return<'plan, Plan>),
     Complete(CompletedGraph),
@@ -187,6 +191,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 implementation,
                 point,
             } => match implementation {
+                CompiledImplementation::CustomLoop(loop_) => CustomLoopExecution::enter(
+                    frame, loop_, point, plan, state, storage, remaining,
+                )?,
                 CompiledImplementation::Numeric(numeric) => {
                     if !frame
                         .position
@@ -235,6 +242,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                     }
                 }
             },
+            Activation::CustomLoop(execution) => {
+                execution.advance(plan, state, storage, remaining)?
+            }
             Activation::Host(invoke) => {
                 return Ok(Progress::Host(Plan::map_host(invoke, |active| {
                     Ok(Self { active })
@@ -764,6 +774,10 @@ mod tests {
             bools: 0,
             bit_arrays: 1,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -772,6 +786,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -780,6 +798,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
     ];
 
@@ -951,6 +973,10 @@ mod tests {
             bools: 1,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -959,6 +985,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(1),
@@ -967,6 +997,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -975,6 +1009,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
         CompiledCheckpoint {
             block: BlockId(2),
@@ -983,6 +1021,10 @@ mod tests {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         },
     ];
 
@@ -1343,6 +1385,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1351,6 +1397,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1359,6 +1409,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(2),
@@ -1367,6 +1421,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
         ];
         with_source_plans!(source, plan, {
@@ -1477,6 +1535,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1485,6 +1547,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(1),
@@ -1493,6 +1559,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             CompiledCheckpoint {
                 block: BlockId(2),
@@ -1501,6 +1571,10 @@ pub fn main() { head([7], 3) }
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
         ];
         with_source_plans!(source, plan, {

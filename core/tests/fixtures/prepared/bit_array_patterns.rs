@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 16,
+    format: 17,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1703,6 +1703,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 1,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -1711,6 +1715,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -1719,6 +1727,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -1727,6 +1739,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -1735,6 +1751,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -1743,6 +1763,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -1751,6 +1775,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -1759,6 +1787,10 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                             ]),
                             run: bit_array_int_2,
@@ -1771,6 +1803,7 @@ data::ModuleArtifact {
                 ]),
                 int_lists: data::Storage::Static(&[
                 ]),
+                callbacks: data::compiled::CompiledCallbacks::interpreted(),
             }
         },
         constants: data::constant::ProfiledConstantTable {

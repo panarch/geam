@@ -241,13 +241,27 @@ pub mod source {
 }
 pub mod compiled {
     pub use crate::plan::execution::compiled::{
-        BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
-        CompiledImplementation, IntListImplementation, NumericImplementation,
+        BitArrayImplementation, CompiledCallback, CompiledCallbacks, CompiledCheckpoint,
+        CompiledFunction, CompiledFunctions, CompiledImplementation, CompiledLoopCall,
+        CompiledLoopFunction, CustomLoopImplementation, IntListImplementation,
+        NumericImplementation,
     };
     pub use crate::runtime::compiled::CompiledProgress;
 
     pub mod numeric {
         pub use crate::runtime::compiled::numeric::{NumericKernel, NumericValues};
+    }
+
+    pub mod custom {
+        pub use crate::runtime::compiled::custom::{CustomInput, CustomValues};
+    }
+
+    pub mod custom_loop {
+        pub use crate::runtime::compiled::custom_loop::{
+            BoolCallback, CallbackArguments, CallbackInputs, CallbackKernel, CallbackProgress,
+            CallbackStop, CustomList, CustomListOps, CustomLoopKernel, CustomLoopProgress,
+            CustomLoopValues, IntCallback,
+        };
     }
 
     pub mod int_list {

@@ -10,7 +10,7 @@ pub(crate) use admission::{AdmittedHostedModule, AdmittedModule};
 pub use entry::{HostedEntryArtifact, PreparedHostedEntry};
 pub use hosted::{HostedModuleArtifact, PreparedHostedModule};
 
-use super::compiled::CompiledFunctions;
+use super::compiled::{CompiledCallbackBodies, CompiledFunctions};
 use super::constant::ProfiledConstantTable;
 use super::function::{
     ExecutionProfile, FunctionCatalog, FunctionTables, ProfiledRuntimeFunctionId,
@@ -24,7 +24,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 16;
+const FORMAT_VERSION: u32 = 17;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -194,7 +194,10 @@ pub(crate) struct ProgramEmission<'program, Profile: ExecutionProfile> {
 }
 
 impl<Profile: ExecutionProfile> ProgramTables<Profile> {
-    fn execution(&'static self) -> ExecutionProgram<Profile> {
+    fn execution(
+        &'static self,
+        compiled_callback_bodies: CompiledCallbackBodies<'static, Profile>,
+    ) -> ExecutionProgram<Profile> {
         use super::storage::Node;
         use std::sync::Arc;
 
@@ -225,6 +228,7 @@ impl<Profile: ExecutionProfile> ProgramTables<Profile> {
             }),
             functions: Node::Static(&self.functions),
             compiled: self.compiled.borrowed(),
+            compiled_callback_bodies,
         }
     }
 }
@@ -265,7 +269,7 @@ where
                 ("functions", functions.as_ref()),
                 (
                     "compiled",
-                    &codegen::CompiledCodegen::new(functions.as_ref()),
+                    &codegen::CompiledCodegen::new(functions.as_ref(), custom_types.as_ref()),
                 ),
                 ("constants", constants.as_ref()),
                 ("function_parameters", function_parameters.as_ref()),
@@ -294,6 +298,7 @@ mod tests {
             common,
             functions,
             compiled,
+            compiled_callback_bodies: _,
         } = plan.program;
         let common = std::sync::Arc::try_unwrap(common).ok().unwrap();
         let functions = owned_table(functions);
@@ -319,10 +324,10 @@ mod tests {
             value_shapes: *value_shapes,
         }));
         let first = crate::ExecutionPlan {
-            program: tables.execution(),
+            program: tables.execution(super::CompiledCallbackBodies::interpreted()),
         };
         let second = crate::ExecutionPlan {
-            program: tables.execution(),
+            program: tables.execution(super::CompiledCallbackBodies::interpreted()),
         };
         assert_eq!(
             crate::run_main(&first, &mut Vec::new()).unwrap(),
