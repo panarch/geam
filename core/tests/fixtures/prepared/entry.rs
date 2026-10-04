@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 14,
+    format: 15,
     program: data::ProgramTables {
         root: data::source::module_id(1),
         modules: data::Storage::Static(&[
@@ -523,7 +523,521 @@ pub fn main() {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
-        compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
+        compiled: {
+
+            enum CompiledResume {
+                Next(usize),
+                Exit(data::compiled::CompiledProgress),
+            }
+
+            fn int_list_int_0(
+                point: usize,
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled::int_list::IntListValues, &data::compiled::int_list::IntListOps<'_>, &mut usize) -> CompiledResume;
+                    8
+                ] = [
+                    |values, _lists, budget| {
+                        let _list0 = values.int_lists.remove(0);
+                        CompiledResume::Exit(int_list_int_0_entry((_list0,), values, _lists, budget))
+                    },
+                    int_list_int_0_resume_1,
+                    int_list_int_0_resume_2,
+                    int_list_int_0_resume_3,
+                    int_list_int_0_resume_4,
+                    int_list_int_0_resume_5,
+                    int_list_int_0_resume_6,
+                    int_list_int_0_resume_7,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, _lists, budget) {
+                        CompiledResume::Next(next) => point = next,
+                        CompiledResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn int_list_int_0_entry(
+                inputs: (data::compiled::int_list::IntList,),
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+                let (b0_l0,) = inputs;
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b0_l0]);
+                    return data::compiled::CompiledProgress::Yield(0);
+                }
+                *budget -= 1;
+                if b0_l0.is_empty() {
+                    let _next = ();
+                    drop(b0_l0);
+                    let () = _next;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return data::compiled::CompiledProgress::Yield(1);
+                    }
+                    *budget -= 1;
+                    let b1_i0 = 0_i128;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return data::compiled::CompiledProgress::Yield(2);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_l0,) = (b0_l0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b2_l0]);
+                        return data::compiled::CompiledProgress::Yield(3);
+                    }
+                    *budget -= 1;
+                    if b2_l0.len() == 1 {
+                        let (b3_l0,) = (b2_l0,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b3_l0]);
+                            return data::compiled::CompiledProgress::Yield(4);
+                        }
+                        let b3_i0 = match _lists.index(&b3_l0, 0) {
+                            Some(value) => value,
+                            None => {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([b3_l0]);
+                                return data::compiled::CompiledProgress::Interpreted(4);
+                            }
+                        };
+                        *budget -= 1;
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b3_i0]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b3_l0]);
+                            return data::compiled::CompiledProgress::Yield(5);
+                        }
+                        *budget -= 1;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b3_l0]);
+                        data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
+                    } else {
+                        let (b4_l0,) = (b2_l0,);
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b4_l0]);
+                            return data::compiled::CompiledProgress::Yield(6);
+                        }
+                        let b4_i0 = match _lists.index(&b4_l0, 1) {
+                            Some(value) => value,
+                            None => {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([b4_l0]);
+                                return data::compiled::CompiledProgress::Interpreted(6);
+                            }
+                        };
+                        *budget -= 1;
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b4_i0]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b4_l0]);
+                            return data::compiled::CompiledProgress::Yield(7);
+                        }
+                        *budget -= 1;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b4_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b4_l0]);
+                        data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(2))
+                    }
+                }
+            }
+
+            fn int_list_int_0_resume_1(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
+                }
+                *budget -= 1;
+                let b1_i0 = 0_i128;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([]);
+                CompiledResume::Next(2)
+            }
+
+            fn int_list_int_0_resume_2(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b1_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b1_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn int_list_int_0_resume_3(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let _list0 = values.int_lists.remove(0);
+                let (b2_l0,) = (_list0,);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b2_l0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                }
+                *budget -= 1;
+                if b2_l0.len() == 1 {
+                    let (b3_l0,) = (b2_l0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b3_l0]);
+                    CompiledResume::Next(4)
+                } else {
+                    let (b4_l0,) = (b2_l0,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b4_l0]);
+                    CompiledResume::Next(6)
+                }
+            }
+
+            fn int_list_int_0_resume_4(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let _list0 = values.int_lists.remove(0);
+                let (b3_l0,) = (_list0,);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b3_l0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
+                }
+                let b3_i0 = match _lists.index(&b3_l0, 0) {
+                    Some(value) => value,
+                    None => {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b3_l0]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(4));
+                    }
+                };
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([b3_l0]);
+                CompiledResume::Next(5)
+            }
+
+            fn int_list_int_0_resume_5(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let _list0 = values.int_lists.remove(0);
+                let (b3_i0, b3_l0,) = (values.ints[0], _list0,);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b3_l0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b3_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([b3_l0]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn int_list_int_0_resume_6(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let _list0 = values.int_lists.remove(0);
+                let (b4_l0,) = (_list0,);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b4_l0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(6));
+                }
+                let b4_i0 = match _lists.index(&b4_l0, 1) {
+                    Some(value) => value,
+                    None => {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b4_l0]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(6));
+                    }
+                };
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([b4_l0]);
+                CompiledResume::Next(7)
+            }
+
+            fn int_list_int_0_resume_7(
+                values: &mut data::compiled::int_list::IntListValues,
+                _lists: &data::compiled::int_list::IntListOps<'_>,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let _list0 = values.int_lists.remove(0);
+                let (b4_i0, b4_l0,) = (values.ints[0], _list0,);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b4_l0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(7));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.int_lists.clear();
+                values.int_lists.extend([b4_l0]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(2)))
+            }
+            data::compiled::CompiledFunctions {
+                ints: data::Storage::Static(&[
+                    data::compiled::CompiledFunction {
+                        function: data::function::IntFunctionId(0),
+                        implementation: data::compiled::CompiledImplementation::IntList(data::compiled::IntListImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 1,
+                                },
+                            ]),
+                            run: int_list_int_0,
+                        }),
+                    },
+                ]),
+                bools: data::Storage::Static(&[
+                ]),
+                customs: data::Storage::Static(&[
+                ]),
+            }
+        },
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 14,
+        format: 15,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -59,6 +59,17 @@ pub fn run() {
       40,
     ),
   )
+}
+
+pub fn list_callback(values: List(Int), initial: Int) -> Int {
+  let calculate = fn(input) {
+    let assert [head, ..tail] as original = values
+    case tail == original {
+      True -> input
+      False -> head + input
+    }
+  }
+  fold(calculate, initial)
 }
 
 pub fn substring(value: String) {
@@ -158,6 +169,101 @@ fn integer_comparisons() {
                         })),
                     ]),
                     int_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 2,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(28),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::IntFunction {
+                                                    local: data::graph::IntFunctionLocalId(0),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[
+                                                            data::type_::ValueType::Int,
+                                                        ]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(18),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::Int,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                                family: data::function::FunctionReturnFamily::Int,
+                                                kind: data::graph::FunctionInstructionKind::Closure {
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(5)),
+                                                    captures: data::Storage::Static(&[
+                                                        data::graph::FunctionCapture::IntList {
+                                                            target: data::graph::IntListLocalId(0),
+                                                            source: data::graph::IntListLocalId(0),
+                                                        },
+                                                    ]),
+                                                },
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::TailCall {
+                                        function: data::source::FunctionCallTarget {
+                                            function: data::function::IntFunctionId(2),
+                                            site: data::source::HostCallSite::from_static("main", "list_callback", data::source::SourceSpan::new(1614, 1638)),
+                                        },
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::Int,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        ]),
+                                        transfer: data::graph::Transfer {
+                                            families: data::Storage::Static(&[
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::IntList,
+                                                    length: 0,
+                                                    steps: data::Storage::Static(&[]),
+                                                },
+                                            ]),
+                                        },
+                                    },
+                                ]),
+                            },
+                        })),
                         data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
                             entry: data::function::FunctionEntry {
                                 parameter_count: 1,
@@ -310,6 +416,256 @@ fn integer_comparisons() {
                                     instructions: data::Storage::Static(&[]),
                                 },
                                 exits: data::Storage::Static(&[]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 1,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::Match(data::graph::Match {
+                                                subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                    local: data::graph::IntListLocalId(0),
+                                                    type_id: data::type_::IntListTypeId {
+                                                        list_type: data::type_::ListTypeId(0),
+                                                    },
+                                                }),
+                                                pattern: data::graph::MatchPattern::Alias {
+                                                    pattern: data::Storage::Static(&data::graph::MatchPattern::List(data::graph::MatchPatternList {
+                                                        elements: data::Storage::Static(&[
+                                                            data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                                index: 0,
+                                                            }),
+                                                        ]),
+                                                        tail: Some(data::graph::MatchPatternListTail::Bind(data::graph::MatchPatternBinding {
+                                                            index: 1,
+                                                        })),
+                                                    })),
+                                                    binding: data::graph::MatchPatternBinding {
+                                                        index: 2,
+                                                    },
+                                                },
+                                                success: data::graph::MatchEdge {
+                                                    target: data::graph::BlockId(1),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                        data::graph::MatchEdgeArgument::Binding(1),
+                                                        data::graph::MatchEdgeArgument::Binding(2),
+                                                        data::graph::MatchEdgeArgument::Binding(0),
+                                                    ]),
+                                                    bindings: data::Storage::Static(&[
+                                                        0,
+                                                        1,
+                                                        2,
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::IntList,
+                                                                length: 2,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
+                                                                    data::graph::TransferStep {
+                                                                        source: 2,
+                                                                        destination: 1,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                failure: data::graph::Edge {
+                                                    target: data::graph::BlockId(4),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                            local: data::graph::IntListLocalId(0),
+                                                            type_id: data::type_::IntListTypeId {
+                                                                list_type: data::type_::ListTypeId(0),
+                                                            },
+                                                        }),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 2..6,
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::Equal {
+                                                    left: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                        local: data::graph::IntListLocalId(0),
+                                                        type_id: data::type_::IntListTypeId {
+                                                            list_type: data::type_::ListTypeId(0),
+                                                        },
+                                                    }),
+                                                    right: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                        local: data::graph::IntListLocalId(1),
+                                                        type_id: data::type_::IntListTypeId {
+                                                            list_type: data::type_::ListTypeId(0),
+                                                        },
+                                                    }),
+                                                },
+                                                true_: data::graph::Edge {
+                                                    target: data::graph::BlockId(2),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::IntList,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                false_: data::graph::Edge {
+                                                    target: data::graph::BlockId(3),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::IntList,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 6..7,
+                                            instructions: 0..0,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 7..9,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 9..10,
+                                            instructions: 1..1,
+                                            terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                                subject: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                    local: data::graph::IntListLocalId(0),
+                                                    type_id: data::type_::IntListTypeId {
+                                                        list_type: data::type_::ListTypeId(0),
+                                                    },
+                                                }),
+                                                message: None,
+                                                site: data::source::PanicSite::from_static("main", "<anonymous:4>", data::source::SourceSpan::new(1479, 1489)),
+                                                pattern_span: data::source::SourceSpan::new(1490, 1516),
+                                            }),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(28),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(28),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(1),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(28),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                                local: data::graph::IntListLocalId(0),
+                                                type_id: data::type_::IntListTypeId {
+                                                    list_type: data::type_::ListTypeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(28),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                ]),
                             },
                         })),
                     ]),
@@ -697,7 +1053,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
                                                 function: data::graph::BitArrayFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1818, 1824)),
+                                                site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(2078, 2084)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -713,7 +1069,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1681, 1700)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1941, 1960)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -725,7 +1081,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(1808, 1825)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_range", data::source::SourceSpan::new(2068, 2085)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
@@ -829,8 +1185,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1890, 1900)),
-                                                pattern_span: data::source::SourceSpan::new(1901, 1919),
+                                                site: data::source::PanicSite::from_static("main", "bit_tail", data::source::SourceSpan::new(2150, 2160)),
+                                                pattern_span: data::source::SourceSpan::new(2161, 2179),
                                             }),
                                         },
                                     ]),
@@ -854,7 +1210,7 @@ fn integer_comparisons() {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(1930, 1945)),
+                                            site: data::source::HostCallSite::from_static("main", "bit_tail", data::source::SourceSpan::new(2190, 2205)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
@@ -1715,7 +2071,7 @@ fn integer_comparisons() {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(2)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(3)),
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
@@ -1903,7 +2259,7 @@ fn integer_comparisons() {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(3)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(4)),
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
@@ -3085,8 +3441,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3235, 3245)),
-                                                pattern_span: data::source::SourceSpan::new(3246, 3250),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3495, 3505)),
+                                                pattern_span: data::source::SourceSpan::new(3506, 3510),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3095,8 +3451,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3197, 3207)),
-                                                pattern_span: data::source::SourceSpan::new(3208, 3213),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3457, 3467)),
+                                                pattern_span: data::source::SourceSpan::new(3468, 3473),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3105,8 +3461,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3160, 3170)),
-                                                pattern_span: data::source::SourceSpan::new(3171, 3176),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3420, 3430)),
+                                                pattern_span: data::source::SourceSpan::new(3431, 3436),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3115,8 +3471,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3127, 3137)),
-                                                pattern_span: data::source::SourceSpan::new(3138, 3142),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3387, 3397)),
+                                                pattern_span: data::source::SourceSpan::new(3398, 3402),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3125,8 +3481,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3091, 3101)),
-                                                pattern_span: data::source::SourceSpan::new(3102, 3106),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3351, 3361)),
+                                                pattern_span: data::source::SourceSpan::new(3362, 3366),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3135,8 +3491,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3053, 3063)),
-                                                pattern_span: data::source::SourceSpan::new(3064, 3069),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3313, 3323)),
+                                                pattern_span: data::source::SourceSpan::new(3324, 3329),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3145,8 +3501,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3016, 3026)),
-                                                pattern_span: data::source::SourceSpan::new(3027, 3032),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3276, 3286)),
+                                                pattern_span: data::source::SourceSpan::new(3287, 3292),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3155,8 +3511,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2975, 2985)),
-                                                pattern_span: data::source::SourceSpan::new(2986, 2990),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3235, 3245)),
+                                                pattern_span: data::source::SourceSpan::new(3246, 3250),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3165,8 +3521,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2939, 2949)),
-                                                pattern_span: data::source::SourceSpan::new(2950, 2954),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3199, 3209)),
+                                                pattern_span: data::source::SourceSpan::new(3210, 3214),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3181,8 +3537,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2884, 2894)),
-                                                pattern_span: data::source::SourceSpan::new(2895, 2909),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3144, 3154)),
+                                                pattern_span: data::source::SourceSpan::new(3155, 3169),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3197,8 +3553,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2830, 2840)),
-                                                pattern_span: data::source::SourceSpan::new(2841, 2855),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3090, 3100)),
+                                                pattern_span: data::source::SourceSpan::new(3101, 3115),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3213,8 +3569,8 @@ fn integer_comparisons() {
                                                     ]),
                                                 },
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2780, 2790)),
-                                                pattern_span: data::source::SourceSpan::new(2791, 2805),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3040, 3050)),
+                                                pattern_span: data::source::SourceSpan::new(3051, 3065),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3223,8 +3579,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2589, 2599)),
-                                                pattern_span: data::source::SourceSpan::new(2600, 2604),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2849, 2859)),
+                                                pattern_span: data::source::SourceSpan::new(2860, 2864),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3233,8 +3589,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2532, 2542)),
-                                                pattern_span: data::source::SourceSpan::new(2543, 2547),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2792, 2802)),
+                                                pattern_span: data::source::SourceSpan::new(2803, 2807),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3243,8 +3599,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2444, 2454)),
-                                                pattern_span: data::source::SourceSpan::new(2455, 2505),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2704, 2714)),
+                                                pattern_span: data::source::SourceSpan::new(2715, 2765),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3253,8 +3609,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2415, 2425)),
-                                                pattern_span: data::source::SourceSpan::new(2426, 2427),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2675, 2685)),
+                                                pattern_span: data::source::SourceSpan::new(2686, 2687),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3263,8 +3619,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2386, 2396)),
-                                                pattern_span: data::source::SourceSpan::new(2397, 2398),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2646, 2656)),
+                                                pattern_span: data::source::SourceSpan::new(2657, 2658),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3273,8 +3629,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2361, 2371)),
-                                                pattern_span: data::source::SourceSpan::new(2372, 2374),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2621, 2631)),
+                                                pattern_span: data::source::SourceSpan::new(2632, 2634),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3283,8 +3639,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2336, 2346)),
-                                                pattern_span: data::source::SourceSpan::new(2347, 2349),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2596, 2606)),
+                                                pattern_span: data::source::SourceSpan::new(2607, 2609),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3293,8 +3649,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2306, 2316)),
-                                                pattern_span: data::source::SourceSpan::new(2317, 2318),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2566, 2576)),
+                                                pattern_span: data::source::SourceSpan::new(2577, 2578),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3303,8 +3659,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2233, 2243)),
-                                                pattern_span: data::source::SourceSpan::new(2244, 2269),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2493, 2503)),
+                                                pattern_span: data::source::SourceSpan::new(2504, 2529),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3313,8 +3669,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2179, 2189)),
-                                                pattern_span: data::source::SourceSpan::new(2190, 2216),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2439, 2449)),
+                                                pattern_span: data::source::SourceSpan::new(2450, 2476),
                                             }),
                                         },
                                         data::graph::BlockHeader {
@@ -3323,8 +3679,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2126, 2136)),
-                                                pattern_span: data::source::SourceSpan::new(2137, 2162),
+                                                site: data::source::PanicSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2386, 2396)),
+                                                pattern_span: data::source::SourceSpan::new(2397, 2422),
                                             }),
                                         },
                                     ]),
@@ -3533,7 +3889,7 @@ fn integer_comparisons() {
                                                     data::type_::ValueType::Bool,
                                                 ]),
                                             },
-                                            shape: data::type_::ValueShapeId(28),
+                                            shape: data::type_::ValueShapeId(29),
                                         },
                                         data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
@@ -3543,7 +3899,7 @@ fn integer_comparisons() {
                                                     data::type_::ValueType::Bool,
                                                 ]),
                                             },
-                                            shape: data::type_::ValueShapeId(28),
+                                            shape: data::type_::ValueShapeId(29),
                                         },
                                         data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Tuple {
@@ -3553,7 +3909,7 @@ fn integer_comparisons() {
                                                     data::type_::ValueType::Bool,
                                                 ]),
                                             },
-                                            shape: data::type_::ValueShapeId(28),
+                                            shape: data::type_::ValueShapeId(29),
                                         },
                                         data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
@@ -3804,7 +4160,7 @@ fn integer_comparisons() {
                                                         data::type_::ValueType::Bool,
                                                     ]),
                                                 },
-                                                shape: data::type_::ValueShapeId(28),
+                                                shape: data::type_::ValueShapeId(29),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
                                                 function: data::function::TupleFunctionId(2),
@@ -3812,7 +4168,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2808, 2827)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3068, 3087)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3824,7 +4180,7 @@ fn integer_comparisons() {
                                                         data::type_::ValueType::Bool,
                                                     ]),
                                                 },
-                                                shape: data::type_::ValueShapeId(28),
+                                                shape: data::type_::ValueShapeId(29),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
                                                 function: data::function::TupleFunctionId(2),
@@ -3832,7 +4188,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2858, 2881)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3118, 3141)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3858,7 +4214,7 @@ fn integer_comparisons() {
                                                         data::type_::ValueType::Bool,
                                                     ]),
                                                 },
-                                                shape: data::type_::ValueShapeId(28),
+                                                shape: data::type_::ValueShapeId(29),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Call {
                                                 function: data::function::TupleFunctionId(3),
@@ -3866,7 +4222,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(2912, 2936)),
+                                                site: data::source::HostCallSite::from_static("main", "integer_comparisons", data::source::SourceSpan::new(3172, 3196)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4165,14 +4521,14 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                     local: data::graph::CustomListLocalId(0),
                                                     type_id: data::type_::CustomListTypeId {
-                                                        list_type: data::type_::ListTypeId(0),
+                                                        list_type: data::type_::ListTypeId(1),
                                                         item_type: data::type_::CustomTypeId(0),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(8),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
-                                                list_type: data::type_::ListTypeId(0),
+                                                list_type: data::type_::ListTypeId(1),
                                                 item_type: data::type_::CustomTypeId(0),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::CustomLocal {
@@ -4204,7 +4560,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                         local: data::graph::CustomListLocalId(0),
                                                         type_id: data::type_::CustomListTypeId {
-                                                            list_type: data::type_::ListTypeId(0),
+                                                            list_type: data::type_::ListTypeId(1),
                                                             item_type: data::type_::CustomTypeId(0),
                                                         },
                                                     }),
@@ -4216,14 +4572,14 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                     local: data::graph::CustomListLocalId(1),
                                                     type_id: data::type_::CustomListTypeId {
-                                                        list_type: data::type_::ListTypeId(0),
+                                                        list_type: data::type_::ListTypeId(1),
                                                         item_type: data::type_::CustomTypeId(0),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(2),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
-                                                list_type: data::type_::ListTypeId(0),
+                                                list_type: data::type_::ListTypeId(1),
                                                 item_type: data::type_::CustomTypeId(0),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::CustomLocal {
@@ -4262,7 +4618,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                         local: data::graph::CustomListLocalId(1),
                                                         type_id: data::type_::CustomListTypeId {
-                                                            list_type: data::type_::ListTypeId(0),
+                                                            list_type: data::type_::ListTypeId(1),
                                                             item_type: data::type_::CustomTypeId(0),
                                                         },
                                                     }),
@@ -4330,14 +4686,14 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                     local: data::graph::CustomListLocalId(2),
                                                     type_id: data::type_::CustomListTypeId {
-                                                        list_type: data::type_::ListTypeId(1),
+                                                        list_type: data::type_::ListTypeId(2),
                                                         item_type: data::type_::CustomTypeId(1),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(11),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
-                                                list_type: data::type_::ListTypeId(1),
+                                                list_type: data::type_::ListTypeId(2),
                                                 item_type: data::type_::CustomTypeId(1),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::CustomLocal {
@@ -4369,7 +4725,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                         local: data::graph::CustomListLocalId(2),
                                                         type_id: data::type_::CustomListTypeId {
-                                                            list_type: data::type_::ListTypeId(1),
+                                                            list_type: data::type_::ListTypeId(2),
                                                             item_type: data::type_::CustomTypeId(1),
                                                         },
                                                     }),
@@ -4381,14 +4737,14 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                     local: data::graph::CustomListLocalId(3),
                                                     type_id: data::type_::CustomListTypeId {
-                                                        list_type: data::type_::ListTypeId(1),
+                                                        list_type: data::type_::ListTypeId(2),
                                                         item_type: data::type_::CustomTypeId(1),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(5),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::Custom(data::type_::CustomListTypeId {
-                                                list_type: data::type_::ListTypeId(1),
+                                                list_type: data::type_::ListTypeId(2),
                                                 item_type: data::type_::CustomTypeId(1),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::CustomLocal {
@@ -4427,7 +4783,7 @@ fn integer_comparisons() {
                                                     data::graph::ParamLocal::List(data::graph::ListLocal::Custom {
                                                         local: data::graph::CustomListLocalId(3),
                                                         type_id: data::type_::CustomListTypeId {
-                                                            list_type: data::type_::ListTypeId(1),
+                                                            list_type: data::type_::ListTypeId(2),
                                                             item_type: data::type_::CustomTypeId(1),
                                                         },
                                                     }),
@@ -4503,13 +4859,13 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                     local: data::graph::BitArrayListLocalId(0),
                                                     type_id: data::type_::BitArrayListTypeId {
-                                                        list_type: data::type_::ListTypeId(2),
+                                                        list_type: data::type_::ListTypeId(3),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(13),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::BitArray(data::type_::BitArrayListTypeId {
-                                                list_type: data::type_::ListTypeId(2),
+                                                list_type: data::type_::ListTypeId(3),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::BitArrayLocalId(3),
                                             ])))),
@@ -4520,7 +4876,7 @@ fn integer_comparisons() {
                                                     local: data::graph::TupleLocalId(0),
                                                     type_: data::Storage::Static(&[
                                                         data::type_::ValueType::BitArray,
-                                                        data::type_::ValueType::List(data::type_::ListTypeId(2)),
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
                                                     ]),
                                                 },
                                                 shape: data::type_::ValueShapeId(14),
@@ -4530,7 +4886,7 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::List(data::graph::ListLocal::BitArray {
                                                     local: data::graph::BitArrayListLocalId(0),
                                                     type_id: data::type_::BitArrayListTypeId {
-                                                        list_type: data::type_::ListTypeId(2),
+                                                        list_type: data::type_::ListTypeId(3),
                                                     },
                                                 }),
                                             ]))),
@@ -4554,13 +4910,13 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(0),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(15),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::String(data::type_::StringListTypeId {
-                                                list_type: data::type_::ListTypeId(3),
+                                                list_type: data::type_::ListTypeId(4),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::StringLocalId(7),
                                             ])))),
@@ -4571,7 +4927,7 @@ fn integer_comparisons() {
                                                     local: data::graph::TupleLocalId(1),
                                                     type_: data::Storage::Static(&[
                                                         data::type_::ValueType::String,
-                                                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                     ]),
                                                 },
                                                 shape: data::type_::ValueShapeId(16),
@@ -4581,7 +4937,7 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(0),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                             ]))),
@@ -4598,14 +4954,14 @@ fn integer_comparisons() {
                                                         local: data::graph::TupleLocalId(0),
                                                         type_: data::Storage::Static(&[
                                                             data::type_::ValueType::BitArray,
-                                                            data::type_::ValueType::List(data::type_::ListTypeId(2)),
+                                                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
                                                         ]),
                                                     },
                                                     data::graph::ParamLocal::Tuple {
                                                         local: data::graph::TupleLocalId(1),
                                                         type_: data::Storage::Static(&[
                                                             data::type_::ValueType::String,
-                                                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                         ]),
                                                     },
                                                 ]),
@@ -4634,7 +4990,7 @@ fn integer_comparisons() {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(0)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(1)),
                                                     captures: data::Storage::Static(&[]),
                                                 },
                                             }),
@@ -4657,7 +5013,7 @@ fn integer_comparisons() {
                                                 shape: data::type_::ValueShapeId(17),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
-                                                function: data::function::IntFunctionId(1),
+                                                function: data::function::IntFunctionId(2),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::IntFunction {
                                                         local: data::graph::IntFunctionLocalId(0),
@@ -4763,8 +5119,8 @@ fn integer_comparisons() {
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 message: None,
-                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(1418, 1428)),
-                                                pattern_span: data::source::SourceSpan::new(1429, 1446),
+                                                site: data::source::PanicSite::from_static("main", "substring", data::source::SourceSpan::new(1678, 1688)),
+                                                pattern_span: data::source::SourceSpan::new(1689, 1706),
                                             }),
                                         },
                                     ]),
@@ -4816,13 +5172,13 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(0),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(15),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::String(data::type_::StringListTypeId {
-                                                list_type: data::type_::ListTypeId(3),
+                                                list_type: data::type_::ListTypeId(4),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::StringLocalId(0),
                                             ])))),
@@ -4833,7 +5189,7 @@ fn integer_comparisons() {
                                                     local: data::graph::TupleLocalId(0),
                                                     type_: data::Storage::Static(&[
                                                         data::type_::ValueType::String,
-                                                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                     ]),
                                                 },
                                                 shape: data::type_::ValueShapeId(16),
@@ -4843,7 +5199,7 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(0),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                             ]))),
@@ -4856,7 +5212,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1518, 1524)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1778, 1784)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4867,7 +5223,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1527, 1533)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1787, 1793)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4875,13 +5231,13 @@ fn integer_comparisons() {
                                                 local: data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(1),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                                 shape: data::type_::ValueShapeId(15),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::List(data::graph::ListInstruction::String(data::type_::StringListTypeId {
-                                                list_type: data::type_::ListTypeId(3),
+                                                list_type: data::type_::ListTypeId(4),
                                             }, data::graph::TypedListInstruction::Value(data::Storage::Static(&[
                                                 data::graph::StringLocalId(2),
                                             ])))),
@@ -4892,7 +5248,7 @@ fn integer_comparisons() {
                                                     local: data::graph::TupleLocalId(1),
                                                     type_: data::Storage::Static(&[
                                                         data::type_::ValueType::String,
-                                                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                     ]),
                                                 },
                                                 shape: data::type_::ValueShapeId(16),
@@ -4902,7 +5258,7 @@ fn integer_comparisons() {
                                                 data::graph::ParamLocal::List(data::graph::ListLocal::String {
                                                     local: data::graph::StringListLocalId(1),
                                                     type_id: data::type_::StringListTypeId {
-                                                        list_type: data::type_::ListTypeId(3),
+                                                        list_type: data::type_::ListTypeId(4),
                                                     },
                                                 }),
                                             ]))),
@@ -4919,18 +5275,18 @@ fn integer_comparisons() {
                                                         local: data::graph::TupleLocalId(0),
                                                         type_: data::Storage::Static(&[
                                                             data::type_::ValueType::String,
-                                                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                         ]),
                                                     },
                                                     data::graph::ParamLocal::Tuple {
                                                         local: data::graph::TupleLocalId(1),
                                                         type_: data::Storage::Static(&[
                                                             data::type_::ValueType::String,
-                                                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                                                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                                                         ]),
                                                     },
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1486, 1536)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1746, 1796)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4941,7 +5297,7 @@ fn integer_comparisons() {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1538, 1544)),
+                                                site: data::source::HostCallSite::from_static("main", "substring", data::source::SourceSpan::new(1798, 1804)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5021,7 +5377,7 @@ fn integer_comparisons() {
                                                         data::type_::ValueType::Bool,
                                                     ]),
                                                 },
-                                                shape: data::type_::ValueShapeId(28),
+                                                shape: data::type_::ValueShapeId(29),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
@@ -5089,7 +5445,7 @@ fn integer_comparisons() {
                                                         data::type_::ValueType::Bool,
                                                     ]),
                                                 },
-                                                shape: data::type_::ValueShapeId(28),
+                                                shape: data::type_::ValueShapeId(29),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
                                                 data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
@@ -5151,44 +5507,44 @@ fn integer_comparisons() {
                     function_function_functions: data::Storage::Static(&[]),
                 },
             },
-            compiled_numeric: {
+            compiled: {
 
-                enum NumericResume {
+                enum CompiledResume {
                     Next(usize),
-                    Exit(data::compiled_numeric::NumericProgress),
+                    Exit(data::compiled::CompiledProgress),
                 }
 
-                fn numeric_int_0(
+                fn numeric_int_1(
                     point: usize,
-                    values: &mut data::compiled_numeric::NumericValues,
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> data::compiled_numeric::NumericProgress {
+                ) -> data::compiled::CompiledProgress {
 
                     const RESUME: [
-                        fn(&mut data::compiled_numeric::NumericValues, &mut usize) -> NumericResume;
+                        fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
                         5
                     ] = [
-                        |values, budget| NumericResume::Exit(numeric_int_0_entry((values.ints[0],), values, budget)),
-                        numeric_int_0_resume_1,
-                        numeric_int_0_resume_2,
-                        numeric_int_0_resume_3,
-                        numeric_int_0_resume_4,
+                        |values, budget| CompiledResume::Exit(numeric_int_1_entry((values.ints[0],), values, budget)),
+                        numeric_int_1_resume_1,
+                        numeric_int_1_resume_2,
+                        numeric_int_1_resume_3,
+                        numeric_int_1_resume_4,
                     ];
 
                     let mut point = point;
                     loop {
                         match RESUME[point](values, budget) {
-                            NumericResume::Next(next) => point = next,
-                            NumericResume::Exit(progress) => return progress,
+                            CompiledResume::Next(next) => point = next,
+                            CompiledResume::Exit(progress) => return progress,
                         }
                     }
                 }
 
-                fn numeric_int_0_entry(
+                fn numeric_int_1_entry(
                     inputs: (i128,),
-                    values: &mut data::compiled_numeric::NumericValues,
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> data::compiled_numeric::NumericProgress {
+                ) -> data::compiled::CompiledProgress {
                     let (b0_i0,) = inputs;
                     if *budget == 0 {
 
@@ -5196,7 +5552,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b0_i0]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return data::compiled_numeric::NumericProgress::Yield(0);
+                        return data::compiled::CompiledProgress::Yield(0);
                     }
                     *budget -= 1;
                     if b0_i0 >= 0_i128 {
@@ -5207,7 +5563,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b1_i0]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Yield(1);
+                            return data::compiled::CompiledProgress::Yield(1);
                         }
                         *budget -= 1;
                         let b1_i1 = b1_i0 + 1_i128;
@@ -5217,7 +5573,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Interpreted(2);
+                            return data::compiled::CompiledProgress::Interpreted(2);
                         }
                         if *budget == 0 {
 
@@ -5225,7 +5581,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Yield(2);
+                            return data::compiled::CompiledProgress::Yield(2);
                         }
                         *budget -= 1;
 
@@ -5233,7 +5589,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0))
+                        data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
                     } else {
                         let (b2_i0,) = (b0_i0,);
                         if *budget == 0 {
@@ -5242,7 +5598,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b2_i0]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Yield(3);
+                            return data::compiled::CompiledProgress::Yield(3);
                         }
                         *budget -= 1;
                         let b2_i1 = b2_i0 - 1_i128;
@@ -5252,7 +5608,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Interpreted(4);
+                            return data::compiled::CompiledProgress::Interpreted(4);
                         }
                         if *budget == 0 {
 
@@ -5260,7 +5616,7 @@ fn integer_comparisons() {
                             values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                             values.bools.clear();
                             values.bools.extend_from_slice(&[]);
-                            return data::compiled_numeric::NumericProgress::Yield(4);
+                            return data::compiled::CompiledProgress::Yield(4);
                         }
                         *budget -= 1;
 
@@ -5268,14 +5624,14 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1))
+                        data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
                     }
                 }
 
-                fn numeric_int_0_resume_1(
-                    values: &mut data::compiled_numeric::NumericValues,
+                fn numeric_int_1_resume_1(
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> NumericResume {
+                ) -> CompiledResume {
                     let (b1_i0,) = (values.ints[0],);
                     if *budget == 0 {
 
@@ -5283,7 +5639,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b1_i0]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(1));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                     }
                     *budget -= 1;
                     let b1_i1 = b1_i0 + 1_i128;
@@ -5293,20 +5649,20 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(2));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(2));
                     }
 
                     values.ints.clear();
                     values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    NumericResume::Next(2)
+                    CompiledResume::Next(2)
                 }
 
-                fn numeric_int_0_resume_2(
-                    values: &mut data::compiled_numeric::NumericValues,
+                fn numeric_int_1_resume_2(
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> NumericResume {
+                ) -> CompiledResume {
                     let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
                     if *budget == 0 {
 
@@ -5314,7 +5670,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(2));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
                     }
                     *budget -= 1;
 
@@ -5322,13 +5678,13 @@ fn integer_comparisons() {
                     values.ints.extend_from_slice(&[b1_i0, b1_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(0)))
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
                 }
 
-                fn numeric_int_0_resume_3(
-                    values: &mut data::compiled_numeric::NumericValues,
+                fn numeric_int_1_resume_3(
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> NumericResume {
+                ) -> CompiledResume {
                     let (b2_i0,) = (values.ints[0],);
                     if *budget == 0 {
 
@@ -5336,7 +5692,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b2_i0]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(3));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
                     }
                     *budget -= 1;
                     let b2_i1 = b2_i0 - 1_i128;
@@ -5346,20 +5702,20 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Interpreted(4));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(4));
                     }
 
                     values.ints.clear();
                     values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    NumericResume::Next(4)
+                    CompiledResume::Next(4)
                 }
 
-                fn numeric_int_0_resume_4(
-                    values: &mut data::compiled_numeric::NumericValues,
+                fn numeric_int_1_resume_4(
+                    values: &mut data::compiled::numeric::NumericValues,
                     budget: &mut usize,
-                ) -> NumericResume {
+                ) -> CompiledResume {
                     let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
                     if *budget == 0 {
 
@@ -5367,7 +5723,7 @@ fn integer_comparisons() {
                         values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
-                        return NumericResume::Exit(data::compiled_numeric::NumericProgress::Yield(4));
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
                     }
                     *budget -= 1;
 
@@ -5375,51 +5731,475 @@ fn integer_comparisons() {
                     values.ints.extend_from_slice(&[b2_i0, b2_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    NumericResume::Exit(data::compiled_numeric::NumericProgress::Complete(data::graph::BlockGraphExitId(1)))
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
                 }
-                data::compiled_numeric::NumericFunctions {
+
+                fn int_list_int_5(
+                    point: usize,
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> data::compiled::CompiledProgress {
+
+                    const RESUME: [
+                        fn(&mut data::compiled::int_list::IntListValues, &data::compiled::int_list::IntListOps<'_>, &mut usize) -> CompiledResume;
+                        6
+                    ] = [
+                        |values, _lists, budget| {
+                            let _list0 = values.int_lists.remove(0);
+                            CompiledResume::Exit(int_list_int_5_entry((values.ints[0], _list0,), values, _lists, budget))
+                        },
+                        int_list_int_5_resume_1,
+                        int_list_int_5_resume_2,
+                        int_list_int_5_resume_3,
+                        int_list_int_5_resume_4,
+                        int_list_int_5_resume_5,
+                    ];
+
+                    let mut point = point;
+                    loop {
+                        match RESUME[point](values, _lists, budget) {
+                            CompiledResume::Next(next) => point = next,
+                            CompiledResume::Exit(progress) => return progress,
+                        }
+                    }
+                }
+
+                fn int_list_int_5_entry(
+                    inputs: (i128, data::compiled::int_list::IntList,),
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> data::compiled::CompiledProgress {
+                    let (b0_i0, b0_l0,) = inputs;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b0_l0]);
+                        return data::compiled::CompiledProgress::Yield(0);
+                    }
+                    let _matched = if !b0_l0.is_empty() {
+                        'pattern: {
+                            let mut _reader = _lists.prefix(&b0_l0, 1);
+                            let Some(_head0) = _reader.next() else {
+                                break 'pattern Ok(None);
+                            };
+                            let Some(_small0) = _head0.small() else {
+                                break 'pattern Err(());
+                            };
+                            let m0 = _small0;
+                            break 'pattern Ok(Some((m0,)));
+                        }
+                    } else {
+                        Ok(None)
+                    };
+                    match _matched {
+                        Ok(Some((m0,))) => {
+                            *budget -= 1;
+                            let m1 = _lists.tail(&b0_l0, data::type_::IntListTypeId {
+                                list_type: data::type_::ListTypeId(0),
+                            }, 1);
+                            let (b1_i0, b1_i1, b1_l0, b1_l1,) = (b0_i0, m0, m1, b0_l0,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([b1_l0, b1_l1]);
+                                return data::compiled::CompiledProgress::Yield(1);
+                            }
+                            *budget -= 1;
+                            if _lists.equal(&b1_l0, &b1_l1) {
+                                let _next = (b1_i0,);
+                                drop(b1_l0);
+                                drop(b1_l1);
+                                let (b2_i0,) = _next;
+                                if *budget == 0 {
+
+                                    values.ints.clear();
+                                    values.ints.extend_from_slice(&[b2_i0]);
+                                    values.bools.clear();
+                                    values.bools.extend_from_slice(&[]);
+                                    values.int_lists.clear();
+                                    values.int_lists.extend([]);
+                                    return data::compiled::CompiledProgress::Yield(2);
+                                }
+                                *budget -= 1;
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b2_i0]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([]);
+                                data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+                            } else {
+                                let _next = (b1_i0, b1_i1,);
+                                drop(b1_l0);
+                                drop(b1_l1);
+                                let (b3_i0, b3_i1,) = _next;
+                                if *budget == 0 {
+
+                                    values.ints.clear();
+                                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                                    values.bools.clear();
+                                    values.bools.extend_from_slice(&[]);
+                                    values.int_lists.clear();
+                                    values.int_lists.extend([]);
+                                    return data::compiled::CompiledProgress::Yield(3);
+                                }
+                                *budget -= 1;
+                                let b3_i2 = b3_i1 + b3_i0;
+                                if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                                    values.ints.clear();
+                                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                                    values.bools.clear();
+                                    values.bools.extend_from_slice(&[]);
+                                    values.int_lists.clear();
+                                    values.int_lists.extend([]);
+                                    return data::compiled::CompiledProgress::Interpreted(4);
+                                }
+                                if *budget == 0 {
+
+                                    values.ints.clear();
+                                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                                    values.bools.clear();
+                                    values.bools.extend_from_slice(&[]);
+                                    values.int_lists.clear();
+                                    values.int_lists.extend([]);
+                                    return data::compiled::CompiledProgress::Yield(4);
+                                }
+                                *budget -= 1;
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([]);
+                                data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
+                            }
+                        },
+                        Ok(None) => {
+                            *budget -= 1;
+                            let (b4_l0,) = (b0_l0,);
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.int_lists.clear();
+                                values.int_lists.extend([b4_l0]);
+                                return data::compiled::CompiledProgress::Yield(5);
+                            }
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b4_l0]);
+                            data::compiled::CompiledProgress::Interpreted(5)
+                        },
+                        Err(()) => {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[b0_i0]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.int_lists.clear();
+                            values.int_lists.extend([b0_l0]);
+                            data::compiled::CompiledProgress::Interpreted(0)
+                        }
+                    }
+                }
+
+                fn int_list_int_5_resume_1(
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let _list1 = values.int_lists.remove(1);
+                    let _list0 = values.int_lists.remove(0);
+                    let (b1_i0, b1_i1, b1_l0, b1_l1,) = (values.ints[0], values.ints[1], _list0, _list1,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b1_l0, b1_l1]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
+                    }
+                    *budget -= 1;
+                    if _lists.equal(&b1_l0, &b1_l1) {
+                        let _next = (b1_i0,);
+                        drop(b1_l0);
+                        drop(b1_l1);
+                        let (b2_i0,) = _next;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        CompiledResume::Next(2)
+                    } else {
+                        let _next = (b1_i0, b1_i1,);
+                        drop(b1_l0);
+                        drop(b1_l1);
+                        let (b3_i0, b3_i1,) = _next;
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        CompiledResume::Next(3)
+                    }
+                }
+
+                fn int_list_int_5_resume_2(
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let (b2_i0,) = (values.ints[0],);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
+                }
+
+                fn int_list_int_5_resume_3(
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                    }
+                    *budget -= 1;
+                    let b3_i2 = b3_i1 + b3_i0;
+                    if b3_i2 < i128::from(i64::MIN) || b3_i2 > i128::from(i64::MAX) {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(4));
+                    }
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    CompiledResume::Next(4)
+                }
+
+                fn int_list_int_5_resume_4(
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let (b3_i0, b3_i1, b3_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b3_i0, b3_i1, b3_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([]);
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
+                }
+
+                fn int_list_int_5_resume_5(
+                    values: &mut data::compiled::int_list::IntListValues,
+                    _lists: &data::compiled::int_list::IntListOps<'_>,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let _list0 = values.int_lists.remove(0);
+                    let (b4_l0,) = (_list0,);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.int_lists.clear();
+                        values.int_lists.extend([b4_l0]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
+                    }
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.int_lists.clear();
+                    values.int_lists.extend([b4_l0]);
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(5))
+                }
+                data::compiled::CompiledFunctions {
                     ints: data::Storage::Static(&[
-                        data::compiled_numeric::NumericFunction {
-                            function: data::function::IntFunctionId(0),
-                            implementation: data::compiled_numeric::NumericImplementation {
+                        data::compiled::CompiledFunction {
+                            function: data::function::IntFunctionId(1),
+                            implementation: data::compiled::CompiledImplementation::Numeric(data::compiled::NumericImplementation {
                                 entry: 0,
                                 checkpoints: data::Storage::Static(&[
-                                    data::compiled_numeric::NumericCheckpoint {
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
                                     },
-                                    data::compiled_numeric::NumericCheckpoint {
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
                                     },
-                                    data::compiled_numeric::NumericCheckpoint {
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
                                     },
-                                    data::compiled_numeric::NumericCheckpoint {
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
                                         instruction: 0,
                                         ints: 1,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
                                     },
-                                    data::compiled_numeric::NumericCheckpoint {
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
                                         instruction: 1,
                                         ints: 2,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
                                     },
                                 ]),
-                                run: numeric_int_0,
-                            },
+                                run: numeric_int_1,
+                            }),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::function::IntFunctionId(5),
+                            implementation: data::compiled::CompiledImplementation::IntList(data::compiled::IntListImplementation {
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 1,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(1),
+                                        instruction: 0,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 2,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(3),
+                                        instruction: 0,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(3),
+                                        instruction: 1,
+                                        ints: 3,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(4),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 1,
+                                    },
+                                ]),
+                                run: int_list_int_5,
+                            }),
                         },
                     ]),
                     bools: data::Storage::Static(&[
+                    ]),
+                    customs: data::Storage::Static(&[
                     ]),
                 }
             },
@@ -5451,16 +6231,16 @@ fn integer_comparisons() {
             function_parameters: data::function::FunctionCatalog {
                 families: [
                     0..1,
-                    1..5,
+                    1..7,
                     0..0,
-                    5..6,
-                    6..10,
+                    7..8,
+                    8..12,
                     0..0,
-                    10..15,
+                    12..17,
                     0..0,
-                    15..20,
+                    17..22,
                     0..0,
-                    20..24,
+                    22..26,
                     0..0,
                     0..0,
                     0..0,
@@ -5511,7 +6291,16 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 0..1,
+                        parameters: 0..2,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(28),
+                            data::type_::ValueShapeId(17),
+                        ]),
+                        return_: data::type_::ValueShapeId(17),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 2..3,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(17),
                         ]),
@@ -5519,7 +6308,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 1..3,
+                        parameters: 3..5,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(18),
                             data::type_::ValueShapeId(17),
@@ -5528,19 +6317,37 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 3..3,
+                        parameters: 5..5,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(17),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 3..3,
+                        parameters: 5..5,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(17),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 3..3,
+                        parameters: 5..6,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(17),
+                        ]),
+                        return_: data::type_::ValueShapeId(17),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                    local: data::graph::IntListLocalId(0),
+                                    type_id: data::type_::IntListTypeId {
+                                        list_type: data::type_::ListTypeId(0),
+                                    },
+                                }),
+                                shape: data::type_::ValueShapeId(28),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 6..6,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(3),
                         captures: data::Storage::Static(&[
@@ -5551,7 +6358,7 @@ fn integer_comparisons() {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 3..6,
+                        parameters: 6..9,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(17),
@@ -5561,7 +6368,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 6..7,
+                        parameters: 9..10,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5569,7 +6376,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 7..8,
+                        parameters: 10..11,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5577,7 +6384,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 8..8,
+                        parameters: 11..11,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(0),
                         captures: data::Storage::Static(&[
@@ -5588,7 +6395,7 @@ fn integer_comparisons() {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 8..9,
+                        parameters: 11..12,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(17),
                         ]),
@@ -5596,7 +6403,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 9..10,
+                        parameters: 12..13,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(24),
                         ]),
@@ -5604,7 +6411,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 10..11,
+                        parameters: 13..14,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(25),
                         ]),
@@ -5612,7 +6419,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 11..12,
+                        parameters: 14..15,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(26),
                         ]),
@@ -5620,7 +6427,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 12..13,
+                        parameters: 15..16,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(27),
                         ]),
@@ -5628,19 +6435,19 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 13..13,
+                        parameters: 16..16,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(6),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 13..13,
+                        parameters: 16..16,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(6),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 13..15,
+                        parameters: 16..18,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(9),
                             data::type_::ValueShapeId(12),
@@ -5649,7 +6456,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 15..17,
+                        parameters: 18..20,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(14),
                             data::type_::ValueShapeId(16),
@@ -5658,7 +6465,7 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 17..19,
+                        parameters: 20..22,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(16),
                             data::type_::ValueShapeId(16),
@@ -5667,13 +6474,13 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 19..19,
+                        parameters: 22..22,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(19),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 19..20,
+                        parameters: 22..23,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(3),
                         ]),
@@ -5681,25 +6488,32 @@ fn integer_comparisons() {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 20..22,
+                        parameters: 23..25,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(17),
                             data::type_::ValueShapeId(17),
                         ]),
-                        return_: data::type_::ValueShapeId(28),
+                        return_: data::type_::ValueShapeId(29),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 22..24,
+                        parameters: 25..27,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(3),
                             data::type_::ValueShapeId(3),
                         ]),
-                        return_: data::type_::ValueShapeId(28),
+                        return_: data::type_::ValueShapeId(29),
                         captures: data::Storage::Static(&[]),
                     },
                 ]),
                 parameters: data::Storage::Static(&[
+                    data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                        local: data::graph::IntListLocalId(0),
+                        type_id: data::type_::IntListTypeId {
+                            list_type: data::type_::ListTypeId(0),
+                        },
+                    }),
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::IntFunction {
                         local: data::graph::IntFunctionLocalId(0),
@@ -5710,6 +6524,7 @@ fn integer_comparisons() {
                             return_: data::Storage::Static(&data::type_::ValueType::Int),
                         },
                     },
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -5772,28 +6587,28 @@ fn integer_comparisons() {
                         local: data::graph::TupleLocalId(0),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::BitArray,
-                            data::type_::ValueType::List(data::type_::ListTypeId(2)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
                         ]),
                     },
                     data::graph::ParamLocal::Tuple {
                         local: data::graph::TupleLocalId(1),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     },
                     data::graph::ParamLocal::Tuple {
                         local: data::graph::TupleLocalId(0),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     },
                     data::graph::ParamLocal::Tuple {
                         local: data::graph::TupleLocalId(1),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     },
                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
@@ -5805,19 +6620,22 @@ fn integer_comparisons() {
             },
             list_types: data::type_::ListTypeTable {
                 types: data::Storage::Static(&[
-                    data::type_::ListStorageTypeId::Custom(data::type_::CustomListTypeId {
+                    data::type_::ListStorageTypeId::Int(data::type_::IntListTypeId {
                         list_type: data::type_::ListTypeId(0),
-                        item_type: data::type_::CustomTypeId(0),
                     }),
                     data::type_::ListStorageTypeId::Custom(data::type_::CustomListTypeId {
                         list_type: data::type_::ListTypeId(1),
+                        item_type: data::type_::CustomTypeId(0),
+                    }),
+                    data::type_::ListStorageTypeId::Custom(data::type_::CustomListTypeId {
+                        list_type: data::type_::ListTypeId(2),
                         item_type: data::type_::CustomTypeId(1),
                     }),
                     data::type_::ListStorageTypeId::BitArray(data::type_::BitArrayListTypeId {
-                        list_type: data::type_::ListTypeId(2),
+                        list_type: data::type_::ListTypeId(3),
                     }),
                     data::type_::ListStorageTypeId::String(data::type_::StringListTypeId {
-                        list_type: data::type_::ListTypeId(3),
+                        list_type: data::type_::ListTypeId(4),
                     }),
                 ]),
                 tuple_items: data::Storage::Static(&[]),
@@ -5862,7 +6680,7 @@ fn integer_comparisons() {
                                 fields: data::Storage::Static(&[
                                     data::type_::CustomFieldDescriptor {
                                         label: None,
-                                        type_: data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                                        type_: data::type_::ValueType::List(data::type_::ListTypeId(1)),
                                         shape: data::type_::ValueShapeId(2),
                                         refinement: data::type_::FieldRefinement::List(data::Storage::Static(&data::type_::FieldRefinement::Custom(data::Storage::Static(&[
                                             data::type_::FieldRefinement::Argument(0),
@@ -5909,7 +6727,7 @@ fn integer_comparisons() {
                                 fields: data::Storage::Static(&[
                                     data::type_::CustomFieldDescriptor {
                                         label: None,
-                                        type_: data::type_::ValueType::List(data::type_::ListTypeId(1)),
+                                        type_: data::type_::ValueType::List(data::type_::ListTypeId(2)),
                                         shape: data::type_::ValueShapeId(5),
                                         refinement: data::type_::FieldRefinement::List(data::Storage::Static(&data::type_::FieldRefinement::Custom(data::Storage::Static(&[
                                             data::type_::FieldRefinement::Argument(0),
@@ -6113,6 +6931,7 @@ fn integer_comparisons() {
                         return_: data::type_::ValueShapeId(23),
                     },
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(7)),
+                    data::type_::ValueShapeDescriptor::List(data::type_::ValueShapeId(17)),
                     data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
                         data::type_::ValueShapeId(6),
                         data::type_::ValueShapeId(6),
@@ -6121,26 +6940,26 @@ fn integer_comparisons() {
                 shape_types: data::Storage::Static(&[
                     data::type_::ValueType::BitArray,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
-                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                    data::type_::ValueType::List(data::type_::ListTypeId(1)),
                     data::type_::ValueType::String,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
-                    data::type_::ValueType::List(data::type_::ListTypeId(1)),
+                    data::type_::ValueType::List(data::type_::ListTypeId(2)),
                     data::type_::ValueType::Bool,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
-                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
+                    data::type_::ValueType::List(data::type_::ListTypeId(1)),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
-                    data::type_::ValueType::List(data::type_::ListTypeId(1)),
-                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
                     data::type_::ValueType::List(data::type_::ListTypeId(2)),
-                    data::type_::ValueType::Tuple(data::Storage::Static(&[
-                        data::type_::ValueType::BitArray,
-                        data::type_::ValueType::List(data::type_::ListTypeId(2)),
-                    ])),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
                     data::type_::ValueType::List(data::type_::ListTypeId(3)),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
-                        data::type_::ValueType::String,
+                        data::type_::ValueType::BitArray,
                         data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                    ])),
+                    data::type_::ValueType::List(data::type_::ListTypeId(4)),
+                    data::type_::ValueType::Tuple(data::Storage::Static(&[
+                        data::type_::ValueType::String,
+                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                     ])),
                     data::type_::ValueType::Int,
                     data::type_::ValueType::Function(data::type_::FunctionType {
@@ -6177,6 +6996,7 @@ fn integer_comparisons() {
                         return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                     }),
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(3)),
+                    data::type_::ValueType::List(data::type_::ListTypeId(0)),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::Bool,
                         data::type_::ValueType::Bool,
@@ -6245,7 +7065,33 @@ fn integer_comparisons() {
             },
         },
         entries: data::program::LibraryFunctionEntries {
-            ints: data::Storage::Static(&[]),
+            ints: data::Storage::Static(&[
+                data::program::LibraryFunctionEntry {
+                    function: data::function::IntFunctionId(0),
+                    inputs: data::program::LibraryInputConstructions {
+                        variants: data::Storage::Static(&[]),
+                        lists: data::program::LibraryListConstructions {
+                            ints: data::Storage::Static(&[
+                                data::type_::IntListTypeId {
+                                    list_type: data::type_::ListTypeId(0),
+                                },
+                            ]),
+                            floats: data::Storage::Static(&[]),
+                            strings: data::Storage::Static(&[]),
+                            bit_arrays: data::Storage::Static(&[]),
+                            utf_codepoints: data::Storage::Static(&[]),
+                            customs: data::Storage::Static(&[]),
+                            externals: data::Storage::Static(&[]),
+                            bools: data::Storage::Static(&[]),
+                            nils: data::Storage::Static(&[]),
+                            tuples: data::Storage::Static(&[]),
+                            lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
+                        },
+                    },
+                    callables: data::Storage::Static(&[]),
+                },
+            ]),
             floats: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),
             bit_arrays: data::Storage::Static(&[
@@ -6422,6 +7268,17 @@ fn integer_comparisons() {
                 },
                 slot: 0,
             },
+            data::Export {
+                name: data::Text::Static("list_callback"),
+                signature: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::Int)),
+                        data::type_::TypeMetadata::Int,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::Int),
+                },
+                slot: 0,
+            },
         ]),
     },
     value_functions: data::Storage::Static(&[
@@ -6504,7 +7361,7 @@ fn integer_comparisons() {
                             arguments: data::Storage::Static(&[
                                 data::type_::TypeMetadata::String,
                             ]),
-                        }))), data::type_::ListTypeId(1)),
+                        }))), data::type_::ListTypeId(2)),
                     ]),
                 },
                 customs: data::host::ConstructionIndex {
@@ -6582,7 +7439,7 @@ fn integer_comparisons() {
                                 ]),
                             }))),
                             kind: data::host::NativeConversionKind::List {
-                                storage: data::type_::ListTypeId(1),
+                                storage: data::type_::ListTypeId(2),
                                 item: data::host::NativeConversionId(0),
                             },
                         },
@@ -6735,14 +7592,14 @@ fn integer_comparisons() {
                         local: data::graph::TupleLocalId(0),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::BitArray,
-                            data::type_::ValueType::List(data::type_::ListTypeId(2)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
                         ]),
                     }),
                     data::host::HostCallParameter::Value(data::graph::ParamLocal::Tuple {
                         local: data::graph::TupleLocalId(1),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     }),
                 ]),
@@ -6758,7 +7615,7 @@ fn integer_comparisons() {
                             arguments: data::Storage::Static(&[
                                 data::type_::TypeMetadata::String,
                             ]),
-                        }))), data::type_::ListTypeId(1)),
+                        }))), data::type_::ListTypeId(2)),
                     ]),
                 },
                 customs: data::host::ConstructionIndex {
@@ -6831,7 +7688,7 @@ fn integer_comparisons() {
                         data::host::NativeConversion {
                             type_: data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::String)),
                             kind: data::host::NativeConversionKind::List {
-                                storage: data::type_::ListTypeId(3),
+                                storage: data::type_::ListTypeId(4),
                                 item: data::host::NativeConversionId(2),
                             },
                         },
@@ -6845,7 +7702,7 @@ fn integer_comparisons() {
                                 ]),
                             }))),
                             kind: data::host::NativeConversionKind::List {
-                                storage: data::type_::ListTypeId(1),
+                                storage: data::type_::ListTypeId(2),
                                 item: data::host::NativeConversionId(1),
                             },
                         },
@@ -6857,11 +7714,11 @@ fn integer_comparisons() {
                 arguments: data::Storage::Static(&[
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::BitArray,
-                        data::type_::ValueType::List(data::type_::ListTypeId(2)),
+                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
                     ])),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::String,
-                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                     ])),
                 ]),
                 return_: data::Storage::Static(&data::type_::ValueType::Bool),
@@ -7098,14 +7955,14 @@ fn integer_comparisons() {
                         local: data::graph::TupleLocalId(0),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     }),
                     data::host::HostCallParameter::Value(data::graph::ParamLocal::Tuple {
                         local: data::graph::TupleLocalId(1),
                         type_: data::Storage::Static(&[
                             data::type_::ValueType::String,
-                            data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                            data::type_::ValueType::List(data::type_::ListTypeId(4)),
                         ]),
                     }),
                 ]),
@@ -7121,7 +7978,7 @@ fn integer_comparisons() {
                             arguments: data::Storage::Static(&[
                                 data::type_::TypeMetadata::String,
                             ]),
-                        }))), data::type_::ListTypeId(1)),
+                        }))), data::type_::ListTypeId(2)),
                     ]),
                 },
                 customs: data::host::ConstructionIndex {
@@ -7194,7 +8051,7 @@ fn integer_comparisons() {
                         data::host::NativeConversion {
                             type_: data::type_::TypeMetadata::List(data::Storage::Static(&data::type_::TypeMetadata::String)),
                             kind: data::host::NativeConversionKind::List {
-                                storage: data::type_::ListTypeId(3),
+                                storage: data::type_::ListTypeId(4),
                                 item: data::host::NativeConversionId(2),
                             },
                         },
@@ -7208,7 +8065,7 @@ fn integer_comparisons() {
                                 ]),
                             }))),
                             kind: data::host::NativeConversionKind::List {
-                                storage: data::type_::ListTypeId(1),
+                                storage: data::type_::ListTypeId(2),
                                 item: data::host::NativeConversionId(1),
                             },
                         },
@@ -7220,11 +8077,11 @@ fn integer_comparisons() {
                 arguments: data::Storage::Static(&[
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::String,
-                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                     ])),
                     data::type_::ValueType::Tuple(data::Storage::Static(&[
                         data::type_::ValueType::String,
-                        data::type_::ValueType::List(data::type_::ListTypeId(3)),
+                        data::type_::ValueType::List(data::type_::ListTypeId(4)),
                     ])),
                 ]),
                 return_: data::Storage::Static(&data::type_::ValueType::Bool),

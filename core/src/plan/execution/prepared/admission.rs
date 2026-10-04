@@ -3,6 +3,7 @@ mod body;
 mod call;
 mod callables;
 mod catalog;
+mod compiled;
 mod constant;
 mod control;
 mod edge;
@@ -16,7 +17,6 @@ mod input;
 mod instruction;
 mod literal;
 mod local;
-mod numeric;
 mod operand;
 mod pattern;
 mod place;
@@ -70,7 +70,7 @@ enum Error<HostError> {
     Catalog(catalog::CatalogError),
     Hosts(HostError),
     Functions(functions::FunctionError<HostError>),
-    Numeric(numeric::NumericError),
+    Compiled(compiled::CompiledError),
     Constants(constant::ConstantBodyError),
     Entries(entry::EntryError),
     Main(entry::MainError),
@@ -218,7 +218,7 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
-    numeric::all(&program.compiled_numeric, &program.functions).map_err(Error::Numeric)?;
+    compiled::all(&program.compiled, &program.functions).map_err(Error::Compiled)?;
     hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
     Ok((types, catalog))
@@ -426,11 +426,13 @@ mod tests {
         HostExternalStore, HostExternalType, HostProfile, HostProvider, HostProviderModule,
         HostProviderSet,
     };
+    use crate::plan::execution::graph::{Match, MatchPattern, ProfiledInstruction, Terminator};
     use crate::plan::execution::host::{HostedExecutionProfile, HostedFunctionMetadata};
     use crate::plan::execution::prepared::{
         FORMAT_VERSION, ModuleArtifact, PreparedModule, ProgramTables,
     };
     use crate::plan::execution::storage::Storage;
+    use crate::runtime::compiled::tests::metadata_numeric;
     use std::convert::Infallible;
     use std::sync::Arc;
 
@@ -1018,6 +1020,160 @@ pub fn main() {
     }
 
     #[test]
+    fn nested_constructor_remainders_admit_the_final_payload() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::instruction::InstructionError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::graph::MatchPattern;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let source = r#"
+pub type Control { Ping }
+pub type InternalMessage {
+  ReceiveMessage(Int)
+  Closed
+  Passive
+  SocketError(Int)
+  Ready
+  Close
+}
+pub type Message { Internal(InternalMessage) User(Control) }
+fn choose(message: Message) -> Int {
+  case message {
+    Internal(Closed) | Internal(Close) -> 0
+    Internal(Ready) -> 1
+    User(_) -> 2
+    Internal(ReceiveMessage(_)) -> 3
+    Internal(Passive) -> 4
+    Internal(SocketError(reason)) -> reason
+  }
+}
+pub fn main() {
+  let assert 0 = choose(Internal(Closed))
+  let assert 0 = choose(Internal(Close))
+  let assert 1 = choose(Internal(Ready))
+  let assert 2 = choose(User(Ping))
+  let assert 3 = choose(Internal(ReceiveMessage(13)))
+  let assert 4 = choose(Internal(Passive))
+  let assert 9 = choose(Internal(SocketError(9)))
+  Nil
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), ()>::new("main"))
+            .unwrap();
+        let mut data = artifact(bindings.prepare());
+        assert_eq!(module(&data, &functions::InfallibleHosts).err(), None);
+
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        let original = owned_mut(&mut graph.blocks)[6].terminator.clone();
+        let matcher = remainder_fixture_matcher(&mut owned_mut(&mut graph.blocks)[6].terminator);
+        matcher.pattern = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(1),
+                index: 0,
+            },
+            fields: vec![MatchPattern::Discard].into(),
+        };
+        assert_eq!(
+            module(&data, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Instruction {
+                    block: 12,
+                    index: 0,
+                    error: InstructionError::OutputType,
+                }),
+            }))
+        );
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        owned_mut(&mut graph.blocks)[6].terminator = original;
+        let index = graph.blocks[12].instructions.start;
+        let field_index =
+            remainder_fixture_field_index(&mut owned_mut(&mut graph.instructions)[index]);
+        assert_eq!(*field_index, 0);
+        *field_index = 1;
+        assert_eq!(
+            module(&data, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Instruction {
+                    block: 12,
+                    index: 0,
+                    error: InstructionError::CustomField { index: 1 },
+                }),
+            }))
+        );
+        let graph = &mut owned_mut(&mut data.program.functions.value_returns.int_functions)[0]
+            .body
+            .block_graph;
+        *remainder_fixture_field_index(&mut owned_mut(&mut graph.instructions)[index]) = 0;
+
+        let (execution, _) = plain(Box::leak(Box::new(data))).unwrap().into_execution();
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            assert_eq!(
+                crate::run_main(&execution, &mut echo).unwrap(),
+                crate::Value::Nil
+            );
+            assert!(echo.is_empty());
+        }
+    }
+
+    fn remainder_fixture_matcher(terminator: &mut Terminator) -> &mut Match {
+        match terminator {
+            Terminator::Match(matcher) => matcher,
+            _ => panic!("expected a constructor remainder match"),
+        }
+    }
+
+    fn remainder_fixture_field_index(
+        instruction: &mut ProfiledInstruction<Infallible>,
+    ) -> &mut usize {
+        use crate::plan::execution::graph::block::instruction::ProfiledValueInstruction;
+        use crate::plan::execution::graph::{
+            CustomInstruction, ProfiledInstruction, ProfiledInstructionKind,
+        };
+        match instruction {
+            ProfiledInstruction::Value(ProfiledValueInstruction {
+                kind: ProfiledInstructionKind::Custom(CustomInstruction::CustomField { index, .. }),
+                ..
+            }) => index,
+            _ => panic!("expected a constructor remainder field"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a constructor remainder match")]
+    fn remainder_fixture_matcher_rejects_non_matches() {
+        use crate::plan::execution::graph::{BlockGraphExitId, Terminator};
+        remainder_fixture_matcher(&mut Terminator::Exit(BlockGraphExitId(0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "expected a constructor remainder field")]
+    fn remainder_fixture_field_rejects_non_projections() {
+        use crate::plan::execution::graph::{
+            NilInstruction, NilLocalId, ParamLocal, ParamSlot, ProfiledInstruction,
+            ProfiledInstructionKind,
+        };
+        use crate::plan::execution::type_::ValueShapeId;
+        remainder_fixture_field_index(&mut ProfiledInstruction::new(
+            ParamSlot::new(ParamLocal::Nil(NilLocalId(0)), ValueShapeId(0)),
+            ProfiledInstructionKind::Nil(NilInstruction::Value),
+        ));
+    }
+
+    #[test]
     fn arithmetic_regions_preserve_scalar_projections_and_list_guards_at_admission() {
         use crate::plan::execution::graph::ProfiledInstruction;
 
@@ -1064,9 +1220,10 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
 
     #[test]
     fn invalid_numeric_links_are_rejected_before_a_plain_binding_owner_is_created() {
-        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
+        use crate::plan::execution::compiled::{
+            CompiledFunction, CompiledImplementation, NumericImplementation,
+        };
         use crate::plan::execution::function::IntFunctionId;
-        use crate::runtime::compiled_numeric::NumericProgress;
         let typed =
             crate::compile_typed_module("example", "src/example.gleam", "pub fn main() { 42 }")
                 .unwrap();
@@ -1075,26 +1232,22 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             .function(FunctionDeclaration::<(), BigInt>::new("main"))
             .unwrap();
         let mut artifact = artifact(bindings.prepare());
-        artifact.program.compiled_numeric.ints = vec![NumericFunction {
+        artifact.program.compiled.ints = vec![CompiledFunction {
             function: IntFunctionId(999),
-            implementation: NumericImplementation {
+            implementation: CompiledImplementation::Numeric(NumericImplementation {
                 entry: 0,
                 checkpoints: vec![].into(),
-                run: |point, _, _| NumericProgress::Yield(point),
-            },
+                run: metadata_numeric,
+            }),
         }]
         .into();
-        let implementation = &artifact.program.compiled_numeric.ints[0].implementation;
-        assert_eq!(
-            (implementation.run)(0, &mut Default::default(), &mut 1),
-            NumericProgress::Yield(0)
-        );
+
         assert_eq!(
             plain(Box::leak(Box::new(artifact)))
                 .err()
                 .unwrap()
                 .to_string(),
-            "invalid prepared program: Numeric(NumericError { family: Int, function: 999, reason: MissingFunction }); regenerate the prepared program"
+            "invalid prepared program: Compiled(CompiledError { family: Int, function: 999, reason: MissingFunction }); regenerate the prepared program"
         );
     }
 
@@ -1110,7 +1263,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                 modules: common.modules,
                 main: common.main,
                 functions: *functions,
-                compiled_numeric: prepared.program.compiled_numeric,
+                compiled: prepared.program.compiled,
                 constants: *constants,
                 function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                 list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -1323,7 +1476,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        compiled_numeric: program.compiled_numeric,
+                        compiled: program.compiled,
                         constants: *owned(common.constants),
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -1416,6 +1569,164 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
     }
 
     #[test]
+    fn typed_nil_fallthrough_preserves_pattern_validation_and_projection_evidence() {
+        use super::body::BodyError;
+        use super::functions::{FunctionError, FunctionErrorKind};
+        use super::instruction::InstructionError;
+        use super::pattern::PatternError;
+        use super::terminator::TerminatorError;
+        use crate::plan::execution::function::FunctionTableFamily;
+        use crate::plan::execution::type_::{CustomConstructorId, CustomTypeId};
+
+        let source = r#"
+pub type Reason { Closed Timeout }
+pub fn choose(value: Result(Nil, Reason)) -> Int {
+  case value {
+    Ok(Nil) -> 0
+    Error(reason) -> case reason { Closed -> 1 Timeout -> 2 }
+  }
+}
+pub fn main() {
+  let assert 0 = choose(Ok(Nil))
+  let assert 1 = choose(Error(Closed))
+  let assert 2 = choose(Error(Timeout))
+  Nil
+}
+"#;
+        for (type_id, fields, discard, expected) in [
+            (0, vec![MatchPattern::Nil], false, None),
+            (
+                0,
+                vec![MatchPattern::Nil],
+                true,
+                Some(BodyError::Instruction {
+                    block: 2,
+                    index: 0,
+                    error: InstructionError::OutputType,
+                }),
+            ),
+            (
+                0,
+                vec![MatchPattern::Bool(true)],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            ),
+            (
+                1,
+                vec![MatchPattern::Nil],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            ),
+            (
+                0,
+                vec![MatchPattern::Nil, MatchPattern::Nil],
+                false,
+                Some(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::FieldCount {
+                        expected: 1,
+                        found: 2,
+                    }),
+                }),
+            ),
+        ] {
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, _) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            let mut artifact = artifact(bindings.prepare());
+            let function =
+                &mut owned_mut(&mut artifact.program.functions.value_returns.int_functions)[0];
+            let pattern = fixture_match_pattern(
+                &mut owned_mut(&mut function.body.block_graph.blocks)[0].terminator,
+            );
+            *pattern = if discard {
+                MatchPattern::Discard
+            } else {
+                MatchPattern::Custom {
+                    constructor: CustomConstructorId {
+                        type_id: CustomTypeId(type_id),
+                        index: 0,
+                    },
+                    fields: fields.into(),
+                }
+            };
+            assert_eq!(
+                module(&artifact, &functions::InfallibleHosts).err(),
+                expected.map(|error| Error::Functions(FunctionError {
+                    family: FunctionTableFamily::Int,
+                    index: 0,
+                    kind: FunctionErrorKind::Body(error),
+                }))
+            );
+        }
+
+        let source = r#"
+pub type Reason { Closed Timeout }
+pub fn choose(value: Result(Bool, Reason)) -> Int {
+  case value {
+    Ok(True) -> 0
+    Ok(False) -> 3
+    Error(reason) -> case reason { Closed -> 1 Timeout -> 2 }
+  }
+}
+pub fn main() { let assert 3 = choose(Ok(False)) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), ()>::new("main"))
+            .unwrap();
+        let mut artifact = artifact(bindings.prepare());
+        assert_eq!(module(&artifact, &functions::InfallibleHosts).err(), None);
+        let function =
+            &mut owned_mut(&mut artifact.program.functions.value_returns.int_functions)[0];
+        *fixture_match_pattern(
+            &mut owned_mut(&mut function.body.block_graph.blocks)[0].terminator,
+        ) = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(0),
+                index: 0,
+            },
+            fields: vec![MatchPattern::Nil].into(),
+        };
+        assert_eq!(
+            module(&artifact, &functions::InfallibleHosts).err(),
+            Some(Error::Functions(FunctionError {
+                family: FunctionTableFamily::Int,
+                index: 0,
+                kind: FunctionErrorKind::Body(BodyError::Terminator {
+                    block: 0,
+                    error: TerminatorError::Pattern(PatternError::SubjectType),
+                }),
+            }))
+        );
+    }
+
+    fn fixture_match_pattern(terminator: &mut Terminator) -> &mut MatchPattern {
+        match terminator {
+            Terminator::Match(matcher) => &mut matcher.pattern,
+            _ => panic!("the mutated fixture must contain a match"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "the mutated fixture must contain a match")]
+    fn match_fixture_guard_rejects_other_terminators() {
+        use crate::plan::execution::graph::BlockGraphExitId;
+
+        fixture_match_pattern(&mut Terminator::Exit(BlockGraphExitId(0)));
+    }
+
+    #[test]
     fn rejects_artifact_errors_at_their_admission_stage() {
         use super::block::BlockError;
         use super::body::BodyError;
@@ -1441,11 +1752,11 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 14; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 15; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 14; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 15; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -1533,7 +1844,9 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
     #[test]
     fn hosted_admission_checks_format_and_native_tables_before_selecting_entries() {
         use crate::plan::SourceSpan;
-        use crate::plan::execution::compiled_numeric::{NumericFunction, NumericImplementation};
+        use crate::plan::execution::compiled::{
+            CompiledFunction, CompiledImplementation, NumericImplementation,
+        };
         use crate::plan::execution::function::{IntFunctionId, NilFunctionId};
         use crate::plan::execution::prepared::HostedModuleArtifact;
         use crate::plan::execution::type_::{FunctionMetadata, TypeMetadata};
@@ -1541,7 +1854,6 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             LibraryFunctionEntries, LibraryFunctionEntry, LibraryInputConstructions,
             LibraryListConstructions,
         };
-        use crate::runtime::compiled_numeric::NumericProgress;
 
         #[derive(Clone, Copy, PartialEq, Eq)]
         enum Change {
@@ -1562,7 +1874,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 15; regenerate the prepared program",
                 ),
             ),
             (
@@ -1602,7 +1914,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Numeric,
                 Some(
-                    "invalid prepared program: Numeric(NumericError { family: Int, function: 99, reason: MissingFunction }); regenerate the prepared program",
+                    "invalid prepared program: Compiled(CompiledError { family: Int, function: 99, reason: MissingFunction }); regenerate the prepared program",
                 ),
             ),
             (
@@ -1663,7 +1975,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                         modules: common.modules,
                         main: common.main,
                         functions: *owned(program.functions),
-                        compiled_numeric: program.compiled_numeric,
+                        compiled: program.compiled,
                         constants,
                         function_parameters: Arc::try_unwrap(common.function_parameters)
                             .ok()
@@ -1739,21 +2051,15 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     )
                 }
                 Change::Numeric => {
-                    artifact.module.program.compiled_numeric.ints = vec![NumericFunction {
+                    artifact.module.program.compiled.ints = vec![CompiledFunction {
                         function: IntFunctionId(99),
-                        implementation: NumericImplementation {
+                        implementation: CompiledImplementation::Numeric(NumericImplementation {
                             entry: 0,
                             checkpoints: vec![].into(),
-                            run: |point, _, _| NumericProgress::Yield(point),
-                        },
+                            run: metadata_numeric,
+                        }),
                     }]
                     .into();
-                    assert_eq!(
-                        (artifact.module.program.compiled_numeric.ints[0]
-                            .implementation
-                            .run)(0, &mut Default::default(), &mut 1,),
-                        NumericProgress::Yield(0)
-                    );
                 }
                 _ => {}
             }
@@ -1793,7 +2099,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 15; regenerate the prepared program",
                 ),
             ),
             (
@@ -1825,7 +2131,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    compiled_numeric: program.compiled_numeric,
+                    compiled: program.compiled,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),
@@ -1954,7 +2260,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                     modules: common.modules,
                     main: common.main,
                     functions: *owned(program.functions),
-                    compiled_numeric: program.compiled_numeric,
+                    compiled: program.compiled,
                     constants: *owned(common.constants),
                     function_parameters: Arc::try_unwrap(common.function_parameters).ok().unwrap(),
                     list_types: Arc::try_unwrap(common.list_types).ok().unwrap(),

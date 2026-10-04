@@ -154,7 +154,7 @@ where
                 }
                 match function.entry(plan) {
                     ExecutionFunctionRef::Graph(entry) => {
-                        let compiled_numeric = function.compiled_numeric(plan);
+                        let compiled = function.compiled(plan);
                         Ok(Progress::Continue(Self {
                             function,
                             storage,
@@ -163,7 +163,7 @@ where
                                 execution: GraphExecution::new(
                                     entry.body().function_body().block_graph().as_view(),
                                     inputs,
-                                    compiled_numeric,
+                                    compiled,
                                 ),
                             },
                         }))

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 14,
+        format: 15,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2638,7 +2638,7 @@ pub fn check() {
                     ]),
                 },
             },
-            compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
+            compiled: data::compiled::CompiledFunctions::interpreted(),
             constants: data::constant::ProfiledConstantTable {
                 ints: data::Storage::Static(&[]),
                 strings: data::Storage::Static(&[]),

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 14,
+    format: 15,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -1249,7 +1249,528 @@ data::ModuleArtifact {
                 function_function_functions: data::Storage::Static(&[]),
             },
         },
-        compiled_numeric: data::compiled_numeric::NumericFunctions::interpreted(),
+        compiled: {
+
+            enum CompiledResume {
+                Next(usize),
+                Exit(data::compiled::CompiledProgress),
+            }
+
+            fn bit_array_int_2(
+                point: usize,
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+
+                const RESUME: [
+                    fn(&mut data::compiled::bit_array::BitArrayValues, &mut usize) -> CompiledResume;
+                    8
+                ] = [
+                    |values, budget| CompiledResume::Exit(bit_array_int_2_entry((values.bit_arrays[0],), values, budget)),
+                    bit_array_int_2_resume_1,
+                    bit_array_int_2_resume_2,
+                    bit_array_int_2_resume_3,
+                    bit_array_int_2_resume_4,
+                    bit_array_int_2_resume_5,
+                    bit_array_int_2_resume_6,
+                    bit_array_int_2_resume_7,
+                ];
+
+                let mut point = point;
+                loop {
+                    match RESUME[point](values, budget) {
+                        CompiledResume::Next(next) => point = next,
+                        CompiledResume::Exit(progress) => return progress,
+                    }
+                }
+            }
+
+            fn bit_array_int_2_entry(
+                inputs: (data::compiled::bit_array::BitArrayRange,),
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> data::compiled::CompiledProgress {
+                let (b0_b0,) = inputs;
+                let (b2_i0, b2_i1, b2_i2,) = 'block_2: {
+                    let () = 'block_4: {
+                        let () = 'block_3: {
+                            let (b1_i0, b1_i1, b1_i2,) = 'block_1: {
+                                let () = 'block_5: {
+                                    if *budget == 0 {
+
+                                        values.ints.clear();
+                                        values.ints.extend_from_slice(&[]);
+                                        values.bools.clear();
+                                        values.bools.extend_from_slice(&[]);
+                                        values.bit_arrays.clear();
+                                        values.bit_arrays.extend_from_slice(&[b0_b0]);
+                                        return data::compiled::CompiledProgress::Yield(0);
+                                    }
+                                    *budget -= 1;
+                                    let _matched = (|| -> Option<(i128, i128, i128,)> {
+                                        let mut _offset = 0_usize;
+                                        let _field_0 = values.integer(
+                                            b0_b0,
+                                            _offset,
+                                            8_usize,
+                                            data::graph::Endianness::Big,
+                                            data::graph::Signedness::Unsigned,
+                                        )?;
+                                        let _matched_0 = _field_0;
+                                        _offset = _offset.checked_add(8_usize)?;
+                                        let _field_1 = values.integer(
+                                            b0_b0,
+                                            _offset,
+                                            0_usize,
+                                            data::graph::Endianness::Big,
+                                            data::graph::Signedness::Unsigned,
+                                        )?;
+                                        let _matched_1 = _field_1;
+                                        _offset = _offset.checked_add(0_usize)?;
+                                        let _field_2 = values.integer(
+                                            b0_b0,
+                                            _offset,
+                                            16_usize,
+                                            data::graph::Endianness::Little,
+                                            data::graph::Signedness::Signed,
+                                        )?;
+                                        let _matched_2 = _field_2;
+                                        _offset = _offset.checked_add(16_usize)?;
+                                        let _length_3 = b0_b0.bit_len().checked_sub(_offset)?;
+                                        let _range_3 = b0_b0.slice(_offset, _length_3)?;
+                                        _offset = _offset.checked_add(_length_3)?;
+                                        if _offset != b0_b0.bit_len() { return None; }
+                                        Some((_matched_0, _matched_1, _matched_2,))
+                                    })();
+                                    match _matched {
+                                        Some((_matched_0, _matched_1, _matched_2,)) => {
+                                            break 'block_1 (_matched_0, _matched_1, _matched_2,);
+                                        },
+                                        None => {
+                                            break 'block_5;
+                                        },
+                                    }
+                                };
+                                if *budget == 0 {
+
+                                    values.ints.clear();
+                                    values.ints.extend_from_slice(&[]);
+                                    values.bools.clear();
+                                    values.bools.extend_from_slice(&[]);
+                                    values.bit_arrays.clear();
+                                    values.bit_arrays.extend_from_slice(&[]);
+                                    return data::compiled::CompiledProgress::Yield(7);
+                                }
+                                *budget -= 1;
+                                {
+                                    break 'block_4;
+                                }
+                            };
+                            if *budget == 0 {
+
+                                values.ints.clear();
+                                values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                                values.bools.clear();
+                                values.bools.extend_from_slice(&[]);
+                                values.bit_arrays.clear();
+                                values.bit_arrays.extend_from_slice(&[]);
+                                return data::compiled::CompiledProgress::Yield(1);
+                            }
+                            *budget -= 1;
+                            if b1_i0 > 10_i128 {
+                                break 'block_2 (b1_i0, b1_i1, b1_i2,);
+                            } else {
+                                break 'block_3;
+                            }
+                        };
+                        if *budget == 0 {
+
+                            values.ints.clear();
+                            values.ints.extend_from_slice(&[]);
+                            values.bools.clear();
+                            values.bools.extend_from_slice(&[]);
+                            values.bit_arrays.clear();
+                            values.bit_arrays.extend_from_slice(&[]);
+                            return data::compiled::CompiledProgress::Yield(4);
+                        }
+                        *budget -= 1;
+                        {
+                            break 'block_4;
+                        }
+                    };
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.bit_arrays.clear();
+                        values.bit_arrays.extend_from_slice(&[]);
+                        return data::compiled::CompiledProgress::Yield(5);
+                    }
+                    *budget -= 1;
+                    let b4_i0 = -1_i128;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b4_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        values.bit_arrays.clear();
+                        values.bit_arrays.extend_from_slice(&[]);
+                        return data::compiled::CompiledProgress::Yield(6);
+                    }
+                    *budget -= 1;
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1));
+                };
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return data::compiled::CompiledProgress::Yield(2);
+                }
+                *budget -= 1;
+                let _r0_n0 = b2_i0 + b2_i1;
+                let _r0_n1 = _r0_n0 + b2_i2;
+                let b2_i3 = _r0_n1;
+                if b2_i3 < i128::from(i64::MIN) || b2_i3 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return data::compiled::CompiledProgress::Interpreted(3);
+                }
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return data::compiled::CompiledProgress::Yield(3);
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.bit_arrays.clear();
+                values.bit_arrays.extend_from_slice(&[]);
+                data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+            }
+
+            fn bit_array_int_2_resume_1(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b1_i0, b1_i1, b1_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0, b1_i1, b1_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
+                }
+                *budget -= 1;
+                if b1_i0 > 10_i128 {
+                    let (b2_i0, b2_i1, b2_i2,) = (b1_i0, b1_i1, b1_i2,);
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    CompiledResume::Next(2)
+                } else {
+                    let () = ();
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    CompiledResume::Next(4)
+                }
+            }
+
+            fn bit_array_int_2_resume_2(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b2_i0, b2_i1, b2_i2,) = (values.ints[0], values.ints[1], values.ints[2],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
+                }
+                *budget -= 1;
+                let _r0_n0 = b2_i0 + b2_i1;
+                let _r0_n1 = _r0_n0 + b2_i2;
+                let b2_i3 = _r0_n1;
+                if b2_i3 < i128::from(i64::MIN) || b2_i3 > i128::from(i64::MAX) {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(3));
+                }
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.bit_arrays.clear();
+                values.bit_arrays.extend_from_slice(&[]);
+                CompiledResume::Next(3)
+            }
+
+            fn bit_array_int_2_resume_3(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b2_i0, b2_i1, b2_i2, b2_i3,) = (values.ints[0], values.ints[1], values.ints[2], values.ints[3],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b2_i0, b2_i1, b2_i2, b2_i3]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.bit_arrays.clear();
+                values.bit_arrays.extend_from_slice(&[]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
+            }
+
+            fn bit_array_int_2_resume_4(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
+                }
+                *budget -= 1;
+                {
+                    let () = ();
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    CompiledResume::Next(5)
+                }
+            }
+
+            fn bit_array_int_2_resume_5(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
+                }
+                *budget -= 1;
+                let b4_i0 = -1_i128;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.bit_arrays.clear();
+                values.bit_arrays.extend_from_slice(&[]);
+                CompiledResume::Next(6)
+            }
+
+            fn bit_array_int_2_resume_6(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b4_i0,) = (values.ints[0],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b4_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(6));
+                }
+                *budget -= 1;
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[b4_i0]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+                values.bit_arrays.clear();
+                values.bit_arrays.extend_from_slice(&[]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
+            }
+
+            fn bit_array_int_2_resume_7(
+                values: &mut data::compiled::bit_array::BitArrayValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let () = ();
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(7));
+                }
+                *budget -= 1;
+                {
+                    let () = ();
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+                    values.bit_arrays.clear();
+                    values.bit_arrays.extend_from_slice(&[]);
+                    CompiledResume::Next(5)
+                }
+            }
+            data::compiled::CompiledFunctions {
+                ints: data::Storage::Static(&[
+                    data::compiled::CompiledFunction {
+                        function: data::function::IntFunctionId(2),
+                        implementation: data::compiled::CompiledImplementation::BitArray(data::compiled::BitArrayImplementation {
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 1,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                },
+                            ]),
+                            run: bit_array_int_2,
+                        }),
+                    },
+                ]),
+                bools: data::Storage::Static(&[
+                ]),
+                customs: data::Storage::Static(&[
+                ]),
+            }
+        },
         constants: data::constant::ProfiledConstantTable {
             ints: data::Storage::Static(&[]),
             strings: data::Storage::Static(&[]),
