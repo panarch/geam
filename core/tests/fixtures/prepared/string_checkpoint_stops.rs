@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 17,
+    format: 18,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -152,10 +152,8 @@ data::ModuleArtifact {
                 ] = [
                     |values, budget| CompiledResume::Exit(string_int_0_entry((values.strings[0],), values, budget)),
                 ];
-
-                match RESUME[point](values, budget) {
-                    CompiledResume::Exit(progress) => progress,
-                }
+                let CompiledResume::Exit(progress) = RESUME[point](values, budget);
+                progress
             }
 
             fn string_int_0_entry(
@@ -200,6 +198,10 @@ data::ModuleArtifact {
                                     bit_arrays: 0,
                                     int_lists: 0,
                                     strings: 1,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
                                 },
                             ]),
                             run: string_int_0,
@@ -212,6 +214,7 @@ data::ModuleArtifact {
                 ]),
                 int_lists: data::Storage::Static(&[
                 ]),
+                callbacks: data::compiled::CompiledCallbacks::interpreted(),
             }
         },
         constants: data::constant::ProfiledConstantTable {

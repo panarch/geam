@@ -1272,10 +1272,11 @@ fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_
         .int_lists
         .iter()
         .map(|target| match target.implementation {
-            data::compiled::CompiledImplementation::Numeric(_) => "numeric",
-            data::compiled::CompiledImplementation::BitArray(_) => "bit_array",
-            data::compiled::CompiledImplementation::IntList(_) => "int_list",
-            data::compiled::CompiledImplementation::String(_) => "string",
+            CompiledImplementation::Numeric(_) => "numeric",
+            CompiledImplementation::BitArray(_) => "bit_array",
+            CompiledImplementation::IntList(_) => "int_list",
+            CompiledImplementation::CustomLoop(_) => "custom_loop",
+            CompiledImplementation::String(_) => "string",
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -3244,6 +3245,10 @@ fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
             bit_arrays: 0,
             int_lists: 0,
             strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         }
     );
     assert_eq!(
@@ -4310,7 +4315,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 17; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 18; regenerate the prepared program"
     );
 }
 

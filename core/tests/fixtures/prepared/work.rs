@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 17,
+        format: 18,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2607,10 +2607,8 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                         |values, budget| CompiledResume::Exit(string_int_1_entry((values.ints[0],), values, budget)),
                         string_int_1_resume_1,
                     ];
-
-                    match RESUME[point](values, budget) {
-                        CompiledResume::Exit(progress) => progress,
-                    }
+                    let CompiledResume::Exit(progress) = RESUME[point](values, budget);
+                    progress
                 }
 
                 fn string_int_1_entry(
@@ -2695,6 +2693,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         bit_arrays: 0,
                                         int_lists: 0,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2704,6 +2706,10 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                         bit_arrays: 0,
                                         int_lists: 0,
                                         strings: 1,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                 ]),
                                 run: string_int_1,
@@ -2716,6 +2722,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                     ]),
                     int_lists: data::Storage::Static(&[
                     ]),
+                    callbacks: data::compiled::CompiledCallbacks::interpreted(),
                 }
             },
             constants: data::constant::ProfiledConstantTable {

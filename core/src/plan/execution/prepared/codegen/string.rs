@@ -98,7 +98,7 @@ impl<'graph> StringOperation<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
     pub(super) fn string_match(
         &self,
         source: &mut Code,
@@ -269,7 +269,6 @@ pub fn main() { check("λtail") }
             let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
             let point = shape.checkpoints[shape.start(shape.graph.entry())];
             let function = FunctionCodegen {
-                function: IntFunctionId(1),
                 name: "string_int_1".into(),
                 shape,
             };
@@ -364,7 +363,6 @@ pub fn main() { check("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(0)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let function = FunctionCodegen {
-            function: IntFunctionId(0),
             name: "string_int_0".into(),
             shape,
         };
@@ -409,7 +407,6 @@ pub fn main() { examine("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         let function = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "string_int_1".into(),
             shape,
         };
@@ -438,7 +435,6 @@ pub fn main() { examine("λtail") }
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(0)).body()).unwrap();
         let point = shape.checkpoints[shape.start(shape.graph.entry()) + 1];
         let function = FunctionCodegen {
-            function: IntFunctionId(0),
             name: "string_int_0".into(),
             shape,
         };

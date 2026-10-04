@@ -157,6 +157,7 @@ fn lower_plain(
         }),
         functions: Box::new(lowered.functions).into(),
         compiled: CompiledFunctions::interpreted(),
+        compiled_callback_bodies: super::super::compiled::CompiledCallbackBodies::interpreted(),
     };
     (program, entry_ids)
 }

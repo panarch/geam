@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 17,
+        format: 18,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -767,6 +767,10 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 1,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -776,6 +780,10 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 2,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -785,6 +793,10 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 1,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -794,6 +806,10 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 1,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -803,6 +819,10 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 1,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -812,12 +832,17 @@ pub fn caller(
                                         bit_arrays: 0,
                                         int_lists: 1,
                                         strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_0,
                             }),
                         },
                     ]),
+                    callbacks: data::compiled::CompiledCallbacks::interpreted(),
                 }
             },
             constants: data::constant::ProfiledConstantTable {

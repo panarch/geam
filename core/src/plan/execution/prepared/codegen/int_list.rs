@@ -1,5 +1,5 @@
 use super::shape::{CompiledEdge, CompiledInstruction, CompiledTerminator};
-use super::{Code, FunctionCodegen, ProgressOutput, Rust, tuple};
+use super::{Code, FunctionCodegen, ProgressOutput, Rust, length_expression, tuple};
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::ExecutionGraphProfile;
 use crate::plan::execution::graph::{
@@ -174,13 +174,13 @@ impl<'graph> IntListElement<'graph> {
     }
 }
 
-impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
-    pub(super) fn preflight(
+impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
+    pub(super) fn list_preflight(
         &self,
         source: &mut Code,
         index: usize,
         instruction: &CompiledInstruction<'_>,
-        output: ProgressOutput,
+        output: ProgressOutput<'_>,
     ) {
         let CompiledInstruction::IntList(IntListInstruction::Index {
             output: local,
@@ -253,7 +253,7 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
         }
     }
 
-    pub(super) fn preflight_terminator(
+    pub(super) fn list_preflight_terminator(
         &self,
         source: &mut Code,
         index: usize,
@@ -334,7 +334,7 @@ impl<Graph: ExecutionGraphProfile, Id> FunctionCodegen<'_, Graph, Id> {
         point: CompiledCheckpoint,
         view: &IntListMatch<'_>,
         returning: bool,
-        output: ProgressOutput,
+        output: ProgressOutput<'_>,
         emit_edge: &mut impl FnMut(&mut Code, CompiledEdge<'_>),
     ) {
         let bindings = tuple(
@@ -410,21 +410,11 @@ pub(super) fn test_expression(block: BlockId, test: &IntListTest) -> String {
     }
 }
 
-fn length_expression(subject: &str, length: usize, at_least: bool) -> String {
-    match (length, at_least) {
-        (0, true) => "true".to_owned(),
-        (0, false) => format!("{subject}.is_empty()"),
-        (1, true) => format!("!{subject}.is_empty()"),
-        (_, true) => format!("{subject}.len() >= {length}"),
-        (_, false) => format!("{subject}.len() == {length}"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::{CompiledEdge, CompiledShape};
     use super::{
-        Code, CompiledTerminator, FunctionCodegen, IntListMatch, IntListTest, ProgressOutput,
+        Code, CompiledTerminator, FunctionCodegen, IntListMatch, IntListTest, ProgressOutput, Rust,
         test_expression,
     };
     use crate::plan::execution::function::IntFunctionId;
@@ -445,14 +435,18 @@ mod tests {
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let id = plan.int_list_function_id(1);
         let function = FunctionCodegen {
-            function: id,
             name: "int_list_int_list_1".to_owned(),
             shape: CompiledShape::inspect(plan.int_list_function(id).body()).unwrap(),
         };
         let mut source = Code::default();
         let block = function.shape.block(BlockId(0));
         for (index, instruction) in block.instructions.iter().enumerate() {
-            function.instruction(&mut source, function.shape.checkpoints[index], instruction);
+            function.instruction(
+                &mut source,
+                function.shape.checkpoints[index],
+                instruction,
+                ProgressOutput::Direct,
+            );
         }
         assert_eq!(
             source.as_str(),
@@ -470,7 +464,7 @@ let b0_l3 = _lists.prepend(data::type_::IntListTypeId {
             .trim_start_matches('\n')
         );
         let mut source = Code::default();
-        function.write_target(&mut source);
+        function.write_target(&mut source, &Rust::expression(&id));
         assert_eq!(source.as_str(), r#"
 data::compiled::CompiledFunction {
     function: data::function::IntListFunctionId {
@@ -490,6 +484,10 @@ data::compiled::CompiledFunction {
                 bit_arrays: 0,
                 int_lists: 1,
                 strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -499,6 +497,10 @@ data::compiled::CompiledFunction {
                 bit_arrays: 0,
                 int_lists: 2,
                 strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -508,6 +510,10 @@ data::compiled::CompiledFunction {
                 bit_arrays: 0,
                 int_lists: 3,
                 strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -517,6 +523,10 @@ data::compiled::CompiledFunction {
                 bit_arrays: 0,
                 int_lists: 4,
                 strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             },
         ]),
         run: int_list_int_list_1,
@@ -602,7 +612,6 @@ data::compiled::CompiledFunction {
         let point = shape.checkpoints[shape.start(shape.graph.entry())];
         assert_eq!((point.ints, point.bools, point.int_lists), (0, 0, 1));
         let function = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "head".into(),
             shape,
         };
@@ -687,7 +696,6 @@ match _matched {
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
         let function = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "head".into(),
             shape,
         };
@@ -921,7 +929,6 @@ let _matched = {
             "fn head(values: List(Int)) { let assert [first, ..] = values first } pub fn main() { head([1]) }").unwrap();
         let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
         let function = FunctionCodegen {
-            function: IntFunctionId(1),
             name: "head".into(),
             shape: CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap(),
         };

@@ -26,6 +26,7 @@ mod transfer;
 mod type_;
 
 use super::{FORMAT_VERSION, ModuleArtifact, ProgramTables};
+use crate::plan::execution::compiled::CompiledCallbackBodies;
 use crate::plan::execution::function::ExecutionProfile;
 use crate::plan::execution::graph::ExternalListInstructionView;
 
@@ -41,6 +42,7 @@ pub(crate) struct AdmittedHostedModule<Profile: crate::HostProfile> {
 pub(crate) struct AdmittedModule<'data, Profile: ExecutionProfile> {
     artifact: &'data ModuleArtifact<Profile>,
     views: AdmittedViews<'data>,
+    compiled_callback_bodies: CompiledCallbackBodies<'data, Profile>,
 }
 
 struct AdmittedViews<'data> {
@@ -100,13 +102,18 @@ pub(super) fn hosted<Profile: crate::HostProfile>(
         providers,
     )
     .map_err(PreparedError::from)?;
-    let (types, catalog) =
+    let (types, catalog, compiled_callback_bodies) =
         program(&artifact.module.program, &hosts).map_err(PreparedError::from)?;
     hosts
         .library_callables(&artifact.callables, &catalog, &types)
         .map_err(PreparedError::from)?;
-    let program = module_entries::<_, hosts::NativeError>(&artifact.module, types, &catalog)
-        .map_err(PreparedError::from)?;
+    let program = module_entries::<_, hosts::NativeError>(
+        &artifact.module,
+        types,
+        &catalog,
+        compiled_callback_bodies,
+    )
+    .map_err(PreparedError::from)?;
     Ok(AdmittedHostedModule {
         program,
         hosts: hosts.into_tables(),
@@ -125,12 +132,13 @@ pub(super) fn hosted_entry<Profile: crate::HostProfile>(
         providers,
     )
     .map_err(PreparedError::from)?;
-    let (types, catalog) = program(&artifact.program, &hosts).map_err(PreparedError::from)?;
+    let (types, catalog, compiled_callback_bodies) =
+        program(&artifact.program, &hosts).map_err(PreparedError::from)?;
     entry::main(&artifact.program.main, &catalog, &types)
         .map_err(|error| PreparedError::from(Error::<hosts::NativeError>::Main(error)))?;
     Ok(crate::HostedExecution::from_program(
         crate::plan::execution::HostedProgram {
-            program: artifact.program.execution(),
+            program: artifact.program.execution(compiled_callback_bodies),
             host_functions: hosts.into_tables(),
         },
     ))
@@ -157,14 +165,15 @@ where
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::InvocableFunctionFunctionId: call::Target,
     <<Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListInstruction as ExternalListInstructionView>::FunctionLocal: operand::Operand,
 {
-    let (types, catalog) = program(&artifact.program, hosts)?;
-    module_entries(artifact, types, &catalog)
+    let (types, catalog, compiled_callback_bodies) = program(&artifact.program, hosts)?;
+    module_entries(artifact, types, &catalog, compiled_callback_bodies)
 }
 
 fn module_entries<'data, Profile: ExecutionProfile, HostError>(
     artifact: &'data ModuleArtifact<Profile>,
     types: type_::Types<'data>,
     catalog: &catalog::Catalog<'data>,
+    compiled_callback_bodies: CompiledCallbackBodies<'data, Profile>,
 ) -> Result<AdmittedModule<'data, Profile>, Error<HostError>>
 where
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId: call::Target,
@@ -182,6 +191,7 @@ where
     .map_err(Error::Entries)?;
     Ok(AdmittedModule {
         artifact,
+        compiled_callback_bodies,
         views: AdmittedViews {
             exports: &artifact.exports,
             types,
@@ -194,7 +204,14 @@ where
 fn program<'data, Profile: ExecutionProfile, Host: functions::Hosts<Profile>>(
     program: &'data ProgramTables<Profile>,
     hosts: &Host,
-) -> Result<(type_::Types<'data>, catalog::Catalog<'data>), Error<Host::Error>>
+) -> Result<
+    (
+        type_::Types<'data>,
+        catalog::Catalog<'data>,
+        CompiledCallbackBodies<'data, Profile>,
+    ),
+    Error<Host::Error>,
+>
 where
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalFunctionId: call::Target,
     <Profile::Graph as crate::plan::execution::function::ExecutionGraphProfile>::ExternalListFunctionId: call::Target,
@@ -218,10 +235,12 @@ where
     };
     hosts.tables(&context).map_err(Error::Hosts)?;
     functions::all(&program.functions, &context, hosts).map_err(Error::Functions)?;
-    compiled::all(&program.compiled, &program.functions).map_err(Error::Compiled)?;
+    let compiled_callback_bodies =
+        compiled::admit(&program.compiled, &program.functions, &program.custom_types)
+            .map_err(Error::Compiled)?;
     hosts.callables(&context).map_err(Error::Hosts)?;
     constant::all(&program.constants, &context).map_err(Error::Constants)?;
-    Ok((types, catalog))
+    Ok((types, catalog, compiled_callback_bodies))
 }
 
 impl<Profile: crate::HostProfile> AdmittedHostedModule<Profile> {
@@ -320,7 +339,9 @@ impl<Profile: crate::HostProfile> AdmittedHostedModule<Profile> {
     ) {
         let artifact = self.program.artifact;
         let execution = crate::plan::execution::HostedProgram {
-            program: artifact.program.execution(),
+            program: artifact
+                .program
+                .execution(self.program.compiled_callback_bodies),
             host_functions: self.hosts,
         };
         (
@@ -409,7 +430,10 @@ impl AdmittedModule<'static, std::convert::Infallible> {
     ) {
         (
             crate::ExecutionPlan {
-                program: self.artifact.program.execution(),
+                program: self
+                    .artifact
+                    .program
+                    .execution(self.compiled_callback_bodies),
             },
             self.artifact.entries.borrowed(),
         )
@@ -1006,9 +1030,7 @@ pub fn main() {
                     );
                 } else {
                     assert_eq!(error, None, "{name}");
-                    let execution = crate::ExecutionPlan {
-                        program: artifact.program.execution(),
-                    };
+                    let (execution, _) = artifact.admit().unwrap().into_execution();
                     assert_eq!(
                         crate::run_main(&execution, &mut Vec::new()).unwrap(),
                         crate::Value::Bool(true),
@@ -1879,11 +1901,11 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 17; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 18; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 17; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 18; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2001,7 +2023,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 17; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 18; regenerate the prepared program",
                 ),
             ),
             (
@@ -2226,7 +2248,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 17; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 18; regenerate the prepared program",
                 ),
             ),
             (

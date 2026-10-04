@@ -194,6 +194,7 @@ pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     common: std::sync::Arc<ExecutionProgramCommon<Profile::Graph>>,
     functions: Node<FunctionTables<Profile>>,
     compiled: compiled::CompiledFunctions,
+    compiled_callback_bodies: compiled::CompiledCallbackBodies<'static, Profile>,
 }
 
 struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {

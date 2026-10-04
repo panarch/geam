@@ -1,15 +1,18 @@
 use super::bit_array::BitArrayMatch;
+use super::custom::{CustomField, CustomMatch};
+use super::custom_loop::{CustomLoopInstruction, LoopCallOutput};
 use super::int_list::{IntListInstruction, IntListMatch, IntListTest};
 use super::string::{StringMatch, StringOperation, StringTest};
 use crate::plan::Text;
-use crate::plan::execution::compiled::CompiledCheckpoint;
+use crate::plan::execution::compiled::{CompiledCheckpoint, CompiledLoopCall};
 use crate::plan::execution::function::{ExecutionGraphProfile, FunctionExit, ProfiledFunctionBody};
 use crate::plan::execution::graph::{
     ArithmeticRegion, BlockGraphExitId, BlockGraphView, BlockId, BoolInstruction, BoolLocalId,
-    BoolTest, Edge, IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand, ListInstruction,
-    ListLocal, MatchEdge, ParamLocal, ParamSlot, ProfiledInstruction, ProfiledInstructionKind,
-    StringLocalId, Terminator, TypedListInstruction,
+    BoolTest, CustomListLocalId, Edge, IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand,
+    ListInstruction, ListLocal, MatchEdge, ParamLocal, ParamSlot, ProfiledInstruction,
+    ProfiledInstructionKind, StringInstruction, StringLocalId, Terminator, TypedListInstruction,
 };
+use crate::plan::execution::type_::CustomTypeTable;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Borrowed inspection used only while emitting or admitting prepared data.
@@ -31,6 +34,8 @@ pub(in crate::plan::execution::prepared) enum KernelKind {
     Numeric,
     IntList,
     BitArray,
+    CustomLoop,
+    Callback,
     String,
 }
 
@@ -51,6 +56,8 @@ pub(super) enum CompiledInstruction<'graph> {
         outputs: Vec<IntLocalId>,
     },
     IntList(IntListInstruction<'graph>),
+    CustomField(CustomField),
+    CustomLoop(CustomLoopInstruction<'graph>),
 }
 
 pub(super) enum NumericInteger<'graph> {
@@ -77,6 +84,11 @@ pub(super) enum CompiledTest<'graph> {
     Not(BoolLocalId),
     Compare(NumericComparison, IntegerOperand, IntegerOperand),
     IntList(IntListTest),
+    CustomListLength {
+        list: CustomListLocalId,
+        length: usize,
+        at_least: bool,
+    },
     String(StringTest<'graph>),
     BoolEqual {
         left: BoolLocalId,
@@ -120,6 +132,7 @@ pub(super) enum CompiledTerminator<'graph> {
     Exit(BlockGraphExitId),
     BitArray(BitArrayMatch<'graph>),
     Match(IntListMatch<'graph>),
+    Custom(CustomMatch<'graph>),
     Interpreted,
 }
 
@@ -142,18 +155,107 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
     pub(in crate::plan::execution::prepared) fn inspect<Return, Tail>(
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
     ) -> Option<Self> {
-        Self::inspect_supported(body, KernelKind::Numeric)
-            .or_else(|| Self::inspect_supported(body, KernelKind::String))
+        Self::inspect_supported(body, KernelKind::Numeric, None)
+            .or_else(|| Self::inspect_supported(body, KernelKind::String, None))
     }
 
     pub(in crate::plan::execution::prepared) fn inspect_bits<Return, Tail>(
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
     ) -> Option<Self> {
-        Self::inspect_supported(body, KernelKind::BitArray)
+        Self::inspect_supported(body, KernelKind::BitArray, None)
     }
 
     pub(in crate::plan::execution::prepared) fn start(&self, block: BlockId) -> usize {
         self.starts[&block.index()]
+    }
+
+    pub(in crate::plan::execution::prepared) fn loop_calls(&self) -> Vec<CompiledLoopCall> {
+        let mut calls = self
+            .order
+            .iter()
+            .flat_map(|&block| {
+                self.block(block)
+                    .instructions
+                    .iter()
+                    .enumerate()
+                    .filter_map(move |(index, instruction)| {
+                        let CompiledInstruction::CustomLoop(CustomLoopInstruction::Call {
+                            function,
+                            args,
+                            output,
+                        }) = instruction
+                        else {
+                            return None;
+                        };
+                        Some(CompiledLoopCall {
+                            point: self.start(block) + index,
+                            function: function.clone(),
+                            args: args.to_vec().into(),
+                            output: output.local(),
+                        })
+                    })
+            })
+            .collect::<Vec<_>>();
+        calls.sort_by_key(|call| call.point);
+        calls
+    }
+
+    pub(in crate::plan::execution::prepared) fn inspect_custom_loop<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+        types: &CustomTypeTable,
+    ) -> Option<Self> {
+        let shape = Self::inspect_supported(body, KernelKind::CustomLoop, Some(types))?;
+        if !shape.repeats
+            || !shape.checkpoints.iter().any(|point| point.custom_lists > 0)
+            || !shape.blocks.values().any(|block| {
+                block.instructions.iter().any(|instruction| {
+                    matches!(
+                        instruction,
+                        CompiledInstruction::CustomLoop(CustomLoopInstruction::Call { .. })
+                    )
+                })
+            })
+        {
+            return None;
+        }
+        Some(shape)
+    }
+
+    pub(in crate::plan::execution::prepared) fn inspect_callback<Return, Tail>(
+        body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
+        types: &CustomTypeTable,
+    ) -> Option<Self> {
+        let shape = Self::inspect_supported(body, KernelKind::Callback, Some(types))?;
+        if shape.repeats {
+            return None;
+        }
+        // Canonical error suffixes can remain interpreted. Additional calls or
+        // successful unsupported work would create a second call-chain model.
+        for (index, block) in shape.graph.blocks().enumerate() {
+            if !matches!(
+                block.terminator(),
+                Terminator::SourceStop(_) | Terminator::LetAssertPanic(_)
+            ) && shape
+                .blocks
+                .get(&index)
+                .is_none_or(|block| matches!(block.terminator, CompiledTerminator::Interpreted))
+            {
+                return None;
+            }
+            for instruction in block.instructions() {
+                let supported = CompiledInstruction::inspect(instruction, KernelKind::Callback)
+                    .filter(|value| !matches!(value, CompiledInstruction::IntList(_)))
+                    .or_else(|| {
+                        CustomField::inspect(instruction).map(CompiledInstruction::CustomField)
+                    });
+                if supported.is_none()
+                    && !matches!(instruction, ProfiledInstruction::Value(value) if matches!(value.kind(), ProfiledInstructionKind::String(StringInstruction::Value(_))))
+                {
+                    return None;
+                }
+            }
+        }
+        Some(shape)
     }
 
     pub(super) fn block(&self, block: BlockId) -> &CompiledBlock<'graph> {
@@ -175,8 +277,11 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
     fn inspect_supported<Return, Tail>(
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
         kind: KernelKind,
+        custom_types: Option<&CustomTypeTable>,
     ) -> Option<Self> {
         let bit_arrays = kind == KernelKind::BitArray;
+        let custom = matches!(kind, KernelKind::CustomLoop | KernelKind::Callback);
+        let partial = bit_arrays || custom || kind == KernelKind::String;
         let graph = body.block_graph().as_view();
         let count = graph.blocks().len();
         let mut checkpoints = Vec::new();
@@ -184,7 +289,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
         let mut starts = BTreeMap::new();
         let mut successors = Vec::with_capacity(count);
         let mut repeats = false;
-        let can_repeat = if bit_arrays {
+        let can_repeat = if partial {
             repeating_blocks(graph)
         } else {
             vec![false; count]
@@ -198,6 +303,10 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 bit_arrays: 0,
                 int_lists: 0,
                 strings: 0,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             };
             if block
                 .params()
@@ -205,7 +314,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 .try_for_each(|slot| add_slot(&mut point, slot, kind))
                 .is_none()
             {
-                if !bit_arrays {
+                if !partial {
                     return None;
                 }
                 successors.push(Vec::new());
@@ -215,8 +324,26 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             checkpoints.push(point);
             let mut instructions = Vec::with_capacity(block.instructions().len());
             for instruction in block.instructions() {
-                let Some(instruction) = CompiledInstruction::inspect(instruction, kind) else {
-                    if !bit_arrays || can_repeat[index] {
+                let inspected = CompiledInstruction::inspect(instruction, kind)
+                    .filter(|instruction| {
+                        !(bit_arrays || custom)
+                            || !matches!(instruction, CompiledInstruction::IntList(_))
+                    })
+                    .or_else(|| {
+                        if kind == KernelKind::CustomLoop
+                            && let Some(value) =
+                                CustomLoopInstruction::inspect(instruction, block.params())
+                        {
+                            return Some(CompiledInstruction::CustomLoop(value));
+                        }
+                        if custom {
+                            CustomField::inspect(instruction).map(CompiledInstruction::CustomField)
+                        } else {
+                            None
+                        }
+                    });
+                let Some(instruction) = inspected else {
+                    if !partial || can_repeat[index] {
                         return None;
                     }
                     break;
@@ -234,6 +361,21 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                         | IntListInstruction::Spread { .. }
                         | IntListInstruction::Tail { .. },
                     ) => point.int_lists += 1,
+                    CompiledInstruction::CustomField(CustomField::Integer { .. }) => {
+                        point.ints += 1
+                    }
+                    CompiledInstruction::CustomField(CustomField::Boolean { .. }) => {
+                        point.bools += 1
+                    }
+                    CompiledInstruction::CustomLoop(instruction) => match instruction {
+                        CustomLoopInstruction::Index { .. } => point.customs += 1,
+                        CustomLoopInstruction::Tail { .. } => point.custom_lists += 1,
+                        CustomLoopInstruction::Call {
+                            output: LoopCallOutput::Int(_),
+                            ..
+                        } => point.ints += 1,
+                        CustomLoopInstruction::Call { .. } => point.bools += 1,
+                    },
                 }
                 instructions.push(instruction);
                 point.instruction += 1;
@@ -246,13 +388,16 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                     if bit_arrays && let Terminator::Match(matcher) = block.terminator() {
                         return BitArrayMatch::inspect(matcher).map(CompiledTerminator::BitArray);
                     }
+                    if let Some(types) = custom_types && let Terminator::Match(matcher) = block.terminator() {
+                        return CustomMatch::inspect(matcher, types).map(CompiledTerminator::Custom);
+                    }
                     None
                 }).filter(|terminator| {
                     !bit_arrays || !matches!(terminator, CompiledTerminator::Exit(exit) if !matches!(body.exit(*exit), FunctionExit::Return(_)))
                 });
                 match inspected {
                     Some(terminator) => terminator,
-                    None if bit_arrays && !can_repeat[index] => CompiledTerminator::Interpreted,
+                    None if partial && !can_repeat[index] => CompiledTerminator::Interpreted,
                     None => return None,
                 }
             };
@@ -281,10 +426,10 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             &mut visited,
             &mut order,
         )?;
-        // Scalar generation covers the complete frozen graph. Bit generation
+        // Scalar generation covers the complete frozen graph. Pattern generation
         // stops before unsupported terminal suffixes; each retained checkpoint
         // still records an exact canonical prefix.
-        if !bit_arrays && order.len() != count {
+        if !partial && order.len() != count {
             return None;
         }
         if bit_arrays
@@ -337,6 +482,8 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 return None;
             }
             KernelKind::String
+        } else if matches!(kind, KernelKind::CustomLoop | KernelKind::Callback) {
+            kind
         } else if bit_arrays {
             KernelKind::BitArray
         } else if checkpoints.iter().any(|point| point.int_lists > 0) {
@@ -490,6 +637,18 @@ fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, kind: KernelKind) 
             point.int_lists += 1
         }
         ParamLocal::BitArray(_) if kind == KernelKind::BitArray => point.bit_arrays += 1,
+        ParamLocal::Custom(_) if matches!(kind, KernelKind::CustomLoop | KernelKind::Callback) => {
+            point.customs += 1
+        }
+        ParamLocal::List(ListLocal::Custom { .. }) if kind == KernelKind::CustomLoop => {
+            point.custom_lists += 1
+        }
+        ParamLocal::IntFunction { .. } if kind == KernelKind::CustomLoop => {
+            point.int_functions += 1
+        }
+        ParamLocal::BoolFunction { .. } if kind == KernelKind::CustomLoop => {
+            point.bool_functions += 1
+        }
         ParamLocal::String(_) if kind == KernelKind::String => point.strings += 1,
         _ => return None,
     }
@@ -618,6 +777,26 @@ impl<'graph> CompiledTest<'graph> {
     fn inspect(test: &'graph BoolTest, kind: KernelKind) -> Option<Self> {
         let (comparison, left, right) = match test {
             BoolTest::Not(value) => return Some(Self::Not(*value)),
+            BoolTest::ListLengthEquals {
+                value: ListLocal::Custom { local, .. },
+                length,
+            } => {
+                return Some(Self::CustomListLength {
+                    list: *local,
+                    length: *length,
+                    at_least: false,
+                });
+            }
+            BoolTest::ListLengthAtLeast {
+                value: ListLocal::Custom { local, .. },
+                length,
+            } => {
+                return Some(Self::CustomListLength {
+                    list: *local,
+                    length: *length,
+                    at_least: true,
+                });
+            }
             BoolTest::EqualInt { left, right } => (NumericComparison::Equal, left, right),
             BoolTest::NotEqualInt { left, right } => (NumericComparison::NotEqual, left, right),
             BoolTest::LtInt { left, right } => (NumericComparison::Less, left, right),
@@ -673,7 +852,11 @@ impl<'graph> CompiledTest<'graph> {
             _ => {
                 return match kind {
                     KernelKind::Numeric => IntListTest::inspect(test).map(Self::IntList),
-                    KernelKind::String | KernelKind::BitArray | KernelKind::IntList => None,
+                    KernelKind::String
+                    | KernelKind::BitArray
+                    | KernelKind::IntList
+                    | KernelKind::CustomLoop
+                    | KernelKind::Callback => None,
                 };
             }
         };
@@ -764,6 +947,10 @@ impl<'graph> CompiledTerminator<'graph> {
                 .chain(std::iter::once(CompiledEdge::Ordinary(fallback)))
                 .collect(),
             Self::Match(view) => vec![
+                CompiledEdge::Match(view.matcher.success()),
+                CompiledEdge::Ordinary(view.matcher.failure()),
+            ],
+            Self::Custom(view) => vec![
                 CompiledEdge::Match(view.matcher.success()),
                 CompiledEdge::Ordinary(view.matcher.failure()),
             ],
@@ -959,6 +1146,10 @@ pub fn main() {{ same("λ", "λ", True) }}
                         bit_arrays: 0,
                         int_lists,
                         strings: 0,
+                        customs: 0,
+                        custom_lists: 0,
+                        int_functions: 0,
+                        bool_functions: 0,
                     })
                     .collect::<Vec<_>>()
             );
@@ -1070,6 +1261,10 @@ data::function::FunctionExit::TailCall {
                     bit_arrays: 0,
                     int_lists: 1,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(0),
@@ -1079,6 +1274,10 @@ data::function::FunctionExit::TailCall {
                     bit_arrays: 0,
                     int_lists: 2,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
             ]
         );
@@ -1314,6 +1513,10 @@ pub fn main() { walk(3, 0) }
                     bit_arrays: 0,
                     int_lists: 0,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(1),
@@ -1323,6 +1526,10 @@ pub fn main() { walk(3, 0) }
                     bit_arrays: 0,
                     int_lists: 0,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(2),
@@ -1332,6 +1539,10 @@ pub fn main() { walk(3, 0) }
                     bit_arrays: 0,
                     int_lists: 0,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(2),
@@ -1341,6 +1552,10 @@ pub fn main() { walk(3, 0) }
                     bit_arrays: 0,
                     int_lists: 0,
                     strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
                 },
             ]
         );
@@ -1487,6 +1702,7 @@ pub fn main() { choose(True, False) }
                 CompiledShape::inspect_supported(
                     plan.int_function(IntFunctionId(1)).body(),
                     KernelKind::Numeric,
+                    None,
                 )
                 .is_none(),
                 "{source}"
@@ -2062,6 +2278,600 @@ pub fn main() { select(["kept"]) }
         }
     }
 
+    #[test]
+    fn custom_scalar_match_keeps_exact_success_failure_and_completed_prefixes() {
+        let plan = source_plan(
+            r#"
+type Entry { Credit(Int) Debit(Int) Ignored }
+fn adjust(total: Int, entry: Entry) {
+  case entry {
+    Credit(amount) -> total + amount
+    Debit(amount) -> total - amount
+    Ignored -> total
+  }
+}
+pub fn main() { adjust(7, Credit(3)) }
+"#,
+        );
+        let body = plan.int_function(IntFunctionId(1)).body();
+        assert!(CompiledShape::inspect(body).is_none());
+        assert!(CompiledShape::inspect_bits(body).is_none());
+        let shape =
+            CompiledShape::inspect_callback(body, &plan.program.common.custom_types).unwrap();
+        assert_eq!(shape.kind, super::KernelKind::Callback);
+        assert!(!shape.repeats);
+        assert_eq!(
+            shape.checkpoints,
+            vec![
+                CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 1,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(1),
+                    instruction: 0,
+                    ints: 2,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(1),
+                    instruction: 1,
+                    ints: 3,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(2),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 1,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(3),
+                    instruction: 0,
+                    ints: 2,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(3),
+                    instruction: 1,
+                    ints: 3,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(4),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 0,
+                    strings: 0,
+                    customs: 0,
+                    custom_lists: 0,
+                    int_functions: 0,
+                    bool_functions: 0,
+                },
+            ]
+        );
+        assert_eq!(
+            crate::runtime::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(10.into())
+        );
+    }
+
+    #[test]
+    fn unsupported_custom_fields_and_repeated_calls_keep_canonical_execution() {
+        for (source, expected) in [
+            (
+                r#"
+type Item { Item(String) }
+fn read(item: Item) {
+  case item { Item("text") -> 1 _ -> 0 }
+}
+pub fn main() { read(Item("text")) }
+"#,
+                1,
+            ),
+            (
+                r#"
+type Inner { Inner(Int) }
+type Item { Item(Inner) }
+fn read(item: Item) {
+  case item { Item(Inner(value)) -> value }
+}
+pub fn main() { read(Item(Inner(3))) }
+"#,
+                3,
+            ),
+            (
+                r#"
+type Item { Item(Int) }
+fn read(item: Item) {
+  case item { Item(9223372036854775808) -> 1 _ -> 0 }
+}
+pub fn main() { read(Item(3)) }
+"#,
+                0,
+            ),
+            (
+                r#"
+type Item { Item(Int) }
+fn other(value: Int) { value + 1 }
+fn read(item: Item, count: Int) {
+  case count > 0 {
+    True -> {
+      let Item(value) = item
+      read(item, other(count) - value)
+    }
+    False -> 0
+  }
+}
+pub fn main() { read(Item(3), 1) }
+"#,
+                0,
+            ),
+        ] {
+            let plan = source_plan(source);
+            assert!(
+                CompiledShape::inspect_callback(
+                    plan.int_function(IntFunctionId(1)).body(),
+                    &plan.program.common.custom_types,
+                )
+                .is_none(),
+                "{source}"
+            );
+            assert_eq!(
+                crate::runtime::run_main(&plan, &mut Vec::new()).unwrap(),
+                crate::Value::Int(expected.into()),
+                "{source}",
+            );
+        }
+    }
+    #[test]
+    fn callback_shape_rejects_repetition_and_successful_unsupported_work() {
+        for (source, expected) in [
+            (
+                r#"
+fn walk(count: Int, total: Int) {
+  case count > 0 { True -> walk(count - 1, total + count) False -> total }
+}
+pub fn main() { walk(3, 0) }
+"#,
+                6,
+            ),
+            (
+                r#"
+type Item { Item(Int) }
+fn read(item: Item) { echo item let Item(value) = item value }
+pub fn main() { read(Item(7)) }
+"#,
+                7,
+            ),
+        ] {
+            let plan = source_plan(source);
+            assert_eq!(
+                crate::run_main(&plan, &mut Vec::new()).unwrap(),
+                crate::Value::Int(expected.into())
+            );
+            assert!(
+                CompiledShape::inspect_callback(
+                    plan.int_function(IntFunctionId(1)).body(),
+                    &plan.program.common.custom_types
+                )
+                .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn custom_list_exact_length_remains_a_typed_condition_in_a_connected_repeat() {
+        use super::{CompiledTerminator, CompiledTest};
+        let source = r#"
+type Item { Item(Int) }
+fn fold(items: List(Item), total: Int, step: fn(Int, Item) -> Int) {
+  case items {
+    [] -> total
+    [first, second] -> step(step(total, first), second)
+    [head, ..tail] -> fold(tail, step(total, head), step)
+  }
+}
+fn add(total: Int, item: Item) { let Item(value) = item total + value }
+pub fn main() { fold([Item(2), Item(3), Item(4)], 0, add) }
+"#;
+        let plan = source_plan(source);
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(9.into())
+        );
+        let shapes = plan
+            .program
+            .functions
+            .value_returns
+            .int_functions
+            .iter()
+            .filter_map(|function| {
+                CompiledShape::inspect_custom_loop(
+                    function.body(),
+                    &plan.program.common.custom_types,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shapes.len(), 1);
+        let shape = &shapes[0];
+        assert!(shape.blocks.values().any(|block| matches!(
+            &block.terminator,
+            CompiledTerminator::Test {
+                test: CompiledTest::CustomListLength {
+                    length: 2,
+                    at_least: false,
+                    ..
+                },
+                ..
+            }
+        )));
+    }
+    #[test]
+    fn callback_error_suffixes_allow_literals_but_keep_message_computation_canonical() {
+        let source = r#"
+type Item { Item(Int) }
+fn stop(item: Item) -> Int {
+  let Item(value) = item
+  case value > 0 {
+    True -> panic as { "callback " <> "stop" }
+    False -> value
+  }
+}
+pub fn main() {
+  let assert 0 = stop(Item(0))
+  stop(Item(7))
+}
+"#;
+        let plan = source_plan(source);
+        assert!(
+            CompiledShape::inspect_callback(
+                plan.int_function(IntFunctionId(1)).body(),
+                &plan.program.common.custom_types
+            )
+            .is_none()
+        );
+        let error = crate::run_main(&plan, &mut Vec::new()).unwrap_err();
+        assert!(
+            matches!(error, crate::ExecutionError::Panic(panic) if panic.message() == &crate::PanicMessage::Explicit("callback stop".into()) && panic.site().function() == "stop")
+        );
+    }
+
+    #[test]
+    fn callback_error_suffixes_with_observation_keep_the_canonical_order() {
+        let source = r#"
+type Item { Item(Int) }
+fn stop(item: Item) -> Int {
+  let Item(value) = item
+  case value > 0 {
+    True -> {
+      echo value
+      panic as "callback stop"
+    }
+    False -> value
+  }
+}
+pub fn main() {
+  let assert 0 = stop(Item(0))
+  stop(Item(7))
+}
+"#;
+        let plan = source_plan(source);
+        assert!(
+            CompiledShape::inspect_callback(
+                plan.int_function(IntFunctionId(1)).body(),
+                &plan.program.common.custom_types
+            )
+            .is_none()
+        );
+        let mut echo = Vec::new();
+        let error = crate::run_main(&plan, &mut echo).unwrap_err();
+        assert_eq!(echo.len(), 1);
+        assert_eq!(echo[0].value(), &crate::Value::Int(7.into()));
+        assert!(
+            matches!(error, crate::ExecutionError::Panic(panic) if panic.message() == &crate::PanicMessage::Explicit("callback stop".into()) && panic.site().function() == "stop")
+        );
+    }
+
+    #[test]
+    fn a_callback_with_an_unsupported_float_prefix_keeps_its_source_error() {
+        let source = r#"
+type Item { Item(Int) }
+fn stop(item: Item) -> Int {
+  let Item(value) = item
+  case value > 0 {
+    True -> {
+      let ignored = 1.0
+      panic as "unsupported prefix"
+    }
+    False -> value
+  }
+}
+pub fn main() {
+  let assert 0 = stop(Item(0))
+  stop(Item(7))
+}
+"#;
+        let plan = source_plan(source);
+        assert!(
+            CompiledShape::inspect_callback(
+                plan.int_function(IntFunctionId(1)).body(),
+                &plan.program.common.custom_types
+            )
+            .is_none()
+        );
+        let error = crate::run_main(&plan, &mut Vec::new()).unwrap_err();
+        assert!(
+            matches!(error, crate::ExecutionError::Panic(panic) if panic.message() == &crate::PanicMessage::Explicit("unsupported prefix".into()) && panic.site().function() == "stop")
+        );
+    }
+
+    #[test]
+    fn custom_list_boolean_nodes_preserve_the_exact_length_relation() {
+        use crate::plan::execution::graph::{BoolTest, CustomListLocalId, ListLocal};
+        use crate::plan::execution::type_::{CustomListTypeId, CustomTypeId, ListTypeId};
+        let list = ListLocal::Custom {
+            type_id: CustomListTypeId {
+                list_type: ListTypeId(0),
+                item_type: CustomTypeId(0),
+            },
+            local: CustomListLocalId(3),
+        };
+        for (node, expected) in [
+            (
+                BoolTest::ListLengthEquals {
+                    value: list.clone(),
+                    length: 2,
+                },
+                "b2_l3.len() == 2",
+            ),
+            (
+                BoolTest::ListLengthAtLeast {
+                    value: list,
+                    length: 2,
+                },
+                "b2_l3.len() >= 2",
+            ),
+        ] {
+            let view = super::CompiledTest::inspect(&node, KernelKind::CustomLoop).unwrap();
+            assert_eq!(
+                super::super::test_expression(crate::plan::execution::graph::BlockId(2), &view),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn scalar_field_reads_advance_the_integer_callback_prefix_once() {
+        let source = r#"
+type Item { Item(value: Int) }
+fn read(item: Item) { item.value + 1 }
+pub fn main() { read(Item(7)) }
+"#;
+        let plan = source_plan(source);
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(8.into())
+        );
+        let shape = CompiledShape::inspect_callback(
+            plan.int_function(IntFunctionId(1)).body(),
+            &plan.program.common.custom_types,
+        )
+        .unwrap();
+        let entry = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 1,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        assert_eq!(
+            shape.checkpoints,
+            vec![
+                entry,
+                CompiledCheckpoint {
+                    instruction: 1,
+                    ints: 1,
+                    ..entry
+                },
+                CompiledCheckpoint {
+                    instruction: 2,
+                    ints: 2,
+                    ..entry
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn boolean_field_reads_advance_the_integer_callback_prefix_once() {
+        let source = r#"
+type Item { Item(enabled: Bool) }
+fn read(item: Item) { case item.enabled { True -> 7 False -> -9 } }
+pub fn main() {
+  let assert -9 = read(Item(False))
+  read(Item(True))
+}
+"#;
+        let plan = source_plan(source);
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(7.into())
+        );
+        let shape = CompiledShape::inspect_callback(
+            plan.int_function(IntFunctionId(1)).body(),
+            &plan.program.common.custom_types,
+        )
+        .unwrap();
+        let entry = CompiledCheckpoint {
+            block: BlockId(0),
+            instruction: 0,
+            ints: 0,
+            bools: 0,
+            bit_arrays: 0,
+            int_lists: 0,
+            strings: 0,
+            customs: 1,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
+        };
+        assert_eq!(
+            &shape.checkpoints[..2],
+            &[
+                entry,
+                CompiledCheckpoint {
+                    instruction: 1,
+                    bools: 1,
+                    ..entry
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_literal_callback_error_suffix_keeps_the_supported_success_branch() {
+        let source = r#"
+type Item { Item(Int) }
+fn stop(item: Item) -> Int {
+  let Item(value) = item
+  case value > 0 {
+    True -> panic as "callback stop"
+    False -> value
+  }
+}
+pub fn main() {
+  let assert 0 = stop(Item(0))
+  stop(Item(7))
+}
+"#;
+        let plan = source_plan(source);
+        let shape = CompiledShape::inspect_callback(
+            plan.int_function(IntFunctionId(1)).body(),
+            &plan.program.common.custom_types,
+        )
+        .unwrap();
+        assert_eq!(shape.kind, super::KernelKind::Callback);
+        assert!(!shape.repeats);
+        let error = crate::run_main(&plan, &mut Vec::new()).unwrap_err();
+        assert!(
+            matches!(error, crate::ExecutionError::Panic(panic) if panic.message() == &crate::PanicMessage::Explicit("callback stop".into()) && panic.site().function() == "stop")
+        );
+    }
+
+    #[test]
+    fn integer_accumulators_can_repeat_through_a_boolean_callback() {
+        use super::super::CompiledLoopFunction;
+        use super::super::custom_loop::LoopCallOutput;
+        use crate::plan::execution::graph::BoolFunctionLocalId;
+        use crate::plan::execution::type_::{CustomTypeId, FunctionType, ValueType};
+        let source = r#"
+type Item { Item(Int) }
+fn fold(items: List(Item), total: Int, check: fn(Int, Item) -> Bool) {
+  case items {
+    [] -> total
+    [head, ..tail] -> {
+      let increment = case check(total, head) { True -> 1 False -> 0 }
+      fold(tail, total + increment, check)
+    }
+  }
+}
+fn positive(total: Int, item: Item) {
+  let Item(value) = item
+  total + value > 0
+}
+pub fn main() { fold([Item(2), Item(-1), Item(4)], 0, positive) }
+"#;
+        let plan = source_plan(source);
+        let shape = CompiledShape::inspect_custom_loop(
+            plan.int_function(IntFunctionId(1)).body(),
+            &plan.program.common.custom_types,
+        )
+        .unwrap();
+        assert_eq!(shape.loop_calls().len(), 1);
+        assert_eq!(
+            shape.loop_calls()[0].function,
+            CompiledLoopFunction::Bool {
+                local: BoolFunctionLocalId(0),
+                type_: FunctionType::new(
+                    vec![ValueType::Int, ValueType::Custom(CustomTypeId(0))],
+                    ValueType::Bool,
+                ),
+            }
+        );
+        assert!(
+            shape
+                .blocks
+                .values()
+                .any(
+                    |block| block.instructions.iter().any(|instruction| matches!(
+                        instruction,
+                        super::CompiledInstruction::CustomLoop(
+                            super::CustomLoopInstruction::Call {
+                                output: LoopCallOutput::Bool(_),
+                                ..
+                            }
+                        )
+                    ))
+                )
+        );
+        assert_eq!(
+            crate::run_main(&plan, &mut Vec::new()).unwrap(),
+            crate::Value::Int(2.into())
+        );
+    }
     #[test]
     fn string_terminal_suffixes_need_no_forward_resume_but_cold_instructions_and_edges_do() {
         for (source, id, forward) in [

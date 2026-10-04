@@ -1,4 +1,4 @@
-use super::compiled::CompiledImplementation;
+use super::compiled::{CompiledCallbackBodies, CompiledCallbacks, CompiledImplementation};
 use super::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use super::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -54,6 +54,14 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn compiled_int_function(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
         self.program().compiled.int(id)
+    }
+
+    fn compiled_callbacks(&self) -> &CompiledCallbacks {
+        &self.program().compiled.callbacks
+    }
+
+    fn compiled_callback_bodies(&self) -> &CompiledCallbackBodies<'_, Self::Profile> {
+        &self.program().compiled_callback_bodies
     }
 
     fn compiled_bool_function(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {

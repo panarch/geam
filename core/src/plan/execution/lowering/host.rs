@@ -299,6 +299,7 @@ fn assemble_hosted_program(
         }),
         functions: Box::new(functions).into(),
         compiled: CompiledFunctions::interpreted(),
+        compiled_callback_bodies: super::super::compiled::CompiledCallbackBodies::interpreted(),
     }
 }
 
