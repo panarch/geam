@@ -155,7 +155,12 @@ fn build_command(root: &Utf8Path, package: &str, profile: BuildProfile) -> Comma
     command
 }
 
-fn cargo_command(root: &Utf8Path, action: &str, binary: &str, profile: BuildProfile) -> Command {
+pub(super) fn cargo_command(
+    root: &Utf8Path,
+    action: &str,
+    binary: &str,
+    profile: BuildProfile,
+) -> Command {
     let mut command = Command::new("cargo");
     command.arg(action).arg("--locked").arg("--bin").arg(binary);
     if profile == BuildProfile::Release {
@@ -168,7 +173,7 @@ fn cargo_command(root: &Utf8Path, action: &str, binary: &str, profile: BuildProf
     command
 }
 
-fn executable(
+pub(super) fn executable(
     bytes: &[u8],
     package_id: &PackageId,
     package: &str,

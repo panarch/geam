@@ -274,6 +274,8 @@ jobs:
             directory: tests/fixtures/bytes_tree_service/provider
           - consumer: selective_receive_service
             directory: tests/fixtures/selective_receive_service/provider
+          - consumer: application_exit
+            directory: tests/fixtures/application_exit/provider
 
     steps:
       - name: Checkout

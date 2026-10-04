@@ -3,6 +3,7 @@
 mod geam_bindings;
 
 use geam::embedding::HostedModuleBuilder;
+use geam::execution::ExecutionOutcome;
 use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::io::{self, Write};
 
@@ -19,12 +20,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .initialize();
     let mut echo = Vec::new();
 
-    let message = executor.block_on(module.with_execution(
+    let outcome = executor.block_on(module.with_execution(
         &host,
         &mut state,
         &mut echo,
         async |scope| scope.call(&functions.announce, ("Rust".into(),)).await,
-    ))??;
+    ))?;
+    let message = match outcome {
+        ExecutionOutcome::Returned(result) => Some(result?),
+        ExecutionOutcome::Exited(status) => {
+            eprintln!("Gleam exited with status {status}");
+            None
+        }
+    };
 
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
@@ -37,6 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for output in echo {
         writeln!(stderr, "{output}")?;
     }
-    writeln!(stdout, "returned: {message}")?;
+    if let Some(message) = message {
+        writeln!(stdout, "returned: {message}")?;
+    }
     Ok(())
 }

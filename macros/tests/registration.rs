@@ -158,6 +158,8 @@ pub fn main() { #(match(True), move(False)) }
             }),
         )
         .unwrap()
+        .try_into_value()
+        .unwrap()
         .unwrap();
     assert_eq!(result, (false, true));
 }

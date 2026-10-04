@@ -287,5 +287,7 @@ pub type Status { Ready Count(Int) Tagged(Token) }
             );
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap();
 }

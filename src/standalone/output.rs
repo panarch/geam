@@ -190,6 +190,8 @@ pub fn println_error(value: String) -> Nil
                 }),
             )
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         let streams = Arc::new(RecordedStreams::default());
         let output = SharedOutput {
@@ -260,6 +262,124 @@ pub fn println_error(value: String) -> Nil
                 Err(io::Error::new(io::ErrorKind::BrokenPipe, "flush failed"))
             } else {
                 Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn write_and_flush_failures_remain_errors_after_an_intentional_exit() {
+        use geam_core::execution::{ExecutionOutcome, ExitStatus};
+        use geam_core::{
+            HostCall, HostCallCompletion, HostCallError, HostProfile, HostProvider,
+            HostProviderModule,
+        };
+
+        struct Stop;
+        impl HostProfile for Stop {
+            type RunState = ExitStatus;
+            type ExternalStores = ();
+            type ExecutionState = ();
+        }
+        impl HostProvider<Stop> for Stop {
+            type State = ExitStatus;
+            fn project(state: &mut Self::State) -> &mut Self::State {
+                state
+            }
+        }
+        fn exit<'call>(
+            mut call: HostCall<'call, Stop, Stop, ()>,
+        ) -> Result<HostCallCompletion<'call, ()>, HostCallError> {
+            let status = *call.state();
+            call.exit(status)
+        }
+        struct WriterStreams(Mutex<Writer>);
+        impl Streams for WriterStreams {
+            fn write(&self, _: OutputStream, text: &str) -> io::Result<()> {
+                write_flushed(&mut *self.0.lock().unwrap(), text)
+            }
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = geam_core::execution::TokioHost::new(runtime.handle().clone());
+        for fail_flush in [false, true] {
+            for status in [None, Some(ExitStatus::new(0)), Some(ExitStatus::new(7))] {
+                let source = if status.is_some() {
+                    r#"
+@external(erlang, "native", "exit")
+fn exit() -> Nil
+pub fn main() { echo "before" exit() echo "after" Nil }
+"#
+                } else {
+                    "@external(erlang, \"native\", \"exit\")\nfn exit() -> Nil\npub fn main() { echo \"before\" Nil }\n"
+                };
+                let typed = geam_core::compile_typed_host_program(
+                    "app",
+                    "main",
+                    [PackageSource::new(
+                        "app",
+                        Vec::<String>::new(),
+                        [ModuleSource::new("main", "main.gleam", source)],
+                    )],
+                    HostProviderSet::from_providers([HostProviderModule::new("app", "main")
+                        .unwrap()
+                        .with_scoped_function::<Stop, (), (), _>("exit", exit)
+                        .unwrap()])
+                    .unwrap(),
+                )
+                .unwrap();
+                let (builder, main) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), ()>::new("main"))
+                    .unwrap();
+                let mut module = builder.seal().unwrap();
+                let writer = Arc::new(WriterStreams(Mutex::new(Writer {
+                    fail_write: !fail_flush,
+                    fail_flush,
+                    bytes: Vec::new(),
+                    flushes: 0,
+                })));
+                let output = SharedOutput {
+                    streams: writer.clone(),
+                    failure: Arc::new(OnceLock::new()),
+                };
+                let mut state = status.unwrap_or(ExitStatus::new(0));
+                let mut echo = output.echo_sink();
+                let outcome = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                            scope.call(&main, ()).await
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    outcome,
+                    match status {
+                        Some(status) => ExecutionOutcome::Exited(status),
+                        None => ExecutionOutcome::Returned(Ok(())),
+                    }
+                );
+                let failure = output.finish().unwrap_err();
+                assert_eq!(failure.kind(), io::ErrorKind::BrokenPipe);
+                assert_eq!(
+                    failure.to_string(),
+                    if fail_flush {
+                        "flush failed"
+                    } else {
+                        "write failed"
+                    }
+                );
+                let writer = writer.0.lock().unwrap();
+                assert_eq!(writer.flushes, usize::from(fail_flush));
+                if fail_flush {
+                    assert!(
+                        std::str::from_utf8(&writer.bytes)
+                            .unwrap()
+                            .ends_with("\"before\"\n")
+                    );
+                } else {
+                    assert!(writer.bytes.is_empty());
+                }
             }
         }
     }

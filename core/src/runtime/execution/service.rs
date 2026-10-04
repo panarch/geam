@@ -1,19 +1,23 @@
+use crate::execution::ExitStatus;
 use crate::runtime::ExecutableRuntimePlan;
 use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::work::Cancelled;
 use crate::runtime::work::request::{Reply, Requests, Sender};
 use std::future::Future;
+use std::sync::{Arc, OnceLock};
 use std::task::Context;
 
 pub(in crate::runtime) struct Services<Plan: ExecutableRuntimePlan> {
     requests: Requests<Request<Plan>>,
     captures: crate::runtime::CaptureStorage,
+    exit: Arc<OnceLock<ExitStatus>>,
 }
 
 pub(in crate::runtime) struct ServiceContext<Plan: ExecutableRuntimePlan> {
     requests: Sender<Request<Plan>>,
     captures: crate::runtime::CaptureStorage,
     unit: Option<crate::execution::ExecutionUnit>,
+    exit: Arc<OnceLock<ExitStatus>>,
 }
 
 pub(in crate::runtime) struct Request<Plan: ExecutableRuntimePlan> {
@@ -41,6 +45,7 @@ impl<Plan: ExecutableRuntimePlan> Services<Plan> {
         Self {
             requests: Requests::new(),
             captures,
+            exit: Arc::default(),
         }
     }
 
@@ -49,6 +54,7 @@ impl<Plan: ExecutableRuntimePlan> Services<Plan> {
             requests: self.requests.sender(),
             captures: self.captures.clone(),
             unit: None,
+            exit: Arc::clone(&self.exit),
         }
     }
 
@@ -58,6 +64,10 @@ impl<Plan: ExecutableRuntimePlan> Services<Plan> {
 
     pub(super) fn close(&self) {
         self.requests.close();
+    }
+
+    pub(super) fn exit_status(&self) -> Option<ExitStatus> {
+        self.exit.get().copied()
     }
 }
 
@@ -84,11 +94,18 @@ impl<Plan: ExecutableRuntimePlan> Clone for ServiceContext<Plan> {
             requests: self.requests.clone(),
             captures: self.captures.clone(),
             unit: self.unit.clone(),
+            exit: Arc::clone(&self.exit),
         }
     }
 }
 
 impl<Plan: ExecutableRuntimePlan> ServiceContext<Plan> {
+    // Only an admitted native-result service records termination. It does not
+    // wake while host borrows are live; the domain closes after dispatch returns.
+    pub(in crate::runtime) fn request_exit(&self, status: ExitStatus) {
+        let _ = self.exit.set(status);
+    }
+
     pub(in crate::runtime) fn captures(&self) -> &crate::runtime::CaptureStorage {
         &self.captures
     }
@@ -106,6 +123,7 @@ impl<Plan: ExecutableRuntimePlan> ServiceContext<Plan> {
             requests: self.requests.clone(),
             captures: self.captures.clone(),
             unit,
+            exit: Arc::clone(&self.exit),
         }
     }
 

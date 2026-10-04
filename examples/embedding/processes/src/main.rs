@@ -3,7 +3,7 @@
 mod geam_bindings;
 
 use geam::embedding::HostedModuleBuilder;
-use geam::execution::TokioHost;
+use geam::execution::{ExecutionOutcome, TokioHost};
 use geam::gleam_erlang::Configuration;
 use geam::gleam_stdlib::{GleamStdlibRunState, IoOutput};
 
@@ -25,18 +25,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .initialize();
     let mut echo = Vec::new();
 
-    executor.block_on(
-        module.with_execution(&host, &mut state, &mut echo, async |scope| {
-            let (pid, requests) = scope.call(&functions.start, ()).await?;
-            let alias = requests.clone();
-            assert!(scope.call(&functions.is_alive, (&pid,)).await?);
-            let first = scope.call(&functions.add, (&requests, 20.into())).await?;
-            let second = scope.call(&functions.add, (alias, 22.into())).await?;
-            let stopped = scope.call(&functions.stop, (&pid, &requests)).await?;
-            println!("first: {first}");
-            println!("second: {second}");
-            println!("stopped: {stopped}");
-            Ok::<_, Box<dyn std::error::Error>>(())
-        }),
-    )?
+    let outcome =
+        executor.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                let (pid, requests) = scope.call(&functions.start, ()).await?;
+                let alias = requests.clone();
+                assert!(scope.call(&functions.is_alive, (&pid,)).await?);
+                let first = scope.call(&functions.add, (&requests, 20.into())).await?;
+                let second = scope.call(&functions.add, (alias, 22.into())).await?;
+                let stopped = scope.call(&functions.stop, (&pid, &requests)).await?;
+                println!("first: {first}");
+                println!("second: {second}");
+                println!("stopped: {stopped}");
+                Ok::<_, Box<dyn std::error::Error>>(())
+            }),
+        )?;
+    match outcome {
+        ExecutionOutcome::Returned(result) => result,
+        ExecutionOutcome::Exited(status) => {
+            println!("Gleam exited with status {status}");
+            Ok(())
+        }
+    }
 }

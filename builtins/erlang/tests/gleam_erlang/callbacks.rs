@@ -67,8 +67,12 @@ fn overlapping_ordinary_native_callbacks_share_the_callers_process_without_lost_
         assert!(host.poll(running.as_mut()).is_pending());
         host.advance(Duration::from_millis(1));
         assert_eq!(
-            host.poll(running.as_mut())
-                .map(|result| result.unwrap().inspect().to_string()),
+            host.poll(running.as_mut()).map(|result| result
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .inspect()
+                .to_string()),
             Poll::Ready("#(20, 22)".into())
         );
     }

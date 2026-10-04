@@ -6,6 +6,7 @@ use crate::runner::{BuildProfile, BuildSession, ExecutableBuilder};
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::process::ExitCode;
 
 #[cfg(test)]
 mod integration;
@@ -28,7 +29,7 @@ pub(super) fn run(
     module: String,
     configuration_specs: Vec<String>,
     arguments: &[OsString],
-) -> Result<(), CliError> {
+) -> Result<ExitCode, CliError> {
     let mut progress_output = std::io::stderr();
     let providers = SystemProviderValidator::new();
     Preparation {
@@ -94,13 +95,19 @@ impl Preparation<'_> {
         configuration_specs: Vec<String>,
         arguments: &[OsString],
         executor: &dyn crate::runner::RunnerExecutor,
-    ) -> Result<(), CliError> {
+    ) -> Result<ExitCode, CliError> {
         let managed = self.reconcile(&module)?;
         let configurations =
             resolve_provider_configurations(current_directory, &managed, configuration_specs)?;
         self.progress
             .report(format_args!("Starting standalone runner for {module}"))?;
-        executor.execute(self.project_root, &module, &configurations, arguments)
+        executor.execute(
+            self.project_root,
+            &module,
+            &configurations,
+            arguments,
+            &mut self.progress,
+        )
     }
 
     fn build(
@@ -193,7 +200,7 @@ fn resolve_provider_configurations(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_provider_configurations;
+    use super::{ExitCode, resolve_provider_configurations};
     use crate::error::CliError;
     use crate::progress::Progress;
     use crate::project::ResolvedProject;
@@ -215,6 +222,7 @@ mod tests {
     struct RecordingCargo {
         operations: RefCell<Vec<String>>,
         runs: RefCell<Vec<RecordedRun>>,
+        status: Cell<u8>,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -257,7 +265,8 @@ mod tests {
             module: &str,
             configurations: &[(String, Utf8PathBuf)],
             arguments: &[OsString],
-        ) -> Result<(), CliError> {
+            _progress: &mut Progress<'_>,
+        ) -> Result<ExitCode, CliError> {
             self.runs.borrow_mut().push(RecordedRun {
                 root: project_root.to_owned(),
                 module: module.to_owned(),
@@ -272,7 +281,7 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join(","),
             ));
-            Ok(())
+            Ok(ExitCode::from(self.status.get()))
         }
     }
 
@@ -453,7 +462,8 @@ mod tests {
             _module: &str,
             _configurations: &[(String, Utf8PathBuf)],
             _arguments: &[OsString],
-        ) -> Result<(), CliError> {
+            _progress: &mut Progress<'_>,
+        ) -> Result<ExitCode, CliError> {
             Err(CliError::InheritedProcessFailure {
                 command: "cargo run".to_owned(),
                 status: Some(1),
@@ -535,7 +545,7 @@ mod tests {
         configuration_specs: Vec<String>,
         lock: &dyn CargoLock,
         executor: &dyn RunnerExecutor,
-    ) -> Result<(), CliError> {
+    ) -> Result<ExitCode, CliError> {
         super::Preparation {
             project_root,
             lock,
@@ -686,8 +696,9 @@ mod tests {
         let project = project("application", "pub fn main() { 1 }\n");
         let root = utf8_path(&project);
         let cargo = RecordingCargo::default();
+        cargo.status.set(7);
         let mut output = Vec::new();
-        super::Preparation {
+        let status = super::Preparation {
             project_root: &root,
             lock: &cargo,
             providers: &UnchangedProviders,
@@ -695,6 +706,7 @@ mod tests {
         }
         .run(&root, "application".to_owned(), Vec::new(), &[], &cargo)
         .expect("run should prepare and execute once");
+        assert_eq!(status, ExitCode::from(7));
         assert_eq!(
             cargo.operations.borrow().as_slice(),
             ["lock", "run:application:"]
@@ -878,7 +890,9 @@ mod tests {
                 progress: Progress::Visible(&mut output),
             };
             let result = if run {
-                preparation.run(&root, "application".to_owned(), Vec::new(), &[], &cargo)
+                preparation
+                    .run(&root, "application".to_owned(), Vec::new(), &[], &cargo)
+                    .map(drop)
             } else {
                 preparation.prepare("application".to_owned(), &cargo)
             };

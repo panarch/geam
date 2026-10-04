@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assert!(!scope.call(&functions.captured_match, (7.into(), 8.into())).await?);
             assert!(scope.call(&functions.captured_match, (7.into(), 7.into())).await?);
             Ok::<_, geam::embedding::CallError>(())
-        }))??;
+        }))?.try_into_value().unwrap()?;
         assert!(echo.is_empty());
         assert_eq!(state.stdlib().io_outputs().len(), 1);
         for output in state.stdlib_mut().take_io_outputs() {

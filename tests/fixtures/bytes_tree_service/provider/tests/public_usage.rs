@@ -146,6 +146,8 @@ fn original_source_and_retained_input_remain_readable_after_execution_closure() 
                 }),
             )
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         results.push(bytes);
         let pair = host
@@ -155,6 +157,8 @@ fn original_source_and_retained_input_remain_readable_after_execution_closure() 
                 }),
             )
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         results.extend([pair.0, pair.1]);
     }
@@ -163,6 +167,8 @@ fn original_source_and_retained_input_remain_readable_after_execution_closure() 
             scope.call(&capture, ()).await
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap()
     .unwrap();
     drop(module);
@@ -208,6 +214,8 @@ fn pending_native_input_resumes_on_another_worker_and_releases_after_completion(
             .unwrap()
     })
     .unwrap()
+    .try_into_value()
+    .unwrap()
     .unwrap();
     drop(task);
     assert!(observed.lock().unwrap().upgrade().is_none());
@@ -251,6 +259,8 @@ fn cancelling_pending_native_work_releases_the_input_and_allows_another_call() {
                 scope.call(&verify, ()).await
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap()
         .unwrap();
     assert_eq!(output.bytes(), EXPECTED);

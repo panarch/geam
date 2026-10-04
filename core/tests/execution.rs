@@ -1302,6 +1302,8 @@ fn assert_transfer_fixture(modules: Vec<ModuleSource>) {
             }),
         )
         .expect("controlled execution")
+        .try_into_value()
+        .unwrap()
         .map_err(geam_core::embedding::CallError::into_materialized);
     assert_eq!(
         echo.effects,

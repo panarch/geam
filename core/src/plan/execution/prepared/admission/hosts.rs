@@ -645,6 +645,8 @@ pub fn main() {
         let host = crate::execution_fixture::TestHost::default();
         let value = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(
             value,
@@ -1222,6 +1224,8 @@ pub fn main() {
         let host = crate::execution_fixture::TestHost::default();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut (), &mut Vec::new()))
+                .unwrap()
+                .try_into_value()
                 .unwrap(),
             crate::Value::Int(42.into()),
         );

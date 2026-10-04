@@ -668,6 +668,12 @@ the Gleam function shape. Rust `Result<T, E>` remains the source-visible Gleam
 `Result(T, E)`, so recoverable source errors and host execution failures cannot
 be confused.
 
+For intentional application termination, propagate `call.exit(ExitStatus)`
+through the same native envelope. This is a distinct control request, not a
+`HostFailure` or source `Result`. Immediate and owned async calls use the same
+execution-domain contract. See [application termination](execution-services.md#application-termination)
+for checked status conversion, cleanup and structured embedding outcomes.
+
 ```rust
 pub struct Component;
 

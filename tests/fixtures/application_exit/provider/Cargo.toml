@@ -1,0 +1,20 @@
+[package]
+name = "geam-application-exit-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "application_exit_fixture"
+gleam-version = ">= 0.1.0 and < 0.2.0"
+
+[dependencies]
+geam = { version = "=0.2.3", path = "../../../..", default-features = false, features = ["provider"] }
+
+[dev-dependencies]
+geam = { version = "=0.2.3", path = "../../../..", default-features = false, features = ["embedding", "tokio"] }
+tokio = { version = "1", features = ["rt", "time"] }
+
+[workspace]
+resolver = "3"

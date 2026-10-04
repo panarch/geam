@@ -682,7 +682,9 @@ pub fn direct() { dynamic_provider.transfer_flow() }
                 scope.observe(&work).await.expect("dynamic completion")
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
     returned.read(|(before, during, result)| {
         assert_eq!(before, "Int");
         assert_eq!(during, "Int");

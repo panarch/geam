@@ -539,6 +539,8 @@ pub fn run() {
                 )
             )
             .expect("host cleanup")
+            .try_into_value()
+            .unwrap()
             .expect("retained payload semantics")
         );
         assert_eq!(output, ["src/library.gleam:9\nBox(7, 8)"]);
@@ -751,6 +753,8 @@ pub fn run() {
                 )
             )
             .expect("host cleanup")
+            .try_into_value()
+            .unwrap()
             .expect("source call")
         );
         assert_eq!(output, ["src/library.gleam:12\nOwned(42)"]);

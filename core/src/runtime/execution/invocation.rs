@@ -27,6 +27,20 @@ trait Invoke<'plan, Plan: ExecutableRuntimePlan, Output>: Send {
 pub(in crate::runtime) enum NativeReturn<Output> {
     Immediate(Output),
     Continuing(Waiting<'static, Output>),
+    Exited,
+}
+
+impl<Output> NativeReturn<Output> {
+    pub(in crate::runtime) async fn complete(
+        result: ExecutionResult<Self>,
+    ) -> Result<ExecutionResult<Output>, Cancelled> {
+        match result {
+            Ok(Self::Immediate(value)) => Ok(Ok(value)),
+            Ok(Self::Continuing(operation)) => operation.await,
+            Ok(Self::Exited) => Err(Cancelled),
+            Err(error) => Ok(Err(error)),
+        }
+    }
 }
 
 struct Operation<Function>(Function);
@@ -159,13 +173,7 @@ where
         _budget: NonZeroUsize,
     ) -> Waiting<'plan, Output> {
         let request = context.submit(self.0);
-        Box::pin(async move {
-            match request.await? {
-                Ok(NativeReturn::Immediate(value)) => Ok(Ok(value)),
-                Ok(NativeReturn::Continuing(operation)) => operation.await,
-                Err(error) => Ok(Err(error)),
-            }
-        })
+        Box::pin(async move { NativeReturn::complete(request.await?).await })
     }
 }
 
@@ -202,6 +210,8 @@ mod tests {
         enum Completion {
             Immediate,
             Continuing,
+            CancelledContinuation,
+            Exited,
             Failure,
         }
 
@@ -211,6 +221,8 @@ mod tests {
         for completion in [
             Completion::Immediate,
             Completion::Continuing,
+            Completion::CancelledContinuation,
+            Completion::Exited,
             Completion::Failure,
         ] {
             for cancelled in [false, true] {
@@ -222,11 +234,16 @@ mod tests {
                     Completion::Continuing => Ok(NativeReturn::Continuing(Box::pin(
                         std::future::ready(Ok(Ok(42))),
                     ))),
+                    Completion::CancelledContinuation => Ok(NativeReturn::Continuing(Box::pin(
+                        std::future::ready(Err(Cancelled)),
+                    ))),
+                    Completion::Exited => Ok(NativeReturn::Exited),
                     Completion::Failure => Err(error.clone()),
                 };
                 let expected = match completion {
-                    Completion::Immediate | Completion::Continuing => Ok(42),
-                    Completion::Failure => Err(error),
+                    Completion::Immediate | Completion::Continuing => Ok(Ok(42)),
+                    Completion::CancelledContinuation | Completion::Exited => Err(Cancelled),
+                    Completion::Failure => Ok(Err(error)),
                 };
                 let invocation = Invocation::new(move |_, _| outcome);
                 let mut waiting = invocation.submit(&context, NonZeroUsize::MIN);
@@ -244,7 +261,7 @@ mod tests {
                         .service(&plan, &mut state)
                         .expect("live observer")
                         .deliver();
-                    assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(Ok(expected)));
+                    assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(expected));
                 }
                 assert!(services.next(&mut cx).is_none());
                 assert!(echo.is_empty());

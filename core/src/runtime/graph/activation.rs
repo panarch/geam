@@ -1328,6 +1328,8 @@ pub fn main() { head([7], 3) }
         let mut echo = Vec::new();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut (), &mut echo))
+                .unwrap()
+                .try_into_value()
                 .unwrap(),
             crate::Value::Int(43.into())
         );

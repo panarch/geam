@@ -267,6 +267,8 @@ pub fn main() {
             let mut echo = Vec::new();
             let value = executor
                 .block_on(execution.run_main(&host, &mut state, &mut echo))
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(
                 value.inspect().to_string(),

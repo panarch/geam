@@ -781,6 +781,8 @@ pub fn main() { prime() #(take(True), take(False)) }
         let mut echo = Vec::new();
         let value = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(value.inspect().to_string(), "#(42, 7)");
         assert!(echo.is_empty());
@@ -1469,6 +1471,8 @@ pub fn main() {
         let mut echo = Vec::new();
         let result = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(
             result.inspect().to_string(),
@@ -1592,7 +1596,7 @@ pub fn check(kind: Int, cancel: Bool) {
                 }
             }),
         )
-        .unwrap();
+        .unwrap().try_into_value().unwrap();
         assert_eq!(
             echo.iter()
                 .map(|output| output.value().inspect().to_string())
@@ -1821,7 +1825,10 @@ pub fn wait() { echo receive() Nil }
             ));
             driver.cancel(&host, execution.as_mut());
             assert_eq!(
-                host.block_on(execution.as_mut()).unwrap(),
+                host.block_on(execution.as_mut())
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap(),
                 Err(CallError::Cancelled)
             );
             drop(execution);
@@ -1929,7 +1936,7 @@ pub fn wait_timed(phase: Int) {
                             }
                         },
                     ))
-                    .unwrap();
+                    .unwrap().try_into_value().unwrap();
                     let expected = if entry == "wait" {
                         vec!["42", "42", "42"]
                     } else {
@@ -1950,7 +1957,10 @@ pub fn wait_timed(phase: Int) {
                     ));
                     driver.cancel(&host, execution.as_mut());
                     assert_eq!(
-                        host.block_on(execution.as_mut()).unwrap(),
+                        host.block_on(execution.as_mut())
+                            .unwrap()
+                            .try_into_value()
+                            .unwrap(),
                         Err(CallError::Cancelled)
                     );
                     drop(execution);

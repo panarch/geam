@@ -357,7 +357,9 @@ pub fn run() {
                     .expect("borrowed prefix assertions");
             }),
         )
-        .expect("execution");
+        .expect("execution")
+        .try_into_value()
+        .unwrap();
         assert!(echo.is_empty());
     }
 

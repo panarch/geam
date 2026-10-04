@@ -345,6 +345,8 @@ mod tests {
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
         let (_, _, declarations, _) = hosts().into_declarations().into_registered();

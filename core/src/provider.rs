@@ -11,6 +11,7 @@ mod prelude;
 mod stored;
 mod value;
 
+pub use crate::execution::{ExitStatus, InvalidExitStatus};
 pub use crate::{BitArrayValue, HostFailure, StringValue};
 pub use call::{Call, HostResult};
 #[doc(hidden)]

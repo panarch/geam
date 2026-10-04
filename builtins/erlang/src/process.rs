@@ -657,7 +657,7 @@ pub fn check_timer(delay: Int) {
             advance_to_clock_limit(&host, Duration::ZERO);
             assert_eq!(scope.call(&timer, (1.into(),)).await.unwrap_err().to_string(),
                 "host function gleam_erlang::gleam/erlang/process.foreign_timer failed: timeout exceeds the host clock range");
-        })).unwrap();
+        })).unwrap().try_into_value().unwrap();
         assert_eq!(
             echo.iter()
                 .map(|output| output.value().inspect().to_string())
@@ -711,7 +711,7 @@ pub fn wait(delay: Int) { sleep(delay) }
             assert_eq!(scope.call(&wait, (BigInt::ZERO,)).await, Ok(()));
             assert_eq!(scope.call(&wait, ((-1).into(),)).await.unwrap_err().to_string(),
                 "host function application::main.sleep failed: sleep timeout must be non-negative");
-        })).unwrap();
+        })).unwrap().try_into_value().unwrap();
         {
             let mut execution = Box::pin(module.with_execution(
                 &host,
@@ -723,7 +723,13 @@ pub fn wait(delay: Int) { sleep(delay) }
             host.advance(Duration::from_millis(u32::MAX.into()));
             assert!(host.poll(execution.as_mut()).is_pending());
             host.advance(Duration::from_millis(1));
-            assert_eq!(host.block_on(execution.as_mut()).unwrap(), Ok(()));
+            assert_eq!(
+                host.block_on(execution.as_mut())
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap(),
+                Ok(())
+            );
         }
         for before_chunk in [false, true] {
             let host = TestHost::default();
@@ -746,6 +752,8 @@ pub fn wait(delay: Int) { sleep(delay) }
             }
             let error = host
                 .block_on(std::future::poll_fn(|_| host.poll(execution.as_mut())))
+                .unwrap()
+                .try_into_value()
                 .unwrap()
                 .unwrap_err();
             assert_eq!(
@@ -830,7 +838,10 @@ pub fn wait() { sleep(4294967296) echo "must not run after cancellation" Nil }
         ));
         driver.cancel(&host, execution.as_mut());
         assert_eq!(
-            host.block_on(execution.as_mut()).unwrap(),
+            host.block_on(execution.as_mut())
+                .unwrap()
+                .try_into_value()
+                .unwrap(),
             Err(geam_core::embedding::CallError::Cancelled)
         );
         drop(execution);

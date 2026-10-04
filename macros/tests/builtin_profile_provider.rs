@@ -232,7 +232,9 @@ fn transferable_builtin_profile_keeps_the_same_caller_owned_source() {
             })
         );
     assert!(matches!(
-        execution_host.poll(run.as_mut()),
+        execution_host
+            .poll(run.as_mut())
+            .map(|result| result.map(|outcome| outcome.try_into_value().unwrap())),
         Poll::Ready(Ok(()))
     ));
 }

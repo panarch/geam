@@ -293,6 +293,8 @@ pub fn never(callback: fn() -> Never) -> Int { let _ = callback() 0 }
                             }
                         },
                     ))
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 let error = result.unwrap_err();
                 assert_eq!(state.entries.get(), 1);

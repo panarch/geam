@@ -249,6 +249,8 @@ pub fn main() { fn() { echo "called" 42 } }
                 assert_eq!(output.take_int(), 42.into());
                 callable
             }))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(
             host.block_on(retained.invoke(&context, CallbackInputs::new()))

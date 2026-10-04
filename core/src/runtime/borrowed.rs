@@ -309,7 +309,9 @@ pub fn run() {
                     scope.call(&run, ()).await.expect("column assertions");
                 },
             ))
-            .expect("hosted source execution");
+            .expect("hosted source execution")
+            .try_into_value()
+            .unwrap();
     }
 
     fn check_list<'call>(

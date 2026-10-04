@@ -318,6 +318,8 @@ pub fn run() {
                     scope.call(&run, ()).await.unwrap()
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result, BigInt::from(339));
         assert_eq!(state.creations, 3);

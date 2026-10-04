@@ -192,6 +192,8 @@ fn self_tail_after_native_loop_preserves_callback_effects_without_replay() {
                 value.unwrap()
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(value, BigInt::from(46));
     assert_eq!(state.folds.get(), 1);
@@ -236,6 +238,8 @@ fn abandoning_an_ordinary_call_releases_its_native_loop_and_waiting_callback() {
                 drop(call);
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(state.folds.get(), 1);
     assert_eq!(state.waits.get(), 1);
@@ -418,6 +422,8 @@ pub fn run() {
                     scope.call(&run, ()).await
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(
             result.map_err(|error| error.to_string()),
@@ -490,6 +496,8 @@ pub fn run(waiting: Bool) {
                     }
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(state.calls, 1);
         assert_eq!(state.destroyed.load(Ordering::SeqCst), 2);
@@ -509,6 +517,8 @@ pub fn run(waiting: Bool) {
                     scope.call(&run, (false,)).await
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap()
             .unwrap();
         assert_eq!(result, BigInt::from(42));

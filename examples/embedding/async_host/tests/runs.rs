@@ -59,7 +59,9 @@ fn file_failures_remain_source_results_and_do_not_change_the_direct_call() {
                 );
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .expect("the direct call returns normally");
 }
 
 #[test]

@@ -13,6 +13,103 @@ mod large_custom_fixture;
 #[path = "support/workspace_dependencies.rs"]
 mod workspace_dependencies;
 
+#[path = "support/application_exit_fixture.rs"]
+mod application_exit_fixture;
+
+#[test]
+fn explicit_application_statuses_survive_run_build_and_source_free_relocation() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(directory.path()).unwrap();
+    let (project, provider) = application_exit_fixture::copy(&root);
+    checked(&mut geam(
+        &project,
+        &["provider", "add", "--path", "../provider"],
+    ));
+    let source_path = project.join("src/application_exit_fixture.gleam");
+    let source = fs::read_to_string(&source_path).unwrap();
+    let library = source.split("pub fn main()").next().unwrap();
+    let deployment = root.join("deployment");
+    fs::create_dir(&deployment).unwrap();
+    let mut binaries = Vec::new();
+    for release in [false, true] {
+        for code in [0, 7, 101, 255] {
+            fs::write(
+                &source_path,
+                format!("{library}pub fn main() {{ stop({code}) }}\n"),
+            )
+            .unwrap();
+            if !release {
+                let run = capture(
+                    &mut geam(&project, &["run", "--", "--help", "", "--"]),
+                    Duration::from_secs(1800),
+                );
+                assert_eq!(
+                    run.status.code(),
+                    Some(code),
+                    "{}",
+                    String::from_utf8_lossy(&run.stderr)
+                );
+                assert!(run.stdout.is_empty());
+                let stderr = String::from_utf8(run.stderr).unwrap();
+                assert!(stderr.ends_with("\"before\"\n"), "{stderr}");
+                assert!(!stderr.contains("geam runner:"), "{stderr}");
+                assert!(!stderr.contains("\"after\""), "{stderr}");
+            }
+            let arguments: &[&str] = if release {
+                &["build", "--release"]
+            } else {
+                &["build"]
+            };
+            let build = checked(&mut geam(&project, arguments));
+            assert!(build.stdout.is_empty());
+            let profile = if release { "release" } else { "debug" };
+            let executable = built_executable(
+                &build,
+                &project.join(format!(
+                    "build/geam/target/{profile}/application_exit_fixture{}",
+                    std::env::consts::EXE_SUFFIX
+                )),
+            );
+            let destination = deployment.join(format!(
+                "application {profile} {code}{}",
+                std::env::consts::EXE_SUFFIX
+            ));
+            fs::copy(&executable, &destination).unwrap();
+            if code == 0 || code == 7 {
+                let (reader, writer) = std::io::pipe().unwrap();
+                drop(reader);
+                let output = deployed(&destination, &deployment)
+                    .stderr(Stdio::from(writer))
+                    .output()
+                    .unwrap();
+                assert_eq!(
+                    output.status.code(),
+                    Some(1),
+                    "a real output failure overrides requested {code}"
+                );
+                assert!(output.stdout.is_empty());
+            }
+            binaries.push((destination, code));
+        }
+    }
+    fs::remove_dir_all(project).unwrap();
+    fs::remove_dir_all(provider).unwrap();
+    for (binary, code) in binaries {
+        for _ in 0..2 {
+            let output = capture(
+                deployed(&binary, &deployment).args(["--help", "", "--"]),
+                Duration::from_secs(30),
+            );
+            assert_eq!(output.status.code(), Some(code));
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(stderr.ends_with("\"before\"\n"), "{stderr}");
+            assert!(!stderr.contains("geam application:"), "{stderr}");
+            assert!(!stderr.contains("\"after\""), "{stderr}");
+        }
+    }
+}
+
 #[test]
 fn large_custom_provider_builds_and_relocates_at_the_default_recursion_limit() {
     let directory = tempfile::tempdir().unwrap();

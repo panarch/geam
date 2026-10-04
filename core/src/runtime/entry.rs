@@ -1,5 +1,5 @@
 use super::{EchoSink, HostCallOrigin, RetainedValues};
-use crate::execution::{ExecutionHost, RunError};
+use crate::execution::{ExecutionHost, ExecutionOutcome, RunError};
 use crate::host::HostWorkProfile;
 use crate::plan::execution::{EntryCompletion, HostedEntry};
 use crate::runtime::execution::Domain;
@@ -10,7 +10,7 @@ pub(crate) async fn run_hosted_entry<Profile: HostWorkProfile>(
     host: &dyn ExecutionHost,
     state: &mut Profile::RunState,
     echo: &mut (dyn EchoSink + Send),
-) -> Result<(), RunError> {
+) -> Result<ExecutionOutcome<()>, RunError> {
     let (plan, stores, captures) = entry.execution.parts_mut();
     let store = crate::host::work_store::<Profile>(stores).clone_handle();
     let domain = Domain::new(
@@ -45,4 +45,5 @@ pub(crate) async fn run_hosted_entry<Profile: HostWorkProfile>(
             Ok(())
         })
         .await?
+        .transpose()
 }

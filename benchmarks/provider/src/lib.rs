@@ -167,6 +167,8 @@ pub fn main(present: String, absent: String) {
                 }),
             )
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         assert_eq!(
             result,

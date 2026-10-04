@@ -1,6 +1,6 @@
 use super::function::{ExternalFunctionId, ProfiledRuntimeFunctionId};
 use super::{HostSpecializationError, HostedExecution};
-use crate::execution::{ExecutionHost, RunError};
+use crate::execution::{ExecutionHost, ExecutionOutcome, RunError};
 use crate::host::{HostExternalSchema, HostWorkProfile, HostWorkSchema};
 use crate::plan::HostedModulePlan;
 use crate::runtime::run_hosted_entry;
@@ -36,7 +36,7 @@ impl<Profile: HostWorkProfile> HostedEntry<Profile> {
         host: &dyn ExecutionHost,
         state: &mut Profile::RunState,
         echo: &mut (dyn EchoSink + Send),
-    ) -> Result<(), RunError> {
+    ) -> Result<ExecutionOutcome<()>, RunError> {
         run_hosted_entry(self, host, state, echo).await
     }
 
@@ -354,6 +354,75 @@ pub fn main() -> Response { work.ready(42) }
             .expect_err("native cancellation");
         assert_eq!(format!("{error:?}"), "Cancelled");
         assert!(execution_failure(&error).is_none());
+    }
+
+    #[test]
+    fn explicit_native_work_exits_when_observed_by_the_application_entry() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+
+        fn exit<'call>(
+            call: HostCall<'call, Profile, WorkComponent, WorkHostType<BigInt>>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            at_completion: bool,
+            should_exit: bool,
+        ) -> Result<HostCallCompletion<'call, WorkHostType<BigInt>>, HostCallError> {
+            Ok(call.return_future(constructions, move |context| {
+                Box::pin(async move {
+                    if !should_exit {
+                        return Ok(HostOwnedCompletion::new(|call, _| {
+                            Ok(call.return_value(42.into()))
+                        }));
+                    }
+                    if at_completion {
+                        Ok(HostOwnedCompletion::new(|call, _| {
+                            call.exit(ExitStatus::new(7))
+                        }))
+                    } else {
+                        context.execution().exit(ExitStatus::new(7))
+                    }
+                })
+            }))
+        }
+
+        let host = TestHost::default();
+        for at_completion in [false, true] {
+            for should_exit in [false, true] {
+                let provider = HostProviderModule::new("application", "main").unwrap()
+                .with_scoped_function_and_constructions::<WorkComponent, (bool, bool), WorkHostType<BigInt>, HostTypeListEnd, _>("exit", exit).unwrap();
+                let source = format!(
+                    r#"
+import fixture/work
+@external(erlang, "native", "exit")
+fn exit(at_completion: Bool, should_exit: Bool) -> work.Work(Int)
+pub fn main() {{ echo "before" work.map(exit({}, {}), fn(value) {{ echo "after" value }}) }}
+"#,
+                    if at_completion { "True" } else { "False" },
+                    if should_exit { "True" } else { "False" },
+                );
+                let mut entry = entry(&source, vec![provider]).unwrap();
+                let mut echo = Echo::default();
+                host.block_on(entry.execution.run_main(&host, &mut (), &mut echo))
+                    .unwrap()
+                    .try_into_value()
+                    .expect("ordinary execution returns the unobserved work value");
+                assert_eq!(echo.0, ["src/main.gleam:5\n\"before\""]);
+                echo.0.clear();
+                let observed = host.block_on(entry.run(&host, &mut (), &mut echo)).unwrap();
+                if should_exit {
+                    assert_eq!(observed, ExecutionOutcome::Exited(ExitStatus::new(7)));
+                    assert_eq!(echo.0, ["src/main.gleam:5\n\"before\""]);
+                } else {
+                    assert_eq!(observed, ExecutionOutcome::Returned(()));
+                    assert_eq!(
+                        echo.0,
+                        [
+                            "src/main.gleam:5\n\"before\"",
+                            "src/main.gleam:5\n\"after\""
+                        ]
+                    );
+                }
+            }
+        }
     }
 
     #[test]

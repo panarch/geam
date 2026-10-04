@@ -34,6 +34,59 @@ each event, and both are polled even when the first reports progress. Each
 service must bound its own poll work and register its required wake. Projection
 is a static field access; execution does not search a service registry.
 
+## Application termination
+
+Any typed provider can request termination of its current execution domain.
+`geam::execution::ExitStatus` stores a portable status in **0..=255**. Construct
+it with `ExitStatus::new(u8)`, or use its checked `TryFrom<i64>` and
+`TryFrom<&BigInt>` conversions. Negative, oversized and arbitrarily large Ints
+return `InvalidExitStatus`; they are never truncated or recorded as an exit.
+Invalid status errors convert into the existing native input-error envelope.
+
+```rust
+use geam::provider::{BigInt, Call, ExitStatus, HostResult};
+
+#[geam::function]
+fn stop(#[geam::call] call: &mut Call<State>, status: BigInt) -> HostResult<()> {
+    call.exit(ExitStatus::try_from(&status)?)
+}
+```
+
+Propagate `call.exit(status)` from the native body. The same method is available
+in an owned async `Call`; manual hosts use `HostCall::exit` or
+`HostExecutionContext::exit`. Creating and discarding the returned control result
+does not request an exit. The runtime accepts it at the native return or owned
+completion boundary. The first accepted status wins; concurrent requests have
+no promised wall-clock ordering.
+
+After acceptance, the domain closes entry, callback, native-request and work
+admission, cancels its units and pending work, and awaits physical worker
+destruction acknowledgements. Source effects after the exit do not run, including
+in nested callbacks and observed explicit Futures. An unobserved Future remains
+ordinary work; requesting termination does not change which Futures an entry
+observes. Already-running arbitrary Rust code cannot be forcibly interrupted;
+completed effects are not rolled back. Cancellation destroys pending Futures
+but does not promise to run their asynchronous cleanup.
+
+`HostedExecution::run_main`, `HostedEntry::run` and
+`HostedModule::with_execution` return `ExecutionOutcome::Returned(value)` or
+`ExecutionOutcome::Exited(status)` after cleanup. Genuine final execution or
+driver failures retain their structured error and origin; expected cancellation
+from requested shutdown does not replace the exit. Independent actor failures
+do not acquire a new global fatal ordering. Standalone output write or flush
+failures take precedence over an intentional status, including zero.
+
+Embedding keeps the host process alive. Its closed scope cannot restart, but the
+same loaded module, executor and caller-owned state can start a fresh scope.
+Previous exit requests and pending work do not enter that scope. Real mutations
+and caller-owned output already produced remain owned by the caller.
+
+`geam run` and built applications return the requested OS status without a Geam
+failure diagnostic. Output handling and state/runtime release finish before the
+process returns. Preparation, linking, initialization, build and launch failures
+remain errors. Ordinary source Ints, `Result` errors and stderr output never
+select an exit status.
+
 ## Declaring composition
 
 Existing schema 1 metadata remains valid for components without service

@@ -336,6 +336,8 @@ mod tests {
             execution_host
                 .block_on(future)
                 .expect("controlled execution")
+                .try_into_value()
+                .unwrap()
                 .expect("cross-crate async call should complete")
         };
 
@@ -384,6 +386,8 @@ mod tests {
             execution_host
                 .block_on(future)
                 .expect("controlled execution")
+                .try_into_value()
+                .unwrap()
                 .expect("custom completion")
         };
         std::thread::spawn(move || {

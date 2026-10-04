@@ -688,7 +688,7 @@ pub fn failing() {
                 assert_eq!(error.to_string(), "panic: callback failure");
             }),
         )
-        .unwrap();
+        .unwrap().try_into_value().unwrap();
         assert_eq!(state.units.len(), 4);
         assert_ne!(state.units[0], state.units[1]);
         assert!(state.units[1..].iter().all(|unit| *unit == state.units[1]));
@@ -742,6 +742,8 @@ pub fn failing() {
                     &mut Vec::new(),
                     async |scope| scope.call(&output, ()).await,
                 ))
+                .unwrap()
+                .try_into_value()
                 .unwrap()
                 .map(|value| value.to_string())
                 .map_err(|error| error.to_string());

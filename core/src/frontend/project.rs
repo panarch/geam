@@ -1135,6 +1135,8 @@ pub fn value() -> Int
                 )
             )
             .expect("host cleanup")
+            .try_into_value()
+            .unwrap()
             .expect("selected provider executes"),
             BigInt::from(42)
         );

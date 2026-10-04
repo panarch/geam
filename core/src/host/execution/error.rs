@@ -1,13 +1,14 @@
+use crate::execution::InvalidExitStatus;
 use crate::host::HostCallError;
 pub use crate::runtime::SharedExecutionError;
 use std::fmt;
 
-/// A native execution failure, separate from the Gleam function's return value.
+/// Native execution errors and control, separate from the Gleam return value.
 #[derive(Debug)]
 pub enum HostExecutionError {
     /// The operation was cancelled before completing.
     Cancelled,
-    /// A native failure or an unchanged error from a Gleam callback.
+    /// A native failure, unchanged callback error, or intentional exit request.
     Host(HostCallError),
     /// The unchanged shared failure of an explicitly observed source Future.
     Execution(SharedExecutionError),
@@ -27,6 +28,12 @@ impl From<HostCallError> for HostExecutionError {
 
 impl From<crate::HostFailure> for HostExecutionError {
     fn from(error: crate::HostFailure) -> Self {
+        Self::Host(error.into())
+    }
+}
+
+impl From<InvalidExitStatus> for HostExecutionError {
+    fn from(error: InvalidExitStatus) -> Self {
         Self::Host(error.into())
     }
 }
@@ -75,6 +82,13 @@ mod tests {
             host.source().expect("host failure").to_string(),
             "disconnected"
         );
+
+        let invalid = HostExecutionError::from(crate::execution::InvalidExitStatus);
+        assert_eq!(
+            invalid.to_string(),
+            "application exit status must be between 0 and 255"
+        );
+        assert_eq!(invalid.source().unwrap().to_string(), invalid.to_string());
 
         let shared = SharedExecutionError(Shared::new(ExecutionError::Invariant(
             InvariantError::ListIndexOutOfBounds {

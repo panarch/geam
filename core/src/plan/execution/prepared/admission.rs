@@ -1403,6 +1403,8 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                             );
                         },
                     ))
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                     None
                 }
@@ -2014,6 +2016,8 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     }
 

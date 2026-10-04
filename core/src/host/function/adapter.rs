@@ -1371,7 +1371,7 @@ mod tests {
                                     assert_eq!(result.unwrap(), BigInt::from(expected));
                                 }
                             }
-                        })).unwrap();
+                        })).unwrap().try_into_value().unwrap();
                         assert_eq!(state.counter, if suspend { 22 } else { 2 });
                         assert!(echoes.is_empty());
                     }

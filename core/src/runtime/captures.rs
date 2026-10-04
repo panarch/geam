@@ -650,6 +650,8 @@ pub fn main() {
                         RetainedValues::empty(),
                     )))
                     .expect("domain cleanup")
+                    .try_into_value()
+                    .unwrap()
                     .expect("active entry")
                     .expect("native chain");
                 drop(context);
