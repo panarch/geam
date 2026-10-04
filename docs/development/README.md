@@ -11,6 +11,8 @@ repository verifies, reviews, synchronizes, and publishes those contracts.
   coverage checks to their responsibilities.
 - [Test development](test-development.md) explains how to choose a test owner,
   design fixtures, investigate coverage, and keep scenarios local.
+- [CI coverage diagnostics](ci.md) explains how to run selected coverage jobs
+  and retrieve detailed reports from the same test collection.
 - [Performance improvement](performance.md) explains how to find structural
   costs, bound experiments, and decide when deeper analysis is useful.
 - [Review policy](review-policy.md) records structural, ownership, error,
