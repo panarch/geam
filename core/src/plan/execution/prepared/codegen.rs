@@ -1055,6 +1055,7 @@ mod tests {
         source.push_str("\n");
     }
 
+    use super::int_list::IntListTest;
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
         NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
@@ -1382,6 +1383,34 @@ pub fn main() { same([7]) }
             test_expression(block, &CompiledTest::Not(BoolLocalId(5))),
             "!b3_v5"
         );
+    }
+
+    #[test]
+    fn integer_list_boolean_tests_route_to_exact_rust_expressions() {
+        let block = BlockId(3);
+        for (test, expected) in [
+            (
+                IntListTest::Length {
+                    list: IntListLocalId(2),
+                    length: 4,
+                    at_least: true,
+                },
+                "b3_l2.len() >= 4",
+            ),
+            (
+                IntListTest::Equal {
+                    left: IntListLocalId(2),
+                    right: IntListLocalId(5),
+                    negate: true,
+                },
+                "!_lists.equal(&b3_l2, &b3_l5)",
+            ),
+        ] {
+            assert_eq!(
+                test_expression(block, &CompiledTest::IntList(test)),
+                expected
+            );
+        }
     }
 
     #[test]
