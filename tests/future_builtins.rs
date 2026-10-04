@@ -265,7 +265,11 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
     });
     drop(task);
     assert_eq!(
-        result.expect("controlled execution").read(Clone::clone),
+        result
+            .expect("controlled execution")
+            .try_into_value()
+            .unwrap()
+            .read(Clone::clone),
         BigInt::from(82)
     );
     assert_eq!(state.native.starts.get(), 1);
@@ -339,9 +343,10 @@ fn dropping_the_execution_cancels_pending_callbacks_without_replacing_builtin_st
             },
         ));
         assert_eq!(
-            execution_host
-                .poll(task.as_mut())
-                .map(|result| result.expect("controlled execution")),
+            execution_host.poll(task.as_mut()).map(|result| result
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap()),
             Poll::Ready(BigInt::from(101))
         );
     }

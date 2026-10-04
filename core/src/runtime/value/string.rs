@@ -54,6 +54,17 @@ impl StringValue {
         }
     }
 
+    /// The last restored range can move the backing instead of retaining it.
+    pub(in crate::runtime) fn into_slice(mut self, range: Range<usize>) -> Self {
+        let text = &self.as_str()[range.clone()];
+        if text.len() <= EcoString::INLINE_LIMIT {
+            Self::from(text)
+        } else {
+            self.range = self.range.start + range.start..self.range.start + range.end;
+            self
+        }
+    }
+
     /// Copies the visible text without retaining its original allocation.
     pub fn detached(&self) -> Self {
         Self::from(self.as_str())
@@ -215,6 +226,26 @@ mod tests {
         );
         assert_eq!(inline.range, 0..EcoString::INLINE_LIMIT);
         assert_ne!(inline.backing.as_ptr(), original.backing.as_ptr());
+    }
+
+    #[test]
+    fn consuming_nested_slices_move_large_backings_and_detach_small_ranges() {
+        let original = StringValue::from("prefix:가나다abcdefghijklmnopqrstuvwxyz:end");
+        let backing = original.backing.as_ptr();
+        let end = original.len() - 4;
+        let visible = original.into_slice(7..end);
+        let length = visible.len();
+        let suffix = visible.into_slice(9..length);
+        assert_eq!(suffix.as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(suffix.backing.as_ptr(), backing);
+        assert_eq!(suffix.range, 16..42);
+        let inline = suffix.clone().into_slice(2..2 + EcoString::INLINE_LIMIT);
+        assert_eq!(inline.as_str(), &suffix[2..2 + EcoString::INLINE_LIMIT]);
+        assert_eq!(inline.range, 0..EcoString::INLINE_LIMIT);
+        assert_ne!(inline.backing.as_ptr(), backing);
+        let empty = suffix.into_slice(9..9);
+        assert_eq!(empty.backing, "");
+        assert_eq!(empty.range, 0..0);
     }
 
     #[test]

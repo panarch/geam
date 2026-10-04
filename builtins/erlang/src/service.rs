@@ -630,6 +630,8 @@ mod domain_tests {
                     scope.observe(&work).await.unwrap().read(Clone::clone)
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result, BigInt::from(85));
         assert!(state.received.is_none());
@@ -642,7 +644,10 @@ mod domain_tests {
         ));
         driver.cancel(&host, execution.as_mut());
         assert_eq!(
-            host.block_on(execution.as_mut()).unwrap(),
+            host.block_on(execution.as_mut())
+                .unwrap()
+                .try_into_value()
+                .unwrap(),
             Err(CallError::Cancelled)
         );
         drop(execution);

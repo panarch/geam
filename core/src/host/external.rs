@@ -497,7 +497,9 @@ pub fn run() {
                     );
                 },
             ))
-            .expect("direct calls");
+            .expect("direct calls")
+            .try_into_value()
+            .unwrap();
         assert!(echo.0[0].ends_with("Envelope(Counter(41))"));
         assert_eq!(drops.load(Ordering::SeqCst), 2);
         drop(module);
@@ -706,7 +708,9 @@ pub fn run(i: Int, f: Float, s: String, b: BitArray, c: UtfCodepoint, flag: Bool
                     );
                 },
             ))
-            .expect("immediate scalar call");
+            .expect("immediate scalar call")
+            .try_into_value()
+            .unwrap();
         assert_eq!(echo.0.len(), 1);
         assert!(echo.0[0].ends_with("Counter(41)"));
         assert_eq!(state.0.load(Ordering::SeqCst), 1);
@@ -839,7 +843,7 @@ pub fn nested(fail: Bool) {
                 .call(&nested, (false,)).await
                 .expect("external callback success");
         }))
-        .expect("failures are direct");
+        .expect("failures are direct").try_into_value().unwrap();
         assert_eq!(echo.0.len(), 1);
         assert!(echo.0[0].ends_with("Counter(41)"));
         assert_eq!(state.0.load(Ordering::SeqCst), 1);

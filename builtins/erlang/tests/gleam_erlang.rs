@@ -59,7 +59,7 @@ fn run_clocked_fixture(module: &str, pending_advances: &[u64]) {
         let std::task::Poll::Ready(actual) = host.poll(running.as_mut()) else {
             panic!("{module} did not finish at its declared virtual deadline");
         };
-        actual.unwrap()
+        actual.unwrap().try_into_value().unwrap()
     };
     let source =
         std::fs::read_to_string(root.join("src").join(module).with_extension("gleam")).unwrap();

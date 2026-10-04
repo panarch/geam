@@ -219,6 +219,15 @@ When execution ends, pending Geam work is released before the runtime shuts
 down. Native blocking tasks already started by a provider must finish; shutdown
 does not interrupt them.
 
+A provider can explicitly request an [application exit](reference/execution-services.md#application-termination)
+with a checked status in 0..=255. `geam run` and the built executable return that
+status after output handling and worker/state/runtime cleanup, without a Geam
+failure diagnostic. A genuine output or final execution failure remains an
+error, including when the requested status is zero. Source Ints, `Error` values
+and stderr output do not select a status; ordinary completion returns zero.
+Cargo compilation is checked before `geam run` launches the runner, so build
+failure 101 is distinct from an application intentionally returning 101.
+
 ## Keep working in Gleam
 
 Edit the Gleam project as usual, then run:

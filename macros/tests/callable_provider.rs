@@ -273,6 +273,8 @@ fn run(source: &str) -> (String, State) {
     let mut state = State::default();
     let value = runtime
         .block_on(execution.run_main(&host, &mut state, &mut Vec::new()))
+        .unwrap()
+        .try_into_value()
         .unwrap();
     (value.inspect().to_string(), state)
 }

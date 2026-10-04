@@ -397,6 +397,8 @@ pub fn main() { calculate(native(20)) }
         let host = crate::execution_fixture::TestHost::default();
         assert_eq!(
             host.block_on(execution.run_main(&host, &mut (), &mut Vec::new()))
+                .unwrap()
+                .try_into_value()
                 .unwrap(),
             crate::Value::Int(41.into())
         );

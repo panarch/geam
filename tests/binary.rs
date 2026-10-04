@@ -195,10 +195,9 @@ fn streams_gleam_io_and_echo_in_source_order_before_runtime_failure() {
             let failed_output = child
                 .wait_with_output()
                 .expect("Geam CLI output failure should complete");
-            assert!(!failed_output.status.success());
+            assert_eq!(failed_output.status.code(), Some(1));
             let stderr = String::from_utf8_lossy(&failed_output.stderr);
-            assert!(stderr.contains("geam runner:"));
-            assert!(stderr.contains("after writing its output directly"));
+            assert!(stderr.contains("geam runner: Broken pipe"), "{stderr}");
             assert!(
                 !stderr.contains("source-error-after-io-failure"),
                 "{stderr}"

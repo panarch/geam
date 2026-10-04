@@ -258,7 +258,7 @@ mod tests {
         let result = host.block_on(execution.run_main(&host, &mut (), &mut echo));
         assert_eq!(
             result
-                .map(|value| value.inspect().to_string())
+                .map(|outcome| outcome.try_into_value().unwrap().inspect().to_string())
                 .map_err(|error| error.to_string()),
             expected.map(str::to_owned).map_err(str::to_owned),
             "{source}"

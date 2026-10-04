@@ -1740,6 +1740,8 @@ pub fn boxed() -> CounterListBox {
                 RetainedValues::empty(),
             )))
             .expect("host cleanup")
+            .try_into_value()
+            .unwrap()
             .expect("active entry")
             .expect("boxed external List should evaluate");
         let work = crate::runtime::work::execution::ExecutionWork::new(Default::default());

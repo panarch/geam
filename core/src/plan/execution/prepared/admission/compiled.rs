@@ -106,9 +106,9 @@ pub(super) fn admit<'data, Profile: ExecutionProfile>(
             Ok(function.as_ref())
         },
         |body, implementation| match implementation {
-            CompiledImplementation::BitArray(_) | CompiledImplementation::CustomLoop(_) => {
-                Err(Reason::Kernel)
-            }
+            CompiledImplementation::BitArray(_)
+            | CompiledImplementation::String(_)
+            | CompiledImplementation::CustomLoop(_) => Err(Reason::Kernel),
             _ => value_shape(body, implementation, custom_types),
         },
     )?;
@@ -271,6 +271,7 @@ fn value_shape<'body, Body: ExecutionFunctionBody>(
         }
         CompiledImplementation::Numeric(_) => KernelKind::Numeric,
         CompiledImplementation::IntList(_) => KernelKind::IntList,
+        CompiledImplementation::String(_) => KernelKind::String,
         CompiledImplementation::BitArray(_) => {
             return CompiledShape::inspect_bits(body.function_body())
                 .ok_or(Reason::UnsupportedGraph);
@@ -304,7 +305,7 @@ mod tests {
     use crate::plan::execution::compiled::{
         BitArrayImplementation, CompiledCallback, CompiledCallbacks, CompiledFunction,
         CompiledFunctions, CompiledImplementation, CustomLoopImplementation, IntListImplementation,
-        NumericImplementation,
+        NumericImplementation, StringImplementation,
     };
     use crate::plan::execution::function::{
         ExecutionIntFunctionBody, IntFunctionId, ValueFunctionEntry,
@@ -316,6 +317,7 @@ mod tests {
     use crate::plan::execution::type_::CustomTypeTable;
     use crate::runtime::compiled::tests::{
         metadata_bit_array, metadata_custom_loop, metadata_int_list, metadata_numeric,
+        metadata_string,
     };
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
     use std::marker::PhantomData;
@@ -334,6 +336,74 @@ mod tests {
     fn source_plan(source: &str) -> crate::ExecutionPlan {
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap())
+    }
+
+    #[test]
+    fn string_targets_require_the_string_kind_and_exact_completed_string_prefix() {
+        let execution = hosted_plan(
+            r#"
+fn walk(text: String, total: Int) {
+  case text { "λ" <> rest -> walk(rest, total + 1) _ -> total }
+}
+pub fn main() { walk("λλ", 3) }
+"#,
+        );
+        let functions = &execution.execution.program.functions;
+        let shape =
+            CompiledShape::inspect(graph_body(&functions.value_returns.int_functions[1])).unwrap();
+        assert_eq!(shape.kind, KernelKind::String);
+        let entry = shape.start(shape.graph.entry());
+        for (change, expected) in [
+            (0, Ok(())),
+            (1, Err(Reason::ImplementationKind)),
+            (2, Err(Reason::Checkpoint(1))),
+            (3, Err(Reason::Checkpoint(0))),
+            (4, Err(Reason::Entry)),
+            (5, Err(Reason::CheckpointCount)),
+        ] {
+            let mut points = shape.checkpoints.clone();
+            match change {
+                2 => points[1].strings += 1,
+                3 => points[0].strings = 0,
+                5 => {
+                    points.pop();
+                }
+                _ => {}
+            }
+            let implementation = if change == 1 {
+                CompiledImplementation::Numeric(NumericImplementation {
+                    entry,
+                    checkpoints: points.into(),
+                    run: metadata_numeric,
+                })
+            } else {
+                CompiledImplementation::String(StringImplementation {
+                    entry: if change == 4 { usize::MAX } else { entry },
+                    checkpoints: points.into(),
+                    run: metadata_string,
+                })
+            };
+            let compiled = CompiledFunctions {
+                ints: vec![CompiledFunction {
+                    function: IntFunctionId(1),
+                    implementation,
+                }]
+                .into(),
+                ..CompiledFunctions::interpreted()
+            };
+            assert_eq!(
+                all(
+                    &compiled,
+                    functions,
+                    &execution.execution.program.common.custom_types
+                ),
+                expected.map_err(|reason| CompiledError {
+                    family: Family::Int,
+                    function: 1,
+                    reason
+                })
+            );
+        }
     }
 
     fn hosted_plan(source: &str) -> crate::HostedExecution<StatelessHostProfile> {

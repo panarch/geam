@@ -535,7 +535,10 @@ pub fn source(offset: Int) -> fn(Int) -> Int {
             second_gate.send(BigInt::from(20)).unwrap();
             let after_second = host.poll(execution.as_mut());
             if cancel_first {
-                assert_eq!(after_second.map(Result::unwrap), Poll::Ready(None));
+                assert_eq!(
+                    after_second.map(|result| result.unwrap().try_into_value().unwrap()),
+                    Poll::Ready(None)
+                );
                 assert!(first_gate.is_canceled());
                 assert_eq!(
                     *effects.lock().unwrap(),
@@ -557,7 +560,8 @@ pub fn source(offset: Int) -> fn(Int) -> Int {
                 );
                 first_gate.send(BigInt::from(10)).unwrap();
                 assert_eq!(
-                    host.poll(execution.as_mut()).map(Result::unwrap),
+                    host.poll(execution.as_mut())
+                        .map(|result| result.unwrap().try_into_value().unwrap()),
                     Poll::Ready(Some(BigInt::from(118)))
                 );
                 assert_eq!(
@@ -639,6 +643,8 @@ pub fn keep(values: List(fn() -> Int)) { values }
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
     }

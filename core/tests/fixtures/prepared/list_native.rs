@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 17,
+        format: 18,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -766,6 +766,7 @@ pub fn caller(
                                         bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,
@@ -778,6 +779,7 @@ pub fn caller(
                                         bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,
@@ -790,6 +792,7 @@ pub fn caller(
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,
@@ -802,6 +805,7 @@ pub fn caller(
                                         bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,
@@ -814,6 +818,7 @@ pub fn caller(
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,
@@ -826,6 +831,7 @@ pub fn caller(
                                         bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
                                         int_functions: 0,

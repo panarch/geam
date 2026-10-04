@@ -50,6 +50,7 @@ use self::type_::{
     ListTypeId, TupleListTypeId, ValueShapeId, ValueType,
 };
 use self::type_::{CustomTypeTable, ExternalTypeTable, ListTypeTable, ValueShapeTable};
+use crate::execution::{ExecutionHost, ExecutionOutcome, RunError};
 use crate::host::HostProfile;
 use crate::plan::Text;
 use crate::plan::{HostedModulePlan, ModuleId, ModulePlan, SourceContext};
@@ -328,10 +329,10 @@ impl<Profile: HostProfile> HostedExecution<Profile> {
 
     pub async fn run_main(
         &mut self,
-        host: &dyn crate::execution::ExecutionHost,
+        host: &dyn ExecutionHost,
         state: &mut Profile::RunState,
         echo: &mut (dyn crate::EchoSink + Send),
-    ) -> Result<crate::Value, crate::execution::RunError> {
+    ) -> Result<ExecutionOutcome<crate::Value>, RunError> {
         crate::runtime::run_hosted_main(self, host, state, echo).await
     }
 

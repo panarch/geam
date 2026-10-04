@@ -386,6 +386,8 @@ pub fn roundtrip() {
                         },
                     )
                     .await
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 let again = scope.call(&restore, ()).await.unwrap();
                 assert_eq!(
@@ -398,6 +400,8 @@ pub fn roundtrip() {
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(echoes.len(), 1);
         assert_eq!(echoes[0].value().inspect().to_string(), "\"observed\"");
@@ -415,6 +419,8 @@ pub fn roundtrip() {
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(echoes.len(), 1);
     }

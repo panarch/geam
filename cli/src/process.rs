@@ -3,7 +3,7 @@ mod streaming;
 use crate::error::CliError;
 use crate::progress::Progress;
 use std::ffi::OsStr;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitCode, Output, Stdio};
 
 pub(super) fn run_checked(command: &mut Command) -> Result<Output, CliError> {
     let display = display_command(command);
@@ -25,19 +25,18 @@ pub(crate) fn run_checked_with_progress(
     }
 }
 
-pub(super) fn run_inherited(command: &mut Command) -> Result<(), CliError> {
+pub(super) fn run_inherited(command: &mut Command) -> Result<ExitCode, CliError> {
     let display = display_command(command);
     let status = command.status().map_err(|error| CliError::ProcessIo {
         command: display.clone(),
         error,
     })?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(CliError::InheritedProcessFailure {
+    match status.code().and_then(|code| u8::try_from(code).ok()) {
+        Some(code) => Ok(ExitCode::from(code)),
+        None => Err(CliError::InheritedProcessFailure {
             command: display,
             status: status.code(),
-        })
+        }),
     }
 }
 
@@ -66,7 +65,7 @@ mod tests {
     use super::{run_checked, run_checked_with_progress, run_inherited};
     use crate::error::CliError;
     use crate::progress::Progress;
-    use std::process::{Command, Stdio};
+    use std::process::{Command, ExitCode, Stdio};
 
     #[test]
     fn returns_successful_process_output() {
@@ -128,27 +127,24 @@ mod tests {
     }
 
     #[test]
-    fn runs_with_inherited_streams_and_preserves_status_failures() {
-        run_inherited(
+    fn runs_with_inherited_streams_and_preserves_application_statuses() {
+        let status = run_inherited(
             Command::new("rustc")
                 .arg("--version")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null()),
         )
         .expect("inherited process should succeed");
+        assert_eq!(status, ExitCode::SUCCESS);
 
-        let error = run_inherited(
+        let status = run_inherited(
             Command::new("rustc")
                 .arg("--definitely-not-a-rustc-option")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null()),
         )
-        .expect_err("inherited process status should be preserved");
-        assert!(matches!(
-            error,
-            CliError::InheritedProcessFailure { command, status: Some(1) }
-                if command == "rustc --definitely-not-a-rustc-option"
-        ));
+        .expect("numeric application status should be preserved");
+        assert_eq!(status, ExitCode::FAILURE);
 
         let error = run_inherited(&mut Command::new("geam-command-that-does-not-exist"))
             .expect_err("missing inherited process should fail to start");
@@ -158,6 +154,21 @@ mod tests {
                 if command == "geam-command-that-does-not-exist"
                     && error.kind() == std::io::ErrorKind::NotFound
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn application_codes_are_distinct_from_signal_termination() {
+        for code in [0, 7, 101, 255] {
+            let status =
+                run_inherited(Command::new("sh").args(["-c", &format!("exit {code}")])).unwrap();
+            assert_eq!(status, ExitCode::from(code));
+        }
+        let error = run_inherited(Command::new("sh").args(["-c", "kill -TERM $$"])).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "`sh -c kill -TERM $$` failed with status None after writing its output directly"
+        );
     }
 
     #[cfg(unix)]

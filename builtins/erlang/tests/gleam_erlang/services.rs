@@ -418,6 +418,8 @@ fn two_macro_consumers_share_both_producer_services_and_preserve_exact_values() 
         let mut echo = Vec::new();
         let result = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result.inspect().to_string(), "#(40, 41, 42)");
         assert!(echo.is_empty());

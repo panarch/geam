@@ -650,9 +650,12 @@ fn connected_standalone_entry_runs_without_the_source_compiler() {
         .load(HostProviderSet::<Profile>::new([]).unwrap())
         .unwrap();
     let mut echo = Vec::new();
-    runtime
-        .block_on(entry.run(&host, &mut (), &mut echo))
-        .unwrap();
+    assert_eq!(
+        runtime
+            .block_on(entry.run(&host, &mut (), &mut echo))
+            .unwrap(),
+        geam_core::ExecutionOutcome::Returned(())
+    );
     assert!(echo.is_empty());
 }
 
@@ -776,7 +779,7 @@ fn caller_suffixes_cross_the_hosted_quantum_without_replaying_effects_or_errors(
                 assert_eq!(scope.call(&boolean, (bias.clone(),)).await.unwrap(), bias + 1 > BigInt::from(0));
             }
             results
-        })).unwrap();
+        })).unwrap().try_into_value().unwrap();
         assert_eq!(echo.len(), results.len());
         for (output, (expected, _)) in echo.iter().zip(&results) {
             assert_eq!(output.value(), &geam_core::Value::Int(expected.clone()));

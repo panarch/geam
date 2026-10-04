@@ -68,6 +68,9 @@ jobs:
       - name: Check selective receive provider formatting
         run: cargo fmt --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all --check
 
+      - name: Check application exit provider formatting
+        run: cargo fmt --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --all --check
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -106,6 +109,7 @@ jobs:
             tests/fixtures/dict_service/provider -> target
             tests/fixtures/bytes_tree_service/provider -> target
             tests/fixtures/selective_receive_service/provider -> target
+            tests/fixtures/application_exit/provider -> target
             examples/provider/text_pattern/provider -> target
 
       - name: Fetch standalone provider dependencies
@@ -149,6 +153,9 @@ jobs:
 
       - name: Run selective receive provider clippy
         run: cargo clippy --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Run application exit provider clippy
+        run: cargo clippy --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --all-targets --locked -- -D warnings
 
   documentation:
     name: Documentation

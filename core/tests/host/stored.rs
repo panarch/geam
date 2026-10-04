@@ -781,6 +781,8 @@ pub fn apply(value: Int) { invoke(value) }
                     },
                 )
                 .await
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(
                 scope.call(&apply, (42.into(),)).await.unwrap(),
@@ -788,6 +790,8 @@ pub fn apply(value: Int) { invoke(value) }
             );
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap();
     assert_eq!(conversions.load(Ordering::SeqCst), 2);
     assert!(foreign_echo.is_empty());
@@ -800,6 +804,8 @@ pub fn apply(value: Int) { invoke(value) }
                 scope.call(&apply, (99.into(),)).await
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(closed, Err(CallError::Cancelled));
     assert_eq!(conversions.load(Ordering::SeqCst), 2);

@@ -137,7 +137,9 @@ pub(crate) fn run_observed_source(
         observed: Default::default(),
     };
     let mut echo = Vec::new();
-    let result = host.block_on(execution.run_main(&host, &mut state, &mut echo));
+    let result = host
+        .block_on(execution.run_main(&host, &mut state, &mut echo))
+        .map(|outcome| outcome.try_into_value().unwrap());
     assert!(echo.is_empty());
     let exits = state.observed.lock().unwrap().exits.clone();
     (result, exits)

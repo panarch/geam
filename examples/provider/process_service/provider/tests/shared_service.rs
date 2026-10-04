@@ -152,7 +152,7 @@ fn original_gleam_process_and_macro_provider_share_identity_and_mailbox() {
         let result = host.poll(driver.as_mut());
         drop(driver);
         assert_eq!(
-            result.map(Result::unwrap),
+            result.map(|result| result.unwrap().try_into_value().unwrap()),
             std::task::Poll::Ready(Value::Nil),
             "{:?}",
             state.stdlib.io_outputs()
@@ -190,7 +190,8 @@ fn rejects_a_native_reply_that_violates_the_source_specialization() {
     let mut echo = Vec::new();
     let mut run = Box::pin(execution.run_main(&host, &mut state, &mut echo));
     assert_eq!(
-        host.poll(run.as_mut()).map(Result::unwrap),
+        host.poll(run.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
         std::task::Poll::Ready(Value::Nil)
     );
 }

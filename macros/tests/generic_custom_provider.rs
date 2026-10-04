@@ -538,6 +538,8 @@ fn run_module(entry: &str, body: &str) -> Value {
     runtime
         .block_on(execution.run_main(&host, &mut (), &mut Vec::new()))
         .unwrap()
+        .try_into_value()
+        .unwrap()
 }
 
 const DECLARATIONS: &str = r#"

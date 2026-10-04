@@ -188,7 +188,9 @@ First valid item: none
                     );
                 }),
             )
-            .expect("controlled execution");
+            .expect("controlled execution")
+            .try_into_value()
+            .expect("inventory review returns normally");
         assert!(echo.is_empty());
         assert_eq!(state.stdlib().io_outputs().len(), 3);
         let outputs = state.stdlib_mut().take_io_outputs();

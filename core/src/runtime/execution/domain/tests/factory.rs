@@ -192,7 +192,12 @@ fn owned_factory_requests_preserve_capture_errors_and_service_shutdown() {
                     .is_pending()
             );
         } else {
-            let result = host.block_on(domain.drive(call)).unwrap().unwrap();
+            let result = host
+                .block_on(domain.drive(call))
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .unwrap();
             assert_eq!(
                 result.map(BigInt::from).map_err(|error| error.to_string()),
                 if input < 0 {

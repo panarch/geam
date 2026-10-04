@@ -289,5 +289,7 @@ pub fn keep_status_function(function: fn(Status) -> Int) -> fn(Status) -> Int
             );
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap();
 }

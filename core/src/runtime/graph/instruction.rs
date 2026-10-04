@@ -711,7 +711,10 @@ pub fn main() { calculate(19) }
         let host = TestHost::default();
         let mut echo = Vec::new();
         let result = host.block_on(execution.run_main(&host, &mut (), &mut echo));
-        assert_eq!(result.unwrap(), crate::Value::Int(42.into()));
+        assert_eq!(
+            result.unwrap().try_into_value().unwrap(),
+            crate::Value::Int(42.into())
+        );
         assert_eq!(echo.len(), 1);
         assert_eq!(
             echo[0].value(),
@@ -782,7 +785,11 @@ pub fn main() {{
             let host = TestHost::default();
             let mut echo = Vec::new();
             let result = host.block_on(execution.run_main(&host, &mut (), &mut echo));
-            assert_eq!(result.unwrap(), crate::Value::Int(42.into()), "{source}");
+            assert_eq!(
+                result.unwrap().try_into_value().unwrap(),
+                crate::Value::Int(42.into()),
+                "{source}"
+            );
             assert!(echo.is_empty(), "{source}");
         }
     }
@@ -849,7 +856,10 @@ pub fn main() {
         let host = TestHost::default();
         let mut echo = Vec::new();
         let result = host.block_on(execution.run_main(&host, &mut (), &mut echo));
-        assert_eq!(result.unwrap(), crate::Value::Int(42.into()));
+        assert_eq!(
+            result.unwrap().try_into_value().unwrap(),
+            crate::Value::Int(42.into())
+        );
         assert!(echo.is_empty());
     }
 

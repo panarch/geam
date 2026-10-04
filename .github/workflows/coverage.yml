@@ -20,6 +20,7 @@ on:
           - dict_service
           - bytes_tree_service
           - selective_receive_service
+          - application_exit
           - all
       diagnostics:
         description: Upload detailed coverage reports
@@ -474,7 +475,8 @@ jobs:
             "charlist_service",
             "dict_service",
             "bytes_tree_service",
-            "selective_receive_service"
+            "selective_receive_service",
+            "application_exit"
           ]'), inputs.target) }}
     runs-on: ubuntu-latest
     strategy:
@@ -490,7 +492,8 @@ jobs:
               "charlist_service",
               "dict_service",
               "bytes_tree_service",
-              "selective_receive_service"
+              "selective_receive_service",
+              "application_exit"
             ]'
           ) }}
     env:
@@ -501,7 +504,8 @@ jobs:
           "charlist_service": "tests/fixtures/charlist_service/provider",
           "dict_service": "tests/fixtures/dict_service/provider",
           "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
-          "selective_receive_service": "tests/fixtures/selective_receive_service/provider"
+          "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
+          "application_exit": "tests/fixtures/application_exit/provider"
         }')[matrix.consumer] }}
 
     steps:

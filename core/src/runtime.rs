@@ -75,6 +75,8 @@ pub(crate) use crate::host::{ExternalPayloadLease, ExternalPayloadView};
 pub(in crate::runtime) use profile::{ExecutableRuntimePlan, RuntimeGraph};
 pub(crate) use retained::{CallbackInputs, RetainedCallable, RetainedInputs, RetainedValueRef};
 
+use crate::execution::{ExecutionHost, ExecutionOutcome, RunError};
+use crate::host::HostProfile;
 use crate::plan::execution::ExecutionPlan;
 use crate::plan::execution::function::{ProfiledCoreRuntimeFunctionId, ProfiledRuntimeFunctionId};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -91,12 +93,12 @@ pub fn run_main(plan: &ExecutionPlan, echo: &mut dyn EchoSink) -> Result<Value, 
     finish_program(plan, &mut state, value)
 }
 
-pub(crate) async fn run_hosted_main<Profile: crate::HostProfile>(
+pub(crate) async fn run_hosted_main<Profile: HostProfile>(
     plan: &mut crate::plan::execution::HostedExecution<Profile>,
-    host: &dyn crate::execution::ExecutionHost,
+    host: &dyn ExecutionHost,
     state: &mut Profile::RunState,
     echo: &mut (dyn EchoSink + Send),
-) -> Result<Value, crate::execution::RunError> {
+) -> Result<ExecutionOutcome<Value>, RunError> {
     let (plan, stores, captures) = plan.parts_mut();
     let domain = execution::Domain::new(
         std::sync::Arc::clone(plan),
@@ -108,7 +110,7 @@ pub(crate) async fn run_hosted_main<Profile: crate::HostProfile>(
         execution::Domain::<Profile>::DEFAULT_BUDGET,
     );
     let context = domain.context();
-    domain.drive(context.run_main()).await?
+    domain.drive(context.run_main()).await?.transpose()
 }
 
 fn run_core_program(

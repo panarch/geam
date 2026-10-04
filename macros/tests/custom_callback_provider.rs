@@ -446,6 +446,8 @@ fn run_modules(entry: &str, source: &str, relay: Option<&str>) -> Value {
     runtime
         .block_on(execution.run_main(&host, &mut (), &mut Vec::new()))
         .unwrap()
+        .try_into_value()
+        .unwrap()
 }
 
 const DECLARATIONS: &str = r#"

@@ -759,7 +759,7 @@ pub fn failing() {
                         );
                     }
                     release.send(()).unwrap();
-                    host.block_on(driver).unwrap();
+                    host.block_on(driver).unwrap().try_into_value().unwrap();
                     assert_eq!(echo.len(), usize::from(invocable));
                     let closed = host.block_on(record.native.invoke(&context, record.input));
                     assert_eq!(
@@ -859,7 +859,7 @@ pub fn failing() {
                     );
                 }
                 release.send(()).unwrap();
-                host.block_on(driver).unwrap();
+                host.block_on(driver).unwrap().try_into_value().unwrap();
                 assert_eq!(echo.len(), 1);
                 assert_eq!(echo[0].value(), &crate::Value::Int(input.into()));
             }
@@ -954,7 +954,7 @@ pub fn failing() {
             assert_eq!(result.map(|result| result.unwrap()), Poll::Ready(42.into()));
             drop(fallible);
             release.send(()).unwrap();
-            host.block_on(driver).unwrap();
+            host.block_on(driver).unwrap().try_into_value().unwrap();
             records.push(recorded);
             assert_eq!(echo.len(), 2);
             assert_eq!(echo[0].value(), &crate::Value::Int(41.into()));
@@ -1039,7 +1039,7 @@ pub fn failing() {
                 assert_eq!(error.to_string(), "panic: callback failure");
             }),
         )
-        .unwrap();
+        .unwrap().try_into_value().unwrap();
         assert_eq!(state.units.len(), 4);
         assert_ne!(state.units[0], state.units[1]);
         assert!(state.units[1..].iter().all(|unit| *unit == state.units[1]));
@@ -1093,6 +1093,8 @@ pub fn failing() {
                     &mut Vec::new(),
                     async |scope| scope.call(&output, ()).await,
                 ))
+                .unwrap()
+                .try_into_value()
                 .unwrap()
                 .map(|value| value.to_string())
                 .map_err(|error| error.to_string());

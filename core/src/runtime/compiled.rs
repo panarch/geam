@@ -3,6 +3,7 @@ pub(crate) mod custom;
 pub(crate) mod custom_loop;
 pub(crate) mod int_list;
 pub(crate) mod numeric;
+pub(crate) mod string;
 
 use crate::plan::execution::graph::BlockGraphExitId;
 
@@ -27,6 +28,7 @@ pub(crate) mod tests {
     };
     use super::int_list::{IntListOps, IntListValues};
     use super::numeric::NumericValues;
+    use super::string::StringValues;
     use crate::runtime::state::list::RuntimeListStorage;
 
     // Admission and static-link fixtures describe metadata, never execution.
@@ -72,6 +74,14 @@ pub(crate) mod tests {
         panic!("metadata fixture must not execute a custom-loop kernel")
     }
 
+    pub(crate) fn metadata_string(
+        _: usize,
+        _: &mut StringValues,
+        _: &mut usize,
+    ) -> CompiledProgress {
+        panic!("metadata fixture must not execute a string kernel")
+    }
+
     #[test]
     #[should_panic(expected = "metadata fixture must not execute a numeric kernel")]
     fn numeric_metadata_fixture_rejects_execution() {
@@ -105,5 +115,11 @@ pub(crate) mod tests {
             &CustomListOps::new(&storage),
             &mut 1,
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "metadata fixture must not execute a string kernel")]
+    fn string_metadata_fixture_rejects_execution() {
+        metadata_string(0, &mut StringValues::default(), &mut 1);
     }
 }

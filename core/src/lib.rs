@@ -21,6 +21,7 @@ pub mod plan;
 pub mod planner;
 pub mod provider;
 pub mod runtime;
+pub use execution::{ExecutionOutcome, ExitStatus, InvalidExitStatus};
 
 #[doc(hidden)]
 pub mod __macro_support;

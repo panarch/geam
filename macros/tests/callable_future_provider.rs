@@ -483,6 +483,8 @@ pub fn rich_work() {
             assert_eq!(bodies.load(Ordering::SeqCst), 4);
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap();
     assert_eq!(
         state.native.arguments,

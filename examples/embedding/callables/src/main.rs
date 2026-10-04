@@ -6,7 +6,7 @@ mod geam_bindings;
 mod pricing;
 
 use geam::embedding::{BigInt, HostedModuleBuilder};
-use geam::execution::TokioHost;
+use geam::execution::{ExecutionOutcome, TokioHost};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread().build()?;
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (mode, mut module, functions, factory) in executions {
         let mut state = pricing::Pricing::default();
         let mut echo = Vec::new();
-        let (first, second, third) = executor.block_on(module.with_execution(
+        let outcome = executor.block_on(module.with_execution(
             &host,
             &mut state,
             &mut echo,
@@ -46,7 +46,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let third = scope.invoke(&wrapped, (BigInt::from(9),)).await?;
                 Ok::<_, geam::embedding::CallError>((first, second, third))
             },
-        ))??;
+        ))?;
+        let (first, second, third) = match outcome {
+            ExecutionOutcome::Returned(result) => result?,
+            ExecutionOutcome::Exited(status) => {
+                println!("{mode}: Gleam exited with status {status}");
+                continue;
+            }
+        };
         assert_eq!(state.calls.get(), 3);
         assert!(echo.is_empty());
         println!("{mode}: {first}, {second}, {third}");

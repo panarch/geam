@@ -176,6 +176,8 @@ pub fn main() { function.accept(fn(value: Int) { value + 1 }) }
                     scope.call(&function, ()).await
                 })
             )
+            .unwrap()
+            .try_into_value()
             .unwrap(),
             Ok(BigInt::from(42)),
         );

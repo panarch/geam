@@ -185,7 +185,9 @@ pub fn quantity() -> Int
                     &mut Vec::new(),
                     async |scope| scope.call(&quantity, ()).await
                 ))
-                .expect("controlled execution"),
+                .expect("controlled execution")
+                .try_into_value()
+                .unwrap(),
             Ok(BigInt::from(42)),
         );
     }
@@ -232,7 +234,9 @@ pub fn quantity(value: Int) -> Int {
                     assert_eq!(scope.call(&quantity, (41.into(),)).await, Ok(42.into()));
                 },
             ))
-            .expect("ordinary result stays immediate");
+            .expect("ordinary result stays immediate")
+            .try_into_value()
+            .unwrap();
         assert_eq!(echo.outputs, 1);
     }
 

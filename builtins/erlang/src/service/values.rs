@@ -258,9 +258,13 @@ pub fn main() {
         let mut echo = Vec::new();
         let first = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         let second = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         drop(execution);
         drop(state);

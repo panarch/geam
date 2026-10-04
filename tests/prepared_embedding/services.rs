@@ -223,7 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut echo = Vec::new();
             executor.block_on(module.with_execution(&host, &mut state, &mut echo, async |scope| {
                 scope.call(&functions.main, ()).await
-            }))??;
+            }))?.try_into_value().unwrap()?;
             assert!(echo.is_empty());
             println!("shared services: 40, 41, 42");
         }

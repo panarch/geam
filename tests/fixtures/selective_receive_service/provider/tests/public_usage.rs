@@ -43,6 +43,8 @@ fn original_references_are_selected_without_requeuing_other_messages() {
     for _ in 0..2 {
         let value = host
             .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(value, Value::Nil);
     }
@@ -72,6 +74,8 @@ fn original_references_are_selected_without_requeuing_other_messages() {
             scope.call(&inspect, ()).await
         }),
     )
+    .unwrap()
+    .try_into_value()
     .unwrap()
     .unwrap();
     drop(module);

@@ -1,7 +1,7 @@
 use super::{ExecutionContext, Request, Units};
 use crate::execution::{
-    DriverError, ExecutionClock, ExecutionHost, HostExecutionState, HostTask, TaskExit,
-    UnitFinished, UnitOwner, Worker,
+    DriverError, ExecutionClock, ExecutionHost, ExecutionOutcome, HostExecutionState, HostTask,
+    TaskExit, UnitFinished, UnitOwner, Worker,
 };
 use crate::host::HostProfile;
 use crate::plan::execution::HostedProgram;
@@ -93,7 +93,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
     pub(crate) async fn drive<Output>(
         mut self,
         body: impl Future<Output = Output>,
-    ) -> Result<Output, DriverError> {
+    ) -> Result<ExecutionOutcome<Output>, DriverError> {
         let mut output = {
             let mut body = pin!(body);
             poll_fn(|cx| self.poll_body(body.as_mut(), cx)).await
@@ -119,7 +119,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         &mut self,
         mut body: Pin<&mut impl Future<Output = Output>>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<Output, DriverError>> {
+    ) -> Poll<Result<ExecutionOutcome<Output>, DriverError>> {
         self.finish_units(cx);
         let output = body.as_mut().poll(cx);
         if output.is_pending() {
@@ -128,7 +128,10 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         if let Some(error) = self.reap(cx) {
             return Poll::Ready(Err(error));
         }
-        output.map(Ok)
+        match self.work.exit_status() {
+            Some(status) => Poll::Ready(Ok(ExecutionOutcome::Exited(status))),
+            None => output.map(|value| Ok(ExecutionOutcome::Returned(value))),
+        }
     }
 
     fn close(&mut self) {
@@ -173,6 +176,9 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             if let Some(request) = request {
                 self.dispatch(request);
             }
+            if self.closed {
+                return;
+            }
             if empty {
                 return;
             }
@@ -201,6 +207,9 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                     );
                     request.service(&self.plan, &mut runtime)
                 };
+                if self.work.exit_status().is_some() {
+                    self.close();
+                }
                 if let Some(delivery) = delivery {
                     delivery.deliver();
                 }
@@ -646,6 +655,109 @@ mod tests {
     }
 
     #[test]
+    fn intentional_exit_closes_admission_and_waits_for_worker_acknowledgement() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        let host = ManualHost::default();
+        host.acknowledgement_delay.store(2, Ordering::SeqCst);
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(&plan),
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        domain
+            .tasks
+            .push(host.spawn(Box::pin(std::future::pending())));
+        let context = domain.context().execution;
+        let exit_context = context.clone();
+        let request = context.with_runtime(move |_, _| {
+            exit_context.services().request_exit(ExitStatus::new(7));
+            exit_context.services().request_exit(ExitStatus::new(0));
+        });
+        let mutate = |state: &mut Cell<usize>| state.set(42);
+        let mut denied = Box::pin(context.with_state(mutate));
+        let mut driving = Box::pin(domain.drive(request));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(driving.as_mut().poll(&mut cx).is_pending());
+        assert_eq!(host.released.load(Ordering::SeqCst), 0);
+        assert_eq!(denied.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
+        host.turn();
+        assert_eq!(host.released.load(Ordering::SeqCst), 1);
+        assert!(driving.as_mut().poll(&mut cx).is_pending());
+        assert_eq!(
+            host.finish(driving).unwrap(),
+            ExecutionOutcome::Exited(ExitStatus::new(7))
+        );
+        assert!(host.workers.lock().is_empty());
+        assert_eq!(state.get(), 7);
+        assert_eq!(host.finish(context.with_state(mutate)), Err(Cancelled));
+        let domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        let normal = domain.context().execution.with_state(mutate);
+        assert_eq!(
+            host.finish(domain.drive(normal)).unwrap(),
+            ExecutionOutcome::Returned(Ok(()))
+        );
+        assert_eq!(state.get(), 42);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn a_real_executor_failure_during_exit_cleanup_overrides_the_status() {
+        use crate::execution::ExitStatus;
+
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        let host = ManualHost::default();
+        host.acknowledgement_delay.store(2, Ordering::SeqCst);
+        *host.next_exit.lock() = Some(TaskExit::Failed(
+            std::io::Error::other("exit cleanup failed").into(),
+        ));
+        let mut state = Cell::new(7);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        domain
+            .tasks
+            .push(host.spawn(Box::pin(std::future::pending())));
+        let context = domain.context().execution;
+        let exit_context = context.clone();
+        let request = context
+            .with_runtime(move |_, _| exit_context.services().request_exit(ExitStatus::new(0)));
+        let result = host.finish(domain.drive(request));
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "the host executor failed: exit cleanup failed"
+        );
+        assert_eq!(host.released.load(Ordering::SeqCst), 1);
+        assert!(host.workers.lock().is_empty());
+        assert_eq!(state.get(), 7);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
     fn late_executor_failure_survives_entry_cancellation_and_complete_shutdown() {
         let (plan, functions) = program("pub fn main() { echo 42 42 }", LibraryValueType::Int);
         let host = ManualHost::default();
@@ -820,6 +932,8 @@ mod tests {
                     RetainedValues::empty(),
                 )))
                 .unwrap()
+                .try_into_value()
+                .unwrap()
                 .unwrap();
             assert_eq!(
                 result
@@ -989,6 +1103,8 @@ pub fn main() { echo 41 increment(sum(2_000, 0) - 1959) }
                 RetainedValues::empty(),
             )))
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap();
         assert_eq!(output.map(Into::into), Ok(BigInt::from(42)));
         assert!(
@@ -1142,6 +1258,8 @@ pub fn main() {{
                         RetainedValues::empty(),
                     )))
                     .unwrap()
+                    .try_into_value()
+                    .unwrap()
                     .unwrap();
                 let (expected, expected_echo) = if fail_inside {
                     (
@@ -1258,7 +1376,10 @@ pub fn main() {{
         }
         assert_eq!(wakes.0.load(Ordering::SeqCst), registered);
         assert_eq!(domain.tasks.len(), 3);
-        host.finish(domain.drive(std::future::ready(()))).unwrap();
+        host.finish(domain.drive(std::future::ready(())))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
         assert_eq!(host.released.load(Ordering::SeqCst), 3);
     }
 
@@ -1284,12 +1405,18 @@ pub fn main() {{
             let mut cx = Context::from_waker(Waker::noop());
             assert!(queued.as_mut().poll(&mut cx).is_pending());
             if complete_before_service {
-                host.block_on(domain.drive(std::future::ready(()))).unwrap();
+                host.block_on(domain.drive(std::future::ready(())))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap();
                 assert_eq!(queued.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
                 assert_eq!(state.get(), 7);
             } else {
                 assert_eq!(
-                    host.block_on(domain.drive(queued.as_mut())).unwrap(),
+                    host.block_on(domain.drive(queued.as_mut()))
+                        .unwrap()
+                        .try_into_value()
+                        .unwrap(),
                     Ok(())
                 );
                 assert_eq!(state.get(), 99);
@@ -1353,6 +1480,8 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
                     .unwrap();
                 result
             }))
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result.value(), &EvaluatedValue::Int(42.into()));
         assert_eq!(state.get(), 1);
@@ -1401,11 +1530,15 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
         let tuple = host
             .finish(poll_fn(|cx| domain.poll_body(entry.as_mut(), cx)))
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap()
             .unwrap();
         let callable = int_callback(&tuple.as_slice()[0]);
         let mut successful = std::pin::pin!(context.execution.with_state(set_state));
         host.finish(poll_fn(|cx| domain.poll_body(successful.as_mut(), cx)))
+            .unwrap()
+            .try_into_value()
             .unwrap()
             .unwrap();
         assert_eq!(domain.state.get(), 99);
@@ -1428,7 +1561,10 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
         );
         assert_eq!(host.started.load(Ordering::SeqCst), 1);
         drop(root);
-        host.finish(domain.drive(std::future::ready(()))).unwrap();
+        host.finish(domain.drive(std::future::ready(())))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
         assert_eq!(state.get(), 7);
         assert!(echo.is_empty());
     }
@@ -1472,6 +1608,8 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
         let tuple = host
             .finish(poll_fn(|cx| domain.poll_body(entry.as_mut(), cx)))
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap()
             .unwrap();
         let callable = int_callback(&tuple.as_slice()[0]);
@@ -1483,6 +1621,8 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
         let value = host
             .finish(poll_fn(|cx| domain.poll_body(callback.as_mut(), cx)))
             .unwrap()
+            .try_into_value()
+            .unwrap()
             .unwrap()
             .unwrap();
         assert_eq!(value.value(), &EvaluatedValue::Int(42.into()));
@@ -1493,7 +1633,10 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             .unwrap()
             .unwrap();
         assert!(!caller.is_active());
-        host.finish(domain.drive(std::future::ready(()))).unwrap();
+        host.finish(domain.drive(std::future::ready(())))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
         assert_eq!(host.started.load(Ordering::SeqCst), 3);
         assert_eq!(host.released.load(Ordering::SeqCst), 3);
         assert_eq!(
@@ -1548,6 +1691,8 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
                     RetainedValues::empty(),
                 )))
                 .unwrap()
+                .try_into_value()
+                .unwrap()
                 .unwrap()
                 .unwrap();
             assert!(
@@ -1567,8 +1712,12 @@ fn poll_domain<Profile: HostProfile, Output>(
     mut future: Pin<&mut impl Future<Output = Output>>,
 ) -> Poll<Output> {
     let mut driving = pin!(poll_fn(|cx| domain.poll_body(future.as_mut(), cx)));
-    host.poll(driving.as_mut())
-        .map(|output| output.expect("controlled host turn"))
+    host.poll(driving.as_mut()).map(|output| {
+        output
+            .expect("controlled host turn")
+            .try_into_value()
+            .unwrap()
+    })
 }
 
 #[cfg(test)]
@@ -1580,6 +1729,8 @@ fn complete_domain<Profile: HostProfile, Output>(
     let mut future = pin!(future);
     host.block_on(poll_fn(|cx| domain.poll_body(future.as_mut(), cx)))
         .expect("controlled host turn")
+        .try_into_value()
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -1920,7 +2071,13 @@ mod source_work {
                 .expect("first worker");
             ready.send(()).expect("active waiter");
             let completion = threads
-                .spawn(move || executor.block_on(observation).expect("domain cleanup"))
+                .spawn(move || {
+                    executor
+                        .block_on(observation)
+                        .expect("domain cleanup")
+                        .try_into_value()
+                        .unwrap()
+                })
                 .join()
                 .expect("second worker");
             threads
@@ -3016,7 +3173,9 @@ pub fn make() {
                         );
                     },
                 ))
-                .expect("host-controlled completion");
+                .expect("host-controlled completion")
+                .try_into_value()
+                .unwrap();
             assert_eq!(polls.load(Ordering::SeqCst), 2);
             assert_eq!(echo.output.len(), usize::from(expected.is_none()));
         }
@@ -4760,7 +4919,9 @@ pub fn make() { #(fn(value: Int) {
         execution.dispatch(request_to_service);
         executor
             .block_on(execution.drive(std::future::ready(())))
-            .expect("cancelled callback cleanup");
+            .expect("cancelled callback cleanup")
+            .try_into_value()
+            .unwrap();
         assert!(echo.is_empty());
     }
 

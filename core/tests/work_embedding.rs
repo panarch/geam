@@ -181,7 +181,9 @@ fn independent_scopes_can_drive_their_own_work_at_the_same_time() {
                     },
                 )
                 .await
-                .expect("right execution");
+                .expect("right execution")
+                .try_into_value()
+                .unwrap();
         },
     ));
     assert!(execution_host.poll(task.as_mut()).is_ready());
@@ -288,6 +290,7 @@ fn public_calls_preserve_direct_results_and_recursively_scoped_shared_work() {
         panic!("source-only ready work finishes while its host polls");
     };
     drop(run);
+    let completed = completed.try_into_value().unwrap();
     assert_eq!(completed.read(Clone::clone), BigInt::from(42));
 }
 
@@ -379,7 +382,9 @@ fn public_future_inputs_retain_identity_and_do_not_construct_their_completion_ty
             }),
         );
     assert!(matches!(
-        execution_host.poll(run.as_mut()),
+        execution_host
+            .poll(run.as_mut())
+            .map(|result| result.map(|outcome| outcome.try_into_value().unwrap())),
         Poll::Ready(Ok(()))
     ));
 }
@@ -606,6 +611,7 @@ pub fn work(succeeds: Bool) -> future.Work(Int) {
             panic!("the explicit dependency must resume");
         };
         drop(task);
+        let result = result.try_into_value().unwrap();
         if native_succeeds && source_succeeds {
             assert_eq!(
                 result.expect("completion").read(Clone::clone),
@@ -743,6 +749,7 @@ pub fn work() {
                 .join()
                 .expect("second worker")
         });
+        let completion = completion.try_into_value().unwrap();
         if succeeds {
             assert_eq!(
                 completion.expect("success").read(Clone::clone),

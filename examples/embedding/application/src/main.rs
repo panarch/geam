@@ -5,6 +5,7 @@ mod inventory;
 
 use geam::HostProviderConfiguration;
 use geam::embedding::{BigInt, HostedModuleBuilder, StringValue};
+use geam::execution::ExecutionOutcome;
 use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
 use std::error::Error;
 use std::io::{self, Write};
@@ -30,12 +31,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         (" c-7 ".into(), 4.into()),
         ("D-1".into(), (-1).into()),
     ];
-    let review = executor.block_on(module.with_execution(
+    let outcome = executor.block_on(module.with_execution(
         &host,
         &mut state,
         &mut echo,
         async |scope| inventory::review(&scope, &functions, rows).await,
-    ))??;
+    ))?;
+    let review = match outcome {
+        ExecutionOutcome::Returned(result) => Some(result?),
+        ExecutionOutcome::Exited(status) => {
+            eprintln!("Gleam exited with status {status}");
+            None
+        }
+    };
 
     let mut stdout = io::stdout().lock();
     let mut stderr = io::stderr().lock();
@@ -49,6 +57,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         writeln!(stderr, "{output}")?;
     }
 
-    review.write_report(&mut stdout)?;
+    if let Some(review) = review {
+        review.write_report(&mut stdout)?;
+    }
     Ok(())
 }

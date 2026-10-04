@@ -750,7 +750,9 @@ pub fn run() { let _ = accept_never 42 }
                     );
                 },
             ))
-            .expect("hosted call completes");
+            .expect("hosted call completes")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]
@@ -784,6 +786,8 @@ pub fn run() {{ {body} }}
                     &mut drop,
                     async |scope| scope.call(&run, ()).await,
                 ))
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             if invoked {
                 assert_eq!(
@@ -951,7 +955,9 @@ pub fn run() { ready(1, "two") }
                             assert!(scope.call(&run, ()).await.unwrap());
                         },
                     ))
-                    .expect("direct entry");
+                    .expect("direct entry")
+                    .try_into_value()
+                    .unwrap();
             }
         }
     }
@@ -1081,7 +1087,9 @@ pub fn stopped() { stop(concrete) }
                     );
                 },
             ))
-            .expect("direct executions");
+            .expect("direct executions")
+            .try_into_value()
+            .unwrap();
     }
 
     #[test]
@@ -1122,6 +1130,8 @@ pub fn run() { let _ = stop() 42 }
                     );
                 },
             ))
-            .expect("direct failure");
+            .expect("direct failure")
+            .try_into_value()
+            .unwrap();
     }
 }

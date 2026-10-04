@@ -234,7 +234,11 @@ fn observed_callback(value: future.Future(fn(List(Token)) -> Int)) -> future.Fut
         panic!("released work completes")
     };
     assert_eq!(
-        result.expect("execution completed").read(Clone::clone),
+        result
+            .expect("execution completed")
+            .try_into_value()
+            .unwrap()
+            .read(Clone::clone),
         BigInt::from(22)
     );
     drop(task);
@@ -324,6 +328,8 @@ pub fn work() {
                     .read(|((first, second), last)| ((first.clone(), second.clone()), last.clone()))
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     assert_eq!(result, ((2.into(), 1.into()), 11.into()));
     assert_eq!(

@@ -525,6 +525,8 @@ fn invoke(callback: fn() -> Int) -> Int
                 assert_eq!(value, Ok((0.into(), 0.into(), 0.into())));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         let records = trace.records.lock();
         let ids = records
@@ -585,6 +587,8 @@ fn invoke(callback: fn() -> Int) -> Int
                 assert_eq!(scope.call(&tag, ()).await, Ok(3.into()));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         let records = trace.records.lock();
         assert_eq!(
@@ -756,6 +760,8 @@ pub fn tag() { current() }
                     }
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
             let records = trace.records.lock();
             let ids = records
@@ -823,6 +829,8 @@ pub fn tag() { current() }
                         scope.call(&run, ()).await
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert!(echo.is_empty());
             let records = trace.records.lock();

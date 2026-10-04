@@ -3,6 +3,7 @@ mod custom;
 mod custom_loop;
 mod int_list;
 pub(super) mod shape;
+mod string;
 
 use self::shape::{
     CompiledBoolean, CompiledEdge, CompiledInstruction, CompiledTerminator, CompiledTest,
@@ -158,6 +159,9 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                     return None;
                 };
                 let shape = CompiledShape::inspect(function.body())?;
+                if shape.kind == KernelKind::String {
+                    return None;
+                }
                 Some(TargetCodegen {
                     function: *id,
                     body: FunctionCodegen {
@@ -577,21 +581,7 @@ fn {name}(
     }
 
     fn resumes_next(&self) -> bool {
-        self.shape
-            .checkpoints
-            .iter()
-            .enumerate()
-            .any(|(index, point)| {
-                if index == self.entry() {
-                    return false;
-                }
-                let block = self.shape.block(point.block);
-                point.instruction < block.instructions.len()
-                    || !matches!(
-                        block.terminator,
-                        CompiledTerminator::Exit(_) | CompiledTerminator::Interpreted
-                    )
-            })
+        self.shape.resumes_forward()
     }
 
     fn write_target(&self, source: &mut Code, function: &str) {
@@ -599,6 +589,7 @@ fn {name}(
             KernelKind::Numeric => "Numeric",
             KernelKind::BitArray => "BitArray",
             KernelKind::IntList => "IntList",
+            KernelKind::String => "String",
             KernelKind::CustomLoop => "CustomLoop",
             KernelKind::Callback => return,
         };
@@ -665,6 +656,10 @@ fn {name}(
                 .chain(std::iter::repeat_n(
                     "data::compiled::custom_loop::BoolCallback".to_owned(),
                     point.bool_functions,
+                ))
+                .chain(std::iter::repeat_n(
+                    "data::compiled::string::StringRange".to_owned(),
+                    point.strings,
                 )),
         );
         let values = self.shape.kind.values();
@@ -708,6 +703,9 @@ fn {name}(
                 .chain(
                     (0..point.bool_functions)
                         .map(|index| format!("{prefix}b{}_g{index}", point.block.0)),
+                )
+                .chain(
+                    (0..point.strings).map(|index| format!("{prefix}b{}_s{index}", point.block.0)),
                 ),
         )
     }
@@ -754,7 +752,8 @@ fn {name}(
                 .chain((0..point.customs).map(|index| format!("_custom{index}")))
                 .chain((0..point.custom_lists).map(|index| format!("_custom_list{index}")))
                 .chain((0..point.int_functions).map(|index| format!("_int_function{index}")))
-                .chain((0..point.bool_functions).map(|index| format!("_bool_function{index}"))),
+                .chain((0..point.bool_functions).map(|index| format!("_bool_function{index}")))
+                .chain((0..point.strings).map(|index| format!("values.strings[{index}]"))),
         )
     }
 
@@ -815,7 +814,11 @@ fn {name}(
                     .iter()
                     .filter(|(family, _)| *family == StorageFamily::BitArray)
                     .map(|(_, expression)| expression.clone());
-                return tuple(ints.chain(bools).chain(bits));
+                let strings = inputs
+                    .iter()
+                    .filter(|(family, _)| *family == StorageFamily::String)
+                    .map(|(_, expression)| expression.clone());
+                return tuple(ints.chain(bools).chain(bits).chain(strings));
             }
         };
         let mut owners = inputs
@@ -928,6 +931,18 @@ fn {name}(
                 ));
             }
         }
+        if self.shape.kind == KernelKind::String {
+            let strings = (0..point.strings)
+                .map(|index| format!("b{}_s{index}", point.block.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            source.push_str(&format!(
+                r#"
+values.strings.clear();
+values.strings.extend_from_slice(&[{strings}]);
+"#
+            ));
+        }
     }
 
     fn path(
@@ -967,7 +982,9 @@ fn {name}(
         let join = self.shape.joins[block.0];
         if let Some(join) = join {
             let join_point = self.shape.checkpoints[self.shape.start(join)];
-            source.push_str(&format!("let {} = ", self.locals(join_point, false)));
+            if !self.shape.graph.block(join).params().is_empty() {
+                source.push_str(&format!("let {} = ", self.locals(join_point, false)));
+            }
         }
         self.branch(
             source,
@@ -980,9 +997,12 @@ fn {name}(
         if let Some(join) = join {
             source.finish_statement();
             if Some(join) == stop {
-                source
-                    .push_str(&self.locals(self.shape.checkpoints[self.shape.start(join)], false));
-                source.push_str("\n");
+                if !self.shape.graph.block(join).params().is_empty() {
+                    source.push_str(
+                        &self.locals(self.shape.checkpoints[self.shape.start(join)], false),
+                    );
+                    source.push_str("\n");
+                }
             } else {
                 self.path(source, join, stop, output);
             }
@@ -1003,8 +1023,10 @@ fn {name}(
                 self.locals(self.shape.checkpoints[self.entry()], false)
             ));
         } else if Some(target) == stop {
-            source.push_str(&inputs);
-            source.push_str("\n");
+            if !self.shape.graph.block(target).params().is_empty() {
+                source.push_str(&inputs);
+                source.push_str("\n");
+            }
         } else {
             let point = self.shape.checkpoints[self.shape.start(target)];
             source.push_str(&format!("let {} = {inputs};\n", self.locals(point, false)));
@@ -1078,6 +1100,26 @@ fn {name}(
             CompiledTerminator::Exit(exit) => {
                 self.complete(source, point, *exit, returning, output)
             }
+            CompiledTerminator::StringSwitch {
+                subject,
+                clauses,
+                fallback,
+            } => {
+                let subject = format!("values.text(b{}_s{})", point.block.0, subject.0);
+                for (literal, edge) in clauses.iter() {
+                    let condition = string::literal_condition(&subject, literal.as_str());
+                    source.open(&format!("if {condition} {{\n"));
+                    let inputs =
+                        self.edge_inputs(source, point.block, CompiledEdge::Ordinary(edge));
+                    emit_edge(source, edge.target(), inputs);
+                    source.close("} else ");
+                }
+                source.open("{\n");
+                let inputs =
+                    self.edge_inputs(source, point.block, CompiledEdge::Ordinary(fallback));
+                emit_edge(source, fallback.target(), inputs);
+                source.close("}\n");
+            }
             CompiledTerminator::Match(view) => {
                 self.match_branch(
                     source,
@@ -1103,6 +1145,12 @@ fn {name}(
                         emit_edge(source, edge.target(), inputs);
                     },
                 );
+            }
+            CompiledTerminator::StringMatch(view) => {
+                self.string_match(source, point, view, |source, edge| {
+                    let inputs = self.edge_inputs(source, point.block, edge);
+                    emit_edge(source, edge.target(), inputs);
+                });
             }
             CompiledTerminator::BitArray(matcher) => {
                 self.bit_match(source, point, matcher, output, &mut emit_edge)
@@ -1285,6 +1333,9 @@ fn {name}(
             }
             // The scalar field read is staged before charging its step.
             CompiledInstruction::CustomField(_) => {}
+            CompiledInstruction::String(output, instruction) => {
+                self.string_instruction(source, point, *output, instruction)
+            }
         }
     }
 
@@ -1304,6 +1355,7 @@ fn {name}(
                 NumericInteger::Value(_) | NumericInteger::Binary(NumericOperation::Remainder, ..),
             )
             | CompiledInstruction::Boolean(..)
+            | CompiledInstruction::String(..)
             | CompiledInstruction::IntList(_)
             | CompiledInstruction::CustomField(_)
             | CompiledInstruction::CustomLoop(_) => return,
@@ -1388,7 +1440,8 @@ fn checkpoint_inputs(point: CompiledCheckpoint) -> String {
         (0..point.ints)
             .map(|index| format!("values.ints[{index}]"))
             .chain((0..point.bools).map(|index| format!("values.bools[{index}]")))
-            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]"))),
+            .chain((0..point.bit_arrays).map(|index| format!("values.bit_arrays[{index}]")))
+            .chain((0..point.strings).map(|index| format!("values.strings[{index}]"))),
     )
 }
 
@@ -1405,6 +1458,7 @@ fn local_expression(block: BlockId, local: &ParamLocal) -> Option<(StorageFamily
     Some(match local {
         ParamLocal::Int(local) => (StorageFamily::Int, format!("b{}_i{}", block.0, local.0)),
         ParamLocal::Bool(local) => (StorageFamily::Bool, format!("b{}_v{}", block.0, local.0)),
+        ParamLocal::String(local) => (StorageFamily::String, format!("b{}_s{}", block.0, local.0)),
         ParamLocal::BitArray(local) => (
             StorageFamily::BitArray,
             format!("b{}_b{}", block.0, local.0),
@@ -1440,6 +1494,7 @@ impl KernelKind {
             Self::BitArray => "bit_array",
             Self::CustomLoop => "custom_loop",
             Self::Callback => "callback",
+            Self::String => "string",
         }
     }
     fn values(self) -> &'static str {
@@ -1449,24 +1504,25 @@ impl KernelKind {
             Self::BitArray => "data::compiled::bit_array::BitArrayValues",
             Self::Callback => "data::compiled::custom::CustomValues",
             Self::CustomLoop => "data::compiled::custom_loop::CustomLoopValues",
+            Self::String => "data::compiled::string::StringValues",
         }
     }
     fn operations_parameter(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray | Self::Callback => "",
+            Self::Numeric | Self::BitArray | Self::String | Self::Callback => "",
             Self::IntList => "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
             Self::CustomLoop => "_lists: &data::compiled::custom_loop::CustomListOps<'_>,\n    ",
         }
     }
     fn operations_argument(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray | Self::Callback => "",
+            Self::Numeric | Self::BitArray | Self::String | Self::Callback => "",
             Self::IntList | Self::CustomLoop => ", _lists",
         }
     }
     fn operations_type(self) -> &'static str {
         match self {
-            Self::Numeric | Self::BitArray | Self::Callback => "",
+            Self::Numeric | Self::BitArray | Self::String | Self::Callback => "",
             Self::IntList => "&data::compiled::int_list::IntListOps<'_>, ",
             Self::CustomLoop => "&data::compiled::custom_loop::CustomListOps<'_>, ",
         }
@@ -1506,7 +1562,7 @@ fn division(left: String, right: String, operator: &str) -> String {
     }
 }
 
-fn test_expression(block: BlockId, test: &CompiledTest) -> String {
+fn test_expression(block: BlockId, test: &CompiledTest<'_>) -> String {
     match test {
         CompiledTest::Not(value) => format!("!b{}_v{}", block.0, value.0),
         CompiledTest::Compare(comparison, left, right) => {
@@ -1530,6 +1586,19 @@ fn test_expression(block: BlockId, test: &CompiledTest) -> String {
             length,
             at_least,
         } => length_expression(&format!("b{}_l{}", block.0, list.0), *length, *at_least),
+        CompiledTest::String(test) => string::test_expression(block, test),
+        CompiledTest::BoolEqual {
+            left,
+            right,
+            negate,
+        } => format!(
+            "b{}_v{} {} b{}_v{}",
+            block.0,
+            left.0,
+            if *negate { "!=" } else { "==" },
+            block.0,
+            right.0
+        ),
     }
 }
 
@@ -1555,12 +1624,13 @@ mod tests {
     }
 
     use super::int_list::IntListTest;
+    use super::string::StringTest;
     use super::{
         Code, CompiledCodegen, CompiledShape, CompiledTerminator, CompiledTest, FunctionCodegen,
-        NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust, int_expression,
-        local_expression, test_expression,
+        KernelKind, NumericComparison, NumericInteger, NumericOperation, ProgressOutput, Rust,
+        int_expression, local_expression, test_expression,
     };
-    use crate::embedding::{BigInt, FunctionDeclaration, ModuleBuilder};
+    use crate::embedding::{BigInt, FunctionDeclaration, List, ModuleBuilder};
     use crate::plan::execution::function::{
         BoolFunctionId, ExecutionIntFunctionBody, FunctionExit, IntFunctionId,
     };
@@ -1569,9 +1639,9 @@ mod tests {
         BlockId, BoolBranch, BoolLocalId, BoolTest, CustomListLocalId, Edge, FamilyTransfer,
         FloatLocalId, IntListLocalId, IntLocalId, IntSwitch, IntegerLiteral, IntegerOperand, Jump,
         ListLocal, ParamLocal, ParamSlot, ProfiledBlock, ProfiledBlockGraph, StorageFamily,
-        Terminator, TestBranch, Transfer, TransferStep,
+        StringLocalId, Terminator, TestBranch, Transfer, TransferStep,
     };
-    use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
+    use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile, StringValue};
     use std::convert::Infallible;
 
     #[test]
@@ -1595,6 +1665,107 @@ mod tests {
                 expected,
             );
         }
+    }
+
+    #[test]
+    fn string_and_boolean_tests_have_exact_borrowed_expressions() {
+        for (test, expected) in [
+            (
+                CompiledTest::String(StringTest::Prefix {
+                    value: StringLocalId(2),
+                    prefix: "λ\"",
+                }),
+                "values.text(b3_s2).starts_with(\"λ\\\"\")",
+            ),
+            (
+                CompiledTest::String(StringTest::Equal {
+                    left: StringLocalId(2),
+                    right: StringLocalId(5),
+                    negate: false,
+                }),
+                "values.text(b3_s2) == values.text(b3_s5)",
+            ),
+            (
+                CompiledTest::BoolEqual {
+                    left: BoolLocalId(2),
+                    right: BoolLocalId(5),
+                    negate: false,
+                },
+                "b3_v2 == b3_v5",
+            ),
+            (
+                CompiledTest::BoolEqual {
+                    left: BoolLocalId(2),
+                    right: BoolLocalId(5),
+                    negate: true,
+                },
+                "b3_v2 != b3_v5",
+            ),
+        ] {
+            assert_eq!(test_expression(BlockId(3), &test), expected);
+        }
+    }
+
+    #[test]
+    fn kernel_signatures_keep_each_storage_family_and_list_operations_explicit() {
+        for (kind, name, values, parameter, argument, type_) in [
+            (
+                KernelKind::Numeric,
+                "numeric",
+                "data::compiled::numeric::NumericValues",
+                "",
+                "",
+                "",
+            ),
+            (
+                KernelKind::IntList,
+                "int_list",
+                "data::compiled::int_list::IntListValues",
+                "_lists: &data::compiled::int_list::IntListOps<'_>,\n    ",
+                ", _lists",
+                "&data::compiled::int_list::IntListOps<'_>, ",
+            ),
+            (
+                KernelKind::BitArray,
+                "bit_array",
+                "data::compiled::bit_array::BitArrayValues",
+                "",
+                "",
+                "",
+            ),
+            (
+                KernelKind::String,
+                "string",
+                "data::compiled::string::StringValues",
+                "",
+                "",
+                "",
+            ),
+        ] {
+            assert_eq!(kind.name(), name);
+            assert_eq!(kind.values(), values);
+            assert_eq!(kind.operations_parameter(), parameter);
+            assert_eq!(kind.operations_argument(), argument);
+            assert_eq!(kind.operations_type(), type_);
+        }
+    }
+
+    #[test]
+    fn string_diagnostics_do_not_select_a_string_kernel_for_list_returns() {
+        let source = r#"pub fn main() -> List(Int) { panic as "required" }"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), List<BigInt>>::new("main"))
+            .unwrap();
+        let prepared = bindings.prepare();
+        assert_eq!(
+            Rust::expression(&CompiledCodegen::new(
+                &prepared.program.functions,
+                &prepared.program.common.custom_types
+            )),
+            "data::compiled::CompiledFunctions::interpreted()"
+        );
     }
 
     #[test]
@@ -2720,6 +2891,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -2732,6 +2904,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -2744,6 +2917,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -2756,6 +2930,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -2768,6 +2943,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -2999,6 +3175,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3011,6 +3188,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3023,6 +3201,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3035,6 +3214,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3047,6 +3227,7 @@ let (b1_i0, b1_v0,) = {branch};
                             bools: 1,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3516,6 +3697,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 1,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3528,6 +3710,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3540,6 +3723,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3552,6 +3736,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 1,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3577,6 +3762,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 1,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3589,6 +3775,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3601,6 +3788,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3629,6 +3817,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3641,6 +3830,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3653,6 +3843,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 0,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3665,6 +3856,7 @@ pub fn main() {
                             bools: 0,
                             bit_arrays: 0,
                             int_lists: 1,
+                            strings: 0,
                             customs: 0,
                             custom_lists: 0,
                             int_functions: 0,
@@ -3678,6 +3870,66 @@ pub fn main() {
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
     }
 }"#
+        );
+    }
+
+    #[test]
+    fn string_comparison_targets_emit_exact_typed_checkpoint_metadata() {
+        let source = "pub fn main(text: String) { text == text }";
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let (bindings, _) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(StringValue,), bool>::new("main"))
+            .unwrap();
+        let prepared = bindings.prepare();
+        let shape = CompiledShape::inspect(
+            prepared.program.functions.value_returns.bool_functions[0].body(),
+        )
+        .unwrap();
+        let function = FunctionCodegen {
+            name: "string_bool_0".into(),
+            shape,
+        };
+        let mut code = Code::default();
+        function.write_target(&mut code, "data::function::BoolFunctionId(0)");
+        assert_eq!(
+            code.as_str(),
+            r#"data::compiled::CompiledFunction {
+    function: data::function::BoolFunctionId(0),
+    implementation: data::compiled::CompiledImplementation::String(data::compiled::StringImplementation {
+        entry: 0,
+        checkpoints: data::Storage::Static(&[
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 0,
+                ints: 0,
+                bools: 0,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+            data::compiled::CompiledCheckpoint {
+                block: data::graph::BlockId(0),
+                instruction: 1,
+                ints: 0,
+                bools: 1,
+                bit_arrays: 0,
+                int_lists: 0,
+                strings: 1,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
+            },
+        ]),
+        run: string_bool_0,
+    }),
+},
+"#
         );
     }
 }

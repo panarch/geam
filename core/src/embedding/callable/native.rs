@@ -448,6 +448,8 @@ mod tests {
                 );
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(calls.get(), 1);
     }
@@ -530,6 +532,8 @@ mod tests {
                 }
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(state.get(), 2);
     }

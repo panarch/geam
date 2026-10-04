@@ -343,7 +343,9 @@ pub fn run() {
                     .expect("retained item assertions");
             }),
         )
-        .expect("execution");
+        .expect("execution")
+        .try_into_value()
+        .unwrap();
         assert!(echo.is_empty());
     }
 

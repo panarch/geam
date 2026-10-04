@@ -767,6 +767,8 @@ pub fn run(fails: Bool) {
                     input,
                 )))
                 .expect("host cleanup")
+                .try_into_value()
+                .unwrap()
                 .expect("active entry")
                 .expect_err("native function never returns");
             {

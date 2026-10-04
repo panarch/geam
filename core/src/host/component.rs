@@ -365,6 +365,8 @@ pub fn main() { #(next(False), next(True), next(False)) }
         for _ in 0..2 {
             let result = host
                 .block_on(execution.run_main(&host, &mut state, &mut echo))
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result.inspect().to_string(), "#(42, 43, 44)");
             assert_eq!(state.first, "unrelated");

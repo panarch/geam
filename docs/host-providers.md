@@ -220,6 +220,14 @@ need to be `Sync`: an async `Call` gives bounded access to the original mutable
 state. A provider using Tokio can use the standalone runner's I/O and time
 drivers; an embedding application supplies the runtime its providers require.
 
+To terminate the current application explicitly, return
+`call.exit(ExitStatus::try_from(&status)?)` from a `HostResult` function.
+Sync and owned async calls share this capability. It accepts a portable status
+in 0..=255 and ends the execution domain after worker cleanup; embedding receives
+a structured outcome and keeps its host process alive. See
+[application termination](reference/execution-services.md#application-termination)
+for the complete contract and authoring example.
+
 For Rust-owned values that need to work with Gleam Dynamic decoders, see
 [native representations](reference/provider-boundary.md#native-representations).
 The [native records example](../examples/provider/native_records) shows a record

@@ -51,7 +51,7 @@ fn one_worker_runs_the_standalone_driver_cpu_process_and_timer_without_starvatio
             (entry, state, echo, result)
         })
         .unwrap();
-    result.unwrap().unwrap();
+    result.unwrap().unwrap().try_into_value().unwrap();
     assert_eq!(echo.0, ["42"]);
     assert!(state.stdlib.io_outputs().is_empty());
     assert_eq!(state.native.starts.get(), 0);
@@ -113,7 +113,8 @@ fn shared_work_outlives_its_creator_and_one_abandoned_observer() {
     assert!(host.poll(running.as_mut()).is_pending());
     host.advance(Duration::from_millis(1));
     assert_eq!(
-        host.poll(running.as_mut()).map(Result::unwrap),
+        host.poll(running.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
         Poll::Ready(BigInt::from(42))
     );
     drop(running);
@@ -164,7 +165,8 @@ fn concurrent_deferred_callbacks_have_independent_processes_and_subjects() {
     assert!(host.poll(running.as_mut()).is_pending());
     host.advance(Duration::from_millis(10));
     assert_eq!(
-        host.poll(running.as_mut()).map(Result::unwrap),
+        host.poll(running.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
         Poll::Ready(BigInt::from(42))
     );
     drop(running);
@@ -235,7 +237,8 @@ fn last_work_owner_cancels_its_callback_but_not_an_independent_service() {
         },
     ));
     assert_eq!(
-        host.poll(running.as_mut()).map(Result::unwrap),
+        host.poll(running.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
         Poll::Ready(())
     );
     drop(running);

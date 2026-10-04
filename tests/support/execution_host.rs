@@ -207,6 +207,11 @@ where
 {
     let host = TestHost::default();
     host.block_on(execution.run_main(&host, state, echo))
+        .map(|outcome| {
+            outcome
+                .try_into_value()
+                .expect("this fixture returns a source value")
+        })
         .map_err(|error| match error {
             RunError::Execution(error) => error,
             other => panic!("the controlled test host failed: {other}"),

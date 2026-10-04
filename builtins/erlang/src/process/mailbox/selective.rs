@@ -505,7 +505,13 @@ pub fn main() { wait() }
                     async |scope| scope.call(&main, ()).await,
                 ));
                 if phase == 4 {
-                    assert_eq!(host.block_on(execution.as_mut()).unwrap(), Ok(()));
+                    assert_eq!(
+                        host.block_on(execution.as_mut())
+                            .unwrap()
+                            .try_into_value()
+                            .unwrap(),
+                        Ok(())
+                    );
                     drop(execution);
                     drop(driver);
                 } else if phase == 3 {
@@ -516,7 +522,10 @@ pub fn main() { wait() }
                 } else {
                     driver.cancel(&host, execution.as_mut());
                     assert_eq!(
-                        host.block_on(execution.as_mut()).unwrap(),
+                        host.block_on(execution.as_mut())
+                            .unwrap()
+                            .try_into_value()
+                            .unwrap(),
                         Err(CallError::Cancelled)
                     );
                     drop(execution);

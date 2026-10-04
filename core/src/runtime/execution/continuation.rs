@@ -1,4 +1,5 @@
 use super::ExecutionContext;
+use super::invocation::NativeReturn;
 use crate::host::{
     HostCallRuntime, HostCodecScope, HostExecutionError, HostOwnedCompletion, HostProfile,
     HostProvider, HostScopedValue, HostType, HostTypeSequence,
@@ -48,15 +49,23 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
             Ok(completion) => completion,
             Err(error) => return self.fail_native(error, codec, origin).await,
         };
-        self.with_runtime(move |plan, state| {
-            let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
-            let output = completion
-                .complete(&mut runtime, callable_base)
-                .map(|token| runtime.retain_stored(HostScopedValue::Value(token)));
-            drop(runtime);
-            output.map_err(|error| host_call_error(plan, origin, codec.function(), error))
-        })
-        .await
+        let output = self
+            .with_runtime(move |plan, state| {
+                let mut runtime = RuntimeHostCall::new_codec(plan, state, &codec, origin.clone());
+                let output = completion
+                    .complete(&mut runtime, callable_base)
+                    .map(|token| runtime.retain_stored(HostScopedValue::Value(token)));
+                let execution = runtime.execution();
+                drop(runtime);
+                match output {
+                    Ok(value) => Ok(NativeReturn::Immediate(value)),
+                    Err(error) => {
+                        host_call_error(plan, &execution, origin, codec.function(), error)
+                    }
+                }
+            })
+            .await?;
+        NativeReturn::complete(output).await
     }
 
     pub(crate) async fn fail_native<Output: Send + 'static>(
@@ -69,10 +78,13 @@ impl<Profile: HostProfile> ExecutionContext<Profile> {
             HostExecutionError::Cancelled => Err(Cancelled),
             HostExecutionError::Execution(error) => Ok(Err(error.0.read(Clone::clone))),
             HostExecutionError::Host(error) => {
-                self.with_runtime(move |plan, _| {
-                    Err(host_call_error(plan, origin, codec.function(), error))
-                })
-                .await
+                let execution = self.clone();
+                let output = self
+                    .with_runtime(move |plan, _| {
+                        host_call_error(plan, &execution, origin, codec.function(), error)
+                    })
+                    .await?;
+                NativeReturn::complete(output).await
             }
         }
     }
@@ -115,12 +127,176 @@ mod tests {
             Box::pin(async move {
                 match error {
                     Some(error) => Err(error),
-                    None => Ok(HostOwnedCompletion::new(|call, _| {
-                        Ok(call.return_value(42.into()))
-                    })),
+                    None => Ok(ready_completion()),
                 }
             })
         }))
+    }
+
+    fn ready_completion() -> HostOwnedCompletion<Profile, Provider, BigInt, HostTypeListEnd> {
+        HostOwnedCompletion::new(|call, _| Ok(call.return_value(42.into())))
+    }
+
+    #[test]
+    fn closing_the_domain_cancels_queued_codec_and_error_attribution() {
+        use crate::execution::ExecutionOutcome;
+        use crate::host::{CallArguments, HostCallRuntime};
+        use crate::runtime::HostCallOrigin;
+        use crate::runtime::execution::context::ExecutionServices;
+        use crate::runtime::host::call_fixture::{TestHostCallRuntime, TestRunState};
+        use crate::runtime::work::Cancelled;
+        use std::future::Future;
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        let mut fixture_state = TestRunState::default();
+        let runtime = TestHostCallRuntime::new(
+            &mut fixture_state,
+            CallArguments::new(Vec::new(), Vec::new()),
+        );
+        for result in [
+            Ok(ready_completion()),
+            Err(HostFailure::new("queued native failure").into()),
+        ] {
+            let services = ExecutionServices::<Profile>::new(Default::default());
+            let execution = services.context();
+            let mut pending = pin!(execution.complete_native(
+                result,
+                runtime.codec_scope(),
+                HostCallOrigin::Entry,
+                0,
+            ));
+            let mut cx = Context::from_waker(Waker::noop());
+            assert!(pending.as_mut().poll(&mut cx).is_pending());
+            services.close();
+            assert_eq!(
+                pending.as_mut().poll(&mut cx).map(Result::err),
+                Poll::Ready(Some(Cancelled)),
+            );
+        }
+        let typed = compile_typed_host_program(
+            "application",
+            "library",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "library",
+                    "library.gleam",
+                    r#"
+@external(erlang, "native", "complete")
+fn complete() -> Int
+pub fn run() { complete() }
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_resumable_function::<Provider, (), BigInt, HostTypeListEnd, _>(
+                    "complete", complete,
+                )
+                .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let (bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), BigInt>::new("run"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let mut state = None;
+        let mut echo = Vec::new();
+        let outcome = host
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope.call(&run, ()).await
+                }),
+            )
+            .unwrap();
+        assert_eq!(outcome, ExecutionOutcome::Returned(Ok(42.into())));
+        assert!(state.is_none());
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn owned_exit_and_completion_codec_exit_reach_the_same_domain() {
+        use crate::execution::{ExecutionOutcome, ExitStatus};
+
+        fn exit<'call>(
+            call: HostCall<'call, Profile, Provider, BigInt>,
+            constructions: HostConstructions<'call, HostTypeListEnd>,
+            at_completion: bool,
+            status: BigInt,
+        ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+            let status = ExitStatus::try_from(&status)?;
+            Ok(call.resume(constructions, move |context| {
+                Box::pin(async move {
+                    if at_completion {
+                        Ok(HostOwnedCompletion::new(move |call, _| call.exit(status)))
+                    } else {
+                        context.exit(status)
+                    }
+                })
+            }))
+        }
+
+        let typed = compile_typed_host_program(
+            "application", "library",
+            [PackageSource::new("application", Vec::<String>::new(), [ModuleSource::new("library", "library.gleam", r#"
+@external(erlang, "native", "exit")
+fn exit(at_completion: Bool, status: Int) -> Int
+pub fn run(at_completion: Bool, status: Int) { echo "before" exit(at_completion, status) echo "after" Nil }
+pub fn normal() { 42 }
+"#)])],
+            HostProviderSet::from_providers([HostProviderModule::new("application", "library").unwrap()
+                .with_resumable_function::<Provider, (bool, BigInt), BigInt, HostTypeListEnd, _>("exit", exit).unwrap()]).unwrap(),
+        ).unwrap();
+        let (mut bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(bool, BigInt), ()>::new("run"))
+            .unwrap();
+        let normal = bindings
+            .function(FunctionDeclaration::<(), BigInt>::new("normal"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let mut state = None;
+        let mut echo = Vec::new();
+        for at_completion in [false, true] {
+            for status in [-1_i64, 0, 7, 255, 256] {
+                let outcome = host
+                    .block_on(
+                        module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                            scope
+                                .call(&run, (at_completion, BigInt::from(status)))
+                                .await
+                        }),
+                    )
+                    .unwrap();
+                if let Ok(status) = ExitStatus::try_from(status) {
+                    assert_eq!(outcome, ExecutionOutcome::Exited(status));
+                } else {
+                    assert_eq!(
+                        outcome.try_into_value().unwrap().unwrap_err().to_string(),
+                        "host function application::library.exit failed: application exit status must be between 0 and 255"
+                    );
+                }
+                assert_eq!(
+                    echo.pop().unwrap().value().inspect().to_string(),
+                    "\"before\""
+                );
+                assert!(echo.is_empty());
+                let outcome = host
+                    .block_on(
+                        module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                            scope.call(&normal, ()).await
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(outcome, ExecutionOutcome::Returned(Ok(BigInt::from(42))));
+            }
+        }
     }
 
     #[test]
@@ -178,6 +354,8 @@ pub fn run() { let value = complete() echo "completed" value }
                         scope.call(&run, ()).await
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(result, Err(expected));
             assert!(state.is_none());
@@ -201,6 +379,8 @@ pub fn run() { let value = complete() echo "completed" value }
                             scope.call(&run, ()).await
                         }),
                     )
+                    .unwrap()
+                    .try_into_value()
                     .unwrap();
                 assert_eq!(
                     result.map_err(|error| error.to_string()),
@@ -299,6 +479,8 @@ pub fn run(late: Bool) { echo "before" let _ = complete(late) echo "after" 42 }
                         scope.call(&run, (late,)).await
                     }),
                 )
+                .unwrap()
+                .try_into_value()
                 .unwrap();
             assert_eq!(
                 result.unwrap_err().to_string(),

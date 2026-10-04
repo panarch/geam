@@ -194,7 +194,9 @@ pub fn delayed(value: String) -> future.Future(String) {
                 vec![direct, awaited, completed]
             }),
         )
-        .expect("execution");
+        .expect("execution")
+        .try_into_value()
+        .unwrap();
     drop(module);
     for text in results {
         assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
@@ -251,7 +253,9 @@ fn assert_work_checks(entry: &str) {
                 assert!(again.read(|value| value));
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
     assert_eq!(echo.0, 0);
 }
 
@@ -272,7 +276,9 @@ fn direct_scalar_generic_and_lazy_values_keep_their_ordinary_call_path() {
                 assert!(scope.call(&function, ()).await.expect("direct checks"));
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
     assert_eq!(echo.0, 0);
 }
 
@@ -426,7 +432,9 @@ fn retained_list_results_pass_back_to_native_work_without_materialization() {
                 });
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
 }
 
 #[test]
@@ -481,7 +489,9 @@ fn direct_failures_keep_the_provider_or_source_origin() {
                 );
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
 }
 
 #[test]
@@ -555,6 +565,8 @@ fn assert_work_failure(entry: &str, inspect: impl Fn(&ExecutionError)) {
                 });
             }),
         )
-        .expect("controlled execution");
+        .expect("controlled execution")
+        .try_into_value()
+        .unwrap();
     assert_eq!(echo.0, 0);
 }

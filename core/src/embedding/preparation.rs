@@ -210,6 +210,8 @@ pub fn stopped() { stop() }
                     );
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
     }
 }

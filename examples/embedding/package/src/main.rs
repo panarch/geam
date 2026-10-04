@@ -3,6 +3,7 @@
 mod geam_bindings;
 
 use geam::embedding::{HostedModuleBuilder, StringValue};
+use geam::execution::ExecutionOutcome;
 use geam::gleam_stdlib::GleamStdlibRunState;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,23 +19,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .initialize();
     let mut echo = Vec::new();
 
-    let (first, empty) = executor.block_on(module.with_execution(
-        &host,
-        &mut state,
-        &mut echo,
-        async |scope| {
-            let first = scope
-                .call(
-                    &functions.first,
-                    (vec![StringValue::from("Gleam"), StringValue::from("Rust")],),
-                )
-                .await?;
-            let empty = scope
-                .call(&functions.first, (Vec::<StringValue>::new(),))
-                .await?;
-            Ok::<_, geam::embedding::CallError>((first, empty))
-        },
-    ))??;
+    let outcome =
+        executor.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                let first = scope
+                    .call(
+                        &functions.first,
+                        (vec![StringValue::from("Gleam"), StringValue::from("Rust")],),
+                    )
+                    .await?;
+                let empty = scope
+                    .call(&functions.first, (Vec::<StringValue>::new(),))
+                    .await?;
+                Ok::<_, geam::embedding::CallError>((first, empty))
+            }),
+        )?;
+    let (first, empty) = match outcome {
+        ExecutionOutcome::Returned(result) => result?,
+        ExecutionOutcome::Exited(status) => {
+            println!("Gleam exited with status {status}");
+            return Ok(());
+        }
+    };
 
     match first {
         Some(value) => println!("first: {value}"),

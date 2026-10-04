@@ -7,6 +7,7 @@ mod match_results;
 mod numeric;
 mod pool;
 mod read;
+mod string;
 mod transfer;
 mod value;
 mod write;

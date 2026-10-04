@@ -503,6 +503,8 @@ pub fn run_work() { work.map(future_factory(), fn(callback) { callback() }) }
                 assert_eq!(entries.load(Ordering::SeqCst), 2);
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(state.native_effects, [100, 100, 100, 100]);
     }
@@ -571,6 +573,8 @@ pub fn run() {
                     scope.observe(&work).await.unwrap().read(Clone::clone)
                 }),
             )
+            .unwrap()
+            .try_into_value()
             .unwrap();
         assert_eq!(result, BigInt::from(217));
         assert_eq!(state.native_effects, [100, 100]);

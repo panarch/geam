@@ -54,6 +54,8 @@ where
                 }),
         )
         .expect("controlled source fixture execution")
+        .try_into_value()
+        .unwrap()
     }
 }
 

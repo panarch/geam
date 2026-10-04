@@ -1,11 +1,12 @@
 use super::Shared;
 use super::execution::{Completion, SourceWork, WorkContext};
 use crate::host::{
-    HostCallErrorKind, HostCallRuntime, HostCodecScope, HostExecutionError, HostFutureStore,
-    HostOwnedCompletion, HostProvider, HostScopedValue, HostTokenRuntime, HostType,
-    HostTypeDescriptor, HostTypeSequence, HostWorkProfile,
+    HostCallRuntime, HostCodecScope, HostExecutionError, HostFutureStore, HostOwnedCompletion,
+    HostProvider, HostScopedValue, HostTokenRuntime, HostType, HostTypeDescriptor,
+    HostTypeSequence, HostWorkProfile,
 };
-use crate::runtime::host::RuntimeHostCall;
+use crate::runtime::execution::invocation::NativeReturn;
+use crate::runtime::host::{RuntimeHostCall, host_call_error};
 use crate::runtime::{HostCallOrigin, StoredRuntimeList};
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
@@ -44,7 +45,8 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
                         return Ok(Shared::new(Err(error.0)));
                     }
                 };
-                let result = context
+                let execution = context.execution.clone();
+                let output = context
                     .with_runtime(move |plan, state| {
                         let output = completion.and_then(|completion| {
                             let mut runtime =
@@ -53,20 +55,17 @@ impl<Profile: HostWorkProfile> WorkContext<Profile> {
                                 .complete(&mut runtime, callable_base)
                                 .map(|token| runtime.retain_stored(HostScopedValue::Value(token)))
                         });
-                        output.map_err(|error| match error.into_kind() {
-                            HostCallErrorKind::Failure(failure) => {
-                                crate::ExecutionError::host_failure(
-                                    plan,
-                                    origin,
-                                    codec.function(),
-                                    failure,
-                                )
+                        match output {
+                            Ok(value) => Ok(NativeReturn::Immediate(value)),
+                            Err(error) => {
+                                host_call_error(plan, &execution, origin, codec.function(), error)
                             }
-                            HostCallErrorKind::Nested(error) => error,
-                        })
+                        }
                     })
                     .await?;
-                Ok(Shared::new(result.map(Shared::new).map_err(Shared::new)))
+                NativeReturn::complete(output)
+                    .await
+                    .map(|result| Shared::new(result.map(Shared::new).map_err(Shared::new)))
             }
         })
     }

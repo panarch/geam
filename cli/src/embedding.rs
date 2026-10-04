@@ -719,10 +719,10 @@ impl HostCallableSchema for Add {
                 program.split_once("\n// Preparation inputs: ").unwrap();
             assert_eq!(after_program, before_program);
             assert_ne!(after_fingerprint, before_fingerprint);
-            assert!(program.contains("{\n    format: 17,"));
+            assert!(program.contains("{\n    format: 18,"));
             fs::write(
                 &child,
-                program.replacen("{\n    format: 17,", "{\n    format: 0,", 1),
+                program.replacen("{\n    format: 18,", "{\n    format: 0,", 1),
             )
             .unwrap();
             let incompatible = fixture.managed_inputs();
@@ -1633,7 +1633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let complex = scope.call(&functions.complex, ()).await?;
         assert_eq!(scope.call(&functions.read_complex, (complex,)).await?, (42.into(), "nested".into()));
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))??;
+    }))?.try_into_value().unwrap()?;
     assert!(echo.is_empty());
     Ok(())
 }
@@ -1771,7 +1771,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let work = scope.call(&functions.ready, (42.into(),)).await?;
         assert_eq!(scope.observe(&work).await?.read(Clone::clone), 42.into());
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))??;
+    }))?.try_into_value().unwrap()?;
     assert!(echo.is_empty());
     Ok(())
 }
@@ -1885,7 +1885,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let alias = result.expect("source success");
         assert_eq!(scope.observe(&alias).await?.read(Clone::clone), 21.into());
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))?
+    }))?.try_into_value().unwrap()
 }
 "#,
         )
@@ -2073,7 +2073,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let next = scope.call(&functions.answer, ()).await?;
         scope.observe(&next).await?.read(|text| assert_eq!(text, "{\"answer\":43}"));
         Ok::<_, Box<dyn std::error::Error>>(())
-    }))??;
+    }))?.try_into_value().unwrap()?;
     let output = state.stdlib_mut().take_io_outputs();
     assert_eq!(output.len(), 2);
     for output in output {
@@ -2953,7 +2953,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!("{value}");
     Ok::<_, Box<dyn Error>>(())
-    }))??;
+    }))?.try_into_value().unwrap()?;
     assert!(echo.is_empty());
     Ok(())
 }

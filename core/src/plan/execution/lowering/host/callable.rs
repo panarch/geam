@@ -269,6 +269,8 @@ pub fn stop_phantom() -> Int {
                 }
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
     }
 
@@ -642,6 +644,8 @@ pub fn main() {
                 });
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert_eq!(state.calls.get(), 1);
         assert_eq!(effects.load(Ordering::SeqCst), 1);
@@ -742,6 +746,8 @@ pub fn named() -> fn() -> fn(Never) -> Int { fn() { fn(_) { 1 } } }
                 assert_eq!(scope.invoke(&function, ()).await.unwrap(), BigInt::from(7));
             }),
         )
+        .unwrap()
+        .try_into_value()
         .unwrap();
         assert!(echo.is_empty());
         let program =

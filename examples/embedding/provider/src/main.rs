@@ -2,6 +2,7 @@ mod geam_bindings;
 
 use geam::HostProviderConfiguration;
 use geam::embedding::HostedModuleBuilder;
+use geam::execution::ExecutionOutcome;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread().build()?;
@@ -16,16 +17,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .initialize()?;
     let mut echo = Vec::new();
 
-    let matched = executor.block_on(module.with_execution(
-        &host,
-        &mut state,
-        &mut echo,
-        async |scope| {
-            scope
-                .call(&functions.matches, ("^[A-Z]+$".into(), "GEAM".into()))
-                .await
-        },
-    ))??;
+    let outcome =
+        executor.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                scope
+                    .call(&functions.matches, ("^[A-Z]+$".into(), "GEAM".into()))
+                    .await
+            }),
+        )?;
+    let matched = match outcome {
+        ExecutionOutcome::Returned(result) => result?,
+        ExecutionOutcome::Exited(status) => {
+            println!("Gleam exited with status {status}");
+            return Ok(());
+        }
+    };
     match matched {
         Ok(matched) => println!("matched: {matched}"),
         Err(message) => println!("pattern error: {message}"),

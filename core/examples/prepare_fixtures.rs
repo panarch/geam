@@ -2,7 +2,9 @@ use geam_core::embedding::{
     BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, List, ModuleBuilder,
     StringValue,
 };
-use geam_core::{HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry};
+use geam_core::{
+    HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry, StatelessHostProfile,
+};
 use std::error::Error;
 use std::path::Path;
 
@@ -439,6 +441,140 @@ fn main() -> Result<(), Box<dyn Error>> {
         "list_callback",
     ))?;
 
+    let string_source = include_str!("../tests/fixtures/prepared/string_ranges.gleam");
+    let string_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", string_source)?;
+    let (mut string_ranges, _) =
+        ModuleBuilder::new(string_typed)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "count",
+            ))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new("select"))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, StringValue, bool, BigInt),
+        BigInt,
+    >::new("aliases"))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, StringValue, BigInt),
+        BigInt,
+    >::new("alternate"))?;
+    string_ranges
+        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), bool>::new(
+        "empty_prefix",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<(), BigInt>::new("literal_only"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "asserted",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, BigInt),
+        (StringValue, BigInt, List<BigInt>, bool),
+    >::new("caller"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+        "unsupported",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new("spin"))?;
+    string_ranges.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    for name in ["assert_literal", "assert_prefix"] {
+        string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new(name))?;
+    }
+    string_ranges.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "assert_suffix",
+    ))?;
+    string_ranges.function(
+        FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new("bits_with_boolean_guard"),
+    )?;
+    let string_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                string_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let (mut string_hosted, _) =
+        HostedModuleBuilder::new(string_hosted)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "count",
+            ))?;
+    string_hosted.function(FunctionDeclaration::<
+        (StringValue, StringValue, bool, BigInt),
+        BigInt,
+    >::new("aliases"))?;
+    string_hosted
+        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue,), bool>::new(
+        "empty_prefix",
+    ))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "asserted",
+    ))?;
+    string_hosted.function(FunctionDeclaration::<
+        (StringValue, BigInt),
+        (StringValue, BigInt, List<BigInt>, bool),
+    >::new("caller"))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+        "running",
+    ))?;
+    let string_entry = PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(
+        geam_core::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    string_source,
+                )],
+            )],
+            HostProviderSet::<work_provider::Profile>::new([])?,
+        )?,
+    )?)?;
+
+    let checkpoint_source = include_str!("../tests/fixtures/prepared/string_checkpoints.gleam");
+    let checkpoint_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", checkpoint_source)?;
+    let (checkpoint_assertion, _) =
+        ModuleBuilder::new(checkpoint_typed)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "after_step",
+            ))?;
+    let checkpoint_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", checkpoint_source)?;
+    let (mut checkpoint_stops, _) = ModuleBuilder::new(checkpoint_typed)?
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))?;
+    checkpoint_stops.function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+        "list_stop",
+    ))?;
+    let checkpoint_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                checkpoint_source,
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (checkpoint_hosted, _) =
+        HostedModuleBuilder::new(checkpoint_hosted)?
+            .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+                "list_stop",
+            ))?;
+
     let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
     let custom =
         geam_core::compile_typed_module("example", "src/custom_scalars.gleam", custom_source)?;
@@ -568,6 +704,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (name, data) in [
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
         ("numeric_switch.rs", numeric_switch.prepare().emit_rust()),
+        ("string_ranges.rs", string_ranges.prepare().emit_rust()),
+        (
+            "string_ranges_hosted.rs",
+            string_hosted.prepare()?.emit_rust(),
+        ),
+        ("string_ranges_entry.rs", string_entry.emit_rust()),
+        (
+            "string_checkpoint_assertion.rs",
+            checkpoint_assertion.prepare().emit_rust(),
+        ),
+        (
+            "string_checkpoint_stops.rs",
+            checkpoint_stops.prepare().emit_rust(),
+        ),
+        (
+            "string_checkpoint_hosted_stop.rs",
+            checkpoint_hosted.prepare()?.emit_rust(),
+        ),
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
