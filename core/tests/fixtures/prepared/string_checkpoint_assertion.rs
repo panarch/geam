@@ -15,72 +15,28 @@ data::ModuleArtifact {
                 int_functions: data::Storage::Static(&[
                     data::function::ExecutableFunction {
                         entry: data::function::FunctionEntry {
-                            parameter_count: 1,
+                            parameter_count: 2,
                         },
                         body: data::function::ProfiledFunctionBody {
                             block_graph: data::graph::ProfiledBlockGraph {
                                 entry: data::graph::BlockId(0),
                                 blocks: data::Storage::Static(&[
                                     data::graph::BlockHeader {
-                                        params: 0..1,
+                                        params: 0..2,
                                         instructions: 0..1,
-                                        terminator: data::graph::Terminator::IntSwitch(data::graph::IntSwitch {
-                                            subject: data::graph::IntLocalId(1),
-                                            clauses: data::Storage::Static(&[
-                                                (data::graph::IntegerLiteral {
-                                                    sign: data::Sign::NoSign,
-                                                    digits: data::Storage::Static(&[]),
-                                                }, data::graph::Edge {
-                                                    target: data::graph::BlockId(1),
-                                                    args: data::Storage::Static(&[
-                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                                    ]),
-                                                    transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                length: 1,
-                                                                steps: data::Storage::Static(&[
-                                                                    data::graph::TransferStep {
-                                                                        source: 1,
-                                                                        destination: 0,
-                                                                    },
-                                                                ]),
-                                                            },
-                                                        ]),
-                                                    },
-                                                }),
-                                                (data::graph::IntegerLiteral {
-                                                    sign: data::Sign::Plus,
-                                                    digits: data::Storage::Static(&[
-                                                        1,
-                                                    ]),
-                                                }, data::graph::Edge {
-                                                    target: data::graph::BlockId(2),
-                                                    args: data::Storage::Static(&[
-                                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                                    ]),
-                                                    transfer: data::graph::Transfer {
-                                                        families: data::Storage::Static(&[
-                                                            data::graph::FamilyTransfer {
-                                                                family: data::graph::StorageFamily::Int,
-                                                                length: 1,
-                                                                steps: data::Storage::Static(&[
-                                                                    data::graph::TransferStep {
-                                                                        source: 1,
-                                                                        destination: 0,
-                                                                    },
-                                                                ]),
-                                                            },
-                                                        ]),
-                                                    },
-                                                }),
-                                            ]),
-                                            fallback: data::graph::Edge {
-                                                target: data::graph::BlockId(3),
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            pattern: data::graph::MatchPattern::StringPrefix {
+                                                prefix: data::Text::Static("λ"),
+                                                left: None,
+                                                right: None,
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
                                                 args: data::Storage::Static(&[
-                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(1))),
                                                 ]),
+                                                bindings: data::Storage::Static(&[]),
                                                 transfer: data::graph::Transfer {
                                                     families: data::Storage::Static(&[
                                                         data::graph::FamilyTransfer {
@@ -93,42 +49,62 @@ data::ModuleArtifact {
                                                                 },
                                                             ]),
                                                         },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::String,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
                                                     ]),
                                                 },
                                             },
                                         }),
                                     },
                                     data::graph::BlockHeader {
-                                        params: 1..2,
-                                        instructions: 1..2,
+                                        params: 2..3,
+                                        instructions: 1..1,
                                         terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                     },
                                     data::graph::BlockHeader {
-                                        params: 2..3,
-                                        instructions: 2..3,
-                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
-                                    },
-                                    data::graph::BlockHeader {
                                         params: 3..4,
-                                        instructions: 3..4,
-                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            message: Some(data::graph::StringLocalId(1)),
+                                            site: data::source::PanicSite::from_static("example", "after_step", data::source::SourceSpan::new(85, 95)),
+                                            pattern_span: data::source::SourceSpan::new(96, 105),
+                                        }),
                                     },
                                 ]),
                                 params: data::Storage::Static(&[
                                     data::graph::ParamSlot {
-                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                         shape: data::type_::ValueShapeId(0),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        shape: data::type_::ValueShapeId(0),
+                                        shape: data::type_::ValueShapeId(1),
                                     },
                                     data::graph::ParamSlot {
                                         local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        shape: data::type_::ValueShapeId(0),
+                                        shape: data::type_::ValueShapeId(1),
                                     },
                                     data::graph::ParamSlot {
-                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                         shape: data::type_::ValueShapeId(0),
                                     },
                                 ]),
@@ -136,7 +112,7 @@ data::ModuleArtifact {
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                            shape: data::type_::ValueShapeId(0),
+                                            shape: data::type_::ValueShapeId(1),
                                         },
                                         kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
                                             left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
@@ -145,40 +121,15 @@ data::ModuleArtifact {
                                     }),
                                     data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                         output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
                                             shape: data::type_::ValueShapeId(0),
                                         },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Immediate(1),
-                                        }),
-                                    }),
-                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                            shape: data::type_::ValueShapeId(0),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Immediate(2),
-                                        }),
-                                    }),
-                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
-                                        output: data::graph::ParamSlot {
-                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                            shape: data::type_::ValueShapeId(0),
-                                        },
-                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
-                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
-                                            right: data::graph::IntegerOperand::Immediate(3),
-                                        }),
+                                        kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Value(data::Text::Static("lambda required"))),
                                     }),
                                 ]),
                             },
                             exits: data::Storage::Static(&[
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
-                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
                             ]),
                         },
                     },
@@ -246,24 +197,21 @@ data::ModuleArtifact {
                 Exit(data::compiled::CompiledProgress),
             }
 
-            fn numeric_int_0(
+            fn string_int_0(
                 point: usize,
-                values: &mut data::compiled::numeric::NumericValues,
+                values: &mut data::compiled::string::StringValues,
                 budget: &mut usize,
             ) -> data::compiled::CompiledProgress {
 
                 const RESUME: [
-                    fn(&mut data::compiled::numeric::NumericValues, &mut usize) -> CompiledResume;
-                    8
+                    fn(&mut data::compiled::string::StringValues, &mut usize) -> CompiledResume;
+                    5
                 ] = [
-                    |values, budget| CompiledResume::Exit(numeric_int_0_entry((values.ints[0],), values, budget)),
-                    numeric_int_0_resume_1,
-                    numeric_int_0_resume_2,
-                    numeric_int_0_resume_3,
-                    numeric_int_0_resume_4,
-                    numeric_int_0_resume_5,
-                    numeric_int_0_resume_6,
-                    numeric_int_0_resume_7,
+                    |values, budget| CompiledResume::Exit(string_int_0_entry((values.ints[0], values.strings[0],), values, budget)),
+                    string_int_0_resume_1,
+                    string_int_0_resume_2,
+                    string_int_0_resume_3,
+                    string_int_0_resume_4,
                 ];
 
                 let mut point = point;
@@ -275,18 +223,21 @@ data::ModuleArtifact {
                 }
             }
 
-            fn numeric_int_0_entry(
-                inputs: (i128,),
-                values: &mut data::compiled::numeric::NumericValues,
+            fn string_int_0_entry(
+                inputs: (i128, data::compiled::string::StringRange,),
+                values: &mut data::compiled::string::StringValues,
                 budget: &mut usize,
             ) -> data::compiled::CompiledProgress {
-                let (b0_i0,) = inputs;
+                let (b0_i0, b0_s0,) = inputs;
                 if *budget == 0 {
 
                     values.ints.clear();
                     values.ints.extend_from_slice(&[b0_i0]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
@@ -297,6 +248,9 @@ data::ModuleArtifact {
                     values.ints.extend_from_slice(&[b0_i0, b0_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
                     return data::compiled::CompiledProgress::Interpreted(1);
                 }
                 if *budget == 0 {
@@ -305,10 +259,13 @@ data::ModuleArtifact {
                     values.ints.extend_from_slice(&[b0_i0, b0_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
                     return data::compiled::CompiledProgress::Yield(1);
                 }
                 *budget -= 1;
-                if b0_i1 == 0_i128 {
+                if values.text(b0_s0).starts_with("λ") {
                     let (b1_i0,) = (b0_i1,);
                     if *budget == 0 {
 
@@ -316,149 +273,103 @@ data::ModuleArtifact {
                         values.ints.extend_from_slice(&[b1_i0]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[]);
                         return data::compiled::CompiledProgress::Yield(2);
                     }
                     *budget -= 1;
-                    let b1_i1 = b1_i0 + 1_i128;
-                    if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
 
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Interpreted(3);
-                    }
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b1_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[]);
+                    data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
+                } else {
+                    let (b2_s0,) = (b0_s0,);
                     if *budget == 0 {
 
                         values.ints.clear();
-                        values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                        values.ints.extend_from_slice(&[]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[b2_s0]);
                         return data::compiled::CompiledProgress::Yield(3);
                     }
                     *budget -= 1;
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
-                } else if b0_i1 == 1_i128 {
-                    let (b2_i0,) = (b0_i1,);
+                    let b2_s1 = data::compiled::string::StringRange::literal("lambda required");
                     if *budget == 0 {
 
                         values.ints.clear();
-                        values.ints.extend_from_slice(&[b2_i0]);
+                        values.ints.extend_from_slice(&[]);
                         values.bools.clear();
                         values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[b2_s0, b2_s1]);
                         return data::compiled::CompiledProgress::Yield(4);
                     }
-                    *budget -= 1;
-                    let b2_i1 = b2_i0 + 2_i128;
-                    if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Interpreted(5);
-                    }
-                    if *budget == 0 {
-
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Yield(5);
-                    }
-                    *budget -= 1;
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                    values.ints.extend_from_slice(&[]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
-                } else {
-                    let (b3_i0,) = (b0_i1,);
-                    if *budget == 0 {
 
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b3_i0]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Yield(6);
-                    }
-                    *budget -= 1;
-                    let b3_i1 = b3_i0 + 3_i128;
-                    if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
-
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Interpreted(7);
-                    }
-                    if *budget == 0 {
-
-                        values.ints.clear();
-                        values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                        values.bools.clear();
-                        values.bools.extend_from_slice(&[]);
-                        return data::compiled::CompiledProgress::Yield(7);
-                    }
-                    *budget -= 1;
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(2))
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b2_s0, b2_s1]);
+                    data::compiled::CompiledProgress::Interpreted(4)
                 }
             }
 
-            fn numeric_int_0_resume_1(
-                values: &mut data::compiled::numeric::NumericValues,
+            fn string_int_0_resume_1(
+                values: &mut data::compiled::string::StringValues,
                 budget: &mut usize,
             ) -> CompiledResume {
-                let (b0_i0, b0_i1,) = (values.ints[0], values.ints[1],);
+                let (b0_i0, b0_i1, b0_s0,) = (values.ints[0], values.ints[1], values.strings[0],);
                 if *budget == 0 {
 
                     values.ints.clear();
                     values.ints.extend_from_slice(&[b0_i0, b0_i1]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                if b0_i1 == 0_i128 {
+                if values.text(b0_s0).starts_with("λ") {
                     let (b1_i0,) = (b0_i1,);
 
                     values.ints.clear();
                     values.ints.extend_from_slice(&[b1_i0]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[]);
                     CompiledResume::Next(2)
-                } else if b0_i1 == 1_i128 {
-                    let (b2_i0,) = (b0_i1,);
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    CompiledResume::Next(4)
                 } else {
-                    let (b3_i0,) = (b0_i1,);
+                    let (b2_s0,) = (b0_s0,);
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b3_i0]);
+                    values.ints.extend_from_slice(&[]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
-                    CompiledResume::Next(6)
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b2_s0]);
+                    CompiledResume::Next(3)
                 }
             }
 
-            fn numeric_int_0_resume_2(
-                values: &mut data::compiled::numeric::NumericValues,
+            fn string_int_0_resume_2(
+                values: &mut data::compiled::string::StringValues,
                 budget: &mut usize,
             ) -> CompiledResume {
                 let (b1_i0,) = (values.ints[0],);
@@ -468,158 +379,83 @@ data::ModuleArtifact {
                     values.ints.extend_from_slice(&[b1_i0]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[]);
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
                 }
                 *budget -= 1;
-                let b1_i1 = b1_i0 + 1_i128;
-                if b1_i1 < i128::from(i64::MIN) || b1_i1 > i128::from(i64::MAX) {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(3));
-                }
 
                 values.ints.clear();
-                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
+                values.ints.extend_from_slice(&[b1_i0]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                CompiledResume::Next(3)
-            }
 
-            fn numeric_int_0_resume_3(
-                values: &mut data::compiled::numeric::NumericValues,
-                budget: &mut usize,
-            ) -> CompiledResume {
-                let (b1_i0, b1_i1,) = (values.ints[0], values.ints[1],);
-                if *budget == 0 {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
-                }
-                *budget -= 1;
-
-                values.ints.clear();
-                values.ints.extend_from_slice(&[b1_i0, b1_i1]);
-                values.bools.clear();
-                values.bools.extend_from_slice(&[]);
+                values.strings.clear();
+                values.strings.extend_from_slice(&[]);
                 CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0)))
             }
 
-            fn numeric_int_0_resume_4(
-                values: &mut data::compiled::numeric::NumericValues,
+            fn string_int_0_resume_3(
+                values: &mut data::compiled::string::StringValues,
                 budget: &mut usize,
             ) -> CompiledResume {
-                let (b2_i0,) = (values.ints[0],);
+                let (b2_s0,) = (values.strings[0],);
                 if *budget == 0 {
 
                     values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0]);
+                    values.ints.extend_from_slice(&[]);
                     values.bools.clear();
                     values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b2_s0]);
+                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
+                }
+                *budget -= 1;
+                let b2_s1 = data::compiled::string::StringRange::literal("lambda required");
+
+                values.ints.clear();
+                values.ints.extend_from_slice(&[]);
+                values.bools.clear();
+                values.bools.extend_from_slice(&[]);
+
+                values.strings.clear();
+                values.strings.extend_from_slice(&[b2_s0, b2_s1]);
+                CompiledResume::Next(4)
+            }
+
+            fn string_int_0_resume_4(
+                values: &mut data::compiled::string::StringValues,
+                budget: &mut usize,
+            ) -> CompiledResume {
+                let (b2_s0, b2_s1,) = (values.strings[0], values.strings[1],);
+                if *budget == 0 {
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b2_s0, b2_s1]);
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
                 }
-                *budget -= 1;
-                let b2_i1 = b2_i0 + 2_i128;
-                if b2_i1 < i128::from(i64::MIN) || b2_i1 > i128::from(i64::MAX) {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(5));
-                }
 
                 values.ints.clear();
-                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
+                values.ints.extend_from_slice(&[]);
                 values.bools.clear();
                 values.bools.extend_from_slice(&[]);
-                CompiledResume::Next(5)
-            }
 
-            fn numeric_int_0_resume_5(
-                values: &mut data::compiled::numeric::NumericValues,
-                budget: &mut usize,
-            ) -> CompiledResume {
-                let (b2_i0, b2_i1,) = (values.ints[0], values.ints[1],);
-                if *budget == 0 {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
-                }
-                *budget -= 1;
-
-                values.ints.clear();
-                values.ints.extend_from_slice(&[b2_i0, b2_i1]);
-                values.bools.clear();
-                values.bools.extend_from_slice(&[]);
-                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1)))
-            }
-
-            fn numeric_int_0_resume_6(
-                values: &mut data::compiled::numeric::NumericValues,
-                budget: &mut usize,
-            ) -> CompiledResume {
-                let (b3_i0,) = (values.ints[0],);
-                if *budget == 0 {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b3_i0]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(6));
-                }
-                *budget -= 1;
-                let b3_i1 = b3_i0 + 3_i128;
-                if b3_i1 < i128::from(i64::MIN) || b3_i1 > i128::from(i64::MAX) {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(7));
-                }
-
-                values.ints.clear();
-                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                values.bools.clear();
-                values.bools.extend_from_slice(&[]);
-                CompiledResume::Next(7)
-            }
-
-            fn numeric_int_0_resume_7(
-                values: &mut data::compiled::numeric::NumericValues,
-                budget: &mut usize,
-            ) -> CompiledResume {
-                let (b3_i0, b3_i1,) = (values.ints[0], values.ints[1],);
-                if *budget == 0 {
-
-                    values.ints.clear();
-                    values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                    values.bools.clear();
-                    values.bools.extend_from_slice(&[]);
-                    return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(7));
-                }
-                *budget -= 1;
-
-                values.ints.clear();
-                values.ints.extend_from_slice(&[b3_i0, b3_i1]);
-                values.bools.clear();
-                values.bools.extend_from_slice(&[]);
-                CompiledResume::Exit(data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(2)))
+                values.strings.clear();
+                values.strings.extend_from_slice(&[b2_s0, b2_s1]);
+                CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(4))
             }
             data::compiled::CompiledFunctions {
                 ints: data::Storage::Static(&[
                     data::compiled::CompiledFunction {
                         function: data::function::IntFunctionId(0),
-                        implementation: data::compiled::CompiledImplementation::Numeric(data::compiled::NumericImplementation {
+                        implementation: data::compiled::CompiledImplementation::String(data::compiled::StringImplementation {
                             entry: 0,
                             checkpoints: data::Storage::Static(&[
                                 data::compiled::CompiledCheckpoint {
@@ -629,7 +465,7 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
-                                    strings: 0,
+                                    strings: 1,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -638,7 +474,7 @@ data::ModuleArtifact {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
-                                    strings: 0,
+                                    strings: 1,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -650,52 +486,25 @@ data::ModuleArtifact {
                                     strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(1),
-                                    instruction: 1,
-                                    ints: 2,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                },
-                                data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
                                     instruction: 0,
-                                    ints: 1,
+                                    ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
-                                    strings: 0,
+                                    strings: 1,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
                                     instruction: 1,
-                                    ints: 2,
+                                    ints: 0,
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
-                                    strings: 0,
-                                },
-                                data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(3),
-                                    instruction: 0,
-                                    ints: 1,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                },
-                                data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(3),
-                                    instruction: 1,
-                                    ints: 2,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
+                                    strings: 2,
                                 },
                             ]),
-                            run: numeric_int_0,
+                            run: string_int_0,
                         }),
                     },
                 ]),
@@ -789,15 +598,17 @@ data::ModuleArtifact {
             ],
             functions: data::Storage::Static(&[
                 data::function::FunctionContract {
-                    parameters: 0..1,
+                    parameters: 0..2,
                     parameter_shapes: data::Storage::Static(&[
                         data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(1),
                     ]),
-                    return_: data::type_::ValueShapeId(0),
+                    return_: data::type_::ValueShapeId(1),
                     captures: data::Storage::Static(&[]),
                 },
             ]),
             parameters: data::Storage::Static(&[
+                data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                 data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
             ]),
         },
@@ -815,9 +626,11 @@ data::ModuleArtifact {
         },
         value_shapes: data::type_::ValueShapeTable {
             shapes: data::Storage::Static(&[
+                data::type_::ValueShapeDescriptor::String,
                 data::type_::ValueShapeDescriptor::Int,
             ]),
             shape_types: data::Storage::Static(&[
+                data::type_::ValueType::String,
                 data::type_::ValueType::Int,
             ]),
             custom_shapes: data::Storage::Static(&[]),
@@ -861,9 +674,10 @@ data::ModuleArtifact {
     },
     exports: data::Storage::Static(&[
         data::Export {
-            name: data::Text::Static("choose"),
+            name: data::Text::Static("after_step"),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::String,
                     data::type_::TypeMetadata::Int,
                 ]),
                 return_: data::Storage::Static(&data::type_::TypeMetadata::Int),

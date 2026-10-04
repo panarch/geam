@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 16,
+        format: 17,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2206,6 +2206,7 @@ pub fn running() -> List(Int) {
                                         bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -2214,6 +2215,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2222,6 +2224,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: numeric_int_list_1,
@@ -2244,6 +2247,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2252,6 +2256,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_2,
@@ -2274,6 +2279,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -2282,6 +2288,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -2290,6 +2297,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -2298,6 +2306,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2306,6 +2315,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_3,
@@ -2328,6 +2338,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2336,6 +2347,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_4,
@@ -2358,6 +2370,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2366,6 +2379,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2374,6 +2388,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 0,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(0),
@@ -2382,6 +2397,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_5,
@@ -2404,6 +2420,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(1),
@@ -2412,6 +2429,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 1,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2420,6 +2438,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2428,6 +2447,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 2,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2436,6 +2456,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 3,
+                                        strings: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(2),
@@ -2444,6 +2465,7 @@ pub fn running() -> List(Int) {
                                         bools: 0,
                                         bit_arrays: 0,
                                         int_lists: 4,
+                                        strings: 0,
                                     },
                                 ]),
                                 run: int_list_int_list_6,

@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 16,
+    format: 17,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -3887,6 +3887,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -3895,6 +3896,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -3903,6 +3905,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -3911,6 +3914,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -3919,6 +3923,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -3927,6 +3932,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -3935,6 +3941,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -3943,6 +3950,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -3951,6 +3959,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -3959,6 +3968,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -3967,6 +3977,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -3975,6 +3986,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                             ]),
                             run: int_list_int_1,
@@ -3992,6 +4004,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -4000,6 +4013,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -4008,6 +4022,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -4016,6 +4031,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -4024,6 +4040,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -4032,6 +4049,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -4040,6 +4058,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -4048,6 +4067,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -4056,6 +4076,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 1,
+                                    strings: 0,
                                 },
                             ]),
                             run: int_list_int_2,
@@ -4073,6 +4094,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(1),
@@ -4081,6 +4103,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(2),
@@ -4089,6 +4112,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(3),
@@ -4097,6 +4121,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 0,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(4),
@@ -4105,6 +4130,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -4113,6 +4139,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(5),
@@ -4121,6 +4148,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -4129,6 +4157,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -4137,6 +4166,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 3,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(6),
@@ -4145,6 +4175,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 3,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(7),
@@ -4153,6 +4184,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -4161,6 +4193,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(8),
@@ -4169,6 +4202,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 3,
+                                    strings: 0,
                                 },
                                 data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(9),
@@ -4177,6 +4211,7 @@ pub fn main() -> Int {
                                     bools: 0,
                                     bit_arrays: 0,
                                     int_lists: 2,
+                                    strings: 0,
                                 },
                             ]),
                             run: int_list_int_3,

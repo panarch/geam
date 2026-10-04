@@ -489,6 +489,7 @@ data::compiled::CompiledFunction {
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 1,
+                strings: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -497,6 +498,7 @@ data::compiled::CompiledFunction {
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 2,
+                strings: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -505,6 +507,7 @@ data::compiled::CompiledFunction {
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 3,
+                strings: 0,
             },
             data::compiled::CompiledCheckpoint {
                 block: data::graph::BlockId(0),
@@ -513,6 +516,7 @@ data::compiled::CompiledFunction {
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 4,
+                strings: 0,
             },
         ]),
         run: int_list_int_list_1,

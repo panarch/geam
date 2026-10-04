@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 16,
+        format: 17,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2588,7 +2588,136 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                     function_function_functions: data::Storage::Static(&[]),
                 },
             },
-            compiled: data::compiled::CompiledFunctions::interpreted(),
+            compiled: {
+
+                enum CompiledResume {
+                    Exit(data::compiled::CompiledProgress),
+                }
+
+                fn string_int_1(
+                    point: usize,
+                    values: &mut data::compiled::string::StringValues,
+                    budget: &mut usize,
+                ) -> data::compiled::CompiledProgress {
+
+                    const RESUME: [
+                        fn(&mut data::compiled::string::StringValues, &mut usize) -> CompiledResume;
+                        2
+                    ] = [
+                        |values, budget| CompiledResume::Exit(string_int_1_entry((values.ints[0],), values, budget)),
+                        string_int_1_resume_1,
+                    ];
+
+                    match RESUME[point](values, budget) {
+                        CompiledResume::Exit(progress) => progress,
+                    }
+                }
+
+                fn string_int_1_entry(
+                    inputs: (i128,),
+                    values: &mut data::compiled::string::StringValues,
+                    budget: &mut usize,
+                ) -> data::compiled::CompiledProgress {
+                    let (b0_i0,) = inputs;
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[]);
+                        return data::compiled::CompiledProgress::Yield(0);
+                    }
+                    *budget -= 1;
+                    let b0_s0 = data::compiled::string::StringRange::literal("prepared work failed");
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[b0_s0]);
+                        return data::compiled::CompiledProgress::Yield(1);
+                    }
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
+                    data::compiled::CompiledProgress::Interpreted(1)
+                }
+
+                fn string_int_1_resume_1(
+                    values: &mut data::compiled::string::StringValues,
+                    budget: &mut usize,
+                ) -> CompiledResume {
+                    let (b0_i0, b0_s0,) = (values.ints[0], values.strings[0],);
+                    if *budget == 0 {
+
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[b0_i0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+
+                        values.strings.clear();
+                        values.strings.extend_from_slice(&[b0_s0]);
+                        return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
+                    }
+
+                    values.ints.clear();
+                    values.ints.extend_from_slice(&[b0_i0]);
+                    values.bools.clear();
+                    values.bools.extend_from_slice(&[]);
+
+                    values.strings.clear();
+                    values.strings.extend_from_slice(&[b0_s0]);
+                    CompiledResume::Exit(data::compiled::CompiledProgress::Interpreted(1))
+                }
+                data::compiled::CompiledFunctions {
+                    ints: data::Storage::Static(&[
+                        data::compiled::CompiledFunction {
+                            function: data::function::IntFunctionId(1),
+                            implementation: data::compiled::CompiledImplementation::String(data::compiled::StringImplementation {
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 1,
+                                    },
+                                ]),
+                                run: string_int_1,
+                            }),
+                        },
+                    ]),
+                    bools: data::Storage::Static(&[
+                    ]),
+                    customs: data::Storage::Static(&[
+                    ]),
+                    int_lists: data::Storage::Static(&[
+                    ]),
+                }
+            },
             constants: data::constant::ProfiledConstantTable {
                 ints: data::Storage::Static(&[]),
                 strings: data::Storage::Static(&[]),

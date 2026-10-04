@@ -1,12 +1,14 @@
 use super::bit_array::BitArrayMatch;
 use super::int_list::{IntListInstruction, IntListMatch, IntListTest};
+use super::string::{StringMatch, StringOperation, StringTest};
+use crate::plan::Text;
 use crate::plan::execution::compiled::CompiledCheckpoint;
 use crate::plan::execution::function::{ExecutionGraphProfile, FunctionExit, ProfiledFunctionBody};
 use crate::plan::execution::graph::{
     ArithmeticRegion, BlockGraphExitId, BlockGraphView, BlockId, BoolInstruction, BoolLocalId,
     BoolTest, Edge, IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand, ListInstruction,
     ListLocal, MatchEdge, ParamLocal, ParamSlot, ProfiledInstruction, ProfiledInstructionKind,
-    Terminator, TypedListInstruction,
+    StringLocalId, Terminator, TypedListInstruction,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,6 +31,7 @@ pub(in crate::plan::execution::prepared) enum KernelKind {
     Numeric,
     IntList,
     BitArray,
+    String,
 }
 
 // These are preparation-local views. They borrow the canonical graph and
@@ -41,7 +44,8 @@ pub(super) struct CompiledBlock<'graph> {
 
 pub(super) enum CompiledInstruction<'graph> {
     Integer(IntLocalId, NumericInteger<'graph>),
-    Boolean(BoolLocalId, CompiledBoolean),
+    Boolean(BoolLocalId, CompiledBoolean<'graph>),
+    String(StringLocalId, StringOperation<'graph>),
     Region {
         region: &'graph ArithmeticRegion,
         outputs: Vec<IntLocalId>,
@@ -64,15 +68,21 @@ pub(super) enum NumericOperation {
     Remainder,
 }
 
-pub(super) enum CompiledBoolean {
+pub(super) enum CompiledBoolean<'graph> {
     Value(bool),
-    Test(CompiledTest),
+    Test(CompiledTest<'graph>),
 }
 
-pub(super) enum CompiledTest {
+pub(super) enum CompiledTest<'graph> {
     Not(BoolLocalId),
     Compare(NumericComparison, IntegerOperand, IntegerOperand),
     IntList(IntListTest),
+    String(StringTest<'graph>),
+    BoolEqual {
+        left: BoolLocalId,
+        right: BoolLocalId,
+        negate: bool,
+    },
 }
 
 pub(super) enum NumericComparison {
@@ -92,7 +102,7 @@ pub(super) enum CompiledTerminator<'graph> {
         false_: &'graph Edge,
     },
     Test {
-        test: CompiledTest,
+        test: CompiledTest<'graph>,
         true_: &'graph Edge,
         false_: &'graph Edge,
     },
@@ -101,6 +111,12 @@ pub(super) enum CompiledTerminator<'graph> {
         clauses: &'graph [(IntegerLiteral, Edge)],
         fallback: &'graph Edge,
     },
+    StringSwitch {
+        subject: StringLocalId,
+        clauses: &'graph [(Text, Edge)],
+        fallback: &'graph Edge,
+    },
+    StringMatch(StringMatch<'graph>),
     Exit(BlockGraphExitId),
     BitArray(BitArrayMatch<'graph>),
     Match(IntListMatch<'graph>),
@@ -127,6 +143,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
         body: &'graph ProfiledFunctionBody<Return, Tail, Graph>,
     ) -> Option<Self> {
         Self::inspect_supported(body, KernelKind::Numeric)
+            .or_else(|| Self::inspect_supported(body, KernelKind::String))
     }
 
     pub(in crate::plan::execution::prepared) fn inspect_bits<Return, Tail>(
@@ -141,6 +158,18 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
 
     pub(super) fn block(&self, block: BlockId) -> &CompiledBlock<'graph> {
         &self.blocks[&block.index()]
+    }
+
+    pub(super) fn resumes_forward(&self) -> bool {
+        self.checkpoints.iter().enumerate().any(|(index, point)| {
+            let block = self.block(point.block);
+            index != self.start(self.graph.entry())
+                && (point.instruction < block.instructions.len()
+                    || !matches!(
+                        block.terminator,
+                        CompiledTerminator::Exit(_) | CompiledTerminator::Interpreted
+                    ))
+        })
     }
 
     fn inspect_supported<Return, Tail>(
@@ -168,11 +197,12 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 bools: 0,
                 bit_arrays: 0,
                 int_lists: 0,
+                strings: 0,
             };
             if block
                 .params()
                 .iter()
-                .try_for_each(|slot| add_slot(&mut point, slot, bit_arrays))
+                .try_for_each(|slot| add_slot(&mut point, slot, kind))
                 .is_none()
             {
                 if !bit_arrays {
@@ -185,11 +215,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             checkpoints.push(point);
             let mut instructions = Vec::with_capacity(block.instructions().len());
             for instruction in block.instructions() {
-                let Some(instruction) =
-                    CompiledInstruction::inspect(instruction).filter(|instruction| {
-                        !bit_arrays || !matches!(instruction, CompiledInstruction::IntList(_))
-                    })
-                else {
+                let Some(instruction) = CompiledInstruction::inspect(instruction, kind) else {
                     if !bit_arrays || can_repeat[index] {
                         return None;
                     }
@@ -198,6 +224,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 match &instruction {
                     CompiledInstruction::Integer(..) => point.ints += 1,
                     CompiledInstruction::Boolean(..) => point.bools += 1,
+                    CompiledInstruction::String(..) => point.strings += 1,
                     CompiledInstruction::Region { outputs, .. } => point.ints += outputs.len(),
                     CompiledInstruction::IntList(IntListInstruction::Index { .. }) => {
                         point.ints += 1
@@ -215,7 +242,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
             let terminator = if instructions.len() < block.instructions().len() {
                 CompiledTerminator::Interpreted
             } else {
-                let inspected = CompiledTerminator::inspect(block.terminator()).or_else(|| {
+                let inspected = CompiledTerminator::inspect(block.terminator(), kind).or_else(|| {
                     if bit_arrays && let Terminator::Match(matcher) = block.terminator() {
                         return BitArrayMatch::inspect(matcher).map(CompiledTerminator::BitArray);
                     }
@@ -305,7 +332,12 @@ impl<'graph, Graph: ExecutionGraphProfile> CompiledShape<'graph, Graph> {
                 joins[block] = shared_suffix(block, graph.entry().index(), &successors, &ranks);
             }
         }
-        let kind = if bit_arrays {
+        let kind = if kind == KernelKind::String {
+            if !checkpoints.iter().any(|point| point.strings > 0) {
+                return None;
+            }
+            KernelKind::String
+        } else if bit_arrays {
             KernelKind::BitArray
         } else if checkpoints.iter().any(|point| point.int_lists > 0) {
             KernelKind::IntList
@@ -450,12 +482,15 @@ fn common_postdominator(
     left
 }
 
-fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, bit_arrays: bool) -> Option<()> {
+fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, kind: KernelKind) -> Option<()> {
     match slot.local() {
         ParamLocal::Int(_) => point.ints += 1,
         ParamLocal::Bool(_) => point.bools += 1,
-        ParamLocal::List(ListLocal::Int { .. }) if !bit_arrays => point.int_lists += 1,
-        ParamLocal::BitArray(_) if bit_arrays => point.bit_arrays += 1,
+        ParamLocal::List(ListLocal::Int { .. }) if kind == KernelKind::Numeric => {
+            point.int_lists += 1
+        }
+        ParamLocal::BitArray(_) if kind == KernelKind::BitArray => point.bit_arrays += 1,
+        ParamLocal::String(_) if kind == KernelKind::String => point.strings += 1,
         _ => return None,
     }
     Some(())
@@ -464,6 +499,7 @@ fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, bit_arrays: bool) 
 impl<'graph> CompiledInstruction<'graph> {
     fn inspect<Graph: ExecutionGraphProfile>(
         instruction: &'graph ProfiledInstruction<Graph>,
+        kind: KernelKind,
     ) -> Option<Self> {
         match instruction {
             ProfiledInstruction::IntegerRegion(region) if region.native => {
@@ -486,11 +522,13 @@ impl<'graph> CompiledInstruction<'graph> {
                 (
                     ProfiledInstructionKind::Int(IntInstruction::ListIndex { list, index }),
                     ParamLocal::Int(output),
-                ) => Some(Self::IntList(IntListInstruction::Index {
-                    output: *output,
-                    list: *list,
-                    index: *index,
-                })),
+                ) if kind == KernelKind::Numeric => {
+                    Some(Self::IntList(IntListInstruction::Index {
+                        output: *output,
+                        list: *list,
+                        index: *index,
+                    }))
+                }
                 (ProfiledInstructionKind::Int(instruction), ParamLocal::Int(output)) => Some(
                     Self::Integer(*output, NumericInteger::inspect(instruction)?),
                 ),
@@ -500,30 +538,34 @@ impl<'graph> CompiledInstruction<'graph> {
                         TypedListInstruction::Value(elements),
                     )),
                     ParamLocal::List(ListLocal::Int { local, .. }),
-                ) => Some(Self::IntList(IntListInstruction::Value {
-                    output: *local,
-                    type_id: *type_id,
-                    elements,
-                })),
+                ) if kind == KernelKind::Numeric => {
+                    Some(Self::IntList(IntListInstruction::Value {
+                        output: *local,
+                        type_id: *type_id,
+                        elements,
+                    }))
+                }
                 (
                     ProfiledInstructionKind::List(ListInstruction::Int(
                         type_id,
                         TypedListInstruction::Spread { elements, tail },
                     )),
                     ParamLocal::List(ListLocal::Int { local, .. }),
-                ) => Some(Self::IntList(IntListInstruction::Spread {
-                    output: *local,
-                    type_id: *type_id,
-                    elements,
-                    tail: *tail,
-                })),
+                ) if kind == KernelKind::Numeric => {
+                    Some(Self::IntList(IntListInstruction::Spread {
+                        output: *local,
+                        type_id: *type_id,
+                        elements,
+                        tail: *tail,
+                    }))
+                }
                 (
                     ProfiledInstructionKind::List(ListInstruction::Int(
                         type_id,
                         TypedListInstruction::DropFirst { list, count },
                     )),
                     ParamLocal::List(ListLocal::Int { local, .. }),
-                ) => Some(Self::IntList(IntListInstruction::Tail {
+                ) if kind == KernelKind::Numeric => Some(Self::IntList(IntListInstruction::Tail {
                     output: *local,
                     type_id: *type_id,
                     list: *list,
@@ -533,11 +575,19 @@ impl<'graph> CompiledInstruction<'graph> {
                     let expression = match instruction {
                         BoolInstruction::Value(value) => CompiledBoolean::Value(*value),
                         BoolInstruction::Test(test) => {
-                            CompiledBoolean::Test(CompiledTest::inspect(test)?)
+                            CompiledBoolean::Test(CompiledTest::inspect(test, kind)?)
                         }
                         _ => return None,
                     };
                     Some(Self::Boolean(*output, expression))
+                }
+                (ProfiledInstructionKind::String(instruction), ParamLocal::String(output))
+                    if kind == KernelKind::String =>
+                {
+                    Some(Self::String(
+                        *output,
+                        StringOperation::inspect(instruction)?,
+                    ))
                 }
                 _ => None,
             },
@@ -564,8 +614,8 @@ impl<'graph> NumericInteger<'graph> {
     }
 }
 
-impl CompiledTest {
-    fn inspect(test: &BoolTest) -> Option<Self> {
+impl<'graph> CompiledTest<'graph> {
+    fn inspect(test: &'graph BoolTest, kind: KernelKind) -> Option<Self> {
         let (comparison, left, right) = match test {
             BoolTest::Not(value) => return Some(Self::Not(*value)),
             BoolTest::EqualInt { left, right } => (NumericComparison::Equal, left, right),
@@ -574,14 +624,65 @@ impl CompiledTest {
             BoolTest::LtEqInt { left, right } => (NumericComparison::LessEqual, left, right),
             BoolTest::GtInt { left, right } => (NumericComparison::Greater, left, right),
             BoolTest::GtEqInt { left, right } => (NumericComparison::GreaterEqual, left, right),
-            _ => return IntListTest::inspect(test).map(Self::IntList),
+            BoolTest::Equal {
+                left: ParamLocal::Bool(left),
+                right: ParamLocal::Bool(right),
+            } if kind == KernelKind::String => {
+                return Some(Self::BoolEqual {
+                    left: *left,
+                    right: *right,
+                    negate: false,
+                });
+            }
+            BoolTest::NotEqual {
+                left: ParamLocal::Bool(left),
+                right: ParamLocal::Bool(right),
+            } if kind == KernelKind::String => {
+                return Some(Self::BoolEqual {
+                    left: *left,
+                    right: *right,
+                    negate: true,
+                });
+            }
+            BoolTest::StringStartsWith { value, prefix } if kind == KernelKind::String => {
+                return Some(Self::String(StringTest::Prefix {
+                    value: *value,
+                    prefix: prefix.as_str(),
+                }));
+            }
+            BoolTest::Equal {
+                left: ParamLocal::String(left),
+                right: ParamLocal::String(right),
+            } if kind == KernelKind::String => {
+                return Some(Self::String(StringTest::Equal {
+                    left: *left,
+                    right: *right,
+                    negate: false,
+                }));
+            }
+            BoolTest::NotEqual {
+                left: ParamLocal::String(left),
+                right: ParamLocal::String(right),
+            } if kind == KernelKind::String => {
+                return Some(Self::String(StringTest::Equal {
+                    left: *left,
+                    right: *right,
+                    negate: true,
+                }));
+            }
+            _ => {
+                return match kind {
+                    KernelKind::Numeric => IntListTest::inspect(test).map(Self::IntList),
+                    KernelKind::String | KernelKind::BitArray | KernelKind::IntList => None,
+                };
+            }
         };
         Some(Self::Compare(comparison, *left, *right))
     }
 }
 
 impl<'graph> CompiledTerminator<'graph> {
-    fn inspect(terminator: &'graph Terminator) -> Option<Self> {
+    fn inspect(terminator: &'graph Terminator, kind: KernelKind) -> Option<Self> {
         Some(match terminator {
             Terminator::Jump(jump) => Self::Jump(&jump.edge),
             Terminator::BoolBranch(branch) => Self::Boolean {
@@ -590,7 +691,7 @@ impl<'graph> CompiledTerminator<'graph> {
                 false_: &branch.false_,
             },
             Terminator::TestBranch(branch) => Self::Test {
-                test: CompiledTest::inspect(&branch.test)?,
+                test: CompiledTest::inspect(&branch.test, kind)?,
                 true_: &branch.true_,
                 false_: &branch.false_,
             },
@@ -607,9 +708,27 @@ impl<'graph> CompiledTerminator<'graph> {
                 }
             }
             Terminator::Exit(exit) => Self::Exit(*exit),
-            Terminator::Match(matcher) => Self::Match(IntListMatch::inspect(matcher)?),
-            Terminator::SourceStop(stop) if stop.message().is_none() => Self::Interpreted,
-            Terminator::LetAssertPanic(panic) if panic.message().is_none() => Self::Interpreted,
+            Terminator::StringSwitch(switch) if kind == KernelKind::String => Self::StringSwitch {
+                subject: switch.subject,
+                clauses: &switch.clauses,
+                fallback: &switch.fallback,
+            },
+            Terminator::Match(matcher) if kind == KernelKind::Numeric => {
+                Self::Match(IntListMatch::inspect(matcher)?)
+            }
+            Terminator::Match(matcher) if kind == KernelKind::String => {
+                Self::StringMatch(StringMatch::inspect(matcher)?)
+            }
+            Terminator::SourceStop(stop)
+                if kind == KernelKind::String || stop.message().is_none() =>
+            {
+                Self::Interpreted
+            }
+            Terminator::LetAssertPanic(panic)
+                if kind == KernelKind::String || panic.message().is_none() =>
+            {
+                Self::Interpreted
+            }
             _ => return None,
         })
     }
@@ -637,7 +756,18 @@ impl<'graph> CompiledTerminator<'graph> {
                 .map(|(_, edge)| CompiledEdge::Ordinary(edge))
                 .chain(std::iter::once(CompiledEdge::Ordinary(fallback)))
                 .collect(),
+            Self::StringSwitch {
+                clauses, fallback, ..
+            } => clauses
+                .iter()
+                .map(|(_, edge)| CompiledEdge::Ordinary(edge))
+                .chain(std::iter::once(CompiledEdge::Ordinary(fallback)))
+                .collect(),
             Self::Match(view) => vec![
+                CompiledEdge::Match(view.matcher.success()),
+                CompiledEdge::Ordinary(view.matcher.failure()),
+            ],
+            Self::StringMatch(view) => vec![
                 CompiledEdge::Match(view.matcher.success()),
                 CompiledEdge::Ordinary(view.matcher.failure()),
             ],
@@ -671,11 +801,13 @@ fn visit(
 
 #[cfg(test)]
 mod tests {
-    use super::{CompiledCheckpoint, CompiledShape, shared_suffix, visit};
-    use crate::plan::execution::function::{ExecutionIntFunctionBody, FunctionExit, IntFunctionId};
+    use super::{CompiledCheckpoint, CompiledShape, KernelKind, shared_suffix, visit};
+    use crate::plan::execution::function::{
+        BoolFunctionId, ExecutionIntFunctionBody, FunctionExit, IntFunctionId,
+    };
     use crate::plan::execution::graph::{
-        BlockGraphExitId, BlockId, Edge, IntLocalId, IntSwitch, IntegerLiteral, Jump, ParamLocal,
-        ProfiledBlock, ProfiledBlockGraph, StringLocalId, Terminator,
+        BlockGraphExitId, BlockId, Edge, FloatLocalId, IntLocalId, IntSwitch, IntegerLiteral, Jump,
+        ParamLocal, ProfiledBlock, ProfiledBlockGraph, Terminator,
     };
     use crate::plan::execution::prepared::rust::Rust;
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -685,6 +817,115 @@ mod tests {
     fn source_plan(source: &str) -> crate::ExecutionPlan {
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap())
+    }
+
+    #[test]
+    fn string_prefix_repetition_keeps_exact_string_columns_and_diagnostic_suffix() {
+        let plan = source_plan(
+            r#"
+fn walk(text: String, total: Int) {
+  case text {
+    "z" <> rest -> walk(rest, total + 1)
+    "" -> total
+    _ -> panic as "invalid text"
+  }
+}
+pub fn main() { walk("zz", 3) }
+"#,
+        );
+        let shape = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).unwrap();
+        assert_eq!(shape.kind, KernelKind::String);
+        assert!(shape.repeats);
+        let entry = shape.checkpoints[shape.start(shape.graph.entry())];
+        assert_eq!(
+            (entry.instruction, entry.ints, entry.bools, entry.strings),
+            (0, 1, 0, 1)
+        );
+        let strings = shape
+            .checkpoints
+            .iter()
+            .map(|point| (point.block.index(), point.instruction, point.strings))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            strings,
+            [
+                (0, 0, 1),
+                (1, 0, 1),
+                (1, 1, 2),
+                (1, 2, 2),
+                (2, 0, 1),
+                (2, 1, 2),
+                (3, 0, 0),
+                (4, 0, 0),
+                (4, 1, 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn string_switch_is_supported_but_calls_concatenation_constants_and_other_families_are_not() {
+        for (source, supported) in [
+            (
+                r#"fn choose(text: String) { case text { "yes" -> 1 "no" -> 2 _ -> 3 } } pub fn main() { choose("yes") }"#,
+                true,
+            ),
+            (
+                r#"fn choose(text: String) { case text <> "!" { "!" -> 1 _ -> 2 } } pub fn main() { choose("") }"#,
+                false,
+            ),
+            (
+                r#"const saved = "yes" fn choose(text: String) { case text == saved { True -> 1 False -> 2 } } pub fn main() { choose("yes") }"#,
+                false,
+            ),
+            (
+                r#"fn choose(text: String) { let values = [1] case text { "yes" -> case values { [first, ..] -> first _ -> 0 } _ -> 2 } } pub fn main() { choose("yes") }"#,
+                false,
+            ),
+            (
+                r#"fn helper(text: String) { text } fn choose(text: String) { case helper(text) { "yes" -> 1 _ -> 2 } } pub fn main() { choose("yes") }"#,
+                false,
+            ),
+        ] {
+            let plan = source_plan(source);
+            let inspected = CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body());
+            assert_eq!(
+                inspected.map(|shape| shape.kind),
+                supported.then_some(KernelKind::String),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn string_boolean_returns_keep_scalar_equality_and_existing_structuring_limits() {
+        for (expression, supported) in [
+            (
+                "case equal == expected { True -> different != expected False -> False }",
+                true,
+            ),
+            ("equal == expected && different != expected", false),
+        ] {
+            let source = format!(
+                r#"
+fn same(left: String, right: String, expected: Bool) {{
+  let equal = left == right
+  let different = left != right
+  {expression}
+}}
+pub fn main() {{ same("λ", "λ", True) }}
+"#
+            );
+            let plan = source_plan(&source);
+            let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body());
+            assert_eq!(
+                shape.as_ref().map(|shape| shape.kind),
+                supported.then_some(KernelKind::String)
+            );
+            if let Some(shape) = shape {
+                let point = shape.checkpoints[shape.start(shape.graph.entry())];
+                assert_eq!((point.ints, point.bools, point.strings), (0, 1, 2));
+            }
+        }
     }
 
     #[test]
@@ -717,6 +958,7 @@ mod tests {
                         bools: 0,
                         bit_arrays: 0,
                         int_lists,
+                        strings: 0,
                     })
                     .collect::<Vec<_>>()
             );
@@ -826,7 +1068,8 @@ data::function::FunctionExit::TailCall {
                     ints: 2,
                     bools: 0,
                     bit_arrays: 0,
-                    int_lists: 1
+                    int_lists: 1,
+                    strings: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(0),
@@ -834,7 +1077,8 @@ data::function::FunctionExit::TailCall {
                     ints: 2,
                     bools: 0,
                     bit_arrays: 0,
-                    int_lists: 2
+                    int_lists: 2,
+                    strings: 0,
                 },
             ]
         );
@@ -1069,6 +1313,7 @@ pub fn main() { walk(3, 0) }
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 0,
+                    strings: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(1),
@@ -1077,6 +1322,7 @@ pub fn main() { walk(3, 0) }
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 0,
+                    strings: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(2),
@@ -1085,6 +1331,7 @@ pub fn main() { walk(3, 0) }
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 0,
+                    strings: 0,
                 },
                 CompiledCheckpoint {
                     block: BlockId(2),
@@ -1093,6 +1340,7 @@ pub fn main() { walk(3, 0) }
                     bools: 0,
                     bit_arrays: 0,
                     int_lists: 0,
+                    strings: 0,
                 },
             ]
         );
@@ -1236,14 +1484,18 @@ pub fn main() { choose(True, False) }
         ] {
             let plan = source_plan(source);
             assert!(
-                CompiledShape::inspect(plan.int_function(IntFunctionId(1)).body()).is_none(),
+                CompiledShape::inspect_supported(
+                    plan.int_function(IntFunctionId(1)).body(),
+                    KernelKind::Numeric,
+                )
+                .is_none(),
                 "{source}"
             );
         }
     }
 
     fn ordinary_edge(terminator: &Terminator) -> &Edge {
-        match super::CompiledTerminator::inspect(terminator)
+        match super::CompiledTerminator::inspect(terminator, KernelKind::Numeric)
             .unwrap()
             .edges()[0]
         {
@@ -1299,7 +1551,7 @@ pub fn main() { walk(3, 0) }
                             let edge = ordinary_edge(&terminator);
                             terminator = Terminator::Jump(Jump::new(edge.clone()));
                         } else if change == 1 {
-                            params[0].local = ParamLocal::String(StringLocalId(0));
+                            params[0].local = ParamLocal::Float(FloatLocalId(0));
                         }
                     }
                     ProfiledBlock::new(params, block.instructions().to_vec(), terminator)
@@ -1514,8 +1766,55 @@ pub fn main() { choose(True, False) }
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         let terminator = graph.block(graph.entry()).terminator();
-        assert!(super::CompiledTerminator::inspect(terminator).is_none());
+        assert!(super::CompiledTerminator::inspect(terminator, KernelKind::Numeric).is_none());
         assert!(CompiledShape::inspect(body).is_none());
+    }
+
+    #[test]
+    fn string_condition_selection_belongs_to_the_string_kernel_family() {
+        use super::super::test_expression;
+        use super::CompiledTest;
+        use crate::plan::execution::graph::{BoolTest, ParamLocal, StringLocalId};
+
+        for (test, expected) in [
+            (
+                BoolTest::StringStartsWith {
+                    value: StringLocalId(2),
+                    prefix: "λ".into(),
+                },
+                "values.text(b3_s2).starts_with(\"λ\")",
+            ),
+            (
+                BoolTest::Equal {
+                    left: ParamLocal::String(StringLocalId(2)),
+                    right: ParamLocal::String(StringLocalId(5)),
+                },
+                "values.text(b3_s2) == values.text(b3_s5)",
+            ),
+            (
+                BoolTest::NotEqual {
+                    left: ParamLocal::String(StringLocalId(2)),
+                    right: ParamLocal::String(StringLocalId(5)),
+                },
+                "values.text(b3_s2) != values.text(b3_s5)",
+            ),
+        ] {
+            let inspected = CompiledTest::inspect(&test, KernelKind::String).unwrap();
+            assert_eq!(test_expression(BlockId(3), &inspected), expected);
+            for kind in [KernelKind::Numeric, KernelKind::BitArray] {
+                assert!(CompiledTest::inspect(&test, kind).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn string_equality_remains_outside_the_bit_array_test_contract() {
+        use crate::plan::execution::graph::{BoolTest, ParamLocal, StringLocalId};
+        let test = BoolTest::Equal {
+            left: ParamLocal::String(StringLocalId(0)),
+            right: ParamLocal::String(StringLocalId(1)),
+        };
+        assert!(super::CompiledTest::inspect(&test, KernelKind::BitArray).is_none());
     }
 
     #[test]
@@ -1527,15 +1826,17 @@ pub fn main() { choose(True, False) }
 
         let left = IntegerOperand::Local(IntLocalId(2));
         let right = IntegerOperand::Immediate(-7);
-        let inspected_comparison = |test: &BoolTest| match CompiledTest::inspect(test) {
-            Some(CompiledTest::Compare(comparison, left, right)) => Some((
-                discriminant(&comparison),
-                Rust::expression(&left),
-                Rust::expression(&right),
-            )),
-            _ => None,
-        };
-        let inspected_not = |test: &BoolTest| match CompiledTest::inspect(test) {
+        let inspected_comparison =
+            |test: &BoolTest| match CompiledTest::inspect(test, KernelKind::Numeric) {
+                Some(CompiledTest::Compare(comparison, left, right)) => Some((
+                    discriminant(&comparison),
+                    Rust::expression(&left),
+                    Rust::expression(&right),
+                )),
+                _ => None,
+            };
+        let inspected_not = |test: &BoolTest| match CompiledTest::inspect(test, KernelKind::Numeric)
+        {
             Some(CompiledTest::Not(value)) => Some(value.0),
             _ => None,
         };
@@ -1592,7 +1893,7 @@ pub fn main() { choose(7) }
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         let terminator = graph.block(graph.entry()).terminator();
-        assert!(super::CompiledTerminator::inspect(terminator).is_none());
+        assert!(super::CompiledTerminator::inspect(terminator, KernelKind::Numeric).is_none());
         assert!(CompiledShape::inspect(body).is_none());
     }
 
@@ -1668,7 +1969,7 @@ data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
 "#
             .trim_matches('\n')
         );
-        assert!(CompiledInstruction::inspect(&instructions[0]).is_none());
+        assert!(CompiledInstruction::inspect(&instructions[0], KernelKind::Numeric).is_none());
         let plan = source_plan(
             r#"fn select(flag: Bool) { let text = "kept" case flag { True -> 1 False -> 0 } } pub fn main() { select(True) }"#,
         );
@@ -1683,7 +1984,7 @@ data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Val
 "#
             .trim_matches('\n')
         );
-        assert!(CompiledInstruction::inspect(&instructions[0]).is_none());
+        assert!(CompiledInstruction::inspect(&instructions[0], KernelKind::Numeric).is_none());
     }
 
     #[test]
@@ -1700,31 +2001,39 @@ pub fn main() { select(["kept"]) }
         let body = plan.int_function(IntFunctionId(1)).body();
         let graph = body.block_graph().as_view();
         assert!(
-            super::CompiledTerminator::inspect(graph.block(graph.entry()).terminator()).is_none()
+            super::CompiledTerminator::inspect(
+                graph.block(graph.entry()).terminator(),
+                KernelKind::Numeric
+            )
+            .is_none()
         );
         assert!(CompiledShape::inspect(body).is_none());
     }
 
     #[test]
-    fn failures_resume_canonical_terminators_and_explicit_messages_stay_interpreted() {
+    fn failures_resume_canonical_terminators_and_messages_keep_their_supported_family() {
         use super::CompiledTerminator;
         use std::mem::discriminant;
-        for (source, has_message) in [
+        for (source, has_message, expected_kind) in [
             (
                 r#"fn select(values: List(Int)) { let assert [first, ..] = values as "empty" first } pub fn main() { select([7]) }"#,
                 true,
+                None,
             ),
             (
                 r#"fn select(flag: Bool) { case flag { True -> 1 False -> panic as "stopped" } } pub fn main() { select(True) }"#,
                 true,
+                Some(KernelKind::String),
             ),
             (
                 r#"fn select(values: List(Int)) { let assert [first, ..] = values first } pub fn main() { select([7]) }"#,
                 false,
+                Some(KernelKind::IntList),
             ),
             (
                 r#"fn select(flag: Bool) { case flag { True -> 1 False -> panic } } pub fn main() { select(True) }"#,
                 false,
+                Some(KernelKind::Numeric),
             ),
         ] {
             let plan = source_plan(source);
@@ -1741,12 +2050,46 @@ pub fn main() { select(["kept"]) }
                 })
                 .unwrap();
             assert_eq!(
-                CompiledTerminator::inspect(terminator)
+                CompiledTerminator::inspect(terminator, KernelKind::Numeric)
                     .as_ref()
                     .map(discriminant),
                 (!has_message).then(|| discriminant(&CompiledTerminator::Interpreted)),
             );
-            assert_eq!(CompiledShape::inspect(body).is_none(), has_message);
+            assert_eq!(
+                CompiledShape::inspect(body).map(|shape| shape.kind),
+                expected_kind
+            );
         }
+    }
+
+    #[test]
+    fn string_terminal_suffixes_need_no_forward_resume_but_cold_instructions_and_edges_do() {
+        for (source, id, forward) in [
+            (r#"pub fn main() -> Int { panic as "required" }"#, 0, false),
+            (
+                r#"fn choose(text: String) { case text { "λ" -> 3 _ -> 4 } } pub fn main() { choose("λ") }"#,
+                1,
+                true,
+            ),
+        ] {
+            let plan = source_plan(source);
+            let shape =
+                CompiledShape::inspect(plan.int_function(IntFunctionId(id)).body()).unwrap();
+            assert_eq!(shape.kind, KernelKind::String);
+            assert_eq!(shape.resumes_forward(), forward);
+        }
+        let source = r#"fn same(left: String, right: String) -> Bool { left == right } pub fn main() { same("λ", "λ") }"#;
+        let plan = source_plan(source);
+        let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
+        assert_eq!(shape.kind, KernelKind::String);
+        assert!(!shape.resumes_forward());
+        assert_eq!(
+            shape
+                .checkpoints
+                .iter()
+                .map(|point| (point.instruction, point.bools, point.strings))
+                .collect::<Vec<_>>(),
+            [(0, 0, 2), (1, 1, 2)]
+        );
     }
 }
