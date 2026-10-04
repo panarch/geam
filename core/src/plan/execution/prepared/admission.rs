@@ -1129,6 +1129,131 @@ pub fn main() {
         }
     }
 
+    #[test]
+    fn symbolic_constructor_remainders_admit_fixed_payloads() {
+        let source = r#"
+pub type InternalMessage {
+  Close
+  Ready
+  ReceiveMessage(Int)
+  Closed
+  Passive
+  SocketError(Int)
+}
+
+pub type Message(user) {
+  Internal(InternalMessage)
+  User(user)
+}
+
+fn choose(message: Message(user)) -> Int {
+  case message {
+    Internal(Closed) | Internal(Close) -> 0
+    Internal(Ready) -> 1
+    User(_) -> 2
+    Internal(ReceiveMessage(_)) -> 3
+    Internal(Passive) -> 4
+    Internal(SocketError(reason)) -> reason
+  }
+}
+
+pub fn main() {
+  let assert 0 = choose(Internal(Closed))
+  let assert 0 = choose(Internal(Close))
+  let assert 1 = choose(Internal(Ready))
+  let assert 2 = choose(User(Nil))
+  let assert 3 = choose(Internal(ReceiveMessage(13)))
+  let assert 4 = choose(Internal(Passive))
+  let assert 9 = choose(Internal(SocketError(9)))
+  Nil
+}
+"#;
+        for (source, stored_symbolic_variant) in [
+            (source.to_string(), false),
+            (source.to_string(), true),
+            (
+                source.replace("message: Message(user)", "message: Message(Nil)"),
+                false,
+            ),
+        ] {
+            let typed =
+                crate::compile_typed_module("example", "src/example.gleam", &source).unwrap();
+            let (bindings, _) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            let mut data = artifact(bindings.prepare());
+            if stored_symbolic_variant {
+                use crate::plan::TypeParameterId;
+                use crate::plan::execution::type_::custom::FieldRefinement;
+                use crate::plan::execution::type_::{
+                    CustomConstructorDescriptor, CustomConstructorId, CustomFieldDescriptor,
+                    CustomTypeId, TypeMetadata, ValueShapeDescriptor,
+                };
+
+                // Other retained signatures may require the symbolic User layout
+                // even though this specialization cannot construct a User payload.
+                let type_index = data
+                    .program
+                    .custom_types
+                    .types
+                    .iter()
+                    .position(|type_| {
+                        type_.type_.name.as_str() == "Message"
+                            && type_
+                                .type_
+                                .arguments
+                                .iter()
+                                .any(|argument| matches!(argument, TypeMetadata::Parameter(_)))
+                    })
+                    .unwrap();
+                let parameter_shape = data
+                    .program
+                    .value_shapes
+                    .custom_shapes
+                    .iter()
+                    .find(|shape| shape.type_id.index() == type_index)
+                    .unwrap()
+                    .arguments[0];
+                assert_eq!(
+                    data.program.value_shapes.shapes[parameter_shape.index()],
+                    ValueShapeDescriptor::Parameter(TypeParameterId(0))
+                );
+                let field_type =
+                    data.program.value_shapes.shape_types[parameter_shape.index()].clone();
+                let type_ = &mut owned_mut(&mut data.program.custom_types.types)[type_index];
+                assert_eq!(type_.constructors.len(), 1);
+                let mut constructors = type_.constructors.to_vec();
+                constructors.push(CustomConstructorDescriptor {
+                    id: CustomConstructorId {
+                        type_id: CustomTypeId(type_index),
+                        index: 1,
+                    },
+                    name: "User".into(),
+                    native_tag: "user".into(),
+                    fields: vec![CustomFieldDescriptor {
+                        label: None,
+                        type_: field_type,
+                        shape: parameter_shape,
+                        refinement: FieldRefinement::Argument(0),
+                    }]
+                    .into(),
+                });
+                type_.constructors = constructors.into();
+            }
+            assert_eq!(module(&data, &functions::InfallibleHosts).err(), None);
+            let (execution, _) = plain(Box::leak(Box::new(data))).unwrap().into_execution();
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                assert_eq!(
+                    crate::run_main(&execution, &mut echo).unwrap(),
+                    crate::Value::Nil
+                );
+                assert!(echo.is_empty());
+            }
+        }
+    }
+
     fn remainder_fixture_matcher(terminator: &mut Terminator) -> &mut Match {
         match terminator {
             Terminator::Match(matcher) => matcher,

@@ -1743,6 +1743,9 @@ static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/va
 static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/nested_patterns.rs");
 
+static SYMBOLIC_PATTERNS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/symbolic_patterns.rs");
+
 static MULTI_SUBJECT_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/multi_subject_patterns.rs");
 
@@ -2078,6 +2081,41 @@ fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_resu
                 module.call(&main, (), &mut echo).unwrap().as_str(),
                 "present:missing:failed:nested:empty:none:done"
             );
+            assert!(echo.is_empty());
+        }
+    }
+}
+
+#[test]
+fn symbolic_nested_patterns_preserve_dynamic_and_compiled_prepared_results() {
+    let source = include_str!("fixtures/prepared/symbolic_patterns.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), ()>::new("main"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/symbolic_patterns.rs").trim()
+    );
+    for prepared in [false, true] {
+        let (module, main) = if prepared {
+            let mut bindings = SYMBOLIC_PATTERNS.load().unwrap();
+            let main = bindings
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (bindings, main) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), ()>::new("main"))
+                .unwrap();
+            (bindings.seal(), main)
+        };
+        for _ in 0..2 {
+            let mut echo = Vec::new();
+            module.call(&main, (), &mut echo).unwrap();
             assert!(echo.is_empty());
         }
     }

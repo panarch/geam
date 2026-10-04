@@ -192,7 +192,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
             })
         };
         let mut possible = Vec::new();
-        for constructor in type_.constructors.iter() {
+        for constructor in self.types.inhabited_constructors(shape) {
             let index = constructor.id.index;
             if proves(Fact::Is(index)) {
                 locals.set_constructor(&slot.local, place.clone(), index);
@@ -203,7 +203,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 possible.push(index);
             }
         }
-        if possible.len() == 1 && type_.constructors.len() == type_.constructor_count {
+        if possible.len() == 1 && self.types.has_all_inhabited_constructors(shape) {
             locals.set_constructor(&slot.local, place, possible[0]);
         }
         if !possible.is_empty() && possible.len() != type_.constructors.len() {
@@ -212,7 +212,7 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
     }
 
     // Every incoming path must establish the fact. Constructor exclusions prove
-    // an exact variant only against the original declaration, not a sparse subset.
+    // an exact variant only when every inhabited declared variant is represented.
     fn proves(&self, block: BlockId, local: &ParamLocal, fact: Fact) -> bool {
         self.proves_query(Query {
             block,
@@ -280,18 +280,16 @@ impl<'data, Graph: ExecutionGraphProfile> Control<'_, 'data, Graph> {
                 {
                     continue;
                 }
-                let type_ = &self.types.customs.types[shape.type_id.index()];
                 if let Fact::Is(index) = query.fact
-                    && type_.constructors.len() == type_.constructor_count
-                    && type_
-                        .constructors
-                        .iter()
+                    && self.types.has_all_inhabited_constructors(shape)
+                    && self
+                        .types
+                        .inhabited_constructors(shape)
                         .any(|constructor| constructor.id.index == index)
                 {
                     pending.extend(
-                        type_
-                            .constructors
-                            .iter()
+                        self.types
+                            .inhabited_constructors(shape)
                             .filter(|constructor| constructor.id.index != index)
                             .map(|constructor| {
                                 Visit::Enter(Query {

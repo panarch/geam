@@ -237,6 +237,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let symbolic_patterns = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/symbolic_patterns.gleam"),
+    )?;
+    let (symbolic_patterns, _) = ModuleBuilder::new(symbolic_patterns)?
+        .function(FunctionDeclaration::<(), ()>::new("main"))?;
+
     let multi_subject = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -365,6 +373,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
+        (
+            "symbolic_patterns.rs",
+            symbolic_patterns.prepare().emit_rust(),
+        ),
         (
             "multi_subject_patterns.rs",
             multi_subject.prepare().emit_rust(),
