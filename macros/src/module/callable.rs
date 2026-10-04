@@ -405,6 +405,7 @@ impl CallableParser<'_, '_> {
         }
         let ident = &function.sig.ident;
         let returned = CallbackType {
+            role: super::CallbackRole::Strict,
             signature: syn::parse_quote!(fn(#(#argument_types),*) -> #returned),
             path: syn::parse_quote!(#support::Callback),
             arguments,
@@ -415,6 +416,7 @@ impl CallableParser<'_, '_> {
         // A capture pack is a type sequence, so it has no invocation-arity limit.
         let ident = &function.sig.ident;
         let capture_encoder = CallbackType {
+            role: super::CallbackRole::Strict,
             signature: syn::parse_quote!(fn(#(#captured_types),*) -> ()),
             path: syn::parse_quote!(#support::Callback),
             arguments: capture_arguments,

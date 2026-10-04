@@ -29,7 +29,8 @@ pub(super) fn static_list_item_type(
         }
         StaticValueType::Callback(callback) => {
             let signature = &callback.signature;
-            quote!(#support::Callback<#signature>)
+            let wrapper = callback.role.wrapper(support);
+            quote!(#wrapper<#signature>)
         }
         StaticValueType::Scalar(type_) => quote!(#type_),
         StaticValueType::Declared { type_, .. } => match flavor {
@@ -342,7 +343,8 @@ pub(super) fn callback_signature_type(
 ) -> Type {
     let signature = &callback.signature;
     let forms = callback_runtime_forms(callback, customs, support, profile);
-    let context = quote!(#support::ProviderCallbackContext<#profile, #(#forms),*>);
+    let context_path = callback.role.context(support);
+    let context = quote!(#context_path<#profile, #(#forms),*>);
     let mut path = callback.path.clone();
     for segment in path.path.segments.iter_mut().rev().take(1) {
         segment.arguments = PathArguments::AngleBracketed(syn::parse_quote! {
@@ -984,7 +986,8 @@ pub(super) fn callback_host_type(
 ) -> TokenStream {
     let arguments = callback_host_arguments(callback, customs, support);
     let return_ = host_input_type(&callback.return_, customs, support, &quote!(__GeamProfile));
-    quote!(#support::HostFunctionType<#arguments, #return_>)
+    let host = callback.role.host(support);
+    quote!(#host<#arguments, #return_>)
 }
 
 pub(super) fn callback_host_arguments(

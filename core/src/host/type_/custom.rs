@@ -263,6 +263,10 @@ pub enum HostSchemaType {
         arguments: Box<[HostSchemaType]>,
         return_: Box<HostSchemaType>,
     },
+    FunctionValue {
+        arguments: Box<[HostSchemaType]>,
+        return_: Box<HostSchemaType>,
+    },
     Custom {
         package: EcoString,
         module: EcoString,
@@ -425,6 +429,13 @@ impl HostSchemaType {
         }
     }
 
+    pub fn function_value(arguments: impl IntoIterator<Item = Self>, return_: Self) -> Self {
+        Self::FunctionValue {
+            arguments: arguments.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+            return_: Box::new(return_),
+        }
+    }
+
     pub fn custom(
         package: impl Into<EcoString>,
         module: impl Into<EcoString>,
@@ -451,7 +462,9 @@ impl HostSchemaType {
                     element.collect_external_schemas(output, visited);
                 }
             }
-            Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ } => {
+            Self::Function { arguments, return_ }
+            | Self::OpaqueFunction { arguments, return_ }
+            | Self::FunctionValue { arguments, return_ } => {
                 for argument in arguments {
                     argument.collect_external_schemas(output, visited);
                 }
@@ -491,7 +504,9 @@ impl HostSchemaType {
             (Self::List(host), Self::List(source)) => host.matches_source(source),
             (Self::Tuple(host), Self::Tuple(source)) => Self::arguments_match_source(host, source),
             (
-                Self::Function { arguments, return_ } | Self::OpaqueFunction { arguments, return_ },
+                Self::Function { arguments, return_ }
+                | Self::OpaqueFunction { arguments, return_ }
+                | Self::FunctionValue { arguments, return_ },
                 Self::Function {
                     arguments: inputs,
                     return_: output,

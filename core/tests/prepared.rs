@@ -722,6 +722,100 @@ fn opaque_custom_function_fields_preserve_symbolic_storage_and_exact_prepared_ro
     }
 }
 
+#[path = "fixtures/prepared/function_value_provider.rs"]
+mod function_value_provider;
+
+static FUNCTION_VALUES: data::HostedModuleArtifact =
+    include!("fixtures/prepared/function_values.rs");
+
+#[test]
+fn general_function_values_preserve_owned_sources_and_exact_prepared_roles() {
+    use function_value_provider::FieldRole;
+    assert_eq!(
+        function_value_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/function_values.rs").trim()
+    );
+    for role in [FieldRole::Opaque, FieldRole::Strict] {
+        assert_eq!(
+            FUNCTION_VALUES
+                .load(function_value_provider::hosts(role))
+                .err()
+                .unwrap()
+                .to_string(),
+            "prepared provider registration mismatch: Registration { package: \"application\", module: \"function_values\", function: \"keep_holder\", reason: Declaration }; regenerate with the matching providers"
+        );
+    }
+    FUNCTION_VALUES
+        .load(function_value_provider::hosts(FieldRole::General))
+        .unwrap();
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let host = TokioHost::new(runtime.handle().clone());
+        for prepared in [false, true] {
+            let (mut module, main, concrete, compound) = if prepared {
+                let mut bindings = FUNCTION_VALUES
+                    .load(function_value_provider::hosts(FieldRole::General))
+                    .unwrap();
+                let main = bindings
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal(), main, concrete, compound)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "function_values",
+                    function_value_provider::packages(),
+                    function_value_provider::hosts(FieldRole::General),
+                )
+                .unwrap();
+                let (mut bindings, main) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(), bool>::new("main"))
+                    .unwrap();
+                let concrete = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool, StringValue)>::new(
+                        "concrete",
+                    ))
+                    .unwrap();
+                let compound = bindings
+                    .function(FunctionDeclaration::<(), (bool, bool)>::new("compound"))
+                    .unwrap();
+                (bindings.seal().unwrap(), main, concrete, compound)
+            };
+            for _ in 0..2 {
+                let mut echo = Vec::new();
+                let result = runtime
+                    .block_on(
+                        module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                            (
+                                scope.call(&main, ()).await.unwrap(),
+                                scope.call(&concrete, ()).await.unwrap(),
+                                scope.call(&compound, ()).await.unwrap(),
+                            )
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    result,
+                    (true, (true, true, "retained".into()), (true, true))
+                );
+                assert!(echo.is_empty());
+            }
+        }
+    }
+}
+
 static SHARED_CUSTOM: data::HostedModuleArtifact = include!("fixtures/prepared/shared_custom.rs");
 
 #[test]
@@ -1273,7 +1367,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 13; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 14; regenerate the prepared program"
     );
 }
 

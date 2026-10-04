@@ -498,12 +498,27 @@ impl HostTokenRuntime for TestHostCallRuntime<'_> {
     fn function_token(&self, _value: HostValueToken) -> HostFunctionToken {
         HostFunctionToken(0)
     }
+
+    fn function_value_token(&self, value: HostValueToken) -> crate::host::HostFunctionValueToken {
+        match value.family {
+            HostValueFamily::Function => {
+                crate::host::HostFunctionValueToken::Invocable(value.index)
+            }
+            HostValueFamily::SymbolicFunction => {
+                crate::host::HostFunctionValueToken::Symbolic(value.index)
+            }
+            _ => panic!("fixture requires a function token"),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{TestHostCallRuntime, TestHostProfile, TestRunState};
-    use crate::host::{HostCallRuntime, HostFunctionToken, HostScopedValue};
+    use crate::host::{
+        HostCallRuntime, HostFunctionToken, HostScopedValue, HostTokenRuntime, HostValueFamily,
+        HostValueToken,
+    };
     use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::EvaluatedValue;
     use crate::runtime::graph::RetainedValues;
@@ -715,6 +730,17 @@ mod tests {
             assert!(runtime.owns_stored(&stored));
             assert!(!runtime.owns_stored(&StoredRuntimeValue::test_int(42.into())));
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture requires a function token")]
+    fn fixture_rejects_a_non_function_token_in_the_function_value_slot() {
+        let mut state = TestRunState::default();
+        let runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+        runtime.function_value_token(HostValueToken {
+            family: HostValueFamily::Int,
+            index: 0,
+        });
     }
 
     #[test]

@@ -28,6 +28,10 @@ pub(super) fn resolve(
         | HostSchemaType::OpaqueFunction {
             arguments: inputs,
             return_,
+        }
+        | HostSchemaType::FunctionValue {
+            arguments: inputs,
+            return_,
         } => ValueType::Function(Box::new(crate::plan::FunctionType::new(
             arguments(inputs, parameters)?,
             resolve(return_, parameters)?,
@@ -99,6 +103,10 @@ pub(super) fn refinement(stored: &FieldRefinement, source: &HostSchemaType) -> b
             | HostSchemaType::OpaqueFunction {
                 arguments: right,
                 return_: right_return,
+            }
+            | HostSchemaType::FunctionValue {
+                arguments: right,
+                return_: right_return,
             },
         ) => refinements(left, right) && refinement(left_return, right_return),
         _ => false,
@@ -158,6 +166,16 @@ mod tests {
             ),
             (
                 HostSchemaType::opaque_function(
+                    [HostSchemaType::Parameter(0)],
+                    HostSchemaType::Parameter(1),
+                ),
+                ValueType::Function(Box::new(FunctionType::new(
+                    vec![ValueType::String],
+                    ValueType::Int,
+                ))),
+            ),
+            (
+                HostSchemaType::function_value(
                     [HostSchemaType::Parameter(0)],
                     HostSchemaType::Parameter(1),
                 ),
@@ -298,6 +316,20 @@ mod tests {
         assert!(!refinement(
             &stored,
             &HostSchemaType::opaque_function(
+                [HostSchemaType::Parameter(1)],
+                HostSchemaType::Parameter(1),
+            ),
+        ));
+        assert!(refinement(
+            &stored,
+            &HostSchemaType::function_value(
+                [HostSchemaType::Parameter(0)],
+                HostSchemaType::Parameter(1),
+            ),
+        ));
+        assert!(!refinement(
+            &stored,
+            &HostSchemaType::function_value(
                 [HostSchemaType::Parameter(1)],
                 HostSchemaType::Parameter(1),
             ),

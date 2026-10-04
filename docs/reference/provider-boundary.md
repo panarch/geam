@@ -118,7 +118,8 @@ fn reverse(values: List<StringValue>) -> Vec<StringValue> {
 ```
 
 List items support scalar, external, directional custom, Result, Option,
-callback, and explicit Future values plus recursive tuples and retained Lists.
+callback, function-value, and explicit Future values plus recursive tuples and
+retained Lists.
 External items are opaque guards that dereference to the provider payload
 without cloning it. A List may appear inside a tuple, Result, Option, custom
 field, or another List. Returning a received List preserves its storage in
@@ -317,7 +318,8 @@ The current macro surface supports scalars, native tuples composed from
 supported leaves, retained Lists with lazy item access or Vec construction,
 non-recursive custom values, Rust `Result`/`Option` mapped to their standard
 source types, constructorless external values, generic retained values, and
-typed callbacks, Rust-created functions, and explicit Future values. These
+typed callbacks, retained function values, Rust-created functions, and explicit
+Future values. These
 forms compose recursively in supported typed positions. Existential retained
 values use the explicit `provider::advanced` API.
 
@@ -356,6 +358,53 @@ function returning `T`. The current Gleam execution is suspended while the
 Rust future is pending; the caller's executor drives its completion. It does
 not construct or implicitly observe a source Future. This differs from the
 unmarked async function below, which returns explicit work to Gleam.
+
+### Retaining Functions with Unresolved Inputs
+
+`FunctionValue<fn(...) -> ...>` retains the exact source function even when
+its input type has no inhabited runtime representation. Its `callback()`
+method returns `Some(Callback<...>)` only when the sealed function already has
+an invocable target. This preserves the distinction between three roles:
+
+| Provider type | Low-level type | Uninhabited inputs | Invocation |
+| --- | --- | --- | --- |
+| `Value<fn(...) -> ...>` | `HostOpaqueFunctionType` | Retained | No capability |
+| `Callback<fn(...) -> ...>` | `HostFunctionType` | Rejected at sealing | Typed target required |
+| `FunctionValue<fn(...) -> ...>` | `HostFunctionValueType` | Retained | `callback()` selects an existing typed target |
+
+For example, a provider can preserve an unannotated `fn(_) { "saved" }`
+without assigning a concrete input type or invoking it:
+
+```rust
+use geam::provider::{FunctionValue, StringValue, Value};
+
+#[geam::function]
+fn retain<Item>(
+    function: FunctionValue<fn(Value<Item>) -> StringValue>,
+) -> FunctionValue<fn(Value<Item>) -> StringValue> {
+    function
+}
+```
+
+An unresolved `a` input has no invocation target, while `List(a)` can be
+inhabited by the empty List. An inhabited input with a never-returning body
+also remains invocable; successful return storage is not required. Nested
+roles stay independent: a `Callback` inside a `FunctionValue` still requires
+inhabited arguments. These roles compose through List, Tuple, custom, Result,
+Option, and callback-result positions.
+
+Cloning, forwarding between providers, and returning a `FunctionValue`
+preserves source identity, captures, and its original input/output codec and
+construction permissions. Selecting a callback does not specialize the
+signature or replace those permissions. The owned value remains bound to its
+original execution endpoint; restoration and invocation reject foreign or
+closed execution. An opaque `Value` cannot be upgraded to either role.
+
+Low-level providers retain a `HostFunctionValue` with
+`HostCall::owned_function_value`. `HostOwnedFunctionValue::restore` restores
+the original value, and `callable()` selects its existing `HostOwnedCallable`.
+Provider schemas and prepared registrations record the role separately from
+the source `fn` signature, so loading with a different role is rejected.
 
 ## Rust-created Function Values
 
@@ -635,6 +684,14 @@ incoming native data against that target and returns `None` for a mismatch.
 An exact retained target passes through; constructing another source view uses
 the registered conversion. External rules receive only their typed construction
 capability. Duplicate or overlapping specialized rules fail before execution.
+
+`NativeCall::owned_function_value` preserves the original source function for
+native equality, hashing, and inspection. An invocable value uses the existing
+registered input conversion and typed invocation. A symbolic value can still
+be stored and composed, but invocation fails with
+`native value does not match the registered callback input` after execution
+admission. A selector does not skip that failure or restore an already selected
+mailbox message.
 
 ## Generated Component Boundary
 

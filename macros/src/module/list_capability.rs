@@ -53,7 +53,10 @@ impl Capability<'_> {
     pub(super) fn marker(self, support: &TokenStream) -> TokenStream {
         let (source, _, _) = self.names();
         match self {
-            Self::Callback(_) => quote!(#support::Callback<#source>),
+            Self::Callback(callback) => {
+                let wrapper = callback.role.wrapper(support);
+                quote!(#wrapper<#source>)
+            }
             Self::Future(_) => quote!(#support::ProviderFuture<#source>),
         }
     }
@@ -75,7 +78,8 @@ impl Capability<'_> {
             Self::Callback(callback) => {
                 let forms =
                     super::signature::callback_runtime_forms(callback, customs, support, profile);
-                quote!(#support::ProviderCallbackListDecoder<#profile, #(#forms),*>)
+                let decoder = callback.role.decoder(support);
+                quote!(#decoder<#profile, #(#forms),*>)
             }
             Self::Future(future) => {
                 let host =
@@ -300,7 +304,13 @@ pub(super) fn decoder_fields(
         let proof = super::custom_context::construction_proof(&codec.to_string(), environment.callback_constructions, environment.customs, support);
         let codec = super::callback::instantiated_codec_type(codec, generics, environment);
         match capability {
-            Capability::Callback(_) => quote!(#field: #support::ProviderOwnedCallbackListDecoder::<__GeamProfile, __GeamProvider, #codec>::from_host_with::<#codec, __GeamProvider, _, _>(&call, #proof),),
+            Capability::Callback(callback) => {
+                let decoder = callback.role.owned_decoder(support);
+                quote! {
+                    #field: #decoder::<__GeamProfile, __GeamProvider, #codec>
+                        ::from_host_with::<#codec, __GeamProvider, _, _>(&call, #proof),
+                }
+            }
             Capability::Future(_) => quote!(#field: #support::ProviderFutureListDecoder::from_host_with::<#codec, __GeamProvider, _, _>(&call, #proof),),
         }
     }).collect()

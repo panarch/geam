@@ -54,6 +54,10 @@ pub enum SchemaType {
         arguments: Table<Self>,
         return_: Node<Self>,
     },
+    FunctionValue {
+        arguments: Table<Self>,
+        return_: Node<Self>,
+    },
     Custom {
         package: Text,
         module: Text,
@@ -150,6 +154,10 @@ impl SchemaType {
                 arguments: arguments.iter().map(Self::from_schema).collect(),
                 return_: Box::new(Self::from_schema(return_)).into(),
             },
+            HostSchemaType::FunctionValue { arguments, return_ } => Self::FunctionValue {
+                arguments: arguments.iter().map(Self::from_schema).collect(),
+                return_: Box::new(Self::from_schema(return_)).into(),
+            },
             HostSchemaType::Custom {
                 package,
                 module,
@@ -196,6 +204,16 @@ impl SchemaType {
                     return_: left_return,
                 },
                 HostSchemaType::OpaqueFunction {
+                    arguments: right,
+                    return_: right_return,
+                },
+            ) => same(left, right, Self::matches) && left_return.matches(right_return),
+            (
+                Self::FunctionValue {
+                    arguments: left,
+                    return_: left_return,
+                },
+                HostSchemaType::FunctionValue {
                     arguments: right,
                     return_: right_return,
                 },
@@ -313,6 +331,10 @@ impl Emit for SchemaType {
                 "host::SchemaType::OpaqueFunction",
                 &[("arguments", arguments), ("return_", return_)],
             ),
+            Self::FunctionValue { arguments, return_ } => output.structure(
+                "host::SchemaType::FunctionValue",
+                &[("arguments", arguments), ("return_", return_)],
+            ),
             Self::Custom {
                 package,
                 module,
@@ -414,6 +436,21 @@ data::host::SchemaType::OpaqueFunction {
                 .trim_start_matches('\n'),
             ),
             (
+                H::function_value([H::Int], H::Bool),
+                S::FunctionValue {
+                    arguments: vec![S::Int].into(),
+                    return_: Box::new(S::Bool).into(),
+                },
+                r#"
+data::host::SchemaType::FunctionValue {
+    arguments: data::Storage::Static(&[
+        data::host::SchemaType::Int,
+    ]),
+    return_: data::Storage::Static(&data::host::SchemaType::Bool),
+}"#
+                .trim_start_matches('\n'),
+            ),
+            (
                 H::Custom {
                     package: "app".into(),
                     module: "types".into(),
@@ -507,6 +544,17 @@ data::host::SchemaType::External {
             (vec![H::Int], H::String),
         ] {
             assert!(!opaque.matches(&H::opaque_function(arguments, return_)));
+        }
+        let general = S::FunctionValue {
+            arguments: vec![S::Int].into(),
+            return_: Box::new(S::Bool).into(),
+        };
+        for (arguments, return_) in [
+            (vec![], H::Bool),
+            (vec![H::String], H::Bool),
+            (vec![H::Int], H::String),
+        ] {
+            assert!(!general.matches(&H::function_value(arguments, return_)));
         }
         let custom = S::Custom {
             package: "app".into(),

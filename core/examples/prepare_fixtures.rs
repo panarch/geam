@@ -22,6 +22,9 @@ mod shared_provider;
 #[path = "../tests/fixtures/prepared/opaque_provider.rs"]
 mod opaque_provider;
 
+#[path = "../tests/fixtures/prepared/function_value_provider.rs"]
+mod function_value_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
@@ -208,6 +211,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         (
             "opaque_functions.rs",
             opaque_provider::prepare().emit_rust(),
+        ),
+        (
+            "function_values.rs",
+            function_value_provider::prepare().emit_rust(),
         ),
         ("callables.rs", callable_declarations::prepare().emit_rust()),
         (

@@ -2,8 +2,8 @@ use super::{PreparedHostCall, ScopedValues, StoredRuntimeList, StoredRuntimeValu
 use crate::host::{
     HostCallArguments, HostCallRuntime, HostCodecScope, HostCustomArgumentSlot, HostCustomToken,
     HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot, HostFunctionToken,
-    HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue, HostTokenRuntime,
-    HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
+    HostFunctionValueToken, HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue,
+    HostTokenRuntime, HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
 use crate::plan::execution::host::{HostedFunction, HostedFunctionMetadata};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
@@ -166,6 +166,10 @@ where
 
     fn function_token(&self, value: HostValueToken) -> HostFunctionToken {
         self.scoped.function_token(value)
+    }
+
+    fn function_value_token(&self, value: HostValueToken) -> HostFunctionValueToken {
+        self.scoped.function_value_token(value)
     }
 }
 

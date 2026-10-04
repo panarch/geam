@@ -135,7 +135,8 @@ impl HostTypeSealing<'_, '_> {
                     self.seal(element);
                 }
             }
-            HostTypeDescriptor::Function { arguments, return_ } => {
+            HostTypeDescriptor::Function { arguments, return_ }
+            | HostTypeDescriptor::FunctionValue { arguments, return_ } => {
                 for argument in arguments {
                     self.seal(argument);
                 }
@@ -341,6 +342,16 @@ impl CallbackSearch<'_> {
                     FunctionRepresentation::Executable(_) => self.find(return_),
                 }
             }
+            HostTypeDescriptor::FunctionValue { arguments, return_ } => {
+                // The outer function is storable even with symbolic inputs. Its
+                // nested declarations keep their own invocation requirements.
+                for argument in arguments {
+                    if let Some(callback) = self.find(argument) {
+                        return Some(callback);
+                    }
+                }
+                self.find(return_)
+            }
             HostTypeDescriptor::Custom { schema, arguments } => self.find_custom(schema, arguments),
         }
     }
@@ -416,7 +427,8 @@ fn schema_refinement(
             FieldRefinement::List(Box::new(schema_refinement(item)).into())
         }
         HostSchemaType::Function { arguments, return_ }
-        | HostSchemaType::OpaqueFunction { arguments, return_ } => FieldRefinement::Function {
+        | HostSchemaType::OpaqueFunction { arguments, return_ }
+        | HostSchemaType::FunctionValue { arguments, return_ } => FieldRefinement::Function {
             arguments: arguments.iter().map(schema_refinement).collect(),
             return_: Box::new(schema_refinement(return_)).into(),
         },
@@ -655,6 +667,20 @@ pub fn main() {
                 return_: Box::new(HostTypeDescriptor::Parameter(0)),
             }),
             None,
+        );
+        assert_eq!(
+            tuple_search.find(&HostTypeDescriptor::FunctionValue {
+                arguments: vec![callback.clone()].into_boxed_slice(),
+                return_: Box::new(HostTypeDescriptor::Bool),
+            }),
+            Some(expected.clone()),
+        );
+        assert_eq!(
+            tuple_search.find(&HostTypeDescriptor::FunctionValue {
+                arguments: vec![HostTypeDescriptor::Parameter(0)].into_boxed_slice(),
+                return_: Box::new(callback.clone()),
+            }),
+            Some(expected.clone()),
         );
 
         let schema = HostCustomTypeSchema::new(

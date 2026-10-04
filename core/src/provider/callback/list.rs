@@ -1,11 +1,17 @@
 use super::{
-    ArgumentCodec, Callback, ProviderCallbackCodec, ProviderCallbackContext, ReturnCodec,
-    decode_return, encode_arguments,
+    ArgumentCodec, Callback, CallbackView, FunctionValue, ProviderCallbackCodec,
+    ProviderCallbackContext, ProviderFunctionValueContext, ReturnCodec, decode_return,
+    encode_arguments,
 };
 use crate::host::{
-    CallableRetention, HostCall, HostProfile, HostProvider, HostType, HostTypeSequence,
+    CallableRetention, HostCall, HostFunctionValueType, HostProfile, HostProvider, HostType,
+    HostTypeSequence,
 };
-use crate::provider::{ProviderConstructions, ProviderListItemDecoder, ProviderListItemValue};
+use crate::provider::{
+    ProviderConstructions, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderTypedListItemDecoder,
+};
+use crate::runtime::ValueRetention;
 use std::marker::PhantomData;
 
 /// Decoder selected by a static callback codec, with normalized stored views.
@@ -108,10 +114,7 @@ where
     HostArguments: HostTypeSequence,
     HostReturn: HostType,
 {
-    type View = Callback<
-        Signature,
-        ProviderCallbackContext<Profile, Arguments, Returned, HostArguments, HostReturn>,
-    >;
+    type View = CallbackView<Signature, Profile, Arguments, Returned, HostArguments, HostReturn>;
 
     fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
         Callback {
@@ -136,19 +139,136 @@ where
     type Host = crate::HostFunctionType<HostArguments, HostReturn>;
 }
 
+/// Decoder selected by a static callback codec, with normalized stored views.
+#[doc(hidden)]
+pub type ProviderOwnedFunctionValueListDecoder<Profile, Provider, Codec> =
+    ProviderFunctionValueListDecoder<
+        Profile,
+        <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::Arguments,
+        <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::Returned,
+        <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostArguments,
+        <Codec as ProviderCallbackCodec<Profile, Provider, ()>>::HostReturn,
+    >;
+
+/// Retains only a demanded function item, using the list's original static codec.
+#[doc(hidden)]
+pub struct ProviderFunctionValueListDecoder<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    retention: CallableRetention<Profile, super::CallbackProvider>,
+    values: ValueRetention,
+    encode: ArgumentCodec<Profile, Arguments, HostArguments>,
+    decode: ReturnCodec<Profile, Returned, HostReturn>,
+}
+
+impl<Profile, Arguments, Returned, HostArguments, HostReturn> Clone
+    for ProviderFunctionValueListDecoder<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    fn clone(&self) -> Self {
+        Self {
+            retention: self.retention.clone(),
+            values: self.values.clone(),
+            encode: self.encode,
+            decode: self.decode,
+        }
+    }
+}
+
+impl<Profile, Arguments, Returned, HostArguments, HostReturn>
+    ProviderFunctionValueListDecoder<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    pub fn from_host_with<'call, Codec, Provider, CallerProvider, Return>(
+        call: &HostCall<'call, Profile, CallerProvider, Return>,
+        constructions: ProviderConstructions<'call, Codec::Requirements>,
+    ) -> Self
+    where
+        Provider: HostProvider<Profile>,
+        CallerProvider: HostProvider<Profile>,
+        Return: HostType,
+        Codec: ProviderCallbackCodec<
+                Profile,
+                Provider,
+                (),
+                Arguments = Arguments,
+                Returned = Returned,
+                HostArguments = HostArguments,
+                HostReturn = HostReturn,
+            >,
+    {
+        Self {
+            retention: call
+                .callable_retention_with::<super::CallbackProvider, _>(&constructions.host()),
+            values: call.value_retention(),
+            encode: encode_arguments::<Profile, Provider, Codec>,
+            decode: decode_return::<Profile, Provider, Codec>,
+        }
+    }
+}
+
+impl<Signature, Profile, Arguments, Returned, HostArguments, HostReturn>
+    ProviderListItemDecoder<FunctionValue<Signature>>
+    for ProviderFunctionValueListDecoder<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    type View = FunctionValue<
+        Signature,
+        ProviderFunctionValueContext<Profile, Arguments, Returned, HostArguments, HostReturn>,
+    >;
+
+    fn decode(&self, value: ProviderListItemValue<'_>) -> Self::View {
+        FunctionValue {
+            context: ProviderFunctionValueContext {
+                function: self
+                    .retention
+                    .clone()
+                    .bind_function_value(value.into_function_value(&self.values)),
+                encode: self.encode,
+                decode: self.decode,
+            },
+            signature: PhantomData,
+        }
+    }
+}
+
+impl<Signature, Profile, Arguments, Returned, HostArguments, HostReturn>
+    ProviderTypedListItemDecoder<FunctionValue<Signature>>
+    for ProviderFunctionValueListDecoder<Profile, Arguments, Returned, HostArguments, HostReturn>
+where
+    Profile: HostProfile,
+    HostArguments: HostTypeSequence,
+    HostReturn: HostType,
+{
+    type Host = HostFunctionValueType<HostArguments, HostReturn>;
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ProviderCallbackListDecoder;
+    use super::{ProviderCallbackListDecoder, ProviderFunctionValueListDecoder};
     use crate::host::test::{TestHostProfile, TestRunState};
     use crate::provider::{
-        Call, Callback, List, ProviderCallbackCodec, ProviderConstructions, ProviderListContext,
-        ProviderListItemDecoder, ProviderListItemValue, ProviderNoConstructions,
+        Call, Callback, FunctionValue, List, ProviderCallbackCodec, ProviderConstructions,
+        ProviderListContext, ProviderListItemDecoder, ProviderListItemValue,
+        ProviderNoConstructions,
     };
     use crate::{
         HostCall, HostCallContinuation, HostCallError, HostConstructions, HostFunctionType,
-        HostList, HostListType, HostOwnedCompletion, HostProvider, HostProviderModule,
-        HostProviderSet, HostTypeList, HostTypeListEnd, HostedExecution, ModuleSource,
-        PackageSource,
+        HostFunctionValueType, HostList, HostListType, HostOwnedCompletion, HostProvider,
+        HostProviderModule, HostProviderSet, HostTypeList, HostTypeListEnd, HostedExecution,
+        ModuleSource, PackageSource,
     };
     use num_bigint::BigInt;
 
@@ -284,6 +404,92 @@ pub fn main() {
                 .map(|echo| echo.value().inspect().to_string())
                 .collect::<Vec<_>>(),
             ["7", "8"]
+        );
+    }
+
+    fn invoke_function_values<'call>(
+        call: HostCall<'call, TestHostProfile, Provider, BigInt>,
+        constructions: HostConstructions<'call, End>,
+        values: HostList<'call, HostFunctionValueType<Arguments, BigInt>>,
+    ) -> Result<HostCallContinuation<'call, BigInt>, HostCallError> {
+        let decoder = ProviderFunctionValueListDecoder::from_host_with::<Codec, Provider, _, _>(
+            &call,
+            ProviderConstructions::none(),
+        );
+        let copied_decoder = decoder.clone();
+        drop(decoder);
+        let values = call.provider_retained_list::<FunctionValue<fn(BigInt) -> BigInt>, _, _>(
+            values,
+            copied_decoder,
+        );
+        let function = values.get(1).unwrap();
+        let copied_function = function.clone();
+        drop(function);
+        let original = values.__geam_into_context();
+        assert_eq!(original.retained().item_reads(), 1);
+        drop(original);
+        let callback = copied_function.callback().unwrap();
+        drop(copied_function);
+        Ok(call.resume(constructions, move |context| {
+            Box::pin(async move {
+                let mut call = Call::from_execution_context(context);
+                let first = call.invoke(&callback, (BigInt::from(7),)).await.unwrap();
+                let second = call.invoke(&callback, (BigInt::from(8),)).await.unwrap();
+                Ok(HostOwnedCompletion::new(move |call, _| {
+                    Ok(call.return_value(first + second))
+                }))
+            })
+        }))
+    }
+
+    #[test]
+    fn cloned_function_value_decoder_and_demanded_item_keep_captures_after_the_list_and_call_end() {
+        type GeneralFunction = HostFunctionValueType<Arguments, BigInt>;
+        let provider = HostProviderModule::new("application", "main")
+            .unwrap()
+            .with_resumable_function::<Provider, (HostListType<GeneralFunction>,), BigInt, End, _>(
+                "invoke",
+                invoke_function_values,
+            )
+            .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "main",
+            [PackageSource::new(
+                "application",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "main",
+                    "main.gleam",
+                    r#"
+@external(erlang, "native", "invoke") fn invoke(functions: List(fn(Int) -> Int)) -> Int
+pub fn main() {
+  let offset = 10
+  invoke([fn(value) { echo "unused" value }, fn(value) { echo value value + offset }])
+}
+"#,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let mut echoes = Vec::new();
+        let result = crate::execution_fixture::run(
+            &mut execution,
+            &mut TestRunState::default(),
+            &mut echoes,
+        )
+        .unwrap();
+        assert_eq!(result, crate::Value::Int(35.into()));
+        assert_eq!(
+            echoes
+                .iter()
+                .map(|echo| echo.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["7", "8"],
         );
     }
 }

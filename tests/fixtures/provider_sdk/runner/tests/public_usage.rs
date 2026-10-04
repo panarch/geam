@@ -78,6 +78,10 @@ pub fn produce() -> a
 pub fn late_failure() -> a
 @external(erlang, "provider_sdk", "native_value")
 pub fn native_value() -> a
+@external(erlang, "provider_sdk", "keep_function")
+pub fn keep_function(function: fn(item) -> String) -> fn(item) -> String
+@external(erlang, "provider_sdk", "function_is_callable")
+pub fn function_is_callable(function: fn(item) -> String) -> Bool
 
 "#;
 
@@ -370,6 +374,18 @@ pub fn main() {
 #[test]
 fn generic_public_registrations_keep_concrete_values_and_unresolved_errors() {
     for (body, expected, effects, calls) in [
+        (
+            r#"let label = "retained" let function = fn(_) { label } let alias = sdk.keep_function(function) #(alias == function, sdk.function_is_callable(alias))"#,
+            Ok("#(True, False)"),
+            vec![],
+            0,
+        ),
+        (
+            r#"let label = "retained" let function = fn(_: Int) { label } let alias = sdk.keep_function(function) #(alias == function, sdk.function_is_callable(alias), alias(7))"#,
+            Ok("#(True, True, \"retained\")"),
+            vec![],
+            0,
+        ),
         (
             r#"sdk.around(fn(_) { echo "cleanup" }, fn(_) { echo "body" 42 })"#,
             Ok("42"),

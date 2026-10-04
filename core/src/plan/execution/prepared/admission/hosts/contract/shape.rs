@@ -60,7 +60,9 @@ fn check(
         (Host::List(item), Shape::List(actual)) => check(item, *actual, parameters, types),
         (Host::Tuple(items), Shape::Tuple(actual)) => items_match(items, actual, parameters, types),
         (
-            Host::Function { arguments, return_ } | Host::OpaqueFunction { arguments, return_ },
+            Host::Function { arguments, return_ }
+            | Host::OpaqueFunction { arguments, return_ }
+            | Host::FunctionValue { arguments, return_ },
             Shape::Function {
                 arguments: actual,
                 return_: result,
@@ -203,6 +205,10 @@ pub fn main() {
                 return_: Box::new(HostTypeDescriptor::Int),
             },
             HostTypeDescriptor::OpaqueFunction {
+                arguments: Box::new([HostTypeDescriptor::Int]),
+                return_: Box::new(HostTypeDescriptor::Int),
+            },
+            HostTypeDescriptor::FunctionValue {
                 arguments: Box::new([HostTypeDescriptor::Int]),
                 return_: Box::new(HostTypeDescriptor::Int),
             },

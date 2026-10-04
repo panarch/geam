@@ -243,6 +243,8 @@ pub type SavedText
 pub type SavedStatus { Empty Saved(SavedText) }
 pub type Token
 pub type Status { Ready Count(Int) Tagged(Token) }
+@external(erlang, "macro_declarations", "keep_status_function")
+pub fn keep_status_function(function: fn(Status) -> Int) -> fn(Status) -> Int
 "#,
                 )],
             ),

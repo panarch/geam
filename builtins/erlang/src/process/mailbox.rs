@@ -685,7 +685,7 @@ mod tests {
         HostCallCompletion, HostCallContinuation, HostCallError, HostCustom, HostExternal,
         HostExternalBinding, HostExternalEquality, HostExternalHashing, HostExternalInspection,
         HostExternalSchema, HostExternalStorage, HostExternalStore, HostExternalType,
-        HostFunctionType, HostProviderModule, HostProviderSet, HostTypeList,
+        HostFunctionType, HostFunctionValueType, HostProviderModule, HostProviderSet, HostTypeList,
     };
     use geam_core::provider::advanced::NativeValue;
     use geam_core::{
@@ -1317,7 +1317,7 @@ pub fn main() { wrong_receiver(fn() { panic as "cancelled child must never run" 
                 "new_selector", crate::service::selectors::new_selector,
             ).unwrap()
             .with_native_function::<Component<GleamErlangProfile>,
-                (Selector<A>, B, HostFunctionType<One<C>, A>), Selector<A>, HostTypeList<C, One<Down>>, _>(
+                (Selector<A>, B, HostFunctionValueType<One<C>, A>), Selector<A>, HostTypeList<C, One<Down>>, _>(
                 "insert_selector_handler", super::super::native_rules(), crate::service::selectors::insert::<GleamErlangProfile, Component<GleamErlangProfile>, A, B, C>,
             ).unwrap()
             .with_scoped_function::<Component<GleamErlangProfile>, (Selector<A>, B), Selector<A>, _>(
@@ -1744,7 +1744,7 @@ pub fn check(kind: Int, cancel: Bool) {
     }
 
     mod cancellation {
-        use super::super::{A, Call, Filter, Native, Next};
+        use super::super::{A, Call, Filter, Native, Next, Receive};
         use crate::execution::Message;
         use crate::execution_fixture::TestHost;
         use crate::process::One;
@@ -1752,10 +1752,11 @@ pub fn check(kind: Int, cancel: Bool) {
         use crate::{Component, Configuration, GleamErlangProfile, GleamErlangRunState};
         use geam_core::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder};
         use geam_core::execution::ExecutionUnit;
-        use geam_core::host::native::{NativeCallable, NativeRules};
+        use geam_core::host::native::{NativeCall, NativeFunctionValue, NativeRules};
         use geam_core::host::{
-            HostCallContinuation, HostCallError, HostCallable, HostFunctionType,
-            HostProviderModule, HostProviderSet, HostType, HostTypeIndex0, HostValue,
+            HostCallContinuation, HostCallError, HostFunctionValue, HostFunctionValueType,
+            HostProviderModule, HostProviderSet, HostType, HostTypeIndex0, HostTypeIndexNext,
+            HostTypeList, HostValue,
         };
         use geam_core::provider::advanced::NativeValue;
         use geam_core::{ModuleSource, PackageSource, compile_typed_host_program};
@@ -1774,6 +1775,152 @@ pub fn check(kind: Int, cancel: Bool) {
         const MALFORMED_SCAN: u8 = 7;
         const MALFORMED_WAKE: u8 = 8;
         const CALLBACK_FAILURE: u8 = 9;
+
+        #[test]
+        fn symbolic_handler_failure_keeps_unmatched_mail_and_the_registered_handler() {
+            let provider = HostProviderModule::<GleamErlangProfile>::new("application", "main")
+                .unwrap()
+                .with_resumable_native_function::<
+                    Component<GleamErlangProfile>,
+                    (HostFunctionValueType<One<A>, BigInt>,),
+                    bool,
+                    HostTypeList<A, One<bool>>,
+                    _,
+                >("selected", NativeRules::default(), symbolic_selected)
+                .unwrap();
+            let typed = compile_typed_host_program(
+                "application",
+                "main",
+                [PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "main",
+                        "main.gleam",
+                        r#"
+@external(erlang, "fixture", "selected")
+fn selected(function: fn(item) -> Int) -> Bool
+pub fn main() { selected(fn(_) { echo "must not run" 42 }) }
+"#,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let (builder, main) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), bool>::new("main"))
+                .unwrap();
+            let mut module = builder.seal().unwrap();
+            let host = TestHost::default();
+            let mut state = GleamErlangRunState {
+                stdlib: geam_stdlib::GleamStdlibRunState::from_seed([0; 32]),
+                erlang: Configuration::default(),
+            };
+            let mut echo = Vec::new();
+            assert!(
+                host.block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&main, ()).await.unwrap()
+                    })
+                )
+                .unwrap()
+            );
+            assert!(echo.is_empty());
+        }
+
+        fn symbolic_selected<'call>(
+            mut call: NativeCall<
+                'call,
+                GleamErlangProfile,
+                Component<GleamErlangProfile>,
+                bool,
+                HostTypeList<A, One<bool>>,
+            >,
+            function: HostFunctionValue<'call, One<A>, BigInt>,
+        ) -> Result<HostCallContinuation<'call, bool>, HostCallError> {
+            let unit = call.call().execution_unit().unwrap();
+            let pid = unit.id();
+            let function = call.owned_function_value::<HostTypeIndex0, BigInt>(function);
+            assert!(function.callable().is_none());
+            let tag = NativeValue::symbol("selected");
+            let key = NativeValue::tuple([tag.clone(), call.source::<BigInt>(2.into())]);
+            let hash = call.call().native_hash(&key);
+            let handler = Arc::new(crate::selector::Handler {
+                native: function.native_value().clone(),
+                callback: function,
+                mappings: im::OrdMap::new(),
+            });
+            let entry = Arc::new(crate::selector::Entry {
+                key,
+                handler: Arc::clone(&handler),
+            });
+            let selector = crate::selector::Selector {
+                entries: [(hash, [entry].into_iter().collect())]
+                    .into_iter()
+                    .collect(),
+                len: 1,
+            };
+            let input = call.source::<BigInt>(7.into());
+            for message in [
+                NativeValue::symbol("before"),
+                NativeValue::tuple([tag, input]),
+                NativeValue::symbol("after"),
+            ] {
+                call.call()
+                    .execution_state()
+                    .send(pid, Message::Source(message));
+            }
+            let deadline = Some(call.call().clock().now());
+            let receive = Receive::selector(call.call(), pid, selector.clone(), deadline).unwrap();
+            Ok(
+                call.resume::<HostTypeIndexNext<HostTypeIndex0>>(move |context| {
+                    Box::pin(async move {
+                        assert_eq!(
+                            receive.wait(&context).await.err().unwrap().to_string(),
+                            "native value does not match the registered callback input"
+                        );
+                        let receive = context
+                            .with_call(move |mut call| {
+                                assert_eq!(selector.len, 1);
+                                assert!(Arc::ptr_eq(&selector.entries[&hash][0].handler, &handler));
+                                let deadline = Some(call.clock().now());
+                                Receive::selector(&mut call, pid, selector, deadline).unwrap()
+                            })
+                            .await
+                            .unwrap();
+                        assert!(receive.wait(&context).await.unwrap().is_none());
+                        for expected in ["before", "after"] {
+                            let receive = context
+                                .with_call(move |mut call| {
+                                    let deadline = Some(call.clock().now());
+                                    Receive::any(&mut call, pid, deadline).unwrap()
+                                })
+                                .await
+                                .unwrap();
+                            let value = receive.wait(&context).await.unwrap().unwrap();
+                            context
+                                .with_call(move |call| {
+                                    assert!(
+                                        call.native_equal(&value, &NativeValue::symbol(expected))
+                                    );
+                                })
+                                .await
+                                .unwrap();
+                        }
+                        let receive = context
+                            .with_call(move |mut call| {
+                                let deadline = Some(call.clock().now());
+                                Receive::any(&mut call, pid, deadline).unwrap()
+                            })
+                            .await
+                            .unwrap();
+                        assert!(receive.wait(&context).await.unwrap().is_none());
+                        Ok(NativeValue::symbol("true"))
+                    })
+                }),
+            )
+        }
 
         #[test]
         fn cancellation_rejects_the_first_request_of_a_retained_receive() {
@@ -1855,11 +2002,11 @@ pub fn wait() { echo receive() Nil }
                     let forever_gate = Arc::clone(&gate);
                     let timed_gate = Arc::clone(&gate);
                     let provider = HostProviderModule::<GleamErlangProfile>::new("application", "main").unwrap()
-                        .with_resumable_native_function::<Component<GleamErlangProfile>, (A, BigInt, HostFunctionType<One<A>, A>), A, One<A>, _>(
+                        .with_resumable_native_function::<Component<GleamErlangProfile>, (A, BigInt, HostFunctionValueType<One<A>, A>), A, One<A>, _>(
                             "native_wait", NativeRules::default(),
                             move |call, value, phase, callback| wait(call, value, phase, callback, Arc::clone(&forever_gate)),
                         ).unwrap()
-                        .with_resumable_native_function::<Component<GleamErlangProfile>, (A, BigInt, HostFunctionType<One<GleamResult<A, ()>>, A>), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>(
+                        .with_resumable_native_function::<Component<GleamErlangProfile>, (A, BigInt, HostFunctionValueType<One<GleamResult<A, ()>>, A>), GleamResult<A, ()>, One<GleamResult<A, ()>>, _>(
                             "native_wait_timed", NativeRules::default(),
                             move |call, value, phase, callback| wait_timed(call, value, phase, callback, Arc::clone(&timed_gate)),
                         ).unwrap();
@@ -1963,11 +2110,11 @@ pub fn wait_timed(phase: Int) {
             mut call: Native<'call, GleamErlangProfile, A, A>,
             value: HostValue<'call, A>,
             phase: BigInt,
-            callback: HostCallable<'call, One<A>, A>,
+            callback: HostFunctionValue<'call, One<A>, A>,
             gate: Arc<PollGate>,
         ) -> Result<HostCallContinuation<'call, A>, HostCallError> {
             let message = call.source::<A>(value);
-            let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
+            let callback = call.owned_function_value::<HostTypeIndex0, A>(callback);
             let cancel = phase < BigInt::from(IMMEDIATE);
             let (unit, filter, first) =
                 waiting_mailbox(call.call(), message.clone(), phase, callback, message);
@@ -1988,11 +2135,11 @@ pub fn wait_timed(phase: Int) {
             mut call: Native<'call, GleamErlangProfile, GleamResult<A, ()>, GleamResult<A, ()>>,
             value: HostValue<'call, A>,
             phase: BigInt,
-            callback: HostCallable<'call, One<GleamResult<A, ()>>, A>,
+            callback: HostFunctionValue<'call, One<GleamResult<A, ()>>, A>,
             gate: Arc<PollGate>,
         ) -> Result<HostCallContinuation<'call, GleamResult<A, ()>>, HostCallError> {
             let message = call.source::<A>(value);
-            let callback = call.owned_callable::<HostTypeIndex0, A>(callback);
+            let callback = call.owned_function_value::<HostTypeIndex0, A>(callback);
             let cancel = phase < BigInt::from(IMMEDIATE);
             let timeout_millis = u64::from(phase != BigInt::from(TIMEOUT));
             let input = NativeValue::tuple([NativeValue::symbol("ok"), message.clone()]);
@@ -2024,7 +2171,7 @@ pub fn wait_timed(phase: Int) {
             call: &mut Call<'_, GleamErlangProfile, Return>,
             message: NativeValue,
             phase: BigInt,
-            callback: NativeCallable<GleamErlangProfile>,
+            callback: NativeFunctionValue<GleamErlangProfile>,
             callback_input: NativeValue,
         ) -> (
             ExecutionUnit,

@@ -106,6 +106,12 @@ impl Callbacks<'_, '_> {
                     self.check(return_)?;
                 }
             }
+            HostTypeDescriptor::FunctionValue { arguments, return_ } => {
+                for argument in arguments {
+                    self.check(argument)?;
+                }
+                self.check(return_)?;
+            }
             HostTypeDescriptor::Custom { schema, arguments } => {
                 // Retain parameter and callable distinctions while closing recursive schemas.
                 if self.active.contains(descriptor) {
@@ -465,6 +471,27 @@ pub fn main() { 42 }
             (symbolic.clone(), Err(ContractError::Callback)),
             (opaque.clone(), Ok(())),
             (never.clone(), Ok(())),
+            (
+                HostTypeDescriptor::FunctionValue {
+                    arguments: Box::new([HostTypeDescriptor::Parameter(0)]),
+                    return_: Box::new(HostTypeDescriptor::Int),
+                },
+                Ok(()),
+            ),
+            (
+                HostTypeDescriptor::FunctionValue {
+                    arguments: Box::new([symbolic.clone()]),
+                    return_: Box::new(HostTypeDescriptor::Bool),
+                },
+                Err(ContractError::Callback),
+            ),
+            (
+                HostTypeDescriptor::FunctionValue {
+                    arguments: Box::new([HostTypeDescriptor::Parameter(0)]),
+                    return_: Box::new(symbolic.clone()),
+                },
+                Err(ContractError::Callback),
+            ),
             (
                 HostTypeDescriptor::List(Box::new(symbolic.clone())),
                 Err(ContractError::Callback),

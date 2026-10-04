@@ -1441,11 +1441,11 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 14; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 13; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 14; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -1562,7 +1562,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (
@@ -1793,7 +1793,7 @@ pub fn main() { calculate(7, #(2, True), Boxed(5), [20]) }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 13; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 14; regenerate the prepared program",
                 ),
             ),
             (

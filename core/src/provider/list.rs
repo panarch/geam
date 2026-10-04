@@ -1,7 +1,8 @@
 use crate::host::{HostExternalStore, HostType};
 use crate::runtime::{
-    ExternalPayloadLease, ExternalPayloadView, StoredRuntimeList, StoredRuntimeListCustomFields,
-    StoredRuntimeListItem, StoredRuntimeListTupleItems,
+    ExternalPayloadLease, ExternalPayloadView, RetainedFunctionValue, StoredRuntimeList,
+    StoredRuntimeListCustomFields, StoredRuntimeListItem, StoredRuntimeListTupleItems,
+    ValueRetention,
 };
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -270,6 +271,10 @@ impl ProviderListItemValue<'_> {
 
     pub(crate) fn into_callable(self) -> crate::runtime::RetainedCallable {
         self.value.into_callable()
+    }
+
+    pub(crate) fn into_function_value(self, retention: &ValueRetention) -> RetainedFunctionValue {
+        self.value.into_function_value(retention)
     }
 }
 

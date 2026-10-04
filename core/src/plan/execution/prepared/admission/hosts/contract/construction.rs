@@ -98,6 +98,10 @@ impl Walk<'_, '_> {
             HostTypeDescriptor::Function {
                 arguments: inputs,
                 return_,
+            }
+            | HostTypeDescriptor::FunctionValue {
+                arguments: inputs,
+                return_,
             } => {
                 for input in inputs {
                     self.descriptor(input, arguments)?;
@@ -148,6 +152,10 @@ impl Walk<'_, '_> {
                 }
             }
             HostSchemaType::Function {
+                arguments: inputs,
+                return_,
+            }
+            | HostSchemaType::FunctionValue {
                 arguments: inputs,
                 return_,
             } => {
@@ -843,6 +851,14 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
                 arguments: vec![HostTypeDescriptor::Int].into(),
                 return_: Box::new(HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))),
             },
+            HostTypeDescriptor::FunctionValue {
+                arguments: vec![HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))].into(),
+                return_: Box::new(HostTypeDescriptor::Int),
+            },
+            HostTypeDescriptor::FunctionValue {
+                arguments: vec![HostTypeDescriptor::Int].into(),
+                return_: Box::new(HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))),
+            },
             HostTypeDescriptor::Custom {
                 schema: box_schema.clone(),
                 arguments: vec![HostTypeDescriptor::List(Box::new(HostTypeDescriptor::Int))].into(),
@@ -866,6 +882,14 @@ pub fn main() { #([42], ["text"], [[42]], Box(42), Box([42]), Box(fn(x: Int) { x
                 arguments: vec![HostSchemaType::Int].into(),
                 return_: Box::new(HostSchemaType::list(HostSchemaType::Int)),
             },
+            HostSchemaType::function_value(
+                [HostSchemaType::list(HostSchemaType::Int)],
+                HostSchemaType::Int,
+            ),
+            HostSchemaType::function_value(
+                [HostSchemaType::Int],
+                HostSchemaType::list(HostSchemaType::Int),
+            ),
             HostSchemaType::custom(
                 "app",
                 "main",
