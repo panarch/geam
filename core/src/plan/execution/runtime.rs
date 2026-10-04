@@ -64,6 +64,10 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         self.program().compiled.custom(id)
     }
 
+    fn compiled_int_list_function(&self, id: IntListFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled.int_list(id)
+    }
+
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {
         RuntimeValueMetadata::new(&self.program().common)
     }

@@ -1432,6 +1432,150 @@ pub fn main() -> List(Counter) {
     }
 
     #[test]
+    fn compiled_construction_does_not_retain_an_extra_lease_owner() {
+        use crate::runtime::compiled::int_list::IntListOps;
+        let plan = plan_src("pub fn main() -> List(Int) { [] }");
+        let type_id = plan.int_list_function_id(0).type_id();
+        let storage = RuntimeListStorage::default();
+        let ops = IntListOps::new(&storage);
+        let tail = ops.value(type_id, &[7, -9]);
+        let tail_lease = Arc::downgrade(&tail.0.lease);
+        let result = ops.prepend(type_id, &[3, 4], &tail);
+        let result_lease = Arc::downgrade(&result.0.lease);
+        assert_eq!(tail_lease.strong_count(), 1);
+        assert_eq!(result_lease.strong_count(), 1);
+        drop(tail);
+        assert_eq!(tail_lease.strong_count(), 0);
+        assert_eq!(
+            result
+                .0
+                .values()
+                .iter()
+                .map(IntegerValue::small)
+                .collect::<Vec<_>>(),
+            [Some(3), Some(4), Some(7), Some(-9)]
+        );
+        let retained = result.clone();
+        drop(result);
+        assert_eq!(result_lease.strong_count(), 1);
+        drop(retained);
+        assert_eq!(result_lease.strong_count(), 0);
+    }
+
+    #[test]
+    fn completed_and_abandoned_compiled_construction_release_the_actual_frame_leases() {
+        use super::ListLease;
+        use crate::plan::execution::compiled::{
+            CompiledCheckpoint, CompiledImplementation, IntListImplementation,
+        };
+        use crate::plan::execution::graph::{BlockGraphExitId, BlockId};
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::compiled::CompiledProgress;
+        use crate::runtime::compiled::int_list::{IntListOps, IntListValues};
+        use crate::runtime::graph::{GraphExecution, GraphProgress, GraphStorage, RetainedValues};
+        use crate::runtime::state::RuntimeState;
+        use std::sync::Weak;
+
+        static OUTPUT: Mutex<Option<Weak<ListLease<IntegerValue>>>> = Mutex::new(None);
+        fn one_step_prefix(
+            point: usize,
+            values: &mut IntListValues,
+            lists: &IntListOps<'_>,
+            budget: &mut usize,
+        ) -> CompiledProgress {
+            assert_eq!(*budget, 1);
+            *budget = 0;
+            if point == 0 {
+                let tail = &values.int_lists[0];
+                let result = lists.prepend(tail.0.type_id(), &[values.ints[0] as i64], tail);
+                *lock(&OUTPUT) = Some(Arc::downgrade(&result.0.lease));
+                values.int_lists.push(result);
+                CompiledProgress::Yield(1)
+            } else {
+                assert_eq!(point, 1);
+                CompiledProgress::Complete(BlockGraphExitId(0))
+            }
+        }
+        let plan = plan_src(
+            "fn prefix(value: Int, tail: List(Int)) -> List(Int) { [value, ..tail] } pub fn main() { prefix(3, []) }",
+        );
+        let id = plan.int_list_function_id(1);
+        let implementation = CompiledImplementation::IntList(IntListImplementation {
+            entry: 0,
+            checkpoints: vec![
+                CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 0,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 1,
+                },
+                CompiledCheckpoint {
+                    block: BlockId(0),
+                    instruction: 1,
+                    ints: 1,
+                    bools: 0,
+                    bit_arrays: 0,
+                    int_lists: 2,
+                },
+            ]
+            .into(),
+            run: one_step_prefix,
+        });
+        for complete in [false, true] {
+            let mut echo = Vec::new();
+            let mut state = RuntimeState::new(&mut echo);
+            let tail = state.lists().int(id.type_id(), vec![7.into(), (-9).into()]);
+            let tail_lease = Arc::downgrade(&tail.lease);
+            let mut values = RetainedValues::empty();
+            values.push_int(3.into());
+            values.push_list(tail.into());
+            let graph = plan.int_list_function(id).body().block_graph().as_view();
+            let execution = GraphExecution::new(graph, values, Some(&implementation));
+            let mut storage = GraphStorage::new();
+            let progress = execution
+                .advance(&plan, &mut state, &mut storage, &mut 0)
+                .unwrap();
+            let output_lease = lock(&OUTPUT).take().unwrap();
+            assert_eq!(tail_lease.strong_count(), 1);
+            assert_eq!(output_lease.strong_count(), 1);
+            if complete {
+                let mut progress = progress;
+                let mut advances = 0;
+                let completed = loop {
+                    match progress {
+                        GraphProgress::Continue(execution) => {
+                            advances += 1;
+                            assert!(
+                                advances <= 4,
+                                "construction must complete with a zero budget"
+                            );
+                            assert_eq!(output_lease.strong_count(), 1);
+                            progress = execution
+                                .advance(&plan, &mut state, &mut storage, &mut 0)
+                                .unwrap();
+                        }
+                        GraphProgress::Complete(completed) => break completed,
+                        GraphProgress::Host(never) => match never {},
+                    }
+                };
+                assert_eq!(completed.exit(), BlockGraphExitId(0));
+                assert_eq!(output_lease.strong_count(), 1);
+                drop(completed);
+            } else {
+                drop(progress);
+            }
+            // Even while reusable execution storage remains alive, restoring
+            // the completed prefix has left no strong scratch owner behind.
+            assert_eq!(tail_lease.strong_count(), 0);
+            assert_eq!(output_lease.strong_count(), 0);
+            drop(storage);
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
     fn releasing_and_allocating_lists_preserves_independent_live_values() {
         let plan = plan_src("pub fn main() -> List(Int) { [1] }");
         let type_id = plan.int_list_function_id(0).type_id();
