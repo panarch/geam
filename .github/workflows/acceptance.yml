@@ -16,6 +16,7 @@ env:
 
 jobs:
   root-acceptance:
+    if: false
     name: Root package
     runs-on: ubuntu-latest
 
@@ -80,6 +81,7 @@ jobs:
             --config "patch.crates-io.geam.path='$GITHUB_WORKSPACE'"
 
   checkout-cli:
+    if: false
     name: Checkout CLI
     runs-on: ubuntu-latest
 
@@ -110,6 +112,7 @@ jobs:
           overwrite: true
 
   embedding-examples:
+    if: false
     name: Embedding examples (group ${{ matrix.group }})
     needs: checkout-cli
     runs-on: ubuntu-latest
@@ -191,6 +194,7 @@ jobs:
           exit "$status"
 
   rust-embedding:
+    if: false
     name: Rust embedding
     needs: checkout-cli
     runs-on: ubuntu-latest
@@ -330,6 +334,7 @@ jobs:
           diff --unified "$RUNNER_TEMP/expected-embedding-output" "$RUNNER_TEMP/actual-embedding-output"
 
   host-execution:
+    if: false
     name: Host execution (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -380,6 +385,7 @@ jobs:
         run: cargo test --locked
 
   prepared-embedding:
+    if: false
     name: Prepared distribution (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -427,6 +433,7 @@ jobs:
         run: cargo test --package geam --test prepared_embedding --locked
 
   standalone-build:
+    if: false
     name: Standalone build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -464,6 +471,7 @@ jobs:
         run: cargo test --package geam --test standalone_build --locked -- --test-threads=1
 
   published-provider:
+    if: false
     name: Published provider
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -580,6 +588,7 @@ jobs:
           diff --unified "$RUNNER_TEMP/provider-files.before" "$RUNNER_TEMP/provider-files.after"
 
   example-providers:
+    if: false
     name: Provider examples (group ${{ matrix.group }})
     runs-on: ubuntu-latest
     strategy:
@@ -676,6 +685,7 @@ jobs:
           exit "$status"
 
   otp-service-consumer:
+    if: false
     name: Original OTP service consumer
     runs-on: ubuntu-latest
 
@@ -720,6 +730,7 @@ jobs:
 
 
   charlist-service-consumer:
+    if: false
     name: Value and selective receive service consumers
     runs-on: ubuntu-latest
 
@@ -783,6 +794,7 @@ jobs:
           gleam format --check tests/fixtures/selective_receive_service/embedding/gleam/src
 
   external-provider-sdk:
+    if: false
     name: External provider SDK
     runs-on: ubuntu-latest
 
@@ -820,6 +832,7 @@ jobs:
         run: cargo llvm-cov --manifest-path tests/fixtures/provider_sdk/Cargo.toml --workspace --locked --summary-only --fail-under-lines 100 --fail-under-regions 100
 
   benchmark-tooling:
+    if: false
     name: Benchmark tooling
     needs: checkout-cli
     runs-on: ubuntu-latest

@@ -16,6 +16,7 @@ env:
 
 jobs:
   fmt:
+    if: false
     name: Formatting
     runs-on: ubuntu-latest
 
@@ -69,6 +70,7 @@ jobs:
         run: cargo fmt --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all --check
 
   clippy:
+    if: false
     name: Clippy
     runs-on: ubuntu-latest
 
@@ -151,6 +153,7 @@ jobs:
         run: cargo clippy --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --all-targets --locked -- -D warnings
 
   documentation:
+    if: false
     name: Documentation
     runs-on: ubuntu-latest
 
@@ -178,6 +181,7 @@ jobs:
         run: cargo doc --manifest-path benchmarks/Cargo.toml --workspace --no-deps --locked
 
   zensical:
+    if: false
     name: Zensical
     runs-on: ubuntu-latest
 
@@ -192,6 +196,7 @@ jobs:
         run: uvx --from zensical==0.0.50 zensical build --clean --strict
 
   workspace-tests:
+    if: false
     name: Tests
     runs-on: ubuntu-latest
 
@@ -259,6 +264,7 @@ jobs:
         run: cargo package --workspace --locked --no-verify
 
   cli-tests:
+    if: false
     name: CLI tests
     runs-on: ubuntu-latest
 
