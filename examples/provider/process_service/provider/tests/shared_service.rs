@@ -12,6 +12,8 @@ use geam::{
     compile_typed_host_project, plan_host_program,
 };
 use geam_example_process_service::Component;
+use std::task::Poll;
+use std::time::Duration;
 
 struct Profile;
 
@@ -147,13 +149,11 @@ fn original_gleam_process_and_macro_provider_share_identity_and_mailbox() {
         state.stdlib = GleamStdlibRunState::from_seed([0; 32]);
         let mut echo = Vec::new();
         let mut driver = Box::pin(execution.run_main(&host, &mut state, &mut echo));
-        assert!(host.poll(driver.as_mut()).is_pending());
-        host.advance(std::time::Duration::from_millis(5));
         let result = host.poll(driver.as_mut());
         drop(driver);
         assert_eq!(
             result.map(|result| result.unwrap().try_into_value().unwrap()),
-            std::task::Poll::Ready(Value::Nil),
+            Poll::Ready(Value::Nil),
             "{:?}",
             state.stdlib.io_outputs()
         );
@@ -184,6 +184,50 @@ fn original_gleam_process_and_macro_provider_share_identity_and_mailbox() {
 }
 
 #[test]
+fn finite_deadlines_distinguish_a_silent_target_from_an_exited_target() {
+    let (mut execution, mut state) = execution("process_service_deadlines");
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    let mut run = Box::pin(execution.run_main(&host, &mut state, &mut echo));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(4));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(1));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(4));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(1));
+    assert_eq!(
+        host.poll(run.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
+        Poll::Ready(Value::Nil)
+    );
+    drop(run);
+    assert!(echo.is_empty());
+    assert!(state.stdlib.io_outputs().is_empty());
+}
+
+#[test]
+fn a_request_without_a_deadline_waits_for_a_delayed_reply() {
+    let (mut execution, mut state) = execution("process_service_delayed_reply");
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    let mut run = Box::pin(execution.run_main(&host, &mut state, &mut echo));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(9_999));
+    assert!(host.poll(run.as_mut()).is_pending());
+    host.advance(Duration::from_millis(1));
+    assert_eq!(
+        host.poll(run.as_mut())
+            .map(|result| result.unwrap().try_into_value().unwrap()),
+        Poll::Ready(Value::Nil)
+    );
+    drop(run);
+    assert!(echo.is_empty());
+    assert!(state.stdlib.io_outputs().is_empty());
+}
+
+#[test]
 fn rejects_a_native_reply_that_violates_the_source_specialization() {
     let (mut execution, mut state) = execution("process_service_invalid_reply");
     let host = execution_fixture::TestHost::default();
@@ -192,15 +236,13 @@ fn rejects_a_native_reply_that_violates_the_source_specialization() {
     assert_eq!(
         host.poll(run.as_mut())
             .map(|result| result.unwrap().try_into_value().unwrap()),
-        std::task::Poll::Ready(Value::Nil)
+        Poll::Ready(Value::Nil)
     );
 }
 
 #[test]
 fn request_propagates_a_deadline_outside_the_hosts_clock_range() {
     use geam::execution::{ExecutionHost, RunError};
-    use std::time::Duration;
-
     let (mut execution, mut state) = execution("process_service_clock_range");
     let host = execution_fixture::TestHost::default();
     for bit in (0..64).rev() {
@@ -213,12 +255,10 @@ fn request_propagates_a_deadline_outside_the_hosts_clock_range() {
     let mut run = Box::pin(execution.run_main(&host, &mut state, &mut echo));
     let result = host.poll(run.as_mut());
     let failure = match result {
-        std::task::Poll::Ready(Err(RunError::Execution(geam::ExecutionError::Host(error)))) => {
-            Some((
-                error.function().to_string(),
-                error.failure().message().to_string(),
-            ))
-        }
+        Poll::Ready(Err(RunError::Execution(geam::ExecutionError::Host(error)))) => Some((
+            error.function().to_string(),
+            error.failure().message().to_string(),
+        )),
         _ => None,
     };
     assert_eq!(

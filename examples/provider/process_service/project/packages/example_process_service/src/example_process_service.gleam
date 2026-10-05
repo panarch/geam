@@ -1,4 +1,5 @@
 import gleam/erlang/process.{type Name, type Subject}
+import gleam/option.{type Option, None, Some}
 
 pub type RequestError {
   Unavailable
@@ -24,8 +25,19 @@ pub fn request(
     process.named_subject(name),
     make_message(reply),
     reply,
-    timeout_ms,
+    Some(timeout_ms),
   )
+}
+
+/// Send a request without a deadline and wait for its reply.
+/// A missing name returns Unavailable. After sending, the wait continues until
+/// a reply arrives or the enclosing execution is cancelled.
+pub fn request_forever(
+  name: Name(message),
+  make_message: fn(Subject(reply)) -> message,
+) -> Result(reply, RequestError) {
+  let reply = process.new_subject()
+  exchange(name, process.named_subject(name), make_message(reply), reply, None)
 }
 
 @external(erlang, "example_process_service_native", "exchange")
@@ -34,5 +46,5 @@ fn exchange(
   destination: Subject(message),
   message: message,
   reply: Subject(reply),
-  timeout_ms: Int,
+  timeout_ms: Option(Int),
 ) -> Result(reply, RequestError)
