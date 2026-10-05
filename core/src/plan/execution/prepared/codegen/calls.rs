@@ -122,16 +122,40 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             return;
         }
         let mut imports = vec![
-            "BoolCallable",
             "CallExecution",
-            "CallInteger",
             "CallInputs",
             "CallOps",
             "CallProgress",
             "CallStorage",
-            "CallValues",
-            "IntCallable",
         ];
+        let canonical = self.has_canonical_step();
+        for (family, name) in [
+            (CallFamily::IntFunction, "IntCallable"),
+            (CallFamily::BoolFunction, "BoolCallable"),
+        ] {
+            if canonical
+                || self.functions.iter().any(|function| {
+                    function
+                        .shape
+                        .locals
+                        .iter()
+                        .flatten()
+                        .any(|local| local_family(local) == family)
+                })
+            {
+                imports.push(name);
+            }
+        }
+        if canonical {
+            imports.push("CallInteger");
+        }
+        if canonical
+            || families().iter().any(|(family, _)| {
+                self.has_step(*family, StepKind::Tail) || self.has_step(*family, StepKind::Bridge)
+            })
+        {
+            imports.push("CallValues");
+        }
         if families()
             .iter()
             .any(|(family, _)| self.has_step(*family, StepKind::Return))
@@ -291,7 +315,9 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source.push_str("let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };\n");
         source.open("loop {\n");
         source.open("match function_step(active, ops, budget) {\n");
-        source.push_str("FunctionStep::Next(next) => active = next,\n");
+        if self.has_next_step() {
+            source.push_str("FunctionStep::Next(next) => active = next,\n");
+        }
         source.open("FunctionStep::Yield(active) => {\n");
         source.push_str("self.active = Some(active);\nreturn CallProgress::Yield(self);\n");
         source.close("},\n");
@@ -342,27 +368,29 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 source.close("},\n");
             }
         }
-        source.open("FunctionStep::Canonical { target, point, values } => {\n");
-        source.open("match target {\n");
-        for (family, _) in families() {
-            let stack = format!("self.{}", family.return_stack());
-            source.open(&format!(
-                "data::compiled::CallTarget::{family}(function) => {{\n"
-            ));
-            source.open(&format!("if let Some(caller) = {stack}.pop() {{\n"));
-            source.push_str("let site = caller.site();\n");
-            source.open(&format!("return CallProgress::Interpreted{family} {{\n"));
-            source.push_str("function, site, point, values,\n");
-            source.open("resume: Box::new(move |value| {\n");
-            source.push_str("self.active = Some(caller.resume(value));\nself\n");
-            source.close("}),\n");
-            source.close("};\n");
+        if self.has_canonical_step() {
+            source.open("FunctionStep::Canonical { target, point, values } => {\n");
+            source.open("match target {\n");
+            for (family, _) in families() {
+                let stack = format!("self.{}", family.return_stack());
+                source.open(&format!(
+                    "data::compiled::CallTarget::{family}(function) => {{\n"
+                ));
+                source.open(&format!("if let Some(caller) = {stack}.pop() {{\n"));
+                source.push_str("let site = caller.site();\n");
+                source.open(&format!("return CallProgress::Interpreted{family} {{\n"));
+                source.push_str("function, site, point, values,\n");
+                source.open("resume: Box::new(move |value| {\n");
+                source.push_str("self.active = Some(caller.resume(value));\nself\n");
+                source.close("}),\n");
+                source.close("};\n");
+                source.close("}\n");
+                source.push_str("return CallProgress::Interpreted { point, values };\n");
+                source.close("},\n");
+            }
             source.close("}\n");
-            source.push_str("return CallProgress::Interpreted { point, values };\n");
             source.close("},\n");
         }
-        source.close("}\n");
-        source.close("},\n");
         source.close("}\n");
         source.close("}\n");
         source.close("}\n");
@@ -372,7 +400,13 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     fn write_protocol(&self, source: &mut Code) {
         source.push_str("#[allow(clippy::large_enum_variant, reason = \"Typed locals stay inline to avoid allocating at each generated step.\")]\n");
         source.open("enum FunctionStep {\n");
-        source.push_str("Next(FunctionState),\nYield(FunctionState),\nCanonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },\n");
+        if self.has_next_step() {
+            source.push_str("Next(FunctionState),\n");
+        }
+        source.push_str("Yield(FunctionState),\n");
+        if self.has_canonical_step() {
+            source.push_str("Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },\n");
+        }
         for (family, _) in families() {
             if self.has_step(family, StepKind::Call) {
                 source.push_str(&format!(
@@ -393,6 +427,57 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             }
         }
         source.close("}\n");
+    }
+
+    fn has_next_step(&self) -> bool {
+        self.functions.iter().any(|function| {
+            function.numeric.is_none()
+                && function
+                    .shape
+                    .points
+                    .iter()
+                    .enumerate()
+                    .any(|(point, action)| match action {
+                        CallPoint::Scalar(_) => Self::following_return(function, point).is_none(),
+                        CallPoint::Create(_) | CallPoint::Terminator(_) => true,
+                        CallPoint::Call(_)
+                        | CallPoint::Tail(_)
+                        | CallPoint::Return(_)
+                        | CallPoint::Interpreted => false,
+                    })
+        })
+    }
+
+    fn following_return(function: &CallFunction<'_, Graph>, point: usize) -> Option<usize> {
+        match function.shape.points[point + 1] {
+            CallPoint::Return(index)
+                if function.shape.checkpoints[point].block
+                    == function.shape.checkpoints[point + 1].block =>
+            {
+                Some(index)
+            }
+            _ => None,
+        }
+    }
+
+    fn has_canonical_step(&self) -> bool {
+        self.functions.iter().any(|function| {
+            function.numeric.is_some()
+                || function
+                    .shape
+                    .calls
+                    .iter()
+                    .any(|call| matches!(call.output, CallLocal::Int(_)))
+                || function.shape.points.iter().any(|action| match action {
+                    CallPoint::Scalar(CallScalar::Integer(..)) | CallPoint::Interpreted => true,
+                    CallPoint::Scalar(CallScalar::Region { outputs, .. }) => !outputs.is_empty(),
+                    CallPoint::Tail(index) => {
+                        let tail = &function.shape.tails[*index];
+                        self.static_callee(tail.target, &tail.args).is_none()
+                    }
+                    _ => false,
+                })
+        })
     }
 
     fn has_step(&self, family: CallFamily, kind: StepKind) -> bool {
@@ -671,25 +756,32 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             }
         }
         source.close("}\n");
-        source.open(&format!("impl {family}Return {{\n"));
-        source.open("fn site(&self) -> data::source::HostCallSite {\n");
-        source.open("match *self {\n");
-        for function in &self.functions {
-            for call in function
-                .shape
-                .calls
-                .iter()
-                .filter(|call| local_family(&call.output) == family)
-            {
-                source.push_str(&format!(
-                    "Self::{} {{ .. }} => {},\n",
-                    return_name(function.target, call.point),
-                    Rust::expression(&call.site)
-                ));
-            }
+        let canonical = self.has_canonical_step();
+        let bridge = self.has_step(family, StepKind::Bridge);
+        if !canonical && !bridge && !self.has_step(family, StepKind::Return) {
+            return;
         }
-        source.close("}\n");
-        source.close("}\n");
+        source.open(&format!("impl {family}Return {{\n"));
+        if canonical {
+            source.open("fn site(&self) -> data::source::HostCallSite {\n");
+            source.open("match *self {\n");
+            for function in &self.functions {
+                for call in function
+                    .shape
+                    .calls
+                    .iter()
+                    .filter(|call| local_family(&call.output) == family)
+                {
+                    source.push_str(&format!(
+                        "Self::{} {{ .. }} => {},\n",
+                        return_name(function.target, call.point),
+                        Rust::expression(&call.site)
+                    ));
+                }
+            }
+            source.close("}\n");
+            source.close("}\n");
+        }
         source.open(&format!(
             "fn small(self, result: {}) -> FunctionState {{\n",
             family.value_type()
@@ -738,6 +830,10 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         }
         source.close("}\n");
         source.close("}\n");
+        if !canonical && !bridge {
+            source.close("}\n");
+            return;
+        }
         if family == CallFamily::Int {
             source.open("fn resume(self, result: CallInteger) -> FunctionState {\n");
             source.open("if let Some(result) = result.small() {\n");
@@ -828,9 +924,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                         point + 1,
                         &function.shape.locals[point + 1],
                     );
-                    if let CallPoint::Return(index) = function.shape.points[point + 1]
-                        && checkpoint.block == function.shape.checkpoints[point + 1].block
-                    {
+                    if let Some(index) = Self::following_return(function, point) {
                         // Preserve the Return's own charge and exact resumable
                         // point, without packaging a normal intermediate Next.
                         source.push_str(&format!(
@@ -1361,6 +1455,7 @@ fn test_expression(test: &CallTest) -> String {
         }
     }
 }
+
 fn write_scalar(source: &mut Code, instruction: &CallScalar<'_>) {
     match instruction {
         CallScalar::Integer(output, value) => source.push_str(&format!(
@@ -1796,6 +1891,150 @@ let int3 = region5;
     }
 
     #[test]
+    fn boolean_only_protocol_keeps_yields_and_direct_returns_without_unused_steps() {
+        let input = r#"
+fn identity(value: Bool) -> Bool { value }
+pub fn flip(value: Bool) -> Bool {
+  let result = identity(value)
+  !result
+}
+pub fn main() { let _ = flip(False) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Yield(FunctionState),
+    BoolCall { callee: FunctionState, caller: BoolReturn },
+    Bool { value: bool, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+        let flip = &codegen.functions[0];
+        let mut steps = Code::default();
+        codegen.write_function(&mut steps, flip);
+        assert_eq!(
+            steps.as_str(),
+            r#"FunctionState::Bool0Point0 { bool0 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { bool0 }); }
+    *budget -= 1;
+    FunctionStep::BoolCall { callee: FunctionState::Bool1Point0 { bool0 }, caller: BoolReturn::Bool0Call0 { bool0 } }
+},
+FunctionState::Bool0Point1 { bool0, bool1 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { bool0, bool1 }); }
+    *budget -= 1;
+    let bool2 = !bool1;
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0, bool1, bool2 }); }
+    *budget -= 1;
+    FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
+},
+FunctionState::Bool0Point2 { bool0, bool1, bool2 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0, bool1, bool2 }); }
+    *budget -= 1;
+    FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
+},
+"#
+        );
+        let mut execution = Code::default();
+        codegen.write_execution(&mut execution);
+        assert!(!execution.as_str().contains("FunctionStep::Next"));
+        assert!(!execution.as_str().contains("FunctionStep::Canonical"));
+        let mut continuation = Code::default();
+        codegen.write_continuations(&mut continuation, CallFamily::Bool);
+        assert_eq!(
+            continuation.as_str(),
+            r#"enum BoolReturn {
+    Bool0Call0 { bool0: bool },
+}
+impl BoolReturn {
+    fn small(self, result: bool) -> FunctionState {
+        match self {
+            Self::Bool0Call0 { bool0 } => {
+                let bool1 = result;
+                FunctionState::Bool0Point1 { bool0, bool1 }
+            },
+        }
+    }
+}
+"#
+        );
+        let mut generated = Code::default();
+        codegen.write_code(&mut generated);
+        assert_eq!(
+            generated.as_str().lines().next(),
+            Some(
+                "use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage};"
+            )
+        );
+    }
+
+    #[test]
+    fn arithmetic_outputs_keep_the_canonical_protocol_without_integer_calls() {
+        let input = r#"
+fn predicate(value: Bool) -> Bool { !value }
+pub fn compare_sum(left: Int, right: Int) -> Bool {
+  let sum = left + right + left
+  let result = predicate(sum > right)
+  !result
+}
+pub fn main() { let _ = compare_sum(4, 5) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let arithmetic = codegen.functions[0]
+            .shape
+            .points
+            .iter()
+            .filter_map(|point| match point {
+                CallPoint::Scalar(CallScalar::Region { region, outputs }) => Some((
+                    region.inputs.as_ref(),
+                    region.nodes.as_ref(),
+                    outputs.as_slice(),
+                    region.native,
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            arithmetic.as_slice(),
+            [(
+                &[IntLocalId(0), IntLocalId(1)][..],
+                &[
+                    ArithmeticNode::Add(ArithmeticOperand::Input(0), ArithmeticOperand::Input(1),),
+                    ArithmeticNode::Add(ArithmeticOperand::Value(0), ArithmeticOperand::Input(0),),
+                ][..],
+                &[IntLocalId(2)][..],
+                true,
+            )]
+        );
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Next(FunctionState),
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+    BoolCall { callee: FunctionState, caller: BoolReturn },
+    Bool { value: bool, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+        let mut steps = Code::default();
+        codegen.write_function(&mut steps, &codegen.functions[0]);
+        assert!(steps.as_str().contains(
+            "if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical"
+        ));
+    }
+
+    #[test]
     fn normal_completion_protocol_has_exact_direct_results_for_all_four_return_families() {
         let input = r#"
 fn integer(value: Int) -> Int { value }
@@ -1815,7 +2054,6 @@ pub fn main() { #(integer_function()(7), boolean_function()(True)) }
 enum FunctionStep {
     Next(FunctionState),
     Yield(FunctionState),
-    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
     Int { value: i128, exit: data::graph::BlockGraphExitId },
     Bool { value: bool, exit: data::graph::BlockGraphExitId },
     IntFunction { value: IntCallable, exit: data::graph::BlockGraphExitId },
