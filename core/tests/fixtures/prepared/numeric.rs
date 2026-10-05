@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 21,
+    format: 22,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -2307,7 +2307,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                         },
                         Self::Int8Call2 { int0, int1 } => {
                             let int2 = result;
@@ -2323,7 +2323,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int8Call7 { int0, int1, int2, int3, int4, bool0, int5 } => {
                             let int6 = result;
@@ -2339,7 +2339,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int8Call10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 } => {
                             let int9 = result;
@@ -2355,7 +2355,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
                 }
@@ -3029,7 +3029,7 @@ data::ModuleArtifact {
                         if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
                             return FunctionStep::IntCall { callee, caller: IntReturn::Int7Call1 { int0, int1, int_function0 } };
                         }
-                        FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int7Call1 { int0, int1, int_function0 } }
+                        FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int7Call1 { int0, int1, int_function0 } }
                     },
                     FunctionState::Int7Point2 { int0, int1, int_function0, int2 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point2 { int0, int1, int_function0, int2 }); }
@@ -3052,7 +3052,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point1 { int0 })
                     },
                     FunctionState::Int8Point1 { int0 } => {
@@ -3071,7 +3071,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point2 { int0, int1 })
                     },
                     FunctionState::Int8Point2 { int0, int1 } => {
@@ -3095,7 +3095,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point4 { int0, int1, int2, int3 })
                     },
                     FunctionState::Int8Point4 { int0, int1, int2, int3 } => {
@@ -3114,7 +3114,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point5 { int0, int1, int2, int3, int4 })
                     },
                     FunctionState::Int8Point5 { int0, int1, int2, int3, int4 } => {
@@ -3139,7 +3139,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point7 { int0, int1, int2, int3, int4, bool0, int5 })
                     },
                     FunctionState::Int8Point7 { int0, int1, int2, int3, int4, bool0, int5 } => {
@@ -3163,7 +3163,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point9 { int0, int1, int2, int3, int4, bool0, int5, int6, int7 })
                     },
                     FunctionState::Int8Point9 { int0, int1, int2, int3, int4, bool0, int5, int6, int7 } => {
@@ -3182,7 +3182,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 })
                     },
                     FunctionState::Int8Point10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 } => {
@@ -3206,7 +3206,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point12 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8, int9, int10 }); }
                         *budget -= 1;
                         FunctionStep::Int { value: int10, exit: data::graph::BlockGraphExitId(0) }
@@ -3490,7 +3490,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -3652,7 +3652,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -3843,7 +3843,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -3952,7 +3952,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4069,7 +4069,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4173,7 +4173,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4332,7 +4332,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4480,7 +4480,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4583,7 +4583,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }
@@ -4715,7 +4715,7 @@ data::ModuleArtifact {
                                 bool_functions: 0,
                             },
                         ];
-                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                     },
                     data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                 }

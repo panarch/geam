@@ -1,6 +1,6 @@
 use geam_core::embedding::{
-    BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, List, ModuleBuilder,
-    StringValue,
+    BigInt, BitArrayValue, CallableType, FunctionDeclaration, HostedModuleBuilder, List,
+    ModuleBuilder, StringValue,
 };
 use geam_core::{
     HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry, StatelessHostProfile,
@@ -619,6 +619,65 @@ fn main() -> Result<(), Box<dyn Error>> {
         "bool_captures",
     ))?;
 
+    let list_calls_source = include_str!("../tests/fixtures/prepared/int_list_calls.gleam");
+    let list_calls = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/int_list_calls.gleam",
+                list_calls_source,
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (mut list_calls, _) =
+        HostedModuleBuilder::new(list_calls)?.function(FunctionDeclaration::<
+            (List<BigInt>, BigInt, BigInt),
+            BigInt,
+        >::new("capturing_fold"))?;
+    list_calls.function(FunctionDeclaration::<(List<BigInt>, BigInt), bool>::new(
+        "verify",
+    ))?;
+    list_calls.function(FunctionDeclaration::<
+        (List<BigInt>, BigInt),
+        CallableType<(List<BigInt>,), BigInt>,
+    >::new("make_sum"))?;
+    list_calls.function(FunctionDeclaration::<
+        (List<BigInt>,),
+        CallableType<(List<BigInt>,), bool>,
+    >::new("make_check"))?;
+    list_calls.function(FunctionDeclaration::<
+        (List<BigInt>, List<BigInt>, bool),
+        BigInt,
+    >::new("selected"))?;
+    for name in ["canonical", "failure", "list_return", "non_tail"] {
+        list_calls.function(FunctionDeclaration::<(List<BigInt>,), BigInt>::new(name))?;
+    }
+    list_calls.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+
+    let static_list_calls = geam_core::compile_typed_module(
+        "example",
+        "src/int_list_static_calls.gleam",
+        include_str!("../tests/fixtures/prepared/int_list_static_calls.gleam"),
+    )?;
+    let (static_list_calls, _) =
+        ModuleBuilder::new(static_list_calls)?
+            .function(FunctionDeclaration::<(List<BigInt>,), bool>::new(
+                "nonempty",
+            ))?;
+
+    let boolean_calls = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/boolean_calls.gleam"),
+    )?;
+    let (boolean_calls, _) = ModuleBuilder::new(boolean_calls)?
+        .function(FunctionDeclaration::<(bool,), bool>::new("flip"))?;
+
     let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
     let custom =
         geam_core::compile_typed_module("example", "src/custom_scalars.gleam", custom_source)?;
@@ -768,6 +827,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("numeric.rs", numeric.prepare().emit_rust()),
         ("function_calls.rs", calls.prepare().emit_rust()),
+        ("boolean_calls.rs", boolean_calls.prepare().emit_rust()),
+        ("int_list_calls.rs", list_calls.prepare()?.emit_rust()),
+        (
+            "int_list_static_calls.rs",
+            static_list_calls.prepare().emit_rust(),
+        ),
         (
             "native_loop.rs",
             native_loop_provider::prepare().emit_rust(),

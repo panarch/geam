@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 21,
+    format: 22,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -7543,7 +7543,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int11Call5 { int0, int1, int2, int3, bool0 } => {
                             let int4 = result;
@@ -7559,7 +7559,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int11Call10 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1 } => {
                             let int8 = result;
@@ -7575,7 +7575,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int11Call12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 } => {
                             let int10 = result;
@@ -7591,7 +7591,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int11Call15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 } => {
                             let int13 = result;
@@ -7607,7 +7607,7 @@ data::ModuleArtifact {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
                 }
@@ -7832,7 +7832,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 1,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int1Point4 { int_function0, int0, int1 })
                     },
                     FunctionState::Int1Point4 { int_function0, int0, int1 } => {
@@ -7848,7 +7848,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 1,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                     },
                     FunctionState::Int1Point5 { int0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point5 { int0 }); }
@@ -7883,7 +7883,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int2Point1 { int0, int1, bool0, int2 })
                     },
                     FunctionState::Int2Point1 { int0, int1, bool0, int2 } => {
@@ -7899,7 +7899,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int3Point0 { int0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0 }); }
@@ -7917,7 +7917,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int3Point1 { int0, int1 })
                     },
                     FunctionState::Int3Point1 { int0, int1 } => {
@@ -7933,7 +7933,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int9Point0 { int0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point0 { int0 }); }
@@ -7951,7 +7951,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int9Point1 { int0, int1 })
                     },
                     FunctionState::Int9Point1 { int0, int1 } => {
@@ -7967,7 +7967,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int11Point0 {  } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point0 {  }); }
@@ -7985,7 +7985,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point1 { int0 })
                     },
                     FunctionState::Int11Point1 { int0 } => {
@@ -8004,13 +8004,13 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point2 { int0, int1 })
                     },
                     FunctionState::Int11Point2 { int0, int1 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point2 { int0, int1 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(0), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3876, 3885)), arguments: CallArguments { values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call2 { int0, int1 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(0), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3876, 3885)), arguments: CallArguments { values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call2 { int0, int1 } }
                     },
                     FunctionState::Int11Point3 { int0, int1, int2 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point3 { int0, int1, int2 }); }
@@ -8028,7 +8028,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point4 { int0, int1, int2, int3 })
                     },
                     FunctionState::Int11Point4 { int0, int1, int2, int3 } => {
@@ -8058,7 +8058,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point7 { int0, int1, int2, int3, bool0, int4, int5 })
                     },
                     FunctionState::Int11Point7 { int0, int1, int2, int3, bool0, int4, int5 } => {
@@ -8077,7 +8077,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point8 { int0, int1, int2, int3, bool0, int4, int5, int6 })
                     },
                     FunctionState::Int11Point8 { int0, int1, int2, int3, bool0, int4, int5, int6 } => {
@@ -8096,7 +8096,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point9 { int0, int1, int2, int3, bool0, int4, int5, int6, int7 })
                     },
                     FunctionState::Int11Point9 { int0, int1, int2, int3, bool0, int4, int5, int6, int7 } => {
@@ -8126,13 +8126,13 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 })
                     },
                     FunctionState::Int11Point12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(4), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3929, 3936)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(4), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3929, 3936)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call12 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9 } }
                     },
                     FunctionState::Int11Point13 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point13 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10 }); }
@@ -8150,7 +8150,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point14 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11 })
                     },
                     FunctionState::Int11Point14 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11 } => {
@@ -8169,13 +8169,13 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int11Point15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 })
                     },
                     FunctionState::Int11Point15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(6), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3939, 3953)), arguments: CallArguments { values: CallValues { ints: vec![int12.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(6), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(3939, 3953)), arguments: CallArguments { values: CallValues { ints: vec![int12.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call15 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12 } }
                     },
                     FunctionState::Int11Point16 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12, int13 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point16 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12, int13 }); }
@@ -8193,7 +8193,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point17 { int0, int1, int2, int3, bool0, int4, int5, int6, int7, bool1, int8, int9, int10, int11, int12, int13, int14 }); }
                         *budget -= 1;
                         FunctionStep::Int { value: int14, exit: data::graph::BlockGraphExitId(0) }
@@ -8219,7 +8219,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int23Point1 { int0, int1 }); }
                         *budget -= 1;
                         FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }

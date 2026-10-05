@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 21,
+        format: 22,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -5180,130 +5180,130 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     fn values(self) -> CallValues {
                         match self {
                             Self::Int0Point0 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int0Point1 { int0, int1, int_function0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int1Point0 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int1Point1 { int0, int1, int_function0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int3Point0 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int3Point1 { int0, int1, int_function0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int4Point0 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int4Point1 { int0, int1, int_function0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int5Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int6Point0 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int6Point1 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int6Point2 { int0, int_function0, int1, int2 } => {
-                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int6Point3 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int6Point4 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int6Point5 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int7Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int7Point1 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int8Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int9Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int10Point0 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int10Point1 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int10Point2 { int0, int_function0, int1, int2 } => {
-                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int10Point3 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int10Point4 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int10Point5 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int11Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int12Point0 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int12Point1 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int12Point2 { int0, int_function0, int1, int2 } => {
-                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int12Point3 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int12Point4 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int12Point5 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int15Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point0 { int0, bool0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point1 { int0, bool0, bool_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool2Point0 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool3Point0 { int0, bool_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool3Point1 { int0, bool_function0, bool0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool3Point2 { int0, bool_function0, bool0, bool1 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool3Point3 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool3Point4 { int0, bool_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool3Point5 { int0, bool_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Canonical { values, .. } => values,
                         }
@@ -5375,7 +5375,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int6Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
@@ -5391,7 +5391,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int10Call0 { int0, int_function0 } => {
                                 let int1 = result;
@@ -5407,7 +5407,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int10Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
@@ -5423,7 +5423,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int12Call0 { int0, int_function0 } => {
                                 let int1 = result;
@@ -5439,7 +5439,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int12Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
@@ -5455,7 +5455,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -5818,12 +5818,12 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int6Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int6Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int6Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int6Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point1 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::IntBridge { function: data::function::IntFunctionId(13), site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int6Call1 { int0, int_function0, int1 } }
+                            FunctionStep::IntBridge { function: data::function::IntFunctionId(13), site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int6Call1 { int0, int_function0, int1 } }
                         },
                         FunctionState::Int6Point2 { int0, int_function0, int1, int2 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point2 { int0, int_function0, int1, int2 }); }
@@ -5854,7 +5854,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int6Point5 { int0, int_function0, int1 })
                         },
                         FunctionState::Int6Point5 { int0, int_function0, int1 } => {
@@ -5878,7 +5878,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int1 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
@@ -5907,12 +5907,12 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int10Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int10Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int10Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int10Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point1 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::IntBridge { function: data::function::IntFunctionId(14), site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int10Call1 { int0, int_function0, int1 } }
+                            FunctionStep::IntBridge { function: data::function::IntFunctionId(14), site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int10Call1 { int0, int_function0, int1 } }
                         },
                         FunctionState::Int10Point2 { int0, int_function0, int1, int2 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point2 { int0, int_function0, int1, int2 }); }
@@ -5943,7 +5943,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int10Point5 { int0, int_function0, int1 })
                         },
                         FunctionState::Int10Point5 { int0, int_function0, int1 } => {
@@ -5965,7 +5965,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int12Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int12Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int12Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int12Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int12Point1 { int0, int_function0, int1 }); }
@@ -6001,7 +6001,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int12Point5 { int0, int_function0, int1 })
                         },
                         FunctionState::Int12Point5 { int0, int_function0, int1 } => {
@@ -6053,12 +6053,12 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_1(target, &captures, ()) {
                                 return FunctionStep::BoolCall { callee, caller: BoolReturn::Bool3Call0 { int0, bool_function0 } };
                             }
-                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool3Call0 { int0, bool_function0 } }
+                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool3Call0 { int0, bool_function0 } }
                         },
                         FunctionState::Bool3Point1 { int0, bool_function0, bool0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point1 { int0, bool_function0, bool0 }); }
                             *budget -= 1;
-                            FunctionStep::BoolBridge { function: data::function::BoolFunctionId(5), site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolReturn::Bool3Call1 { int0, bool_function0, bool0 } }
+                            FunctionStep::BoolBridge { function: data::function::BoolFunctionId(5), site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolReturn::Bool3Call1 { int0, bool_function0, bool0 } }
                         },
                         FunctionState::Bool3Point2 { int0, bool_function0, bool0, bool1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point2 { int0, bool_function0, bool0, bool1 }); }
@@ -6089,7 +6089,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 1,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] } }; }
                             FunctionStep::Next(FunctionState::Bool3Point5 { int0, bool_function0, int1 })
                         },
                         FunctionState::Bool3Point5 { int0, bool_function0, int1 } => {

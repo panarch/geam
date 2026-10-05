@@ -1,3 +1,4 @@
+use super::super::int_list::{IntListInstruction, IntListTest};
 use super::super::shape::{
     CompiledBoolean, CompiledInstruction, CompiledShape, CompiledTest, KernelKind,
     NumericComparison, NumericInteger,
@@ -15,10 +16,10 @@ use crate::plan::execution::function::{
 use crate::plan::execution::graph::{
     ArithmeticRegion, BlockGraphExitId, BlockId, BoolFunctionLocalId, BoolInstruction, BoolLocalId,
     BoolTest, Edge, FunctionCapture, FunctionInstructionKind, FunctionTarget, IntFunctionLocalId,
-    IntInstruction, IntLocalId, IntegerLiteral, IntegerOperand, ParamLocal, ProfiledInstruction,
-    ProfiledInstructionKind, Terminator,
+    IntInstruction, IntListLocalId, IntLocalId, IntegerLiteral, IntegerOperand, ListLocal,
+    ParamLocal, ProfiledInstruction, ProfiledInstructionKind, Terminator,
 };
-use crate::plan::execution::type_::FunctionType;
+use crate::plan::execution::type_::{FunctionType, IntListTypeId};
 use std::collections::BTreeMap;
 
 pub(in crate::plan::execution::prepared) struct CallProgram<'graph, Graph: ExecutionGraphProfile> {
@@ -52,14 +53,18 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
             {
                 selected.push(CallFunction {
                     target: CallTarget::Int(IntFunctionId(index)),
-                    numeric: CompiledShape::inspect(function.body()).filter(|numeric| {
-                        numeric.kind == KernelKind::Numeric
-                            && function
-                                .body()
-                                .exits
-                                .iter()
-                                .all(|exit| matches!(exit, FunctionExit::Return(_)))
-                    }),
+                    numeric: if shape.has_int_lists() {
+                        None
+                    } else {
+                        CompiledShape::inspect(function.body()).filter(|numeric| {
+                            numeric.kind == KernelKind::Numeric
+                                && function
+                                    .body()
+                                    .exits
+                                    .iter()
+                                    .all(|exit| matches!(exit, FunctionExit::Return(_)))
+                        })
+                    },
                     numeric_returns: function
                         .body()
                         .exits
@@ -86,14 +91,18 @@ impl<'graph, Graph: ExecutionGraphProfile> CallProgram<'graph, Graph> {
             {
                 selected.push(CallFunction {
                     target: CallTarget::Bool(BoolFunctionId(index)),
-                    numeric: CompiledShape::inspect(function.body()).filter(|numeric| {
-                        numeric.kind == KernelKind::Numeric
-                            && function
-                                .body()
-                                .exits
-                                .iter()
-                                .all(|exit| matches!(exit, FunctionExit::Return(_)))
-                    }),
+                    numeric: if shape.has_int_lists() {
+                        None
+                    } else {
+                        CompiledShape::inspect(function.body()).filter(|numeric| {
+                            numeric.kind == KernelKind::Numeric
+                                && function
+                                    .body()
+                                    .exits
+                                    .iter()
+                                    .all(|exit| matches!(exit, FunctionExit::Return(_)))
+                        })
+                    },
                     numeric_returns: function
                         .body()
                         .exits
@@ -223,6 +232,10 @@ impl<Graph: ExecutionGraphProfile> CallFunction<'_, Graph> {
 pub(super) enum CallLocal {
     Int(IntLocalId),
     Bool(BoolLocalId),
+    IntList {
+        local: IntListLocalId,
+        type_id: IntListTypeId,
+    },
     IntFunction {
         local: IntFunctionLocalId,
         type_: FunctionType,
@@ -237,6 +250,9 @@ impl CallLocal {
     pub(super) fn same_type(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Int(_), Self::Int(_)) | (Self::Bool(_), Self::Bool(_)) => true,
+            (Self::IntList { type_id: left, .. }, Self::IntList { type_id: right, .. }) => {
+                left == right
+            }
             (Self::IntFunction { type_: left, .. }, Self::IntFunction { type_: right, .. })
             | (Self::BoolFunction { type_: left, .. }, Self::BoolFunction { type_: right, .. }) => {
                 left == right
@@ -249,6 +265,10 @@ impl CallLocal {
         Some(match local {
             ParamLocal::Int(local) => Self::Int(*local),
             ParamLocal::Bool(local) => Self::Bool(*local),
+            ParamLocal::List(ListLocal::Int { local, type_id }) => Self::IntList {
+                local: *local,
+                type_id: *type_id,
+            },
             ParamLocal::IntFunction { local, type_ } => Self::IntFunction {
                 local: *local,
                 type_: type_.clone(),
@@ -265,6 +285,10 @@ impl CallLocal {
         match self {
             Self::Int(local) => ParamLocal::Int(*local),
             Self::Bool(local) => ParamLocal::Bool(*local),
+            Self::IntList { local, type_id } => ParamLocal::List(ListLocal::Int {
+                local: *local,
+                type_id: *type_id,
+            }),
             Self::IntFunction { local, type_ } => ParamLocal::IntFunction {
                 local: *local,
                 type_: type_.clone(),
@@ -311,6 +335,10 @@ pub(super) enum Capture {
         target: BoolLocalId,
         source: BoolLocalId,
     },
+    IntList {
+        target: IntListLocalId,
+        source: IntListLocalId,
+    },
     IntFunction {
         target: IntFunctionLocalId,
         source: IntFunctionLocalId,
@@ -329,6 +357,10 @@ impl Capture {
                 source: *source,
             },
             FunctionCapture::Bool { target, source } => Self::Bool {
+                target: *target,
+                source: *source,
+            },
+            FunctionCapture::IntList { target, source } => Self::IntList {
                 target: *target,
                 source: *source,
             },
@@ -351,6 +383,10 @@ impl Capture {
                 source: *source,
             },
             Self::Bool { target, source } => FunctionCapture::Bool {
+                target: *target,
+                source: *source,
+            },
+            Self::IntList { target, source } => FunctionCapture::IntList {
                 target: *target,
                 source: *source,
             },
@@ -532,7 +568,12 @@ impl<'graph> CallShape<'graph> {
             }
         }
         let entry = *shape.starts.get(&graph.entry().index())?;
-        if matches!(shape.points[entry], CallPoint::Interpreted) {
+        // Existing call-free List bodies keep their dedicated IntList kernel.
+        // A List-owning caller is selected only when calls or callable values
+        // make connecting it to this engine useful.
+        if matches!(shape.points[entry], CallPoint::Interpreted)
+            || (!shape.root && shape.has_int_lists())
+        {
             return None;
         }
         shape.entry = entry;
@@ -541,6 +582,13 @@ impl<'graph> CallShape<'graph> {
 
     pub(in crate::plan::execution::prepared) fn entry(&self) -> usize {
         self.entry
+    }
+
+    pub(super) fn has_int_lists(&self) -> bool {
+        self.locals
+            .iter()
+            .flatten()
+            .any(|local| matches!(local, CallLocal::IntList { .. }))
     }
 
     pub(in crate::plan::execution::prepared) fn local_contracts(&self) -> Vec<Vec<ParamLocal>> {
@@ -576,7 +624,10 @@ impl<'graph> CallShape<'graph> {
                 .filter(|local| matches!(local, CallLocal::Bool(_)))
                 .count(),
             bit_arrays: 0,
-            int_lists: 0,
+            int_lists: locals
+                .iter()
+                .filter(|local| matches!(local, CallLocal::IntList { .. }))
+                .count(),
             strings: 0,
             customs: 0,
             custom_lists: 0,
@@ -597,6 +648,7 @@ impl<'graph> CallShape<'graph> {
 pub(super) enum CallScalar<'graph> {
     Integer(IntLocalId, NumericInteger<'graph>),
     Boolean(BoolLocalId, CallBoolean),
+    IntList(IntListInstruction<'graph>),
     Region {
         region: &'graph ArithmeticRegion,
         outputs: Vec<IntLocalId>,
@@ -611,6 +663,7 @@ pub(super) enum CallBoolean {
 pub(super) enum CallTest {
     Not(BoolLocalId),
     Compare(NumericComparison, IntegerOperand, IntegerOperand),
+    IntList(IntListTest),
 }
 
 impl CallTest {
@@ -620,9 +673,8 @@ impl CallTest {
             CompiledTest::Compare(comparison, left, right) => {
                 Some(Self::Compare(comparison, left, right))
             }
-            CompiledTest::IntList(_) | CompiledTest::String(_) | CompiledTest::BoolEqual { .. } => {
-                None
-            }
+            CompiledTest::IntList(test) => Some(Self::IntList(test)),
+            CompiledTest::String(_) | CompiledTest::BoolEqual { .. } => None,
             CompiledTest::CustomListLength { .. } => None,
         }
     }
@@ -636,7 +688,14 @@ impl<'graph> CallScalar<'graph> {
     fn inspect<Graph: ExecutionGraphProfile>(
         instruction: &'graph ProfiledInstruction<Graph>,
     ) -> Option<Self> {
-        match CompiledInstruction::inspect(instruction, KernelKind::Numeric)? {
+        Self::from_compiled(CompiledInstruction::inspect(
+            instruction,
+            KernelKind::Numeric,
+        )?)
+    }
+
+    fn from_compiled(instruction: CompiledInstruction<'graph>) -> Option<Self> {
+        match instruction {
             CompiledInstruction::Integer(output, value) => Some(Self::Integer(output, value)),
             CompiledInstruction::Boolean(output, CompiledBoolean::Value(value)) => {
                 Some(Self::Boolean(output, CallBoolean::Value(value)))
@@ -647,8 +706,8 @@ impl<'graph> CallScalar<'graph> {
             CompiledInstruction::Region { region, outputs } => {
                 Some(Self::Region { region, outputs })
             }
-            CompiledInstruction::IntList(_)
-            | CompiledInstruction::String(_, _)
+            CompiledInstruction::IntList(instruction) => Some(Self::IntList(instruction)),
+            CompiledInstruction::String(_, _)
             | CompiledInstruction::CustomField(_)
             | CompiledInstruction::CustomLoop(_) => None,
         }
@@ -714,6 +773,7 @@ pub(super) fn supported_local(local: &ParamLocal) -> bool {
         local,
         ParamLocal::Int(_)
             | ParamLocal::Bool(_)
+            | ParamLocal::List(ListLocal::Int { .. })
             | ParamLocal::IntFunction { .. }
             | ParamLocal::BoolFunction { .. }
     )
@@ -839,6 +899,7 @@ fn inspect_instruction<'graph, Graph: ExecutionGraphProfile>(
 
 #[cfg(test)]
 mod tests {
+    use super::super::{Code, test_expression, write_scalar};
     use super::{
         CallLocal, CallProgram, CallScalar, CallTarget, CallTest, Capture, CompiledBoolean,
         CompiledInstruction, CompiledTest, KernelKind, inspect_instruction, supported_local,
@@ -850,17 +911,50 @@ mod tests {
     };
     use crate::plan::execution::graph::{
         BlockId, BoolFunctionLocalId, BoolInstruction, BoolLocalId, BoolTest, CustomListLocalId,
-        FunctionCapture, FunctionInstructionKind, IntFunctionLocalId, IntInstruction,
-        IntListLocalId, IntLocalId, ListLocal, ParamLocal, ParamSlot, ProfiledInstruction,
-        ProfiledInstructionKind, StringLocalId,
+        CustomLocalId, FunctionCapture, FunctionInstructionKind, IntFunctionLocalId,
+        IntInstruction, IntListLocalId, IntLocalId, ListLocal, ParamLocal, ParamSlot,
+        ProfiledInstruction, ProfiledInstructionKind, StringLocalId,
     };
+    use crate::plan::execution::prepared::codegen::custom::CustomField;
+    use crate::plan::execution::prepared::codegen::custom_loop::CustomLoopInstruction;
     use crate::plan::execution::prepared::codegen::int_list::IntListTest;
-    use crate::plan::execution::prepared::codegen::string::StringTest;
+    use crate::plan::execution::prepared::codegen::string::{StringOperation, StringTest};
     use crate::plan::execution::type_::{
-        CustomListTypeId, CustomTypeId, FunctionType, ListTypeId, ValueShapeId, ValueType,
+        CustomListTypeId, CustomTypeId, FunctionType, IntListTypeId, ListTypeId, ValueShapeId,
+        ValueType,
     };
     use num_bigint::BigInt;
     use std::convert::Infallible;
+
+    #[test]
+    fn list_locals_and_captures_preserve_exact_canonical_identity() {
+        let type_id = IntListTypeId {
+            list_type: ListTypeId(3),
+        };
+        let canonical = ParamLocal::List(ListLocal::Int {
+            local: IntListLocalId(2),
+            type_id,
+        });
+        let projected = CallLocal::inspect(&canonical).unwrap();
+        assert_eq!(projected.canonical(), canonical);
+        assert!(supported_local(&canonical));
+        assert!(projected.same_type(&CallLocal::IntList {
+            local: IntListLocalId(7),
+            type_id
+        }));
+        assert!(!projected.same_type(&CallLocal::IntList {
+            local: IntListLocalId(2),
+            type_id: IntListTypeId {
+                list_type: ListTypeId(4)
+            },
+        }));
+        assert!(!projected.same_type(&CallLocal::Int(IntLocalId(2))));
+        let capture = FunctionCapture::IntList {
+            target: IntListLocalId(1),
+            source: IntListLocalId(2),
+        };
+        assert!(Capture::inspect(&capture).unwrap().canonical() == capture);
+    }
 
     #[test]
     fn a_wide_arithmetic_region_after_a_call_keeps_its_canonical_big_integer_result() {
@@ -1174,7 +1268,60 @@ pub fn main() { let calculate = identity let value = calculate(1) labelled("x") 
     }
 
     #[test]
-    fn scalar_boolean_projection_leaves_list_comparison_to_its_canonical_owner() {
+    fn a_custom_field_projection_keeps_the_supported_call_prefix_unchanged() {
+        let source = r#"
+pub type Item { Item(value: Int) }
+fn identity(value: Int) { value }
+pub fn main() {
+  let calculate = identity
+  let value = calculate(7)
+  let item = Item(value)
+  item.value
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let main = match plan.program.functions.value_returns.int_functions[0].as_ref() {
+            ExecutionFunctionRef::Graph(body) => body,
+            ExecutionFunctionRef::Host(never) => match *never {},
+        };
+        let graph = main.body().block_graph().as_view();
+        let instruction = graph
+            .blocks()
+            .flat_map(|block| block.instructions())
+            .find(|instruction| {
+                matches!(
+                    instruction.value().map(|value| value.kind()),
+                    Some(ProfiledInstructionKind::Int(IntInstruction::CustomField {
+                        index: 0,
+                        ..
+                    }))
+                )
+            })
+            .unwrap();
+        assert!(CallScalar::inspect(instruction).is_none());
+        let mut program = CallProgram::inspect(&plan.program.functions);
+        let main = program
+            .functions
+            .iter_mut()
+            .find(|function| function.target == CallTarget::Int(IntFunctionId(0)))
+            .unwrap();
+        let call_count = main.shape.calls.len();
+        let creation_count = main.shape.creations.len();
+        assert_eq!((call_count, creation_count), (1, 1));
+        assert!(inspect_instruction(instruction, 0, &mut main.shape).is_none());
+        assert_eq!(main.shape.calls.len(), call_count);
+        assert_eq!(main.shape.creations.len(), creation_count);
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap(),
+            crate::Value::Int(7.into())
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn list_comparison_projects_exact_locals_without_duplicating_a_pure_list_body() {
         let source = r#"
 fn identity(value: Int) { value }
 fn same(left: List(Int), right: List(Int)) { left == right }
@@ -1188,7 +1335,14 @@ pub fn main() { let calculate = identity let value = calculate(1) same([value], 
         };
         let graph = same.body().block_graph().as_view();
         let instruction = &graph.blocks().next().unwrap().instructions()[0];
-        assert!(CallScalar::inspect(instruction).is_none());
+        assert_eq!(
+            CallScalar::inspect(instruction).map(|scalar| {
+                let mut code = Code::default();
+                write_scalar(&mut code, &scalar);
+                code.as_str().to_owned()
+            }),
+            Some("let bool0 = ops.lists().equal(&int_list0, &int_list1);\n".into())
+        );
         let mut program = CallProgram::inspect(&plan.program.functions);
         let main = program
             .functions
@@ -1196,14 +1350,39 @@ pub fn main() { let calculate = identity let value = calculate(1) same([value], 
             .find(|function| function.target == CallTarget::Bool(BoolFunctionId(0)))
             .unwrap();
         let call_count = main.shape.calls.len();
-        assert!(inspect_instruction(instruction, 0, &mut main.shape).is_none());
+        assert!(inspect_instruction(instruction, 0, &mut main.shape).is_some());
         assert_eq!(main.shape.calls.len(), call_count);
+        assert!(
+            !program
+                .functions
+                .iter()
+                .any(|function| { function.target == CallTarget::Bool(BoolFunctionId(1)) })
+        );
         let mut echo = Vec::new();
         assert_eq!(
             crate::run_main(&plan, &mut echo).unwrap(),
             crate::Value::Bool(false)
         );
         assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn scalar_projection_excludes_operations_owned_by_other_compiled_kernels() {
+        for instruction in [
+            CompiledInstruction::String(StringLocalId(0), StringOperation::Literal("text")),
+            CompiledInstruction::CustomField(CustomField::Integer {
+                output: IntLocalId(0),
+                source: CustomLocalId(0),
+                index: 0,
+            }),
+            CompiledInstruction::CustomLoop(CustomLoopInstruction::Index {
+                output: CustomLocalId(0),
+                list: CustomListLocalId(0),
+                index: 0,
+            }),
+        ] {
+            assert!(CallScalar::from_compiled(instruction).is_none());
+        }
     }
 
     #[test]
@@ -1214,12 +1393,16 @@ pub fn main() { let calculate = identity let value = calculate(1) same([value], 
         };
         assert!(Capture::inspect(&capture).is_none());
         assert!(!supported_local(&ParamLocal::String(StringLocalId(1))));
-        for test in [
-            CompiledTest::IntList(IntListTest::Length {
+        assert_eq!(
+            CallTest::from_compiled(CompiledTest::IntList(IntListTest::Length {
                 list: IntListLocalId(0),
                 length: 2,
                 at_least: false,
-            }),
+            }))
+            .map(|test| test_expression(&test)),
+            Some("int_list0.len() == 2".into())
+        );
+        for test in [
             CompiledTest::String(StringTest::Prefix {
                 value: StringLocalId(0),
                 prefix: "prefix",

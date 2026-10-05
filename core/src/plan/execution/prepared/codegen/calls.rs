@@ -4,8 +4,9 @@ use self::shape::{
     CallBoolean, CallFunction, CallInvocation, CallLocal, CallPoint, CallProgram, CallScalar,
     CallTerminator, CallTest, CallableTarget, Capture,
 };
+use super::int_list::{IntListInstruction, IntListTest};
 use super::shape::{NumericInteger, NumericOperation};
-use super::{Code, CompiledShape, tuple};
+use super::{Code, CompiledShape, length_expression, tuple};
 use crate::plan::execution::compiled::{CallContractTarget, CallTarget, CompiledCheckpoint};
 use crate::plan::execution::function::{ExecutionGraphProfile, ExecutionProfile, FunctionTables};
 use crate::plan::execution::graph::{
@@ -87,7 +88,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 if matches!(call.target, CallContractTarget::Static(_)) {
                     continue;
                 }
-                let family = local_family(&call.output);
+                let family = call_family(call);
                 if codegen
                     .functions
                     .iter()
@@ -122,25 +123,50 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             return;
         }
         let mut imports = vec![
-            "BoolCallable",
             "CallExecution",
-            "CallInteger",
             "CallInputs",
             "CallOps",
             "CallProgress",
             "CallStorage",
-            "CallValues",
-            "IntCallable",
         ];
-        if families()
+        let canonical = self.has_canonical_step();
+        for (family, name) in [
+            (CallFamily::IntFunction, "IntCallable"),
+            (CallFamily::BoolFunction, "BoolCallable"),
+        ] {
+            if canonical
+                || self.functions.iter().any(|function| {
+                    function.shape.locals.iter().flatten().any(|local| {
+                        matches!(
+                            (family, local),
+                            (CallFamily::IntFunction, CallLocal::IntFunction { .. })
+                                | (CallFamily::BoolFunction, CallLocal::BoolFunction { .. })
+                        )
+                    })
+                })
+            {
+                imports.push(name);
+            }
+        }
+        if canonical {
+            imports.push("CallInteger");
+        }
+        if canonical
+            || return_families().iter().any(|family| {
+                self.has_step(*family, StepKind::Tail) || self.has_step(*family, StepKind::Bridge)
+            })
+        {
+            imports.push("CallValues");
+        }
+        if return_families()
             .iter()
-            .any(|(family, _)| self.has_step(*family, StepKind::Return))
+            .any(|family| self.has_step(*family, StepKind::Return))
         {
             imports.push("CallOutput");
         }
-        if families()
+        if return_families()
             .iter()
-            .any(|(family, _)| self.has_step(*family, StepKind::Bridge))
+            .any(|family| self.has_step(*family, StepKind::Bridge))
         {
             imports.push("CallArguments");
         }
@@ -161,6 +187,13 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             "use data::compiled::calls::{{{}}};\n",
             imports.join(", ")
         ));
+        if self
+            .functions
+            .iter()
+            .any(|function| function.shape.has_int_lists())
+        {
+            source.push_str("use data::compiled::int_list::IntList;\n");
+        }
         let canonical_return = self.functions.iter().any(|function| {
             function
                 .shape
@@ -182,9 +215,9 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             source.push_str("Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },\n");
         }
         source.close("}\n");
-        if families()
+        if return_families()
             .iter()
-            .any(|(family, _)| self.has_step(*family, StepKind::Tail))
+            .any(|family| self.has_step(*family, StepKind::Tail))
         {
             source.open("impl FunctionState {\n");
             source.open("fn values(self) -> CallValues {\n");
@@ -207,17 +240,30 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             source.close("}\n");
             source.close("}\n");
         }
-        for (family, _) in families() {
+        for family in return_families() {
             self.write_continuations(source, family);
         }
         self.write_protocol(source);
         self.write_execution(source);
         let ops = if !self.entries.is_empty()
-            || self
-                .functions
-                .iter()
-                .any(|function| function.numeric.is_some() || !function.shape.creations.is_empty())
-        {
+            || self.functions.iter().any(|function| {
+                function.numeric.is_some()
+                    || !function.shape.creations.is_empty()
+                    || function.shape.points.iter().any(|point| {
+                        matches!(
+                            point,
+                            CallPoint::Scalar(CallScalar::IntList(_))
+                                | CallPoint::Scalar(CallScalar::Boolean(
+                                    _,
+                                    CallBoolean::Test(CallTest::IntList(IntListTest::Equal { .. }))
+                                ))
+                                | CallPoint::Terminator(CallTerminator::Test {
+                                    test: CallTest::IntList(IntListTest::Equal { .. }),
+                                    ..
+                                })
+                        )
+                    })
+            }) {
             "ops"
         } else {
             "_ops"
@@ -244,7 +290,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     fn write_execution(&self, source: &mut Code) {
         source.open("struct FunctionExecution {\n");
         source.push_str("active: Option<FunctionState>,\n");
-        for (family, _) in families() {
+        for family in return_families() {
             source.push_str(&format!(
                 "{}: Vec<{family}Return>,\n",
                 family.return_stack()
@@ -255,7 +301,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source.open("fn new(active: FunctionState) -> Self {\n");
         source.open("Self {\n");
         source.push_str("active: Some(active),\n");
-        for (family, _) in families() {
+        for family in return_families() {
             source.push_str(&format!("{}: Vec::new(),\n", family.return_stack()));
         }
         source.close("}\n");
@@ -277,8 +323,8 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source.push_str("let Some(active) = active else { return false; };\nself.active = Some(active);\ntrue\n");
         source.close("}\n");
         source.open("fn retained_bytes(&self) -> usize {\n");
-        let capacities = families()
-            .map(|(family, _)| {
+        let capacities = return_families()
+            .map(|family| {
                 format!(
                     "self.{}.capacity() * std::mem::size_of::<{family}Return>()",
                     family.return_stack()
@@ -291,11 +337,13 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source.push_str("let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };\n");
         source.open("loop {\n");
         source.open("match function_step(active, ops, budget) {\n");
-        source.push_str("FunctionStep::Next(next) => active = next,\n");
+        if self.has_next_step() {
+            source.push_str("FunctionStep::Next(next) => active = next,\n");
+        }
         source.open("FunctionStep::Yield(active) => {\n");
         source.push_str("self.active = Some(active);\nreturn CallProgress::Yield(self);\n");
         source.close("},\n");
-        for (family, _) in families() {
+        for family in return_families() {
             let stack = format!("self.{}", family.return_stack());
             if self.has_step(family, StepKind::Call) {
                 source.open(&format!(
@@ -321,7 +369,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 source.open(&format!("if let Some(caller) = {stack}.pop() {{\n"));
                 source.push_str("active = caller.small(value);\n");
                 source.alternative("} else {\n");
-                for (cleared, _) in families() {
+                for cleared in return_families() {
                     source.push_str(&format!("self.{}.clear();\n", cleared.return_stack()));
                 }
                 let value = if family == CallFamily::Int {
@@ -342,27 +390,29 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 source.close("},\n");
             }
         }
-        source.open("FunctionStep::Canonical { target, point, values } => {\n");
-        source.open("match target {\n");
-        for (family, _) in families() {
-            let stack = format!("self.{}", family.return_stack());
-            source.open(&format!(
-                "data::compiled::CallTarget::{family}(function) => {{\n"
-            ));
-            source.open(&format!("if let Some(caller) = {stack}.pop() {{\n"));
-            source.push_str("let site = caller.site();\n");
-            source.open(&format!("return CallProgress::Interpreted{family} {{\n"));
-            source.push_str("function, site, point, values,\n");
-            source.open("resume: Box::new(move |value| {\n");
-            source.push_str("self.active = Some(caller.resume(value));\nself\n");
-            source.close("}),\n");
-            source.close("};\n");
+        if self.has_canonical_step() {
+            source.open("FunctionStep::Canonical { target, point, values } => {\n");
+            source.open("match target {\n");
+            for family in return_families() {
+                let stack = format!("self.{}", family.return_stack());
+                source.open(&format!(
+                    "data::compiled::CallTarget::{family}(function) => {{\n"
+                ));
+                source.open(&format!("if let Some(caller) = {stack}.pop() {{\n"));
+                source.push_str("let site = caller.site();\n");
+                source.open(&format!("return CallProgress::Interpreted{family} {{\n"));
+                source.push_str("function, site, point, values,\n");
+                source.open("resume: Box::new(move |value| {\n");
+                source.push_str("self.active = Some(caller.resume(value));\nself\n");
+                source.close("}),\n");
+                source.close("};\n");
+                source.close("}\n");
+                source.push_str("return CallProgress::Interpreted { point, values };\n");
+                source.close("},\n");
+            }
             source.close("}\n");
-            source.push_str("return CallProgress::Interpreted { point, values };\n");
             source.close("},\n");
         }
-        source.close("}\n");
-        source.close("},\n");
         source.close("}\n");
         source.close("}\n");
         source.close("}\n");
@@ -372,8 +422,14 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     fn write_protocol(&self, source: &mut Code) {
         source.push_str("#[allow(clippy::large_enum_variant, reason = \"Typed locals stay inline to avoid allocating at each generated step.\")]\n");
         source.open("enum FunctionStep {\n");
-        source.push_str("Next(FunctionState),\nYield(FunctionState),\nCanonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },\n");
-        for (family, _) in families() {
+        if self.has_next_step() {
+            source.push_str("Next(FunctionState),\n");
+        }
+        source.push_str("Yield(FunctionState),\n");
+        if self.has_canonical_step() {
+            source.push_str("Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },\n");
+        }
+        for family in return_families() {
             if self.has_step(family, StepKind::Call) {
                 source.push_str(&format!(
                     "{family}Call {{ callee: FunctionState, caller: {family}Return }},\n"
@@ -395,6 +451,61 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         source.close("}\n");
     }
 
+    fn has_next_step(&self) -> bool {
+        self.functions.iter().any(|function| {
+            function.numeric.is_none()
+                && function
+                    .shape
+                    .points
+                    .iter()
+                    .enumerate()
+                    .any(|(point, action)| match action {
+                        CallPoint::Scalar(_) => Self::following_return(function, point).is_none(),
+                        CallPoint::Create(_) | CallPoint::Terminator(_) => true,
+                        CallPoint::Call(_)
+                        | CallPoint::Tail(_)
+                        | CallPoint::Return(_)
+                        | CallPoint::Interpreted => false,
+                    })
+        })
+    }
+
+    fn following_return(function: &CallFunction<'_, Graph>, point: usize) -> Option<usize> {
+        match function.shape.points[point + 1] {
+            CallPoint::Return(index)
+                if function.shape.checkpoints[point].block
+                    == function.shape.checkpoints[point + 1].block =>
+            {
+                Some(index)
+            }
+            _ => None,
+        }
+    }
+
+    fn has_canonical_step(&self) -> bool {
+        self.functions.iter().any(|function| {
+            function.numeric.is_some()
+                || function
+                    .shape
+                    .calls
+                    .iter()
+                    .any(|call| matches!(call.output, CallLocal::Int(_)))
+                || function.shape.points.iter().any(|action| match action {
+                    CallPoint::Scalar(CallScalar::Integer(..))
+                    | CallPoint::Scalar(CallScalar::IntList(IntListInstruction::Index {
+                        ..
+                    }))
+                    | CallPoint::Interpreted => true,
+                    CallPoint::Scalar(CallScalar::Region { outputs, .. }) => !outputs.is_empty(),
+                    CallPoint::Tail(index) => {
+                        let tail = &function.shape.tails[*index];
+                        self.static_callee(tail.target, &tail.args).is_none()
+                    }
+                    _ => false,
+                })
+        })
+    }
+
     fn has_step(&self, family: CallFamily, kind: StepKind) -> bool {
         self.functions.iter().any(|function| match kind {
             StepKind::Return => {
@@ -409,7 +520,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                         .any(|tail| self.static_callee(tail.target, &tail.args).is_some())
             }
             StepKind::Call | StepKind::Bridge => function.shape.calls.iter().any(|call| {
-                if local_family(&call.output) != family {
+                if call_family(call) != family {
                     return false;
                 }
                 let direct = match call.target {
@@ -540,7 +651,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             source.push_str(&format!("{},\n", Rust::expression(checkpoint)));
         }
         source.close("];\n");
-        source.push_str(&format!("FunctionStep::Canonical {{ target: {}, point: POINTS[point], values: CallValues {{ ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() }} }}\n", Rust::expression(&function.target)));
+        source.push_str(&format!("FunctionStep::Canonical {{ target: {}, point: POINTS[point], values: CallValues {{ ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() }} }}\n", Rust::expression(&function.target)));
         source.close("},\n");
         source.push_str(
             "data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),\n",
@@ -550,8 +661,18 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     }
 
     fn write_start(&self, source: &mut Code, function: &CallFunction<'_, Graph>) {
+        let inputs = if function
+            .shape
+            .locals
+            .iter()
+            .any(|locals| !locals.is_empty())
+        {
+            "values"
+        } else {
+            "_values"
+        };
         source.open(&format!(
-            "fn {}_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {{\n",
+            "fn {}_state(point: usize, {inputs}: CallInputs<'_>) -> Option<FunctionState> {{\n",
             function_name(function.target)
         ));
         source.open("let active = match point {\n");
@@ -651,7 +772,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 .shape
                 .calls
                 .iter()
-                .filter(|call| local_family(&call.output) == family)
+                .filter(|call| call_family(call) == family)
             {
                 source.push_str(&format!(
                     "{}{},\n",
@@ -661,25 +782,32 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
             }
         }
         source.close("}\n");
-        source.open(&format!("impl {family}Return {{\n"));
-        source.open("fn site(&self) -> data::source::HostCallSite {\n");
-        source.open("match *self {\n");
-        for function in &self.functions {
-            for call in function
-                .shape
-                .calls
-                .iter()
-                .filter(|call| local_family(&call.output) == family)
-            {
-                source.push_str(&format!(
-                    "Self::{} {{ .. }} => {},\n",
-                    return_name(function.target, call.point),
-                    Rust::expression(&call.site)
-                ));
-            }
+        let canonical = self.has_canonical_step();
+        let bridge = self.has_step(family, StepKind::Bridge);
+        if !canonical && !bridge && !self.has_step(family, StepKind::Return) {
+            return;
         }
-        source.close("}\n");
-        source.close("}\n");
+        source.open(&format!("impl {family}Return {{\n"));
+        if canonical {
+            source.open("fn site(&self) -> data::source::HostCallSite {\n");
+            source.open("match *self {\n");
+            for function in &self.functions {
+                for call in function
+                    .shape
+                    .calls
+                    .iter()
+                    .filter(|call| call_family(call) == family)
+                {
+                    source.push_str(&format!(
+                        "Self::{} {{ .. }} => {},\n",
+                        return_name(function.target, call.point),
+                        Rust::expression(&call.site)
+                    ));
+                }
+            }
+            source.close("}\n");
+            source.close("}\n");
+        }
         source.open(&format!(
             "fn small(self, result: {}) -> FunctionState {{\n",
             family.value_type()
@@ -689,7 +817,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 .shape
                 .calls
                 .iter()
-                .any(|call| local_family(&call.output) == family)
+                .any(|call| call_family(call) == family)
         }) {
             source.push_str("let _ = result;\n");
         }
@@ -699,7 +827,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 .shape
                 .calls
                 .iter()
-                .filter(|call| local_family(&call.output) == family)
+                .filter(|call| call_family(call) == family)
             {
                 let locals = &function.shape.locals[call.point];
                 source.open(&format!(
@@ -728,6 +856,10 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         }
         source.close("}\n");
         source.close("}\n");
+        if !canonical && !bridge {
+            source.close("}\n");
+            return;
+        }
         if family == CallFamily::Int {
             source.open("fn resume(self, result: CallInteger) -> FunctionState {\n");
             source.open("if let Some(result) = result.small() {\n");
@@ -787,6 +919,25 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                     "if *budget == 0 {{ return FunctionStep::Yield({}); }}\n",
                     state(function.target, point, locals)
                 ));
+                if let CallPoint::Scalar(CallScalar::IntList(IntListInstruction::Index {
+                    output,
+                    list,
+                    index,
+                })) = action
+                {
+                    // Reading a Big head must return to the unexecuted Index,
+                    // not the post-calculation overflow checkpoint.
+                    source.open(&format!(
+                        "let int{} = match ops.lists().index(&int_list{}, {index}) {{\n",
+                        output.0, list.0
+                    ));
+                    source.push_str("Some(value) => value,\n");
+                    source.push_str(&format!(
+                        "None => return {},\n",
+                        canonical(function.target, checkpoint, locals)
+                    ));
+                    source.close("};\n");
+                }
                 if !matches!(action, CallPoint::Tail(_)) {
                     source.push_str("*budget -= 1;\n");
                 }
@@ -818,9 +969,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                         point + 1,
                         &function.shape.locals[point + 1],
                     );
-                    if let CallPoint::Return(index) = function.shape.points[point + 1]
-                        && checkpoint.block == function.shape.checkpoints[point + 1].block
-                    {
+                    if let Some(index) = Self::following_return(function, point) {
                         // Preserve the Return's own charge and exact resumable
                         // point, without packaging a normal intermediate Next.
                         source.push_str(&format!(
@@ -880,7 +1029,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         let returning = &function.shape.returns[index];
         source.push_str(&format!(
             "FunctionStep::{} {{ value: {}, exit: {} }}\n",
-            local_family(&returning.value),
+            target_family(function.target),
             local_expression(&returning.value, false),
             Rust::expression(&returning.exit)
         ));
@@ -975,7 +1124,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
         function: &CallFunction<'_, Graph>,
         call: &CallInvocation,
     ) {
-        let family = local_family(&call.output);
+        let family = call_family(call);
         let prefix = &function.shape.locals[call.point];
         let caller = format!(
             "{family}Return::{}{}",
@@ -1066,7 +1215,7 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
                 entry
                     .parameters
                     .iter()
-                    .map(|local| local_family(local).value_type().to_owned()),
+                    .map(|local| local_type(local).to_owned()),
             );
             source.open(&format!("fn calls_entry_{index}(target: data::function::{}FunctionId, {captures}: &CallCaptureInputs<'_>, inputs: {inputs_type}) -> Option<FunctionState> {{\n", entry.family));
             if !entry.parameters.is_empty() {
@@ -1125,12 +1274,12 @@ impl CallableEntry {
     }
 }
 
-fn families() -> [(CallFamily, &'static str); 4] {
+fn return_families() -> [CallFamily; 4] {
     [
-        (CallFamily::Int, "ints"),
-        (CallFamily::Bool, "bools"),
-        (CallFamily::IntFunction, "int_functions"),
-        (CallFamily::BoolFunction, "bool_functions"),
+        CallFamily::Int,
+        CallFamily::Bool,
+        CallFamily::IntFunction,
+        CallFamily::BoolFunction,
     ]
 }
 
@@ -1164,18 +1313,39 @@ fn return_name(target: CallTarget, point: usize) -> String {
     format!("{}{}Call{point}", target_family(target), target.index())
 }
 
-fn local_family(local: &CallLocal) -> CallFamily {
-    match local {
-        CallLocal::Int(_) => CallFamily::Int,
-        CallLocal::Bool(_) => CallFamily::Bool,
-        CallLocal::IntFunction { .. } => CallFamily::IntFunction,
-        CallLocal::BoolFunction { .. } => CallFamily::BoolFunction,
+fn call_family(call: &CallInvocation) -> CallFamily {
+    match call.target {
+        CallContractTarget::Static(target) => target_family(target),
+        CallContractTarget::IntValue(_) => CallFamily::Int,
+        CallContractTarget::BoolValue(_) => CallFamily::Bool,
     }
 }
+
+fn local_type(local: &CallLocal) -> &'static str {
+    match local {
+        CallLocal::Int(_) => "i128",
+        CallLocal::Bool(_) => "bool",
+        CallLocal::IntList { .. } => "IntList",
+        CallLocal::IntFunction { .. } => "IntCallable",
+        CallLocal::BoolFunction { .. } => "BoolCallable",
+    }
+}
+
+fn local_column(local: &CallLocal) -> &'static str {
+    match local {
+        CallLocal::Int(_) => "ints",
+        CallLocal::Bool(_) => "bools",
+        CallLocal::IntList { .. } => "int_lists",
+        CallLocal::IntFunction { .. } => "int_functions",
+        CallLocal::BoolFunction { .. } => "bool_functions",
+    }
+}
+
 fn local_name(local: &CallLocal) -> String {
     match local {
         CallLocal::Int(id) => format!("int{}", id.0),
         CallLocal::Bool(id) => format!("bool{}", id.0),
+        CallLocal::IntList { local, .. } => format!("int_list{}", local.0),
         CallLocal::IntFunction { local, .. } => format!("int_function{}", local.0),
         CallLocal::BoolFunction { local, .. } => format!("bool_function{}", local.0),
     }
@@ -1184,6 +1354,7 @@ fn local_id(local: &CallLocal) -> String {
     match local {
         CallLocal::Int(id) => Rust::expression(id),
         CallLocal::Bool(id) => Rust::expression(id),
+        CallLocal::IntList { local, .. } => Rust::expression(local),
         CallLocal::IntFunction { local, .. } => Rust::expression(local),
         CallLocal::BoolFunction { local, .. } => Rust::expression(local),
     }
@@ -1192,6 +1363,7 @@ fn capture_method(local: &CallLocal) -> &'static str {
     match local {
         CallLocal::Int(_) => "int",
         CallLocal::Bool(_) => "bool",
+        CallLocal::IntList { .. } => "int_list",
         CallLocal::IntFunction { .. } => "int_function",
         CallLocal::BoolFunction { .. } => "bool_function",
     }
@@ -1201,7 +1373,9 @@ fn local_expression(local: &CallLocal, clone: bool) -> String {
     if clone
         && matches!(
             local,
-            CallLocal::IntFunction { .. } | CallLocal::BoolFunction { .. }
+            CallLocal::IntList { .. }
+                | CallLocal::IntFunction { .. }
+                | CallLocal::BoolFunction { .. }
         )
     {
         format!("{name}.clone()")
@@ -1223,11 +1397,7 @@ fn fields(locals: &[CallLocal]) -> String {
         " {{ {} }}",
         locals
             .iter()
-            .map(|local| format!(
-                "{}: {}",
-                local_name(local),
-                local_family(local).value_type()
-            ))
+            .map(|local| format!("{}: {}", local_name(local), local_type(local)))
             .collect::<Vec<_>>()
             .join(", ")
     )
@@ -1250,6 +1420,7 @@ fn load_value(local: &CallLocal) -> String {
     match local {
         CallLocal::Int(id) => format!("values.int({})?", id.0),
         CallLocal::Bool(id) => format!("values.bool({})?", id.0),
+        CallLocal::IntList { local, .. } => format!("values.int_list({})?", local.0),
         CallLocal::IntFunction { local, .. } => {
             format!("values.int_function({})?", local.0)
         }
@@ -1264,28 +1435,35 @@ fn values(locals: &[CallLocal], clone: bool) -> String {
 }
 
 fn values_with_result(locals: &[CallLocal], clone: bool, result: Option<&CallLocal>) -> String {
-    let fields = families()
-        .iter()
-        .map(|(family, field)| {
-            let values = locals
-                .iter()
-                .filter(|local| local_family(local) == *family)
-                .map(|local| {
-                    let value = local_expression(local, clone);
-                    if *family == CallFamily::Int && result != Some(local) {
-                        format!("{value}.into()")
-                    } else {
-                        value
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{field}: vec![{values}]")
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+    let fields = [
+        "ints",
+        "bools",
+        "int_lists",
+        "int_functions",
+        "bool_functions",
+    ]
+    .iter()
+    .map(|column| {
+        let values = locals
+            .iter()
+            .filter(|local| local_column(local) == *column)
+            .map(|local| {
+                let value = local_expression(local, clone);
+                if matches!(local, CallLocal::Int(_)) && result != Some(local) {
+                    format!("{value}.into()")
+                } else {
+                    value
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{column}: vec![{values}]")
+    })
+    .collect::<Vec<_>>()
+    .join(", ");
     format!("CallValues {{ {fields} }}")
 }
+
 fn canonical(target: CallTarget, point: CompiledCheckpoint, locals: &[CallLocal]) -> String {
     format!(
         "FunctionStep::Canonical {{ target: {}, point: {}, values: {} }}",
@@ -1304,6 +1482,11 @@ fn capture_expression(capture: &Capture) -> String {
         ),
         Capture::Bool { target, source } => format!(
             "CallCapture::bool({}, bool{})",
+            Rust::expression(target),
+            source.0
+        ),
+        Capture::IntList { target, source } => format!(
+            "CallCapture::int_list({}, int_list{}.clone())",
             Rust::expression(target),
             source.0
         ),
@@ -1349,6 +1532,23 @@ fn test_expression(test: &CallTest) -> String {
         CallTest::Compare(comparison, left, right) => {
             super::integer_comparison(comparison, operand(*left), operand(*right))
         }
+        CallTest::IntList(test) => match test {
+            IntListTest::Length {
+                list,
+                length,
+                at_least,
+            } => length_expression(&format!("int_list{}", list.0), *length, *at_least),
+            IntListTest::Equal {
+                left,
+                right,
+                negate,
+            } => format!(
+                "{}ops.lists().equal(&int_list{}, &int_list{})",
+                if *negate { "!" } else { "" },
+                left.0,
+                right.0,
+            ),
+        },
     }
 }
 fn write_scalar(source: &mut Code, instruction: &CallScalar<'_>) {
@@ -1365,6 +1565,57 @@ fn write_scalar(source: &mut Code, instruction: &CallScalar<'_>) {
             };
             source.push_str(&format!("let bool{} = {value};\n", output.0));
         }
+        CallScalar::IntList(instruction) => match instruction {
+            IntListInstruction::Value {
+                output,
+                type_id,
+                elements,
+            } => {
+                let elements = elements
+                    .iter()
+                    .map(|local| format!("int{} as i64", local.0))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                source.push_str(&format!(
+                    "let int_list{} = ops.lists().value({}, &[{elements}]);\n",
+                    output.0,
+                    Rust::expression(type_id)
+                ));
+            }
+            IntListInstruction::Spread {
+                output,
+                type_id,
+                elements,
+                tail,
+            } => {
+                let elements = elements
+                    .iter()
+                    .map(|local| format!("int{} as i64", local.0))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                source.push_str(&format!(
+                    "let int_list{} = ops.lists().prepend({}, &[{elements}], &int_list{});\n",
+                    output.0,
+                    Rust::expression(type_id),
+                    tail.0
+                ));
+            }
+            // The preflight has already read the head before charging Index.
+            IntListInstruction::Index { .. } => {}
+            IntListInstruction::Tail {
+                output,
+                type_id,
+                list,
+                count,
+            } => {
+                source.push_str(&format!(
+                    "let int_list{} = ops.lists().tail(&int_list{}, {}, {count});\n",
+                    output.0,
+                    list.0,
+                    Rust::expression(type_id)
+                ));
+            }
+        },
         CallScalar::Region { region, outputs } => {
             for (index, node) in region.nodes.iter().enumerate() {
                 let value = |operand| match operand {
@@ -1403,15 +1654,267 @@ fn write_scalar(source: &mut Code, instruction: &CallScalar<'_>) {
 mod tests {
     use super::super::shape::NumericComparison;
     use super::{
-        CallCodegen, CallFamily, CallPoint, CallScalar, CallTarget, CallTest, Code, IntegerOperand,
-        NumericInteger, NumericOperation, integer_expression, test_expression, write_scalar,
+        CallBoolean, CallCodegen, CallFamily, CallLocal, CallPoint, CallScalar, CallTarget,
+        CallTerminator, CallTest, Capture, Code, IntListInstruction, IntListTest, IntegerOperand,
+        NumericInteger, NumericOperation, capture_expression, capture_method, fields,
+        integer_expression, load_value, local_column, local_id, local_name, local_type, pattern,
+        test_expression, values, write_scalar,
     };
     use crate::plan::execution::function::IntFunctionId;
     use crate::plan::execution::graph::{
-        ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BoolLocalId,
-        IntLocalId, ParamLocal, ParamSlot, native_proof,
+        ArithmeticNode, ArithmeticOperand, ArithmeticOutput, ArithmeticRegion, BoolFunctionLocalId,
+        BoolLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId, ParamLocal, ParamSlot,
+        native_proof,
     };
-    use crate::plan::execution::type_::ValueShapeId;
+    use crate::plan::execution::type_::{
+        FunctionType, IntListTypeId, ListTypeId, ValueShapeId, ValueType,
+    };
+
+    #[test]
+    fn local_columns_and_captures_emit_each_concrete_value_family() {
+        let locals = [
+            CallLocal::Int(IntLocalId(0)),
+            CallLocal::Bool(BoolLocalId(1)),
+            CallLocal::IntList {
+                local: IntListLocalId(2),
+                type_id: IntListTypeId {
+                    list_type: ListTypeId(0),
+                },
+            },
+            CallLocal::IntFunction {
+                local: IntFunctionLocalId(3),
+                type_: FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            },
+            CallLocal::BoolFunction {
+                local: BoolFunctionLocalId(4),
+                type_: FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+            },
+        ];
+        assert_eq!(
+            fields(&locals),
+            " { int0: i128, bool1: bool, int_list2: IntList, int_function3: IntCallable, bool_function4: BoolCallable }"
+        );
+        assert_eq!(
+            pattern(&locals),
+            " { int0, bool1, int_list2, int_function3, bool_function4 }"
+        );
+        assert_eq!(
+            values(&locals, false),
+            "CallValues { ints: vec![int0.into()], bools: vec![bool1], int_lists: vec![int_list2], int_functions: vec![int_function3], bool_functions: vec![bool_function4] }"
+        );
+        assert_eq!(
+            values(&locals, true),
+            "CallValues { ints: vec![int0.into()], bools: vec![bool1], int_lists: vec![int_list2.clone()], int_functions: vec![int_function3.clone()], bool_functions: vec![bool_function4.clone()] }"
+        );
+        let projections = locals
+            .iter()
+            .map(|local| {
+                (
+                    local_type(local),
+                    local_column(local),
+                    local_name(local),
+                    local_id(local),
+                    load_value(local),
+                    capture_method(local),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            projections,
+            [
+                (
+                    "i128",
+                    "ints",
+                    "int0".into(),
+                    "data::graph::IntLocalId(0)".into(),
+                    "values.int(0)?".into(),
+                    "int"
+                ),
+                (
+                    "bool",
+                    "bools",
+                    "bool1".into(),
+                    "data::graph::BoolLocalId(1)".into(),
+                    "values.bool(1)?".into(),
+                    "bool"
+                ),
+                (
+                    "IntList",
+                    "int_lists",
+                    "int_list2".into(),
+                    "data::graph::IntListLocalId(2)".into(),
+                    "values.int_list(2)?".into(),
+                    "int_list"
+                ),
+                (
+                    "IntCallable",
+                    "int_functions",
+                    "int_function3".into(),
+                    "data::graph::IntFunctionLocalId(3)".into(),
+                    "values.int_function(3)?".into(),
+                    "int_function"
+                ),
+                (
+                    "BoolCallable",
+                    "bool_functions",
+                    "bool_function4".into(),
+                    "data::graph::BoolFunctionLocalId(4)".into(),
+                    "values.bool_function(4)?".into(),
+                    "bool_function"
+                ),
+            ]
+        );
+        let captures = [
+            Capture::Int {
+                target: IntLocalId(0),
+                source: IntLocalId(7),
+            },
+            Capture::Bool {
+                target: BoolLocalId(1),
+                source: BoolLocalId(8),
+            },
+            Capture::IntList {
+                target: IntListLocalId(2),
+                source: IntListLocalId(9),
+            },
+            Capture::IntFunction {
+                target: IntFunctionLocalId(3),
+                source: IntFunctionLocalId(10),
+            },
+            Capture::BoolFunction {
+                target: BoolFunctionLocalId(4),
+                source: BoolFunctionLocalId(11),
+            },
+        ];
+        assert_eq!(
+            captures.iter().map(capture_expression).collect::<Vec<_>>(),
+            [
+                "CallCapture::int(data::graph::IntLocalId(0), int7)",
+                "CallCapture::bool(data::graph::BoolLocalId(1), bool8)",
+                "CallCapture::int_list(data::graph::IntListLocalId(2), int_list9.clone())",
+                "CallCapture::int_function(data::graph::IntFunctionLocalId(3), int_function10.clone())",
+                "CallCapture::bool_function(data::graph::BoolFunctionLocalId(4), bool_function11.clone())",
+            ]
+        );
+    }
+
+    #[test]
+    fn length_only_static_list_calls_do_not_read_list_operations() {
+        let input = r#"
+fn identity(value: Bool) -> Bool { value }
+pub fn nonempty(values: List(Int)) -> Bool {
+  let empty = case values { [] -> True _ -> False }
+  let result = identity(empty)
+  !result
+}
+pub fn main() { let _ = nonempty([]) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let mut generated = Code::default();
+        codegen.write_code(&mut generated);
+        assert_eq!(
+            generated
+                .as_str()
+                .lines()
+                .find(|line| line.starts_with("fn function_step(")),
+            Some(
+                "fn function_step(active: FunctionState, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {"
+            )
+        );
+        let mut echo = Vec::new();
+        assert_eq!(
+            crate::run_main(&plan, &mut echo).unwrap(),
+            crate::Value::Nil
+        );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn list_construction_and_tests_emit_concrete_typed_operations() {
+        let elements = [IntLocalId(0), IntLocalId(2)];
+        let mut code = Code::default();
+        write_scalar(
+            &mut code,
+            &CallScalar::IntList(IntListInstruction::Value {
+                output: IntListLocalId(3),
+                type_id: IntListTypeId {
+                    list_type: ListTypeId(2),
+                },
+                elements: &elements,
+            }),
+        );
+        assert_eq!(
+            code.as_str(),
+            r#"let int_list3 = ops.lists().value(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(2),
+}, &[int0 as i64, int2 as i64]);
+"#
+        );
+        let mut spread = Code::default();
+        write_scalar(
+            &mut spread,
+            &CallScalar::IntList(IntListInstruction::Spread {
+                output: IntListLocalId(3),
+                type_id: IntListTypeId {
+                    list_type: ListTypeId(2),
+                },
+                elements: &elements,
+                tail: IntListLocalId(1),
+            }),
+        );
+        assert_eq!(
+            spread.as_str(),
+            r#"let int_list3 = ops.lists().prepend(data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(2),
+}, &[int0 as i64, int2 as i64], &int_list1);
+"#
+        );
+        let mut tail = Code::default();
+        write_scalar(
+            &mut tail,
+            &CallScalar::IntList(IntListInstruction::Tail {
+                output: IntListLocalId(3),
+                type_id: IntListTypeId {
+                    list_type: ListTypeId(2),
+                },
+                list: IntListLocalId(1),
+                count: 2,
+            }),
+        );
+        assert_eq!(
+            tail.as_str(),
+            r#"let int_list3 = ops.lists().tail(&int_list1, data::type_::IntListTypeId {
+    list_type: data::type_::ListTypeId(2),
+}, 2);
+"#
+        );
+        assert_eq!(
+            test_expression(&CallTest::IntList(IntListTest::Length {
+                list: IntListLocalId(3),
+                length: 2,
+                at_least: true,
+            })),
+            "int_list3.len() >= 2"
+        );
+        assert_eq!(
+            test_expression(&CallTest::IntList(IntListTest::Equal {
+                left: IntListLocalId(1),
+                right: IntListLocalId(3),
+                negate: false,
+            })),
+            "ops.lists().equal(&int_list1, &int_list3)"
+        );
+        assert_eq!(
+            test_expression(&CallTest::IntList(IntListTest::Equal {
+                left: IntListLocalId(1),
+                right: IntListLocalId(3),
+                negate: true,
+            })),
+            "!ops.lists().equal(&int_list1, &int_list3)"
+        );
+    }
 
     #[test]
     fn scalar_branches_preserve_exact_edge_values_and_static_numeric_completion() {
@@ -1609,34 +2112,34 @@ pub fn main() { let calculate = forward(True) calculate() }
             r#"    fn values(self) -> CallValues {
         match self {
             Self::Bool0Point0 {  } => {
-                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::Bool0Point1 { bool0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::Bool0Point2 { bool0, bool_function0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
             },
             Self::Bool0Point3 { bool0, bool_function0, bool1 } => {
-                CallValues { ints: vec![], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0] }
+                CallValues { ints: vec![], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
             },
             Self::Bool1Point0 { bool0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::Bool2Point0 { bool0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::Bool2Point1 { bool0, bool1 } => {
-                CallValues { ints: vec![], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::BoolFunction0Point0 { bool0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::BoolFunction1Point0 { bool0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
             },
             Self::BoolFunction1Point1 { bool0, bool_function0 } => {
-                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0] }
+                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
             },
         }
     }
@@ -1786,6 +2289,310 @@ let int3 = region5;
     }
 
     #[test]
+    fn boolean_only_protocol_keeps_yields_and_direct_returns_without_unused_steps() {
+        let input = r#"
+fn identity(value: Bool) -> Bool { value }
+pub fn flip(value: Bool) -> Bool {
+  let result = identity(value)
+  !result
+}
+pub fn main() { let _ = flip(False) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Yield(FunctionState),
+    BoolCall { callee: FunctionState, caller: BoolReturn },
+    Bool { value: bool, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+        let flip = &codegen.functions[0];
+        let mut steps = Code::default();
+        codegen.write_function(&mut steps, flip);
+        assert_eq!(
+            steps.as_str(),
+            r#"FunctionState::Bool0Point0 { bool0 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { bool0 }); }
+    *budget -= 1;
+    FunctionStep::BoolCall { callee: FunctionState::Bool1Point0 { bool0 }, caller: BoolReturn::Bool0Call0 { bool0 } }
+},
+FunctionState::Bool0Point1 { bool0, bool1 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { bool0, bool1 }); }
+    *budget -= 1;
+    let bool2 = !bool1;
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0, bool1, bool2 }); }
+    *budget -= 1;
+    FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
+},
+FunctionState::Bool0Point2 { bool0, bool1, bool2 } => {
+    if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0, bool1, bool2 }); }
+    *budget -= 1;
+    FunctionStep::Bool { value: bool2, exit: data::graph::BlockGraphExitId(0) }
+},
+"#
+        );
+        let mut execution = Code::default();
+        codegen.write_execution(&mut execution);
+        assert!(!execution.as_str().contains("FunctionStep::Next"));
+        assert!(!execution.as_str().contains("FunctionStep::Canonical"));
+        let mut continuation = Code::default();
+        codegen.write_continuations(&mut continuation, CallFamily::Bool);
+        assert_eq!(
+            continuation.as_str(),
+            r#"enum BoolReturn {
+    Bool0Call0 { bool0: bool },
+}
+impl BoolReturn {
+    fn small(self, result: bool) -> FunctionState {
+        match self {
+            Self::Bool0Call0 { bool0 } => {
+                let bool1 = result;
+                FunctionState::Bool0Point1 { bool0, bool1 }
+            },
+        }
+    }
+}
+"#
+        );
+        let mut generated = Code::default();
+        codegen.write_code(&mut generated);
+        assert_eq!(
+            generated.as_str().lines().next(),
+            Some(
+                "use data::compiled::calls::{CallExecution, CallInputs, CallOps, CallOutput, CallProgress, CallStorage};"
+            )
+        );
+    }
+
+    #[test]
+    fn arithmetic_outputs_keep_the_canonical_protocol_without_integer_calls() {
+        let input = r#"
+fn predicate(value: Bool) -> Bool { !value }
+pub fn compare_sum(left: Int, right: Int) -> Bool {
+  let sum = left + right + left
+  let result = predicate(sum > right)
+  !result
+}
+pub fn main() { let _ = compare_sum(4, 5) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let arithmetic = codegen.functions[0]
+            .shape
+            .points
+            .iter()
+            .filter_map(|point| match point {
+                CallPoint::Scalar(CallScalar::Region { region, outputs }) => Some((
+                    region.inputs.as_ref(),
+                    region.nodes.as_ref(),
+                    outputs.as_slice(),
+                    region.native,
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            arithmetic.as_slice(),
+            [(
+                &[IntLocalId(0), IntLocalId(1)][..],
+                &[
+                    ArithmeticNode::Add(ArithmeticOperand::Input(0), ArithmeticOperand::Input(1),),
+                    ArithmeticNode::Add(ArithmeticOperand::Value(0), ArithmeticOperand::Input(0),),
+                ][..],
+                &[IntLocalId(2)][..],
+                true,
+            )]
+        );
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Next(FunctionState),
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+    BoolCall { callee: FunctionState, caller: BoolReturn },
+    Bool { value: bool, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+        let mut steps = Code::default();
+        codegen.write_function(&mut steps, &codegen.functions[0]);
+        assert!(steps.as_str().contains(
+            "if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical"
+        ));
+    }
+
+    #[test]
+    fn list_index_keeps_the_canonical_protocol_without_integer_calls_or_arithmetic() {
+        let input = r#"
+fn inspect(value: Bool) -> Bool { !value }
+pub fn first_greater(values: List(Int), minimum: Int) -> Bool {
+  let greater = case values {
+    [head, ..] -> head > minimum
+    [] -> False
+  }
+  let result = inspect(greater)
+  !result
+}
+pub fn main() { let _ = first_greater([4], 3) Nil }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        assert_eq!(
+            codegen
+                .functions
+                .iter()
+                .map(|function| function.numeric.is_some())
+                .collect::<Vec<_>>(),
+            [false, false]
+        );
+        assert_eq!(
+            codegen
+                .functions
+                .iter()
+                .flat_map(|function| &function.shape.calls)
+                .map(|call| matches!(call.output, CallLocal::Int(_)))
+                .collect::<Vec<_>>(),
+            [false]
+        );
+        let indices = codegen
+            .functions
+            .iter()
+            .flat_map(|function| &function.shape.points)
+            .filter_map(|point| match point {
+                CallPoint::Scalar(CallScalar::IntList(IntListInstruction::Index {
+                    output,
+                    list,
+                    index,
+                })) => Some((*output, *list, *index)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(indices, [(IntLocalId(1), IntListLocalId(0), 0)]);
+        let mut generated = Code::default();
+        codegen.write_code(&mut generated);
+        assert_eq!(
+            generated
+                .as_str()
+                .lines()
+                .find(|line| line.starts_with("fn function_step(")),
+            Some(
+                "fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {"
+            )
+        );
+        let mut protocol = Code::default();
+        codegen.write_protocol(&mut protocol);
+        assert_eq!(
+            protocol.as_str(),
+            r#"#[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+enum FunctionStep {
+    Next(FunctionState),
+    Yield(FunctionState),
+    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+    BoolCall { callee: FunctionState, caller: BoolReturn },
+    Bool { value: bool, exit: data::graph::BlockGraphExitId },
+}
+"#
+        );
+    }
+
+    #[test]
+    fn list_equality_keeps_operations_for_values_and_guards() {
+        for (input, expected_kind) in [
+            (
+                r#"
+fn inspect(value: Bool) -> Bool { !value }
+pub fn same(values: List(Int), expected: List(Int)) -> Bool {
+  let equal = values == expected
+  let checked = inspect(equal)
+  !checked
+}
+pub fn main() { let _ = same([1], [1]) Nil }
+"#,
+                "value",
+            ),
+            (
+                r#"
+fn inspect(value: Bool) -> Bool { !value }
+pub fn same(values: List(Int), expected: List(Int)) -> Bool {
+  let equal = case values {
+    contents if contents == expected -> True
+    _ -> False
+  }
+  let checked = inspect(equal)
+  !checked
+}
+pub fn main() { let _ = same([1], [1]) Nil }
+"#,
+                "guard",
+            ),
+        ] {
+            let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+            let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+            let codegen = CallCodegen::new(&plan.program.functions);
+            assert!(codegen.entries.is_empty());
+            assert_eq!(
+                codegen
+                    .functions
+                    .iter()
+                    .map(|function| (function.numeric.is_some(), function.shape.creations.len()))
+                    .collect::<Vec<_>>(),
+                [(false, 0), (false, 0)]
+            );
+            let comparisons = codegen
+                .functions
+                .iter()
+                .flat_map(|function| &function.shape.points)
+                .filter_map(|point| match point {
+                    CallPoint::Scalar(CallScalar::Boolean(
+                        _,
+                        CallBoolean::Test(test @ CallTest::IntList(IntListTest::Equal { .. })),
+                    )) => Some(("value", test_expression(test))),
+                    CallPoint::Terminator(CallTerminator::Test {
+                        test: test @ CallTest::IntList(IntListTest::Equal { .. }),
+                        ..
+                    }) => Some(("guard", test_expression(test))),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                comparisons,
+                [(
+                    expected_kind,
+                    "ops.lists().equal(&int_list0, &int_list1)".into()
+                )]
+            );
+            let mut generated = Code::default();
+            codegen.write_code(&mut generated);
+            assert_eq!(
+                generated
+                    .as_str()
+                    .lines()
+                    .find(|line| line.starts_with("fn function_step(")),
+                Some(
+                    "fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {"
+                )
+            );
+            assert!(
+                generated
+                    .as_str()
+                    .contains("ops.lists().equal(&int_list0, &int_list1)")
+            );
+        }
+    }
+
+    #[test]
     fn normal_completion_protocol_has_exact_direct_results_for_all_four_return_families() {
         let input = r#"
 fn integer(value: Int) -> Int { value }
@@ -1805,7 +2612,6 @@ pub fn main() { #(integer_function()(7), boolean_function()(True)) }
 enum FunctionStep {
     Next(FunctionState),
     Yield(FunctionState),
-    Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
     Int { value: i128, exit: data::graph::BlockGraphExitId },
     Bool { value: bool, exit: data::graph::BlockGraphExitId },
     IntFunction { value: IntCallable, exit: data::graph::BlockGraphExitId },
@@ -1859,6 +2665,48 @@ fn calls_int_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallSto
 },
 "#
         );
+    }
+
+    #[test]
+    fn zero_argument_forwarding_has_no_unused_state_input() {
+        let input = r#"
+fn identity(value: Int) -> Int { value }
+fn stop() -> Int { panic as "stopped" }
+fn fail() -> Int { stop() }
+pub fn main() -> Int { let calculate = identity let _ = calculate(7) fail() }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let forward = codegen
+            .functions
+            .iter()
+            .find(|function| function.shape.locals.iter().all(Vec::is_empty))
+            .unwrap();
+        let mut source = Code::default();
+        codegen.write_start(&mut source, forward);
+        assert_eq!(
+            source.as_str(),
+            r#"fn calls_int_2_state(point: usize, _values: CallInputs<'_>) -> Option<FunctionState> {
+    let active = match point {
+        0 => FunctionState::Int2Point0 {  },
+        _ => return None,
+    };
+    Some(active)
+}
+fn calls_int_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point, values) { return Some(execution); }
+    let active = calls_int_2_state(point, values)?;
+    Some(Box::new(FunctionExecution::new(active)))
+}
+"#
+        );
+        let mut echo = Vec::new();
+        let error = crate::run_main(&plan, &mut echo).unwrap_err();
+        assert!(matches!(error, crate::ExecutionError::Panic(panic)
+            if panic.message() == &crate::PanicMessage::Explicit("stopped".into())
+                && panic.site().function() == "stop"));
+        assert!(echo.is_empty());
     }
 
     #[test]

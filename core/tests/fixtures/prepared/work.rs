@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 21,
+        format: 22,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2652,7 +2652,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                             Self::Int5Call0 { int0, int_function0 } => {
                                 let int1 = result;
@@ -2668,7 +2668,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -2882,7 +2882,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
@@ -2906,7 +2906,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int3Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:6>", data::source::SourceSpan::new(1255, 1270)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int3Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0, int_function0, int1 }); }
@@ -2922,7 +2922,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int5Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int5Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("app", "<anonymous:4>", data::source::SourceSpan::new(892, 907)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int5Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int5Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point1 { int0, int_function0, int1 }); }
@@ -2940,7 +2940,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point2 { int0, int_function0, int1, int2 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
@@ -2979,7 +2979,7 @@ pub fn invoke(value: Captured) -> work.Work(Int) {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::IntFunction0Point3 { int0, int_function0, int1 })
                         },
                         FunctionState::IntFunction0Point3 { int0, int_function0, int1 } => {

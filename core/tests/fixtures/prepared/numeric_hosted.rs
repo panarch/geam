@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 21,
+        format: 22,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -1746,7 +1746,7 @@ pub fn running() -> Int {
                                     custom_lists: 0,
                                     int_functions: 0,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                             },
                             Self::Int1Call7 { int0, int1, int2, int3, int4, bool0, int5 } => {
                                 let int6 = result;
@@ -1762,7 +1762,7 @@ pub fn running() -> Int {
                                     custom_lists: 0,
                                     int_functions: 0,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                             },
                             Self::Int1Call10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 } => {
                                 let int9 = result;
@@ -1778,7 +1778,7 @@ pub fn running() -> Int {
                                     custom_lists: 0,
                                     int_functions: 0,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                             },
                             Self::Int3Call1 { int0, int1, int_function0 } => {
                                 let int2 = result;
@@ -1794,7 +1794,7 @@ pub fn running() -> Int {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -2078,7 +2078,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point1 { int0 })
                         },
                         FunctionState::Int1Point1 { int0 } => {
@@ -2097,7 +2097,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point2 { int0, int1 })
                         },
                         FunctionState::Int1Point2 { int0, int1 } => {
@@ -2121,7 +2121,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point4 { int0, int1, int2, int3 })
                         },
                         FunctionState::Int1Point4 { int0, int1, int2, int3 } => {
@@ -2140,7 +2140,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point5 { int0, int1, int2, int3, int4 })
                         },
                         FunctionState::Int1Point5 { int0, int1, int2, int3, int4 } => {
@@ -2165,7 +2165,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point7 { int0, int1, int2, int3, int4, bool0, int5 })
                         },
                         FunctionState::Int1Point7 { int0, int1, int2, int3, int4, bool0, int5 } => {
@@ -2189,7 +2189,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point9 { int0, int1, int2, int3, int4, bool0, int5, int6, int7 })
                         },
                         FunctionState::Int1Point9 { int0, int1, int2, int3, int4, bool0, int5, int6, int7 } => {
@@ -2208,7 +2208,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int1Point10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 })
                         },
                         FunctionState::Int1Point10 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8 } => {
@@ -2232,7 +2232,7 @@ pub fn running() -> Int {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point12 { int0, int1, int2, int3, int4, bool0, int5, int6, int7, int8, int9, int10 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int10, exit: data::graph::BlockGraphExitId(0) }
@@ -2262,7 +2262,7 @@ pub fn running() -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int3Call1 { int0, int1, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call1 { int0, int1, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("example", "captured", data::source::SourceSpan::new(1895, 1911)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call1 { int0, int1, int_function0 } }
                         },
                         FunctionState::Int3Point2 { int0, int1, int_function0, int2 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point2 { int0, int1, int_function0, int2 }); }
@@ -2674,7 +2674,7 @@ pub fn running() -> Int {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
@@ -2877,7 +2877,7 @@ pub fn running() -> Int {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
@@ -3068,7 +3068,7 @@ pub fn running() -> Int {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
@@ -3177,7 +3177,7 @@ pub fn running() -> Int {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
@@ -3309,7 +3309,7 @@ pub fn running() -> Int {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
