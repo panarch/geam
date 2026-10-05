@@ -125,28 +125,32 @@ entry_target!(
     ExecutionFloatFunctionBody,
     float_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_float_function
 );
 entry_target!(
     function::StringFunctionId,
     ExecutionStringFunctionBody,
     string_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_string_function
 );
 entry_target!(
     function::BitArrayFunctionId,
     ExecutionBitArrayFunctionBody,
     bit_array_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_bit_array_function
 );
 entry_target!(
     function::UtfCodepointFunctionId,
     ExecutionUtfCodepointFunctionBody,
     utf_codepoint_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_utf_codepoint_function
 );
 entry_target!(
     function::CustomFunctionId,
@@ -176,7 +180,8 @@ entry_target!(
     ExecutionNilFunctionBody,
     nil_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_nil_function
 );
 entry_target!(
     function::TupleFunctionId,

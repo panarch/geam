@@ -1006,6 +1006,22 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
     impl ExecutableRuntimePlan for CountingPlan {
         type RuntimeHost<'run> = ();
         type HostInvocation<'plan, Output: Send + 'plan> = Infallible;
+        type NativeLoopBinding = Infallible;
+
+        fn bind_native_loop(
+            &self,
+            contract: &crate::plan::execution::compiled::NativeLoopContract,
+        ) -> Option<Infallible> {
+            self.plan.bind_native_loop(contract)
+        }
+
+        fn prepare_native_loop(
+            &self,
+            state: crate::runtime::compiled::native_loop::NativeLoopState<Infallible>,
+            _allowance: usize,
+        ) -> Infallible {
+            match state.binding {}
+        }
 
         fn reject_foreign_callable<'plan, Output: Send + 'plan>(
             &self,
@@ -1070,6 +1086,27 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
         ) -> super::ExternalFunctionInstructionOutcome<'call> {
             match *instruction {}
         }
+    }
+
+    #[test]
+    fn a_graph_only_native_loop_binding_does_not_materialize_host_types() {
+        use crate::plan::execution::compiled::NativeLoopContract;
+        let plan = CountingPlan::new(
+            r#"
+fn keep(value: Int) { value }
+fn cycle(counter: Int, producer: fn() -> Int) {
+  let returned = keep(producer())
+  case counter { 1 -> returned _ -> cycle(counter - 1, producer) }
+}
+pub fn main() { cycle(3, fn() { 7 }) }
+"#,
+        );
+        let contract =
+            NativeLoopContract::inspect(plan.int_function(IntFunctionId(2)).body().block_graph())
+                .unwrap();
+        assert!(plan.bind_native_loop(&contract).is_none());
+        plan.evaluate_graph();
+        assert_eq!(plan.conversions(), 0);
     }
 
     #[test]

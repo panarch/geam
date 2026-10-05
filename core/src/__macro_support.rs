@@ -17,7 +17,7 @@ pub use crate::host::{
 };
 pub use crate::host::{
     HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
-    HostCustomIndexLeft, HostCustomIndexRight,
+    HostCustomIndexLeft, HostCustomIndexRight, HostRetainedType, HostRetainedValue,
 };
 pub use crate::provider::ExternalPayload;
 pub use crate::provider::advanced::{

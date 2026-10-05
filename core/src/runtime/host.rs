@@ -1,5 +1,6 @@
 mod call;
 mod invoke;
+mod retained;
 mod scoped;
 
 pub(in crate::runtime) use self::call::RuntimeHostCall;

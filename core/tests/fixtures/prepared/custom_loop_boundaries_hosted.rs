@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 19,
+        format: 21,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -3985,6 +3985,8 @@ fn items(count: Int, result: List(Item)) {
                             },
                         ]),
                     },
+                    native_loops: data::Storage::Static(&[
+                    ]),
                     function_calls: data::Storage::Static(&[
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),

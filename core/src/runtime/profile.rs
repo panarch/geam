@@ -1,18 +1,24 @@
 use std::convert::Infallible;
 
 use crate::plan::execution::ExecutionPlan;
+use crate::plan::execution::compiled::{NativeLoopContract, NativeLoopTarget};
 use crate::plan::execution::function::{
-    ExecutionFunctionBody, ExecutionGraphProfile, ExecutionHostTarget, ExecutionNeverHostTarget,
-    ExecutionProfile,
+    ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
+    ExecutionHostTarget, ExecutionNeverHostTarget, ExecutionProfile,
 };
+use crate::plan::execution::host::{HostedFunctionTarget, HostedValueFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::runtime::compiled::native_loop::{
+    NativeLoopBinding, NativeLoopOps, NativeLoopProgress, NativeLoopState,
+};
 use crate::runtime::error::{ExecutionResult, HostCallOrigin};
-use crate::runtime::execution::invocation::Waiting;
+use crate::runtime::execution::invocation::{NativeReturn, Waiting};
 use crate::runtime::execution::{Invocation, ServiceContext};
 use crate::runtime::graph::RetainedValues;
 use crate::runtime::state;
 use crate::runtime::{graph, host};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 pub(in crate::runtime) type RuntimeGraph<Plan> =
     <<Plan as RuntimeExecutionPlan>::Profile as ExecutionProfile>::Graph;
@@ -27,6 +33,16 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
     type HostInvocation<'plan, Output: Send + 'plan>: Send + 'plan
     where
         Self: 'plan;
+
+    type NativeLoopBinding: Send + 'static;
+
+    fn bind_native_loop(&self, contract: &NativeLoopContract) -> Option<Self::NativeLoopBinding>;
+
+    fn prepare_native_loop<'plan>(
+        &'plan self,
+        state: NativeLoopState<Self::NativeLoopBinding>,
+        allowance: usize,
+    ) -> Self::HostInvocation<'plan, NativeLoopState<Self::NativeLoopBinding>>;
 
     // Callable provenance is checked before a function-table lookup. Opaque
     // values can preserve a target from a separately sealed, now closed plan.
@@ -85,6 +101,19 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
 impl ExecutableRuntimePlan for ExecutionPlan {
     type RuntimeHost<'run> = ();
     type HostInvocation<'plan, Output: Send + 'plan> = Infallible;
+    type NativeLoopBinding = Infallible;
+
+    fn bind_native_loop(&self, _contract: &NativeLoopContract) -> Option<Infallible> {
+        None
+    }
+
+    fn prepare_native_loop(
+        &self,
+        state: NativeLoopState<Infallible>,
+        _allowance: usize,
+    ) -> Infallible {
+        match state.binding {}
+    }
 
     fn reject_foreign_callable<'plan, Output: Send + 'plan>(
         &self,
@@ -162,6 +191,72 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
 
     type HostInvocation<'plan, Output: Send + 'plan> = Invocation<'plan, Self, Output>;
 
+    type NativeLoopBinding = NativeLoopBinding;
+
+    fn bind_native_loop(&self, contract: &NativeLoopContract) -> Option<NativeLoopBinding> {
+        let function = match contract.native {
+            NativeLoopTarget::Int(id) => {
+                self.retained_native_function(self.int_function(id).as_ref())
+            }
+            NativeLoopTarget::Float(id) => {
+                self.retained_native_function(self.float_function(id).as_ref())
+            }
+            NativeLoopTarget::String(id) => {
+                self.retained_native_function(self.string_function(id).as_ref())
+            }
+            NativeLoopTarget::BitArray(id) => {
+                self.retained_native_function(self.bit_array_function(id).as_ref())
+            }
+            NativeLoopTarget::UtfCodepoint(id) => {
+                self.retained_native_function(self.utf_codepoint_function(id).as_ref())
+            }
+            NativeLoopTarget::Bool(id) => {
+                self.retained_native_function(self.bool_function(id).as_ref())
+            }
+            NativeLoopTarget::Nil(id) => {
+                self.retained_native_function(self.nil_function(id).as_ref())
+            }
+        }?;
+        Some(NativeLoopBinding {
+            native: function.implementation().retained()?,
+            metadata: Arc::clone(function.metadata_handle()),
+            origin: HostCallOrigin::source(contract.site.clone()),
+        })
+    }
+
+    fn prepare_native_loop<'plan>(
+        &'plan self,
+        mut state: NativeLoopState<NativeLoopBinding>,
+        allowance: usize,
+    ) -> Invocation<'plan, Self, NativeLoopState<NativeLoopBinding>> {
+        Invocation::bounded(
+            allowance,
+            move |plan: &Self, runtime, unit, mut allowance| {
+                let ops = NativeLoopOps {
+                    native: &*state.binding.native,
+                    unit,
+                };
+                let result = match (state.kernel)(&mut state.cursor, &ops, &mut allowance) {
+                    Ok(progress) => progress,
+                    Err(error) => {
+                        return host::host_call_error(
+                            plan,
+                            &runtime.host().execution(),
+                            state.binding.origin.clone(),
+                            &state.binding.metadata,
+                            error,
+                        );
+                    }
+                };
+                if result == NativeLoopProgress::Cancelled {
+                    Ok(NativeReturn::Exited)
+                } else {
+                    Ok(NativeReturn::Immediate(state))
+                }
+            },
+        )
+    }
+
     fn reject_foreign_callable<'plan, Output: Send + 'plan>(
         &self,
         inputs: &RetainedValues,
@@ -235,6 +330,18 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
         instruction: &'call crate::plan::execution::graph::ExternalFunctionInstruction,
     ) -> graph::ExternalFunctionInstructionOutcome<'call> {
         graph::evaluate_external_function_instruction(captures, environment, instruction)
+    }
+}
+
+impl<Profile: crate::HostProfile> crate::plan::execution::HostedProgram<Profile> {
+    fn retained_native_function<Body: ExecutionFunctionBody>(
+        &self,
+        entry: ExecutionFunctionRef<'_, Body, HostedFunctionTarget<Body>>,
+    ) -> Option<&HostedValueFunction<Profile>> {
+        let ExecutionFunctionRef::Host(HostedFunctionTarget::Value(target)) = entry else {
+            return None;
+        };
+        Some(self.host_value_function(target))
     }
 }
 
@@ -345,6 +452,46 @@ mod tests {
     };
     use ecow::EcoString;
     use num_bigint::BigInt;
+
+    #[test]
+    fn ordinary_graph_calls_have_no_retained_native_binding() {
+        use super::ExecutableRuntimePlan;
+        use crate::StatelessHostProfile;
+        use crate::plan::execution::compiled::{NativeLoopContract, NativeLoopTarget};
+        use crate::plan::execution::function::IntFunctionId;
+        let source = r#"
+fn keep(value: Int) -> Int { value }
+fn cycle(counter: Int, producer: fn() -> Int) -> Int {
+  let returned = keep(producer())
+  case counter { 1 -> returned _ -> cycle(counter - 1, producer) }
+}
+pub fn main() { cycle(3, fn() { 7 }) }
+"#;
+        let plain = crate::runtime::plan_src(source);
+        let contract =
+            NativeLoopContract::inspect(plain.int_function(IntFunctionId(2)).body().block_graph())
+                .unwrap();
+        assert_eq!(contract.native, NativeLoopTarget::Int(IntFunctionId(3)));
+        assert!(plain.bind_native_loop(&contract).is_none());
+        let typed = compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::from_providers([]).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        assert!(execution.execution().bind_native_loop(&contract).is_none());
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
+            Value::Int(7.into())
+        );
+    }
 
     #[test]
     fn hosted_runtime_preserves_external_values_across_executable_owners() {
