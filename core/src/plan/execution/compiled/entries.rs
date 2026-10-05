@@ -1,7 +1,8 @@
-use super::{CallTarget, CompiledFunctions, CompiledImplementation};
+use super::{CallTarget, CompiledFunctions, CompiledImplementation, NativeLoopTarget};
 use crate::plan::execution::function::{
-    BoolFunctionFunctionId, BoolFunctionId, ExecutionProfile, FunctionTables,
-    IntFunctionFunctionId, IntFunctionId,
+    BitArrayFunctionId, BoolFunctionFunctionId, BoolFunctionId, ExecutionProfile, FloatFunctionId,
+    FunctionTables, IntFunctionFunctionId, IntFunctionId, NilFunctionId, StringFunctionId,
+    UtfCodepointFunctionId,
 };
 
 /// Execution views derived once from admitted static implementations. Each
@@ -9,6 +10,11 @@ use crate::plan::execution::function::{
 #[derive(Default)]
 pub(in crate::plan::execution) struct CompiledEntries {
     ints: Vec<Option<&'static CompiledImplementation>>,
+    floats: Vec<Option<&'static CompiledImplementation>>,
+    strings: Vec<Option<&'static CompiledImplementation>>,
+    bit_arrays: Vec<Option<&'static CompiledImplementation>>,
+    utf_codepoints: Vec<Option<&'static CompiledImplementation>>,
+    nils: Vec<Option<&'static CompiledImplementation>>,
     bools: Vec<Option<&'static CompiledImplementation>>,
     int_functions: Vec<Option<&'static CompiledImplementation>>,
     bool_functions: Vec<Option<&'static CompiledImplementation>>,
@@ -22,6 +28,7 @@ impl CompiledEntries {
         if compiled.ints.is_empty()
             && compiled.bools.is_empty()
             && compiled.function_calls.is_empty()
+            && compiled.native_loops.is_empty()
         {
             return Self::default();
         }
@@ -32,6 +39,51 @@ impl CompiledEntries {
             bools: (0..functions.value_returns.bool_functions.len())
                 .map(|index| compiled.bool(BoolFunctionId(index)))
                 .collect(),
+            floats: if compiled.native_loops.is_empty() {
+                Vec::new()
+            } else {
+                (0..functions.value_returns.float_functions.len())
+                    .map(|index| {
+                        compiled.native_loop(NativeLoopTarget::Float(FloatFunctionId(index)))
+                    })
+                    .collect()
+            },
+            strings: if compiled.native_loops.is_empty() {
+                Vec::new()
+            } else {
+                (0..functions.value_returns.string_functions.len())
+                    .map(|index| {
+                        compiled.native_loop(NativeLoopTarget::String(StringFunctionId(index)))
+                    })
+                    .collect()
+            },
+            bit_arrays: if compiled.native_loops.is_empty() {
+                Vec::new()
+            } else {
+                (0..functions.value_returns.bit_array_functions.len())
+                    .map(|index| {
+                        compiled.native_loop(NativeLoopTarget::BitArray(BitArrayFunctionId(index)))
+                    })
+                    .collect()
+            },
+            utf_codepoints: if compiled.native_loops.is_empty() {
+                Vec::new()
+            } else {
+                (0..functions.value_returns.utf_codepoint_functions.len())
+                    .map(|index| {
+                        compiled.native_loop(NativeLoopTarget::UtfCodepoint(
+                            UtfCodepointFunctionId(index),
+                        ))
+                    })
+                    .collect()
+            },
+            nils: if compiled.native_loops.is_empty() {
+                Vec::new()
+            } else {
+                (0..functions.value_returns.nil_functions.len())
+                    .map(|index| compiled.native_loop(NativeLoopTarget::Nil(NilFunctionId(index))))
+                    .collect()
+            },
             int_functions: (0..functions.function_returns.int_function_functions.len())
                 .map(|index| {
                     compiled.call_root(CallTarget::IntFunction(IntFunctionFunctionId(index)))
@@ -57,6 +109,41 @@ impl CompiledEntries {
         id: BoolFunctionId,
     ) -> Option<&CompiledImplementation> {
         self.bools.get(id.0).copied().flatten()
+    }
+
+    pub(in crate::plan::execution) fn float(
+        &self,
+        id: FloatFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.floats.get(id.0).copied().flatten()
+    }
+
+    pub(in crate::plan::execution) fn string(
+        &self,
+        id: StringFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.strings.get(id.0).copied().flatten()
+    }
+
+    pub(in crate::plan::execution) fn bit_array(
+        &self,
+        id: BitArrayFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.bit_arrays.get(id.0).copied().flatten()
+    }
+
+    pub(in crate::plan::execution) fn utf_codepoint(
+        &self,
+        id: UtfCodepointFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.utf_codepoints.get(id.0).copied().flatten()
+    }
+
+    pub(in crate::plan::execution) fn nil(
+        &self,
+        id: NilFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.nils.get(id.0).copied().flatten()
     }
 
     pub(in crate::plan::execution) fn int_function(
@@ -108,6 +195,7 @@ mod tests {
             }]),
             customs: Table::Static(&[]),
             int_lists: Table::Static(&[]),
+            native_loops: Table::Static(&[]),
             function_calls: Table::Static(&[]),
             callbacks: CompiledCallbacks::interpreted(),
         };

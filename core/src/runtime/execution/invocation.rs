@@ -44,6 +44,10 @@ impl<Output> NativeReturn<Output> {
 }
 
 struct Operation<Function>(Function);
+struct BoundedOperation<Function> {
+    function: Function,
+    allowance: usize,
+}
 struct Ready<Output>(Output);
 struct SourceExecution<'plan, Plan: ExecutableRuntimePlan, Id: EntryTarget<Plan>> {
     plan: &'plan Plan,
@@ -57,6 +61,27 @@ struct Mapped<'plan, Plan: ExecutableRuntimePlan, Input, Map> {
 impl<'plan, Plan: ExecutableRuntimePlan + 'plan, Output: Send + 'plan>
     Invocation<'plan, Plan, Output>
 {
+    pub(in crate::runtime) fn bounded(
+        allowance: usize,
+        function: impl FnOnce(
+            &Plan,
+            &mut RuntimeStateFor<'_, Plan>,
+            Option<&crate::execution::ExecutionUnit>,
+            usize,
+        ) -> ExecutionResult<NativeReturn<Output>>
+        + Send
+        + 'static,
+    ) -> Self
+    where
+        Output: 'static,
+    {
+        Self {
+            inner: Box::new(BoundedOperation {
+                function,
+                allowance,
+            }),
+        }
+    }
     pub(in crate::runtime) fn cancelled() -> Self {
         Self {
             inner: Box::new(Cancelled),
@@ -117,6 +142,33 @@ impl<'plan, Plan: ExecutableRuntimePlan + 'plan, Output: Send + 'plan>
         budget: NonZeroUsize,
     ) -> Waiting<'plan, Output> {
         self.inner.submit(context, budget)
+    }
+}
+
+impl<'plan, Plan, Output, Function> Invoke<'plan, Plan, Output> for BoundedOperation<Function>
+where
+    Plan: ExecutableRuntimePlan + 'plan,
+    Output: Send + 'static,
+    Function: FnOnce(
+            &Plan,
+            &mut RuntimeStateFor<'_, Plan>,
+            Option<&crate::execution::ExecutionUnit>,
+            usize,
+        ) -> ExecutionResult<NativeReturn<Output>>
+        + Send
+        + 'static,
+{
+    fn submit(
+        self: Box<Self>,
+        context: &ServiceContext<Plan>,
+        budget: NonZeroUsize,
+    ) -> Waiting<'plan, Output> {
+        let unit = context.unit().cloned();
+        let allowance = self.allowance.min(budget.get());
+        let request = context.submit_bounded(allowance, move |plan, state, allowance| {
+            (self.function)(plan, state, unit.as_ref(), allowance)
+        });
+        Box::pin(async move { NativeReturn::complete(request.await?).await })
     }
 }
 
@@ -225,7 +277,8 @@ mod tests {
             Completion::Exited,
             Completion::Failure,
         ] {
-            for cancelled in [false, true] {
+            for (bounded, cancelled) in [(false, false), (false, true), (true, false), (true, true)]
+            {
                 let services = Services::new(Default::default());
                 let context = services.context();
                 let error = source_error.clone();
@@ -245,7 +298,11 @@ mod tests {
                     Completion::CancelledContinuation | Completion::Exited => Err(Cancelled),
                     Completion::Failure => Ok(Err(error)),
                 };
-                let invocation = Invocation::new(move |_, _| outcome);
+                let invocation = if bounded {
+                    Invocation::bounded(3, move |_, _, _, _| outcome)
+                } else {
+                    Invocation::new(move |_, _| outcome)
+                };
                 let mut waiting = invocation.submit(&context, NonZeroUsize::MIN);
                 let mut cx = Context::from_waker(Waker::noop());
                 assert!(waiting.as_mut().poll(&mut cx).is_pending());
@@ -258,7 +315,7 @@ mod tests {
                     services
                         .next(&mut cx)
                         .expect("queued native operation")
-                        .service(&plan, &mut state)
+                        .service(&plan, &mut state, 1)
                         .expect("live observer")
                         .deliver();
                     assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(expected));

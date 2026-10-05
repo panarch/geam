@@ -30,6 +30,9 @@ mod opaque_provider;
 #[path = "../tests/fixtures/prepared/function_value_provider.rs"]
 mod function_value_provider;
 
+#[path = "../tests/fixtures/prepared/native_loop_provider.rs"]
+mod native_loop_provider;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let arithmetic = geam_core::compile_typed_module(
         "example",
@@ -829,6 +832,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         (
             "int_list_static_calls.rs",
             static_list_calls.prepare().emit_rust(),
+        ),
+        (
+            "native_loop.rs",
+            native_loop_provider::prepare().emit_rust(),
         ),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),

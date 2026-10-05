@@ -7,21 +7,25 @@ names, mailboxes, and host clock.
 ## Read the example
 
 1. [`example_process_service.gleam`](project/packages/example_process_service/src/example_process_service.gleam)
-   declares `request(name, make_message, timeout_ms)` and its errors. It creates
-   a fresh reply Subject for each request.
+   declares `request(name, make_message, timeout_ms)`, `request_forever`, and
+   their errors. Each request creates a fresh reply Subject.
 2. [`provider/src/lib.rs`](provider/src/lib.rs) implements `exchange` with an
    ordinary async provider function. It resolves the name, sends through the
    producer's Subject API, waits on the current process's mailbox, and restores
    the reply's exact source type.
 3. [`process_service_example.gleam`](project/src/process_service_example.gleam)
-   starts a calculator, receives two replies, handles a silent process, and
-   stops the calculator through an ordinary request.
+   starts a calculator, receives two replies without a deadline, handles a
+   silent process, and waits for the calculator's normal exit through a monitor.
 
 The public call keeps the message and reply types independent:
 
 ```gleam
-let assert Ok(42) = service.request(name, Add(35, _), 1000)
+let assert Ok(42) = service.request_forever(name, Add(35, _))
 ```
+
+`request_forever` waits until a reply arrives or the execution is cancelled.
+It does not infer failure from elapsed time. `request(name, make_message,
+timeout_ms)` uses the application's host clock when a deadline is required.
 
 `Unavailable` means no process held the name when sending. `TimedOut` means
 the deadline expired while the original target was still alive; `TargetExited`
@@ -55,7 +59,11 @@ worker stopped and name released
 
 Running again starts fresh processes and registered names. The independently
 locked [provider tests](provider/tests/shared_service.rs) run the same application
-with a manually advanced host clock. The [embedding consumer](embedding) uses
+and separately advance the host clock to verify finite reply deadlines,
+`TimedOut`, `TargetExited`, and a reply delayed past the previous one-second
+limit. Normal termination in the runnable example is observed through
+`ProcessDown`, rather than assumed to occur before a short deadline.
+The [embedding consumer](embedding) uses
 the same provider through generated dynamic and prepared bindings:
 
 ```sh

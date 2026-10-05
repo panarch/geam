@@ -100,6 +100,7 @@ pub(super) fn all<Profile: ExecutionProfile>(
 mod tests {
     use super::super::admit;
     use super::{CompiledError, Family, Reason, all};
+    use crate::plan::execution::Table;
     use crate::plan::execution::compiled::{
         CallTarget, CompiledEntries, CompiledFunction, CompiledFunctions, CompiledImplementation,
         FunctionCallsImplementation, NumericImplementation,
@@ -418,6 +419,7 @@ pub fn main() { let calculate = make(7) let predicate = make_predicate(4) case p
                 rows.insert(1, duplicate);
             }
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: rows.into(),
                 ..CompiledFunctions::interpreted()
             };
@@ -515,6 +517,7 @@ pub fn main() { let calculate = make(7) let predicate = make_predicate(4) case p
                 .collect::<Vec<_>>();
             assert!(!rows.is_empty());
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: rows.into(),
                 ..CompiledFunctions::interpreted()
             };

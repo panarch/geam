@@ -1278,6 +1278,7 @@ fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_
             CompiledImplementation::CustomLoop(_) => "custom_loop",
             CompiledImplementation::String(_) => "string",
             CompiledImplementation::FunctionCalls(_) => "function_calls",
+            CompiledImplementation::NativeLoop(_) => "native_loop",
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -4316,7 +4317,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 20; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 22; regenerate the prepared program"
     );
 }
 
