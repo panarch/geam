@@ -68,7 +68,7 @@ pub use type_::{
 #[doc(hidden)]
 pub use type_::{
     HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
-    HostCustomIndexLeft, HostCustomIndexRight,
+    HostCustomIndexLeft, HostCustomIndexRight, HostRetainedType, HostRetainedValue,
 };
 pub use value::{
     HostCallCompletion, HostCallable, HostCustom, HostExternal, HostFunctionValue, HostList,
@@ -87,8 +87,9 @@ pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostFunctionBinding,
     HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
-    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostStringArgumentSlot,
-    HostTupleArgumentSlot, HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
+    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostRetainedCallback,
+    HostStringArgumentSlot, HostTupleArgumentSlot, HostUtfCodepointArgumentSlot,
+    HostValueArgumentSlot, HostValueFunction,
 };
 #[cfg(test)]
 pub(crate) use function::{
@@ -102,6 +103,7 @@ pub(crate) use profile::HostCodecScope;
 #[cfg(test)]
 pub(crate) use profile::test;
 pub(crate) use profile::{HostCallRuntime, HostTokenRuntime};
+pub(crate) use type_::retained::RetainedAbi;
 pub(crate) use type_::{
     HostAbiType, HostAbiTypeSequence, HostOpaqueFunctionType, HostTypeDescriptor,
     construction_callable_count,

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 19,
+    format: 21,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
