@@ -1,10 +1,14 @@
 mod bit_array;
+mod calls;
 mod capture;
+mod custom;
+mod custom_loop;
 mod int_list;
 mod match_results;
 mod numeric;
 mod pool;
 mod read;
+mod string;
 mod transfer;
 mod value;
 mod write;
@@ -1324,6 +1328,7 @@ pub fn main() -> List(Counter) { [] }
         let owner = std::ptr::from_ref(&*environment.values);
         let integers = environment.values.ints.as_ptr();
         let completed = CompletedGraph {
+            direct_return: false,
             exit: BlockGraphExitId(0),
             environment,
         };
@@ -1363,6 +1368,7 @@ pub fn main() -> List(Counter) { [] }
         let mut inputs = RetainedValues::empty();
         inputs.push_tuple(tuple);
         let completed = CompletedGraph {
+            direct_return: false,
             exit: BlockGraphExitId(0),
             environment: BlockEnvironment::from_retained(inputs),
         };

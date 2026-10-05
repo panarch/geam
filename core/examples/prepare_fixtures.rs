@@ -2,7 +2,9 @@ use geam_core::embedding::{
     BigInt, BitArrayValue, FunctionDeclaration, HostedModuleBuilder, List, ModuleBuilder,
     StringValue,
 };
-use geam_core::{HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry};
+use geam_core::{
+    HostProviderSet, ModuleSource, PackageSource, PreparedHostedEntry, StatelessHostProfile,
+};
 use std::error::Error;
 use std::path::Path;
 
@@ -439,17 +441,348 @@ fn main() -> Result<(), Box<dyn Error>> {
         "list_callback",
     ))?;
 
+    let string_source = include_str!("../tests/fixtures/prepared/string_ranges.gleam");
+    let string_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", string_source)?;
+    let (mut string_ranges, _) =
+        ModuleBuilder::new(string_typed)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "count",
+            ))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new("select"))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, StringValue, bool, BigInt),
+        BigInt,
+    >::new("aliases"))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, StringValue, BigInt),
+        BigInt,
+    >::new("alternate"))?;
+    string_ranges
+        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), bool>::new(
+        "empty_prefix",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<(), BigInt>::new("literal_only"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "asserted",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<
+        (StringValue, BigInt),
+        (StringValue, BigInt, List<BigInt>, bool),
+    >::new("caller"))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+        "unsupported",
+    ))?;
+    string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new("spin"))?;
+    string_ranges.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    for name in ["assert_literal", "assert_prefix"] {
+        string_ranges.function(FunctionDeclaration::<(StringValue,), BigInt>::new(name))?;
+    }
+    string_ranges.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "assert_suffix",
+    ))?;
+    string_ranges.function(
+        FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new("bits_with_boolean_guard"),
+    )?;
+    let string_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                string_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let (mut string_hosted, _) =
+        HostedModuleBuilder::new(string_hosted)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "count",
+            ))?;
+    string_hosted.function(FunctionDeclaration::<
+        (StringValue, StringValue, bool, BigInt),
+        BigInt,
+    >::new("aliases"))?;
+    string_hosted
+        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue,), bool>::new(
+        "empty_prefix",
+    ))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+        "asserted",
+    ))?;
+    string_hosted.function(FunctionDeclaration::<
+        (StringValue, BigInt),
+        (StringValue, BigInt, List<BigInt>, bool),
+    >::new("caller"))?;
+    string_hosted.function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+        "running",
+    ))?;
+    let string_entry = PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(
+        geam_core::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    string_source,
+                )],
+            )],
+            HostProviderSet::<work_provider::Profile>::new([])?,
+        )?,
+    )?)?;
+
+    let checkpoint_source = include_str!("../tests/fixtures/prepared/string_checkpoints.gleam");
+    let checkpoint_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", checkpoint_source)?;
+    let (checkpoint_assertion, _) =
+        ModuleBuilder::new(checkpoint_typed)?
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "after_step",
+            ))?;
+    let checkpoint_typed =
+        geam_core::compile_typed_module("example", "src/example.gleam", checkpoint_source)?;
+    let (mut checkpoint_stops, _) = ModuleBuilder::new(checkpoint_typed)?
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))?;
+    checkpoint_stops.function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+        "list_stop",
+    ))?;
+    let checkpoint_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                checkpoint_source,
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (checkpoint_hosted, _) =
+        HostedModuleBuilder::new(checkpoint_hosted)?
+            .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+                "list_stop",
+            ))?;
+    let calls = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/function_calls.gleam"),
+    )?;
+    let (mut calls, _) = ModuleBuilder::new(calls)?
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "capture_chain",
+        ))?;
+    calls.function(FunctionDeclaration::<(bool, BigInt), BigInt>::new(
+        "dynamic_target",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("nested"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), bool>::new("mutual"))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "callable_captures",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "aliases",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("canonical"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("big_return"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("failure"))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "producer_suffix_int",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "producer_suffix_bool",
+    ))?;
+
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "reuse_callback",
+    ))?;
+    calls
+        .function(FunctionDeclaration::<(BigInt, BigInt, BigInt), BigInt>::new("repeated_roots"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), bool>::new(
+        "canonical_bool",
+    ))?;
+    calls.function(FunctionDeclaration::<(bool, BigInt, BigInt), bool>::new(
+        "bool_captures",
+    ))?;
+
+    let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
+    let custom =
+        geam_core::compile_typed_module("example", "src/custom_scalars.gleam", custom_source)?;
+    let (mut custom, _) = ModuleBuilder::new(custom)?
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "credit",
+        ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "debit",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt,), BigInt>::new("ignored"))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "guarded",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "aliased",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "multiple",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt, bool), bool>::new(
+        "boolean",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "fields",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "repeated",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "assertion",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "panic_case",
+    ))?;
+    custom.function(FunctionDeclaration::<(BigInt,), BigInt>::new("nested"))?;
+    custom.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    let custom_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/custom_scalars.gleam",
+                custom_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let custom_entry =
+        PreparedHostedEntry::try_from_module_plan(geam_core::plan_host_program(custom_entry)?)?;
+
+    let custom_loop_source = include_str!("../tests/fixtures/prepared/custom_loop.gleam");
+    let custom_loop =
+        geam_core::compile_typed_module("example", "src/custom_loop.gleam", custom_loop_source)?;
+    let (mut custom_loop, _) = ModuleBuilder::new(custom_loop)?
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new("run"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt, bool), BigInt>::new("chosen"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "captured",
+    ))?;
+    custom_loop.function(FunctionDeclaration::<(bool, BigInt), bool>::new("boolean"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt,), BigInt>::new("assertion"))?;
+    custom_loop.function(FunctionDeclaration::<(), BigInt>::new("empty"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt,), BigInt>::new("panic_case"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt,), BigInt>::new("unsupported"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "custom_capture",
+    ))?;
+    custom_loop
+        .function(FunctionDeclaration::<(BigInt, BigInt, BigInt), BigInt>::new("repeated"))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+        "caller_overflow",
+    ))?;
+    custom_loop.function(FunctionDeclaration::<(BigInt, BigInt, bool), BigInt>::new(
+        "guarded",
+    ))?;
+    custom_loop.function(FunctionDeclaration::<(), BigInt>::new("main"))?;
+    let custom_loop_entry = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/custom_loop.gleam",
+                custom_loop_source,
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let custom_loop_entry = PreparedHostedEntry::try_from_module_plan(
+        geam_core::plan_host_program(custom_loop_entry)?,
+    )?;
+
+    let loop_boundaries = geam_core::compile_typed_module(
+        "example",
+        "src/custom_loop_boundaries.gleam",
+        include_str!("../tests/fixtures/prepared/custom_loop_boundaries.gleam"),
+    )?;
+    let (mut loop_boundaries, _) = ModuleBuilder::new(loop_boundaries)?
+        .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))?;
+    loop_boundaries.function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))?;
+
+    let hosted_boundaries = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/custom_loop_boundaries.gleam",
+                include_str!("../tests/fixtures/prepared/custom_loop_boundaries.gleam"),
+            )],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([])?,
+    )?;
+    let (mut hosted_boundaries, _) = HostedModuleBuilder::new(hosted_boundaries)?
+        .function(FunctionDeclaration::<(BigInt, bool, bool, BigInt), BigInt>::new("integer"))?;
+    hosted_boundaries.function(FunctionDeclaration::<(BigInt,), bool>::new("boolean"))?;
+
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/prepared");
     for (name, data) in [
         ("arithmetic.rs", arithmetic.prepare().emit_rust()),
         ("numeric_switch.rs", numeric_switch.prepare().emit_rust()),
+        ("string_ranges.rs", string_ranges.prepare().emit_rust()),
+        (
+            "string_ranges_hosted.rs",
+            string_hosted.prepare()?.emit_rust(),
+        ),
+        ("string_ranges_entry.rs", string_entry.emit_rust()),
+        (
+            "string_checkpoint_assertion.rs",
+            checkpoint_assertion.prepare().emit_rust(),
+        ),
+        (
+            "string_checkpoint_stops.rs",
+            checkpoint_stops.prepare().emit_rust(),
+        ),
+        (
+            "string_checkpoint_hosted_stop.rs",
+            checkpoint_hosted.prepare()?.emit_rust(),
+        ),
         ("numeric.rs", numeric.prepare().emit_rust()),
+        ("function_calls.rs", calls.prepare().emit_rust()),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
         ("bit_array_entry.rs", bit_entry.emit_rust()),
         ("int_list.rs", int_list.prepare().emit_rust()),
         ("int_list_hosted.rs", hosted_int_list.prepare()?.emit_rust()),
         ("int_list_entry.rs", int_list_entry.emit_rust()),
+        ("custom_scalars.rs", custom.prepare().emit_rust()),
+        ("custom_scalars_entry.rs", custom_entry.emit_rust()),
+        ("custom_loop.rs", custom_loop.prepare().emit_rust()),
+        ("custom_loop_entry.rs", custom_loop_entry.emit_rust()),
+        (
+            "custom_loop_boundaries_hosted.rs",
+            hosted_boundaries.prepare()?.emit_rust(),
+        ),
+        (
+            "custom_loop_boundaries.rs",
+            loop_boundaries.prepare().emit_rust(),
+        ),
         ("shared_custom.rs", shared_provider::prepare().emit_rust()),
         (
             "opaque_functions.rs",

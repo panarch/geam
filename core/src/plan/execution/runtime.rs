@@ -1,4 +1,4 @@
-use super::compiled::CompiledImplementation;
+use super::compiled::{CompiledCallbackBodies, CompiledCallbacks, CompiledImplementation};
 use super::constant::{ConstantId, ConstantValue, ProfiledConstantProgram};
 use super::function::{
     BitArrayFunctionFunctionId, BitArrayFunctionId, BitArrayListFunctionId, BoolFunctionFunctionId,
@@ -53,11 +53,19 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
     fn program(&self) -> &ExecutionProgram<Self::Profile>;
 
     fn compiled_int_function(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
-        self.program().compiled.int(id)
+        self.program().compiled_entries.int(id)
+    }
+
+    fn compiled_callbacks(&self) -> &CompiledCallbacks {
+        &self.program().compiled.callbacks
+    }
+
+    fn compiled_callback_bodies(&self) -> &CompiledCallbackBodies<'_, Self::Profile> {
+        &self.program().compiled_callback_bodies
     }
 
     fn compiled_bool_function(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
-        self.program().compiled.bool(id)
+        self.program().compiled_entries.bool(id)
     }
 
     fn compiled_custom_function(&self, id: CustomFunctionId) -> Option<&CompiledImplementation> {
@@ -66,6 +74,20 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
 
     fn compiled_int_list_function(&self, id: IntListFunctionId) -> Option<&CompiledImplementation> {
         self.program().compiled.int_list(id)
+    }
+
+    fn compiled_int_function_function(
+        &self,
+        id: IntFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.int_function(id)
+    }
+
+    fn compiled_bool_function_function(
+        &self,
+        id: BoolFunctionFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.bool_function(id)
     }
 
     fn value_metadata(&self) -> RuntimeValueMetadata<'_> {

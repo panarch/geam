@@ -1,0 +1,7329 @@
+data::HostedEntryArtifact {
+    format: 19,
+    program: data::ProgramTables {
+        root: data::source::module_id(0),
+        modules: data::Storage::Static(&[
+            data::program::ExecutionModuleContext {
+                module: data::Text::Static("example"),
+                source_context: Some(data::source::SourceContext::from_static_block("src/custom_scalars.gleam", r#"
+pub type Entry {
+  Credit(Int)
+  Debit(Int)
+  Ignored
+}
+
+fn adjust(total: Int, entry: Entry) -> Int {
+  case entry {
+    Credit(amount) -> total + amount
+    Debit(amount) -> total - amount
+    Ignored -> total
+  }
+}
+
+pub fn credit(amount: Int, total: Int) {
+  adjust(total, Credit(amount))
+}
+
+pub fn debit(amount: Int, total: Int) {
+  adjust(total, Debit(amount))
+}
+
+pub fn ignored(total: Int) {
+  adjust(total, Ignored)
+}
+
+pub type Data {
+  Data(left: Int, right: Int, enabled: Bool)
+}
+
+fn select(data: Data) -> Int {
+  case data {
+    Data(3, right, True) if right > 0 -> right * 2
+    Data(left, 9, True) -> left - 1
+    Data(_, right, _) -> right
+  }
+}
+
+pub fn guarded(left: Int, right: Int, enabled: Bool) {
+  select(Data(left, right, enabled))
+}
+
+fn retain(data: Data) -> Int {
+  let Data(left, _, _) as alias = data
+  left + data.right + alias.right
+}
+
+pub fn aliased(left: Int, right: Int) {
+  retain(Data(left, right, True))
+}
+
+fn both(left: Data, right: Data) -> Int {
+  case left, right {
+    Data(a, _, True), Data(_, b, True) -> a + b
+    _, _ -> left.right - right.left
+  }
+}
+
+pub fn multiple(a: Int, b: Int, enabled: Bool) {
+  both(Data(a, 7, enabled), Data(11, b, True))
+}
+
+fn is_enabled(data: Data) -> Bool {
+  case data {
+    Data(3, _, True) -> data.right > 0
+    Data(_, _, enabled) -> enabled
+  }
+}
+
+pub fn boolean(left: Int, right: Int, enabled: Bool) {
+  is_enabled(Data(left, right, enabled))
+}
+
+fn getters(data: Data) -> Int {
+  case data.enabled {
+    True -> data.left / 3 + data.right % 4
+    False -> data.left - data.right
+  }
+}
+
+pub fn fields(left: Int, right: Int, enabled: Bool) {
+  getters(Data(left, right, enabled))
+}
+
+fn repeat(data: Data, count: Int, total: Int) -> Int {
+  case count > 0 {
+    True -> repeat(data, count - 1, total + data.left)
+    False -> total
+  }
+}
+
+pub fn repeated(value: Int, count: Int) {
+  repeat(Data(value, 0, True), count, 0)
+}
+
+fn asserted(data: Data) -> Int {
+  let assert Data(3, 9, True) = data
+  12
+}
+
+pub fn assertion(left: Int, right: Int, enabled: Bool) {
+  asserted(Data(left, right, enabled))
+}
+
+fn stop(data: Data) -> Int {
+  case data {
+    Data(3, _, _) -> panic as "custom stop"
+    Data(_, right, _) -> right
+  }
+}
+
+pub fn panic_case(left: Int, right: Int) {
+  stop(Data(left, right, True))
+}
+
+type Nested {
+  Nested(Data)
+}
+
+fn nested_read(input: Nested) -> Int {
+  case input {
+    Nested(Data(left, _, _)) -> left
+  }
+}
+
+pub fn nested(value: Int) {
+  nested_read(Nested(Data(value, 0, True)))
+}
+
+pub fn main() {
+  credit(11, 2)
+  + debit(7, 20)
+  + ignored(5)
+  + guarded(3, 4, True)
+  + aliased(2, 5)
+  + multiple(4, 6, True)
+  + fields(12, 7, True)
+  + repeated(3, 4)
+  + assertion(3, 9, True)
+  + nested(8)
+}
+"#)),
+            },
+        ]),
+        main: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::Int(data::function::IntFunctionId(0))),
+        functions: data::function::FunctionTables {
+            value_returns: data::function::ValueFunctionTables {
+                never_functions: data::Storage::Static(&[]),
+                int_functions: data::Storage::Static(&[
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 0,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..0,
+                                        instructions: 0..41,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                11,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                2,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(1),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                7,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                20,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(2),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(5)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                5,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(3),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(6)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(8)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                3,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                4,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(4),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(9)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(12)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                2,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                5,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(5),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2574, 2587)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(13)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(16)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                4,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                6,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(6),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2592, 2612)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(17)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(20)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                12,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                7,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(7),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(21)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(24)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                3,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                4,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(8),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2641, 2655)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(25)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(28)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                3,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                9,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(9),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(33)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(29)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(32)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                8,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(35)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
+                                            function: data::function::IntFunctionId(10),
+                                            args: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                            ]),
+                                            site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2686, 2695)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(36)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(33)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(35)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(36)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    shape_id: data::type_::CustomValueShapeId(0),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(2),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(11),
+                                        site: data::source::HostCallSite::from_static("example", "credit", data::source::SourceSpan::new(261, 290)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                shape_id: data::type_::CustomValueShapeId(0),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 1,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    shape_id: data::type_::CustomValueShapeId(1),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(3),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                index: 1,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(11),
+                                        site: data::source::HostCallSite::from_static("example", "debit", data::source::SourceSpan::new(336, 364)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                shape_id: data::type_::CustomValueShapeId(1),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 1,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    shape_id: data::type_::CustomValueShapeId(2),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(4),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                index: 2,
+                                            },
+                                            fields: data::Storage::Static(&[]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(11),
+                                        site: data::source::HostCallSite::from_static("example", "ignored", data::source::SourceSpan::new(399, 421)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                shape_id: data::type_::CustomValueShapeId(2),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 3,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..3,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        shape: data::type_::ValueShapeId(1),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(12),
+                                        site: data::source::HostCallSite::from_static("example", "guarded", data::source::SourceSpan::new(716, 750)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(13),
+                                        site: data::source::HostCallSite::from_static("example", "aliased", data::source::SourceSpan::new(903, 934)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 3,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..3,
+                                        instructions: 0..5,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        shape: data::type_::ValueShapeId(1),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                7,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                11,
+                                            ]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(14),
+                                        site: data::source::HostCallSite::from_static("example", "multiple", data::source::SourceSpan::new(1143, 1187)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 3,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..3,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        shape: data::type_::ValueShapeId(1),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(15),
+                                        site: data::source::HostCallSite::from_static("example", "fields", data::source::SourceSpan::new(1617, 1652)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(16),
+                                        site: data::source::HostCallSite::from_static("example", "repeated", data::source::SourceSpan::new(1855, 1893)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 2,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 1,
+                                                        destination: 0,
+                                                    },
+                                                    data::graph::TransferStep {
+                                                        source: 3,
+                                                        destination: 1,
+                                                    },
+                                                ]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 3,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..3,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        shape: data::type_::ValueShapeId(1),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(17),
+                                        site: data::source::HostCallSite::from_static("example", "assertion", data::source::SourceSpan::new(2034, 2070)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(3),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::NoSign,
+                                            digits: data::Storage::Static(&[]),
+                                        })),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(3),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(5),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            ]),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(5),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(7),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::Construct {
+                                            constructor: data::type_::CustomConstructorId {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                index: 0,
+                                            },
+                                            fields: data::Storage::Static(&[
+                                                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                    id: data::graph::CustomLocalId(0),
+                                                    shape: data::type_::CustomValueShape {
+                                                        type_id: data::type_::CustomTypeId(1),
+                                                        shape_id: data::type_::CustomValueShapeId(3),
+                                                    },
+                                                }),
+                                            ]),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::TailCall {
+                                    function: data::source::FunctionCallTarget {
+                                        function: data::function::IntFunctionId(18),
+                                        site: data::source::HostCallSite::from_static("example", "nested", data::source::SourceSpan::new(2437, 2478)),
+                                    },
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(5),
+                                            },
+                                        }),
+                                    ]),
+                                    transfer: data::graph::Transfer {
+                                        families: data::Storage::Static(&[
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Int,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Custom,
+                                                length: 1,
+                                                steps: data::Storage::Static(&[
+                                                    data::graph::TransferStep {
+                                                        source: 1,
+                                                        destination: 0,
+                                                    },
+                                                ]),
+                                            },
+                                            data::graph::FamilyTransfer {
+                                                family: data::graph::StorageFamily::Bool,
+                                                length: 0,
+                                                steps: data::Storage::Static(&[]),
+                                            },
+                                        ]),
+                                    },
+                                },
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(0),
+                                                            shape_id: data::type_::CustomValueShapeId(6),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..4,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 4..6,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    shape_id: data::type_::CustomValueShapeId(6),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(0),
+                                                    index: 1,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 6..8,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 8..9,
+                                        instructions: 2..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(8),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(0),
+                                                shape_id: data::type_::CustomValueShapeId(6),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(8),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                        sign: data::Sign::Plus,
+                                                        digits: data::Storage::Static(&[
+                                                            3,
+                                                        ]),
+                                                    }),
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    })),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(7),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..3,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::GtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(0),
+                                            },
+                                            true_: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            false_: data::graph::Edge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 3..4,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 4..5,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 5..6,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                    data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                        sign: data::Sign::Plus,
+                                                        digits: data::Storage::Static(&[
+                                                            9,
+                                                        ]),
+                                                    }),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(5),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(6),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 6..7,
+                                        instructions: 1..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 7..8,
+                                        instructions: 2..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(2)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 8..9,
+                                        instructions: 3..3,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Mult {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(2),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(1),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..5,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(3)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(4)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 2,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..2,
+                                        instructions: 0..2,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                    data::graph::MatchPattern::Discard,
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    })),
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(1),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    })),
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Tuple {
+                                                        local: data::graph::TupleLocalId(0),
+                                                        type_: data::Storage::Static(&[
+                                                            data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                                            data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                                        ]),
+                                                    }),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 2,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(5),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(1),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 2,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..6,
+                                        instructions: 2..3,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Discard,
+                                                    data::graph::MatchPattern::Bind(data::graph::MatchPatternBinding {
+                                                        index: 0,
+                                                    }),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::MatchEdgeArgument::Value(data::graph::ParamLocal::Int(data::graph::IntLocalId(0))),
+                                                    data::graph::MatchEdgeArgument::Binding(0),
+                                                ]),
+                                                bindings: data::Storage::Static(&[
+                                                    0,
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(3),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(1),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 2,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Tuple,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 6..8,
+                                        instructions: 3..4,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 8..10,
+                                        instructions: 4..4,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(1),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 10..12,
+                                        instructions: 4..7,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 12..14,
+                                        instructions: 7..7,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(4),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(1),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Tuple {
+                                            local: data::graph::TupleLocalId(0),
+                                            type_: data::Storage::Static(&[
+                                                data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                                data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                            ]),
+                                        },
+                                        shape: data::type_::ValueShapeId(9),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(1),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Tuple {
+                                                local: data::graph::TupleLocalId(0),
+                                                type_: data::Storage::Static(&[
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                                ]),
+                                            },
+                                            shape: data::type_::ValueShapeId(9),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Tuple(data::graph::TupleInstruction::Value(data::Storage::Static(&[
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                        ]))),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::TupleIndex {
+                                            tuple: data::graph::TupleLocalId(0),
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(2),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::TupleIndex {
+                                            tuple: data::graph::TupleLocalId(0),
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::BoolBranch(data::graph::BoolBranch {
+                                            subject: data::graph::BoolLocalId(0),
+                                            true_: data::graph::Edge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            false_: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Bool,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..5,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 2..3,
+                                        instructions: 5..8,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(1)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(1),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 2,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Div {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(3),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::IntegerRegion(data::graph::ArithmeticRegion {
+                                        inputs: data::Storage::Static(&[
+                                            data::graph::IntLocalId(2),
+                                            data::graph::IntLocalId(1),
+                                        ]),
+                                        nodes: data::Storage::Static(&[
+                                            data::graph::ArithmeticNode::Remainder(data::graph::ArithmeticOperand::Input(0), data::graph::ArithmeticOperand::Immediate(4)),
+                                            data::graph::ArithmeticNode::Add(data::graph::ArithmeticOperand::Input(1), data::graph::ArithmeticOperand::Value(0)),
+                                        ]),
+                                        outputs: data::Storage::Static(&[
+                                            data::graph::ArithmeticOutput {
+                                                value: 1,
+                                                slot: data::graph::ParamSlot {
+                                                    local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                    shape: data::type_::ValueShapeId(0),
+                                                },
+                                            },
+                                        ]),
+                                        native: true,
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 1,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(3)),
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(2)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 3,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..3,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                            test: data::graph::BoolTest::GtInt {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(0),
+                                            },
+                                            true_: data::graph::Edge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                            false_: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 1,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 1,
+                                                                    destination: 0,
+                                                                },
+                                                            ]),
+                                                        },
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 3..6,
+                                        instructions: 0..3,
+                                        terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                            edge: data::graph::Edge {
+                                                target: data::graph::BlockId(0),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Int,
+                                                            length: 2,
+                                                            steps: data::Storage::Static(&[
+                                                                data::graph::TransferStep {
+                                                                    source: 2,
+                                                                    destination: 0,
+                                                                },
+                                                                data::graph::TransferStep {
+                                                                    source: 4,
+                                                                    destination: 1,
+                                                                },
+                                                            ]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 6..7,
+                                        instructions: 3..3,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        shape: data::type_::ValueShapeId(0),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Sub {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                            right: data::graph::IntegerOperand::Immediate(1),
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                            left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                            right: data::graph::IntegerOperand::Local(data::graph::IntLocalId(3)),
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..0,
+                                        terminator: data::graph::Terminator::Match(data::graph::Match {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            pattern: data::graph::MatchPattern::Custom {
+                                                constructor: data::type_::CustomConstructorId {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    index: 0,
+                                                },
+                                                fields: data::Storage::Static(&[
+                                                    data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                        sign: data::Sign::Plus,
+                                                        digits: data::Storage::Static(&[
+                                                            3,
+                                                        ]),
+                                                    }),
+                                                    data::graph::MatchPattern::Int(data::graph::IntegerLiteral {
+                                                        sign: data::Sign::Plus,
+                                                        digits: data::Storage::Static(&[
+                                                            9,
+                                                        ]),
+                                                    }),
+                                                    data::graph::MatchPattern::Bool(true),
+                                                ]),
+                                            },
+                                            success: data::graph::MatchEdge {
+                                                target: data::graph::BlockId(1),
+                                                args: data::Storage::Static(&[]),
+                                                bindings: data::Storage::Static(&[]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[
+                                                        data::graph::FamilyTransfer {
+                                                            family: data::graph::StorageFamily::Custom,
+                                                            length: 0,
+                                                            steps: data::Storage::Static(&[]),
+                                                        },
+                                                    ]),
+                                                },
+                                            },
+                                            failure: data::graph::Edge {
+                                                target: data::graph::BlockId(2),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                        id: data::graph::CustomLocalId(0),
+                                                        shape: data::type_::CustomValueShape {
+                                                            type_id: data::type_::CustomTypeId(1),
+                                                            shape_id: data::type_::CustomValueShapeId(4),
+                                                        },
+                                                    }),
+                                                ]),
+                                                transfer: data::graph::Transfer {
+                                                    families: data::Storage::Static(&[]),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..1,
+                                        instructions: 0..1,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                    data::graph::BlockHeader {
+                                        params: 1..2,
+                                        instructions: 1..1,
+                                        terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
+                                            subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            message: None,
+                                            site: data::source::PanicSite::from_static("example", "asserted", data::source::SourceSpan::new(1932, 1942)),
+                                            pattern_span: data::source::SourceSpan::new(1943, 1959),
+                                        }),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(1),
+                                                shape_id: data::type_::CustomValueShapeId(4),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(6),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                            sign: data::Sign::Plus,
+                                            digits: data::Storage::Static(&[
+                                                12,
+                                            ]),
+                                        })),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    })),
+                    data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                        entry: data::function::FunctionEntry {
+                            parameter_count: 1,
+                        },
+                        body: data::function::ProfiledFunctionBody {
+                            block_graph: data::graph::ProfiledBlockGraph {
+                                entry: data::graph::BlockId(0),
+                                blocks: data::Storage::Static(&[
+                                    data::graph::BlockHeader {
+                                        params: 0..1,
+                                        instructions: 0..2,
+                                        terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                    },
+                                ]),
+                                params: data::Storage::Static(&[
+                                    data::graph::ParamSlot {
+                                        local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                            id: data::graph::CustomLocalId(0),
+                                            shape: data::type_::CustomValueShape {
+                                                type_id: data::type_::CustomTypeId(2),
+                                                shape_id: data::type_::CustomValueShapeId(7),
+                                            },
+                                        }),
+                                        shape: data::type_::ValueShapeId(10),
+                                    },
+                                ]),
+                                instructions: data::Storage::Static(&[
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            }),
+                                            shape: data::type_::ValueShapeId(6),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Custom(data::graph::CustomInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(0),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(2),
+                                                    shape_id: data::type_::CustomValueShapeId(7),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                    data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                        output: data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::CustomField {
+                                            source: data::graph::CustomLocal {
+                                                id: data::graph::CustomLocalId(1),
+                                                shape: data::type_::CustomValueShape {
+                                                    type_id: data::type_::CustomTypeId(1),
+                                                    shape_id: data::type_::CustomValueShapeId(4),
+                                                },
+                                            },
+                                            index: 0,
+                                        }),
+                                    }),
+                                ]),
+                            },
+                            exits: data::Storage::Static(&[
+                                data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                            ]),
+                        },
+                    })),
+                ]),
+                float_functions: data::Storage::Static(&[]),
+                string_functions: data::Storage::Static(&[]),
+                bit_array_functions: data::Storage::Static(&[]),
+                utf_codepoint_functions: data::Storage::Static(&[]),
+                custom_functions: data::Storage::Static(&[]),
+                external_functions: data::Storage::Static(&[]),
+                bool_functions: data::Storage::Static(&[]),
+                nil_functions: data::Storage::Static(&[]),
+                tuple_functions: data::Storage::Static(&[]),
+            },
+            list_returns: data::function::ListFunctionTables {
+                parameter_list_functions: data::Storage::Static(&[]),
+                int_list_functions: data::Storage::Static(&[]),
+                string_list_functions: data::Storage::Static(&[]),
+                bit_array_list_functions: data::Storage::Static(&[]),
+                utf_codepoint_list_functions: data::Storage::Static(&[]),
+                custom_list_functions: data::Storage::Static(&[]),
+                external_list_functions: data::Storage::Static(&[]),
+                float_list_functions: data::Storage::Static(&[]),
+                bool_list_functions: data::Storage::Static(&[]),
+                nil_list_functions: data::Storage::Static(&[]),
+                tuple_list_functions: data::Storage::Static(&[]),
+                parameter_list_list_functions: data::Storage::Static(&[]),
+                list_list_functions: data::Storage::Static(&[]),
+                function_list_functions: data::Storage::Static(&[]),
+            },
+            function_returns: data::function::FunctionFunctionTables {
+                int_function_functions: data::Storage::Static(&[]),
+                float_function_functions: data::Storage::Static(&[]),
+                string_function_functions: data::Storage::Static(&[]),
+                bit_array_function_functions: data::Storage::Static(&[]),
+                utf_codepoint_function_functions: data::Storage::Static(&[]),
+                custom_function_functions: data::Storage::Static(&[]),
+                external_function_functions: data::Storage::Static(&[]),
+                bool_function_functions: data::Storage::Static(&[]),
+                nil_function_functions: data::Storage::Static(&[]),
+                tuple_function_functions: data::Storage::Static(&[]),
+                generic_function_functions: data::Storage::Static(&[]),
+                never_function_functions: data::Storage::Static(&[]),
+                parameter_list_function_functions: data::Storage::Static(&[]),
+                parameter_list_list_function_functions: data::Storage::Static(&[]),
+                int_list_function_functions: data::Storage::Static(&[]),
+                string_list_function_functions: data::Storage::Static(&[]),
+                bit_array_list_function_functions: data::Storage::Static(&[]),
+                utf_codepoint_list_function_functions: data::Storage::Static(&[]),
+                custom_list_function_functions: data::Storage::Static(&[]),
+                external_list_function_functions: data::Storage::Static(&[]),
+                float_list_function_functions: data::Storage::Static(&[]),
+                bool_list_function_functions: data::Storage::Static(&[]),
+                nil_list_function_functions: data::Storage::Static(&[]),
+                tuple_list_function_functions: data::Storage::Static(&[]),
+                list_list_function_functions: data::Storage::Static(&[]),
+                function_list_function_functions: data::Storage::Static(&[]),
+                function_function_functions: data::Storage::Static(&[]),
+            },
+        },
+        compiled: {
+            use data::compiled::calls::{BoolCallable, CallArguments, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+            enum FunctionState {
+                Int0Point0 {  },
+                Int0Point1 { int0: i128 },
+                Int0Point2 { int0: i128, int1: i128 },
+                Int0Point3 { int0: i128, int1: i128, int2: i128 },
+                Int0Point4 { int0: i128, int1: i128, int2: i128, int3: i128 },
+                Int0Point5 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128 },
+                Int0Point6 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128 },
+                Int0Point7 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128 },
+                Int0Point8 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128 },
+                Int0Point9 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128 },
+                Int0Point10 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128 },
+                Int0Point11 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128 },
+                Int0Point12 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128 },
+                Int0Point13 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool },
+                Int0Point14 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128 },
+                Int0Point15 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128 },
+                Int0Point16 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128 },
+                Int0Point17 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128 },
+                Int0Point18 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128 },
+                Int0Point19 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128 },
+                Int0Point20 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128 },
+                Int0Point21 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128 },
+                Int0Point22 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool },
+                Int0Point23 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128 },
+                Int0Point24 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128 },
+                Int0Point25 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128 },
+                Int0Point26 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128 },
+                Int0Point27 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool },
+                Int0Point28 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128 },
+                Int0Point29 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128 },
+                Int0Point30 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128 },
+                Int0Point31 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128 },
+                Int0Point32 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128 },
+                Int0Point33 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128 },
+                Int0Point34 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128 },
+                Int0Point35 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128 },
+                Int0Point36 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool },
+                Int0Point37 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128 },
+                Int0Point38 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128, int33: i128 },
+                Int0Point39 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128, int33: i128, int34: i128 },
+                Int0Point40 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128, int33: i128, int34: i128, int35: i128 },
+                Int0Point41 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128, int33: i128, int34: i128, int35: i128, int36: i128 },
+                Int5Point0 { int0: i128, int1: i128 },
+                Int5Point1 { int0: i128, int1: i128, bool0: bool },
+                Int6Point0 { int0: i128, int1: i128, bool0: bool },
+                Int6Point1 { int0: i128, int1: i128, bool0: bool, int2: i128 },
+                Int8Point0 { int0: i128, int1: i128 },
+                Int8Point1 { int0: i128, int1: i128, int2: i128 },
+                Int8Point2 { int0: i128, int1: i128, int2: i128, bool0: bool },
+                Int10Point0 { int0: i128 },
+                Int10Point1 { int0: i128, int1: i128 },
+                Int10Point2 { int0: i128, int1: i128, bool0: bool },
+                Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+            }
+            enum IntReturn {
+                Int0Call2 { int0: i128, int1: i128 },
+                Int0Call5 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128 },
+                Int0Call8 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128 },
+                Int0Call13 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool },
+                Int0Call17 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128 },
+                Int0Call22 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool },
+                Int0Call27 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool },
+                Int0Call31 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128 },
+                Int0Call36 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool },
+                Int0Call39 { int0: i128, int1: i128, int2: i128, int3: i128, int4: i128, int5: i128, int6: i128, int7: i128, int8: i128, int9: i128, int10: i128, int11: i128, bool0: bool, int12: i128, int13: i128, int14: i128, int15: i128, int16: i128, int17: i128, int18: i128, int19: i128, bool1: bool, int20: i128, int21: i128, int22: i128, int23: i128, bool2: bool, int24: i128, int25: i128, int26: i128, int27: i128, int28: i128, int29: i128, int30: i128, int31: i128, bool3: bool, int32: i128, int33: i128, int34: i128 },
+            }
+            impl IntReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                        Self::Int0Call2 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)),
+                        Self::Int0Call5 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)),
+                        Self::Int0Call8 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)),
+                        Self::Int0Call13 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)),
+                        Self::Int0Call17 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2574, 2587)),
+                        Self::Int0Call22 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2592, 2612)),
+                        Self::Int0Call27 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)),
+                        Self::Int0Call31 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2641, 2655)),
+                        Self::Int0Call36 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)),
+                        Self::Int0Call39 { .. } => data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2686, 2695)),
+                    }
+                }
+                fn small(self, result: i128) -> FunctionState {
+                    match self {
+                        Self::Int0Call2 { int0, int1 } => {
+                            let int2 = result;
+                            FunctionState::Int0Point3 { int0, int1, int2 }
+                        },
+                        Self::Int0Call5 { int0, int1, int2, int3, int4 } => {
+                            let int5 = result;
+                            FunctionState::Int0Point6 { int0, int1, int2, int3, int4, int5 }
+                        },
+                        Self::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
+                            let int8 = result;
+                            FunctionState::Int0Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 }
+                        },
+                        Self::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } => {
+                            let int12 = result;
+                            FunctionState::Int0Point14 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12 }
+                        },
+                        Self::Int0Call17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } => {
+                            let int16 = result;
+                            FunctionState::Int0Point18 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16 }
+                        },
+                        Self::Int0Call22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 } => {
+                            let int20 = result;
+                            FunctionState::Int0Point23 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20 }
+                        },
+                        Self::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } => {
+                            let int24 = result;
+                            FunctionState::Int0Point28 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24 }
+                        },
+                        Self::Int0Call31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } => {
+                            let int28 = result;
+                            FunctionState::Int0Point32 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28 }
+                        },
+                        Self::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } => {
+                            let int32 = result;
+                            FunctionState::Int0Point37 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32 }
+                        },
+                        Self::Int0Call39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } => {
+                            let int35 = result;
+                            FunctionState::Int0Point40 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35 }
+                        },
+                    }
+                }
+                fn resume(self, result: CallInteger) -> FunctionState {
+                    if let Some(result) = result.small() {
+                        return self.small(result);
+                    }
+                    match self {
+                        Self::Int0Call2 { int0, int1 } => {
+                            let int2 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 3,
+                                ints: 3,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call5 { int0, int1, int2, int3, int4 } => {
+                            let int5 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 6,
+                                ints: 6,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
+                            let int8 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 9,
+                                ints: 9,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } => {
+                            let int12 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 14,
+                                ints: 13,
+                                bools: 1,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } => {
+                            let int16 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 18,
+                                ints: 17,
+                                bools: 1,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 } => {
+                            let int20 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 23,
+                                ints: 21,
+                                bools: 2,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } => {
+                            let int24 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 28,
+                                ints: 25,
+                                bools: 3,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } => {
+                            let int28 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 32,
+                                ints: 29,
+                                bools: 3,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } => {
+                            let int32 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 37,
+                                ints: 33,
+                                bools: 4,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                        Self::Int0Call39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } => {
+                            let int35 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 40,
+                                ints: 36,
+                                bools: 4,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }
+                        },
+                    }
+                }
+            }
+            enum BoolReturn {
+            }
+            impl BoolReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                    }
+                }
+                fn small(self, result: bool) -> FunctionState {
+                    let _ = result;
+                    match self {
+                    }
+                }
+                fn resume(self, result: bool) -> FunctionState { self.small(result) }
+            }
+            enum IntFunctionReturn {
+            }
+            impl IntFunctionReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                    }
+                }
+                fn small(self, result: IntCallable) -> FunctionState {
+                    let _ = result;
+                    match self {
+                    }
+                }
+                fn resume(self, result: IntCallable) -> FunctionState { self.small(result) }
+            }
+            enum BoolFunctionReturn {
+            }
+            impl BoolFunctionReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                    }
+                }
+                fn small(self, result: BoolCallable) -> FunctionState {
+                    let _ = result;
+                    match self {
+                    }
+                }
+                fn resume(self, result: BoolCallable) -> FunctionState { self.small(result) }
+            }
+            #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+            enum FunctionStep {
+                Next(FunctionState),
+                Yield(FunctionState),
+                Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+                IntCall { callee: FunctionState, caller: IntReturn },
+                Int { value: i128, exit: data::graph::BlockGraphExitId },
+                IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
+            }
+            struct FunctionExecution {
+                active: Option<FunctionState>,
+                integer_returns: Vec<IntReturn>,
+                boolean_returns: Vec<BoolReturn>,
+                integer_function_returns: Vec<IntFunctionReturn>,
+                boolean_function_returns: Vec<BoolFunctionReturn>,
+            }
+            impl FunctionExecution {
+                fn new(active: FunctionState) -> Self {
+                    Self {
+                        active: Some(active),
+                        integer_returns: Vec::new(),
+                        boolean_returns: Vec::new(),
+                        integer_function_returns: Vec::new(),
+                        boolean_function_returns: Vec::new(),
+                    }
+                }
+            }
+            impl CallExecution for FunctionExecution {
+                fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                    if self.active.is_some() { return false; }
+                    let active = match target {
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(5)) => calls_int_5_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(6)) => calls_int_6_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(8)) => calls_int_8_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(10)) => calls_int_10_state(point, values),
+                        _ => None,
+                    };
+                    let Some(active) = active else { return false; };
+                    self.active = Some(active);
+                    true
+                }
+                fn retained_bytes(&self) -> usize {
+                    std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
+                }
+                fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                    loop {
+                        match function_step(active, ops, budget) {
+                            FunctionStep::Next(next) => active = next,
+                            FunctionStep::Yield(active) => {
+                                self.active = Some(active);
+                                return CallProgress::Yield(self);
+                            },
+                            FunctionStep::IntCall { callee, caller } => {
+                                self.integer_returns.push(caller);
+                                active = callee;
+                            },
+                            FunctionStep::Int { value, exit } => {
+                                if let Some(caller) = self.integer_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self };
+                                }
+                            },
+                            FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
+                                function, site, arguments,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(caller.resume(value));
+                                    self
+                                }),
+                            },
+                            FunctionStep::Canonical { target, point, values } => {
+                                match target {
+                                    data::compiled::CallTarget::Int(function) => {
+                                        if let Some(caller) = self.integer_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedInt {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::Bool(function) => {
+                                        if let Some(caller) = self.boolean_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedBool {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::IntFunction(function) => {
+                                        if let Some(caller) = self.integer_function_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedIntFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::BoolFunction(function) => {
+                                        if let Some(caller) = self.boolean_function_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedBoolFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+            fn function_step(active: FunctionState, _ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                match active {
+                    FunctionState::Canonical { target, point, values } => FunctionStep::Canonical { target, point, values },
+                    FunctionState::Int0Point0 {  } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point0 {  }); }
+                        *budget -= 1;
+                        let int0 = 11_i128;
+                        if int0 < i128::from(i64::MIN) || int0 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point1 { int0 })
+                    },
+                    FunctionState::Int0Point1 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0 }); }
+                        *budget -= 1;
+                        let int1 = 2_i128;
+                        if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 2,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point2 { int0, int1 })
+                    },
+                    FunctionState::Int0Point2 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point2 { int0, int1 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(1), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)), arguments: CallArguments { values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call2 { int0, int1 } }
+                    },
+                    FunctionState::Int0Point3 { int0, int1, int2 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point3 { int0, int1, int2 }); }
+                        *budget -= 1;
+                        let int3 = 7_i128;
+                        if int3 < i128::from(i64::MIN) || int3 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 4,
+                            ints: 4,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point4 { int0, int1, int2, int3 })
+                    },
+                    FunctionState::Int0Point4 { int0, int1, int2, int3 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point4 { int0, int1, int2, int3 }); }
+                        *budget -= 1;
+                        let int4 = 20_i128;
+                        if int4 < i128::from(i64::MIN) || int4 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 5,
+                            ints: 5,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point5 { int0, int1, int2, int3, int4 })
+                    },
+                    FunctionState::Int0Point5 { int0, int1, int2, int3, int4 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point5 { int0, int1, int2, int3, int4 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(2), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)), arguments: CallArguments { values: CallValues { ints: vec![int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call5 { int0, int1, int2, int3, int4 } }
+                    },
+                    FunctionState::Int0Point6 { int0, int1, int2, int3, int4, int5 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point6 { int0, int1, int2, int3, int4, int5 }); }
+                        *budget -= 1;
+                        let int6 = int2 + int5;
+                        if int6 < i128::from(i64::MIN) || int6 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 7,
+                            ints: 7,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point7 { int0, int1, int2, int3, int4, int5, int6 })
+                    },
+                    FunctionState::Int0Point7 { int0, int1, int2, int3, int4, int5, int6 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point7 { int0, int1, int2, int3, int4, int5, int6 }); }
+                        *budget -= 1;
+                        let int7 = 5_i128;
+                        if int7 < i128::from(i64::MIN) || int7 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 8,
+                            ints: 8,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 })
+                    },
+                    FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(3), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)), arguments: CallArguments { values: CallValues { ints: vec![int7.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } }
+                    },
+                    FunctionState::Int0Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 }); }
+                        *budget -= 1;
+                        let int9 = int6 + int8;
+                        if int9 < i128::from(i64::MIN) || int9 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 10,
+                            ints: 10,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point10 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9 })
+                    },
+                    FunctionState::Int0Point10 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point10 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9 }); }
+                        *budget -= 1;
+                        let int10 = 3_i128;
+                        if int10 < i128::from(i64::MIN) || int10 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 11,
+                            ints: 11,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point11 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10 })
+                    },
+                    FunctionState::Int0Point11 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point11 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10 }); }
+                        *budget -= 1;
+                        let int11 = 4_i128;
+                        if int11 < i128::from(i64::MIN) || int11 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 12,
+                            ints: 12,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point12 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11 })
+                    },
+                    FunctionState::Int0Point12 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point12 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Int0Point13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 })
+                    },
+                    FunctionState::Int0Point13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(4), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)), arguments: CallArguments { values: CallValues { ints: vec![int10.into(), int11.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } }
+                    },
+                    FunctionState::Int0Point14 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point14 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12 }); }
+                        *budget -= 1;
+                        let int13 = int9 + int12;
+                        if int13 < i128::from(i64::MIN) || int13 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 15,
+                            ints: 14,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point15 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13 })
+                    },
+                    FunctionState::Int0Point15 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point15 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13 }); }
+                        *budget -= 1;
+                        let int14 = 2_i128;
+                        if int14 < i128::from(i64::MIN) || int14 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 16,
+                            ints: 15,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point16 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14 })
+                    },
+                    FunctionState::Int0Point16 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point16 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14 }); }
+                        *budget -= 1;
+                        let int15 = 5_i128;
+                        if int15 < i128::from(i64::MIN) || int15 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 17,
+                            ints: 16,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 })
+                    },
+                    FunctionState::Int0Point17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 }); }
+                        *budget -= 1;
+                        FunctionStep::IntCall { callee: FunctionState::Int5Point0 { int0: int14, int1: int15 }, caller: IntReturn::Int0Call17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } }
+                    },
+                    FunctionState::Int0Point18 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point18 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16 }); }
+                        *budget -= 1;
+                        let int17 = int13 + int16;
+                        if int17 < i128::from(i64::MIN) || int17 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 19,
+                            ints: 18,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point19 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17 })
+                    },
+                    FunctionState::Int0Point19 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point19 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17 }); }
+                        *budget -= 1;
+                        let int18 = 4_i128;
+                        if int18 < i128::from(i64::MIN) || int18 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 20,
+                            ints: 19,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point20 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18 })
+                    },
+                    FunctionState::Int0Point20 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point20 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18 }); }
+                        *budget -= 1;
+                        let int19 = 6_i128;
+                        if int19 < i128::from(i64::MIN) || int19 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 21,
+                            ints: 20,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point21 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19 })
+                    },
+                    FunctionState::Int0Point21 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point21 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19 }); }
+                        *budget -= 1;
+                        let bool1 = true;
+                        FunctionStep::Next(FunctionState::Int0Point22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 })
+                    },
+                    FunctionState::Int0Point22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 }); }
+                        *budget -= 1;
+                        FunctionStep::IntCall { callee: FunctionState::Int6Point0 { int0: int18, int1: int19, bool0: bool1 }, caller: IntReturn::Int0Call22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 } }
+                    },
+                    FunctionState::Int0Point23 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point23 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20 }); }
+                        *budget -= 1;
+                        let int21 = int17 + int20;
+                        if int21 < i128::from(i64::MIN) || int21 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 24,
+                            ints: 22,
+                            bools: 2,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point24 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21 })
+                    },
+                    FunctionState::Int0Point24 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point24 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21 }); }
+                        *budget -= 1;
+                        let int22 = 12_i128;
+                        if int22 < i128::from(i64::MIN) || int22 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 25,
+                            ints: 23,
+                            bools: 2,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point25 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22 })
+                    },
+                    FunctionState::Int0Point25 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point25 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22 }); }
+                        *budget -= 1;
+                        let int23 = 7_i128;
+                        if int23 < i128::from(i64::MIN) || int23 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 26,
+                            ints: 24,
+                            bools: 2,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point26 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23 })
+                    },
+                    FunctionState::Int0Point26 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point26 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23 }); }
+                        *budget -= 1;
+                        let bool2 = true;
+                        FunctionStep::Next(FunctionState::Int0Point27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 })
+                    },
+                    FunctionState::Int0Point27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(7), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)), arguments: CallArguments { values: CallValues { ints: vec![int22.into(), int23.into()], bools: vec![bool2], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } }
+                    },
+                    FunctionState::Int0Point28 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point28 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24 }); }
+                        *budget -= 1;
+                        let int25 = int21 + int24;
+                        if int25 < i128::from(i64::MIN) || int25 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 29,
+                            ints: 26,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point29 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25 })
+                    },
+                    FunctionState::Int0Point29 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point29 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25 }); }
+                        *budget -= 1;
+                        let int26 = 3_i128;
+                        if int26 < i128::from(i64::MIN) || int26 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 30,
+                            ints: 27,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point30 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26 })
+                    },
+                    FunctionState::Int0Point30 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point30 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26 }); }
+                        *budget -= 1;
+                        let int27 = 4_i128;
+                        if int27 < i128::from(i64::MIN) || int27 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 31,
+                            ints: 28,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 })
+                    },
+                    FunctionState::Int0Point31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 }); }
+                        *budget -= 1;
+                        FunctionStep::IntCall { callee: FunctionState::Int8Point0 { int0: int26, int1: int27 }, caller: IntReturn::Int0Call31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } }
+                    },
+                    FunctionState::Int0Point32 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point32 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28 }); }
+                        *budget -= 1;
+                        let int29 = int25 + int28;
+                        if int29 < i128::from(i64::MIN) || int29 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 33,
+                            ints: 30,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point33 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29 })
+                    },
+                    FunctionState::Int0Point33 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point33 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29 }); }
+                        *budget -= 1;
+                        let int30 = 3_i128;
+                        if int30 < i128::from(i64::MIN) || int30 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 34,
+                            ints: 31,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point34 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30 })
+                    },
+                    FunctionState::Int0Point34 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point34 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30 }); }
+                        *budget -= 1;
+                        let int31 = 9_i128;
+                        if int31 < i128::from(i64::MIN) || int31 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 35,
+                            ints: 32,
+                            bools: 3,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point35 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31 })
+                    },
+                    FunctionState::Int0Point35 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point35 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31 }); }
+                        *budget -= 1;
+                        let bool3 = true;
+                        FunctionStep::Next(FunctionState::Int0Point36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 })
+                    },
+                    FunctionState::Int0Point36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 }); }
+                        *budget -= 1;
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(9), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)), arguments: CallArguments { values: CallValues { ints: vec![int30.into(), int31.into()], bools: vec![bool3], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } }
+                    },
+                    FunctionState::Int0Point37 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point37 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32 }); }
+                        *budget -= 1;
+                        let int33 = int29 + int32;
+                        if int33 < i128::from(i64::MIN) || int33 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 38,
+                            ints: 34,
+                            bools: 4,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point38 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33 })
+                    },
+                    FunctionState::Int0Point38 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point38 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33 }); }
+                        *budget -= 1;
+                        let int34 = 8_i128;
+                        if int34 < i128::from(i64::MIN) || int34 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 39,
+                            ints: 35,
+                            bools: 4,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int0Point39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 })
+                    },
+                    FunctionState::Int0Point39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 }); }
+                        *budget -= 1;
+                        FunctionStep::IntCall { callee: FunctionState::Int10Point0 { int0: int34 }, caller: IntReturn::Int0Call39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } }
+                    },
+                    FunctionState::Int0Point40 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point40 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35 }); }
+                        *budget -= 1;
+                        let int36 = int33 + int35;
+                        if int36 < i128::from(i64::MIN) || int36 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 41,
+                            ints: 37,
+                            bools: 4,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35.into(), int36.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point41 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35, int36 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int36, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int0Point41 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35, int36 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point41 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35, int36 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int36, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int5Point0 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point0 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Int5Point1 { int0, int1, bool0 })
+                    },
+                    FunctionState::Int5Point1 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Int6Point0 { int0, int1, bool0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point0 { int0, int1, bool0 }); }
+                        *budget -= 1;
+                        let int2 = 7_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int6Point1 { int0, int1, bool0, int2 })
+                    },
+                    FunctionState::Int6Point1 { int0, int1, bool0, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Int8Point0 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point0 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = 0_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int8Point1 { int0, int1, int2 })
+                    },
+                    FunctionState::Int8Point1 { int0, int1, int2 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point1 { int0, int1, int2 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Int8Point2 { int0, int1, int2, bool0 })
+                    },
+                    FunctionState::Int8Point2 { int0, int1, int2, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 2,
+                            ints: 3,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Int10Point0 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point0 { int0 }); }
+                        *budget -= 1;
+                        let int1 = 0_i128;
+                        if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int10Point1 { int0, int1 })
+                    },
+                    FunctionState::Int10Point1 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point1 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Int10Point2 { int0, int1, bool0 })
+                    },
+                    FunctionState::Int10Point2 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 2,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                }
+            }
+            fn calls_int_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int0Point0 {  },
+                    1 => FunctionState::Int0Point1 { int0: values.int(0)? },
+                    2 => FunctionState::Int0Point2 { int0: values.int(0)?, int1: values.int(1)? },
+                    3 => FunctionState::Int0Point3 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    4 => FunctionState::Int0Point4 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)? },
+                    5 => FunctionState::Int0Point5 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)? },
+                    6 => FunctionState::Int0Point6 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)? },
+                    7 => FunctionState::Int0Point7 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)? },
+                    8 => FunctionState::Int0Point8 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)? },
+                    9 => FunctionState::Int0Point9 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)? },
+                    10 => FunctionState::Int0Point10 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)? },
+                    11 => FunctionState::Int0Point11 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)? },
+                    12 => FunctionState::Int0Point12 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)? },
+                    13 => FunctionState::Int0Point13 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)? },
+                    14 => FunctionState::Int0Point14 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)? },
+                    15 => FunctionState::Int0Point15 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)? },
+                    16 => FunctionState::Int0Point16 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)? },
+                    17 => FunctionState::Int0Point17 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)? },
+                    18 => FunctionState::Int0Point18 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)? },
+                    19 => FunctionState::Int0Point19 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)? },
+                    20 => FunctionState::Int0Point20 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)? },
+                    21 => FunctionState::Int0Point21 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)? },
+                    22 => FunctionState::Int0Point22 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)? },
+                    23 => FunctionState::Int0Point23 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)? },
+                    24 => FunctionState::Int0Point24 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)? },
+                    25 => FunctionState::Int0Point25 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)? },
+                    26 => FunctionState::Int0Point26 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)? },
+                    27 => FunctionState::Int0Point27 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)? },
+                    28 => FunctionState::Int0Point28 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)? },
+                    29 => FunctionState::Int0Point29 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)? },
+                    30 => FunctionState::Int0Point30 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)? },
+                    31 => FunctionState::Int0Point31 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)? },
+                    32 => FunctionState::Int0Point32 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)? },
+                    33 => FunctionState::Int0Point33 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)? },
+                    34 => FunctionState::Int0Point34 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)? },
+                    35 => FunctionState::Int0Point35 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)? },
+                    36 => FunctionState::Int0Point36 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)? },
+                    37 => FunctionState::Int0Point37 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)?, int32: values.int(32)? },
+                    38 => FunctionState::Int0Point38 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)?, int32: values.int(32)?, int33: values.int(33)? },
+                    39 => FunctionState::Int0Point39 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)?, int32: values.int(32)?, int33: values.int(33)?, int34: values.int(34)? },
+                    40 => FunctionState::Int0Point40 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)?, int32: values.int(32)?, int33: values.int(33)?, int34: values.int(34)?, int35: values.int(35)? },
+                    41 => FunctionState::Int0Point41 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, int3: values.int(3)?, int4: values.int(4)?, int5: values.int(5)?, int6: values.int(6)?, int7: values.int(7)?, int8: values.int(8)?, int9: values.int(9)?, int10: values.int(10)?, int11: values.int(11)?, bool0: values.bool(0)?, int12: values.int(12)?, int13: values.int(13)?, int14: values.int(14)?, int15: values.int(15)?, int16: values.int(16)?, int17: values.int(17)?, int18: values.int(18)?, int19: values.int(19)?, bool1: values.bool(1)?, int20: values.int(20)?, int21: values.int(21)?, int22: values.int(22)?, int23: values.int(23)?, bool2: values.bool(2)?, int24: values.int(24)?, int25: values.int(25)?, int26: values.int(26)?, int27: values.int(27)?, int28: values.int(28)?, int29: values.int(29)?, int30: values.int(30)?, int31: values.int(31)?, bool3: values.bool(3)?, int32: values.int(32)?, int33: values.int(33)?, int34: values.int(34)?, int35: values.int(35)?, int36: values.int(36)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point, values) { return Some(execution); }
+                let active = calls_int_0_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_5_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int5Point0 { int0: values.int(0)?, int1: values.int(1)? },
+                    1 => FunctionState::Int5Point1 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_5_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(5)), point, values) { return Some(execution); }
+                let active = calls_int_5_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_6_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int6Point0 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    1 => FunctionState::Int6Point1 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)?, int2: values.int(2)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_6_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point, values) { return Some(execution); }
+                let active = calls_int_6_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_8_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int8Point0 { int0: values.int(0)?, int1: values.int(1)? },
+                    1 => FunctionState::Int8Point1 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    2 => FunctionState::Int8Point2 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)?, bool0: values.bool(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_8_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point, values) { return Some(execution); }
+                let active = calls_int_8_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_10_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int10Point0 { int0: values.int(0)? },
+                    1 => FunctionState::Int10Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                    2 => FunctionState::Int10Point2 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_10_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point, values) { return Some(execution); }
+                let active = calls_int_10_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            data::compiled::CompiledFunctions {
+                ints: data::Storage::Static(&[
+                ]),
+                bools: data::Storage::Static(&[
+                ]),
+                customs: data::Storage::Static(&[
+                ]),
+                int_lists: data::Storage::Static(&[
+                ]),
+                callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                function_calls: data::Storage::Static(&[
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 3,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 4,
+                                    ints: 4,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 5,
+                                    ints: 5,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 6,
+                                    ints: 6,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 7,
+                                    ints: 7,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 8,
+                                    ints: 8,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 9,
+                                    ints: 9,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 10,
+                                    ints: 10,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 11,
+                                    ints: 11,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 12,
+                                    ints: 12,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 13,
+                                    ints: 12,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 14,
+                                    ints: 13,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 15,
+                                    ints: 14,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 16,
+                                    ints: 15,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 17,
+                                    ints: 16,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 18,
+                                    ints: 17,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 19,
+                                    ints: 18,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 20,
+                                    ints: 19,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 21,
+                                    ints: 20,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 22,
+                                    ints: 20,
+                                    bools: 2,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 23,
+                                    ints: 21,
+                                    bools: 2,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 24,
+                                    ints: 22,
+                                    bools: 2,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 25,
+                                    ints: 23,
+                                    bools: 2,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 26,
+                                    ints: 24,
+                                    bools: 2,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 27,
+                                    ints: 24,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 28,
+                                    ints: 25,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 29,
+                                    ints: 26,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 30,
+                                    ints: 27,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 31,
+                                    ints: 28,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 32,
+                                    ints: 29,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 33,
+                                    ints: 30,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 34,
+                                    ints: 31,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 35,
+                                    ints: 32,
+                                    bools: 3,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 36,
+                                    ints: 32,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 37,
+                                    ints: 33,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 38,
+                                    ints: 34,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 39,
+                                    ints: 35,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 40,
+                                    ints: 36,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 41,
+                                    ints: 37,
+                                    bools: 4,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(33)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(33)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(33)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(35)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(9)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(13)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(17)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(21)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(25)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(29)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(33)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(35)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(36)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[
+                                data::compiled::CallContract {
+                                    point: 2,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(1))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 5,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(2))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 8,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(3))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 13,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(12)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(4))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(10)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(11)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 17,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(16)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(5))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(14)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(15)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2574, 2587)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 22,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(20)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(6))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(18)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(19)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2592, 2612)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 27,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(24)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(7))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(22)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(23)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(2)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 31,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(28)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(8))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(26)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(27)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2641, 2655)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 36,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(32)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(9))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(30)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(31)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(3)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 39,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(35)),
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(10))),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(34)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2686, 2695)),
+                                },
+                            ]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 41,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(36)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_0_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_5_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_6_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 3,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_8_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_10_start,
+                        })),
+                    },
+                ]),
+            }
+        },
+        constants: data::constant::ProfiledConstantTable {
+            ints: data::Storage::Static(&[]),
+            strings: data::Storage::Static(&[]),
+            bit_arrays: data::Storage::Static(&[]),
+            customs: data::Storage::Static(&[]),
+            floats: data::Storage::Static(&[]),
+            bools: data::Storage::Static(&[]),
+            nils: data::Storage::Static(&[]),
+            tuples: data::Storage::Static(&[]),
+            parameter_lists: data::Storage::Static(&[]),
+            parameter_list_lists: data::Storage::Static(&[]),
+            int_lists: data::Storage::Static(&[]),
+            string_lists: data::Storage::Static(&[]),
+            bit_array_lists: data::Storage::Static(&[]),
+            utf_codepoint_lists: data::Storage::Static(&[]),
+            custom_lists: data::Storage::Static(&[]),
+            external_lists: data::Storage::Static(&[]),
+            float_lists: data::Storage::Static(&[]),
+            bool_lists: data::Storage::Static(&[]),
+            nil_lists: data::Storage::Static(&[]),
+            tuple_lists: data::Storage::Static(&[]),
+            list_lists: data::Storage::Static(&[]),
+            function_lists: data::Storage::Static(&[]),
+            functions: data::Storage::Static(&[]),
+        },
+        function_parameters: data::function::FunctionCatalog {
+            families: [
+                0..0,
+                0..19,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+                0..0,
+            ],
+            functions: data::Storage::Static(&[
+                data::function::FunctionContract {
+                    parameters: 0..0,
+                    parameter_shapes: data::Storage::Static(&[]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 0..2,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 2..4,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 4..5,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 5..8,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(1),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 8..10,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 10..13,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(1),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 13..16,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(1),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 16..18,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 18..21,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(1),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 21..22,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 22..24,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(8),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 24..25,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 25..26,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 26..28,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                        data::type_::ValueShapeId(6),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 28..29,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 29..32,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                        data::type_::ValueShapeId(0),
+                        data::type_::ValueShapeId(0),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 32..33,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(6),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+                data::function::FunctionContract {
+                    parameters: 33..34,
+                    parameter_shapes: data::Storage::Static(&[
+                        data::type_::ValueShapeId(10),
+                    ]),
+                    return_: data::type_::ValueShapeId(0),
+                    captures: data::Storage::Static(&[]),
+                },
+            ]),
+            parameters: data::Storage::Static(&[
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(0),
+                        shape_id: data::type_::CustomValueShapeId(6),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(1),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(1),
+                        shape_id: data::type_::CustomValueShapeId(4),
+                    },
+                }),
+                data::graph::ParamLocal::Custom(data::graph::CustomLocal {
+                    id: data::graph::CustomLocalId(0),
+                    shape: data::type_::CustomValueShape {
+                        type_id: data::type_::CustomTypeId(2),
+                        shape_id: data::type_::CustomValueShapeId(7),
+                    },
+                }),
+            ]),
+        },
+        list_types: data::type_::ListTypeTable {
+            types: data::Storage::Static(&[]),
+            tuple_items: data::Storage::Static(&[]),
+            function_items: data::Storage::Static(&[]),
+        },
+        custom_types: data::type_::CustomTypeTable {
+            types: data::Storage::Static(&[
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("example"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Entry"),
+                        arguments: data::Storage::Static(&[]),
+                    },
+                    constructor_count: 3,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(0),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Credit"),
+                            native_tag: data::Text::Static("credit"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Int,
+                                    shape: data::type_::ValueShapeId(0),
+                                    refinement: data::type_::FieldRefinement::Value,
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(0),
+                                index: 1,
+                            },
+                            name: data::Text::Static("Debit"),
+                            native_tag: data::Text::Static("debit"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Int,
+                                    shape: data::type_::ValueShapeId(0),
+                                    refinement: data::type_::FieldRefinement::Value,
+                                },
+                            ]),
+                        },
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(0),
+                                index: 2,
+                            },
+                            name: data::Text::Static("Ignored"),
+                            native_tag: data::Text::Static("ignored"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("example"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Data"),
+                        arguments: data::Storage::Static(&[]),
+                    },
+                    constructor_count: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(1),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Data"),
+                            native_tag: data::Text::Static("data"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: Some(data::Text::Static("left")),
+                                    type_: data::type_::ValueType::Int,
+                                    shape: data::type_::ValueShapeId(0),
+                                    refinement: data::type_::FieldRefinement::Value,
+                                },
+                                data::type_::CustomFieldDescriptor {
+                                    label: Some(data::Text::Static("right")),
+                                    type_: data::type_::ValueType::Int,
+                                    shape: data::type_::ValueShapeId(0),
+                                    refinement: data::type_::FieldRefinement::Value,
+                                },
+                                data::type_::CustomFieldDescriptor {
+                                    label: Some(data::Text::Static("enabled")),
+                                    type_: data::type_::ValueType::Bool,
+                                    shape: data::type_::ValueShapeId(1),
+                                    refinement: data::type_::FieldRefinement::Value,
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomTypeDescriptor {
+                    type_: data::type_::NominalTypeMetadata {
+                        package: data::Text::Static("example"),
+                        module: data::Text::Static("example"),
+                        name: data::Text::Static("Nested"),
+                        arguments: data::Storage::Static(&[]),
+                    },
+                    constructor_count: 1,
+                    constructors: data::Storage::Static(&[
+                        data::type_::CustomConstructorDescriptor {
+                            id: data::type_::CustomConstructorId {
+                                type_id: data::type_::CustomTypeId(2),
+                                index: 0,
+                            },
+                            name: data::Text::Static("Nested"),
+                            native_tag: data::Text::Static("nested"),
+                            fields: data::Storage::Static(&[
+                                data::type_::CustomFieldDescriptor {
+                                    label: None,
+                                    type_: data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                                    shape: data::type_::ValueShapeId(6),
+                                    refinement: data::type_::FieldRefinement::Custom(data::Storage::Static(&[])),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+            ]),
+            definitions: data::Storage::Static(&[
+                data::type_::CustomDefinition {
+                    package: data::Text::Static("example"),
+                    module: data::Text::Static("example"),
+                    name: data::Text::Static("Data"),
+                    publicity: data::type_::CustomTypePublicity::Public,
+                    opaque: false,
+                    parameters: 0,
+                    constructors: data::Storage::Static(&[
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Data"),
+                            fields: data::Storage::Static(&[
+                                data::type_::FieldDefinition {
+                                    label: Some(data::Text::Static("left")),
+                                    type_: data::type_::TypeMetadata::Int,
+                                },
+                                data::type_::FieldDefinition {
+                                    label: Some(data::Text::Static("right")),
+                                    type_: data::type_::TypeMetadata::Int,
+                                },
+                                data::type_::FieldDefinition {
+                                    label: Some(data::Text::Static("enabled")),
+                                    type_: data::type_::TypeMetadata::Bool,
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+                data::type_::CustomDefinition {
+                    package: data::Text::Static("example"),
+                    module: data::Text::Static("example"),
+                    name: data::Text::Static("Entry"),
+                    publicity: data::type_::CustomTypePublicity::Public,
+                    opaque: false,
+                    parameters: 0,
+                    constructors: data::Storage::Static(&[
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Credit"),
+                            fields: data::Storage::Static(&[
+                                data::type_::FieldDefinition {
+                                    label: None,
+                                    type_: data::type_::TypeMetadata::Int,
+                                },
+                            ]),
+                        },
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Debit"),
+                            fields: data::Storage::Static(&[
+                                data::type_::FieldDefinition {
+                                    label: None,
+                                    type_: data::type_::TypeMetadata::Int,
+                                },
+                            ]),
+                        },
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Ignored"),
+                            fields: data::Storage::Static(&[]),
+                        },
+                    ]),
+                },
+                data::type_::CustomDefinition {
+                    package: data::Text::Static("example"),
+                    module: data::Text::Static("example"),
+                    name: data::Text::Static("Nested"),
+                    publicity: data::type_::CustomTypePublicity::Private,
+                    opaque: false,
+                    parameters: 0,
+                    constructors: data::Storage::Static(&[
+                        data::type_::ConstructorDefinition {
+                            name: data::Text::Static("Nested"),
+                            fields: data::Storage::Static(&[
+                                data::type_::FieldDefinition {
+                                    label: None,
+                                    type_: data::type_::TypeMetadata::Custom(data::type_::NominalTypeMetadata {
+                                        package: data::Text::Static("example"),
+                                        module: data::Text::Static("example"),
+                                        name: data::Text::Static("Data"),
+                                        arguments: data::Storage::Static(&[]),
+                                    }),
+                                },
+                            ]),
+                        },
+                    ]),
+                },
+            ]),
+        },
+        external_types: data::type_::ExternalTypeTable {
+            types: data::Storage::Static(&[]),
+        },
+        value_shapes: data::type_::ValueShapeTable {
+            shapes: data::Storage::Static(&[
+                data::type_::ValueShapeDescriptor::Int,
+                data::type_::ValueShapeDescriptor::Bool,
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(0)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(1)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(2)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(3)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(4)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(5)),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(6)),
+                data::type_::ValueShapeDescriptor::Tuple(data::Storage::Static(&[
+                    data::type_::ValueShapeId(6),
+                    data::type_::ValueShapeId(6),
+                ])),
+                data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(7)),
+            ]),
+            shape_types: data::Storage::Static(&[
+                data::type_::ValueType::Int,
+                data::type_::ValueType::Bool,
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(2)),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(0)),
+                data::type_::ValueType::Tuple(data::Storage::Static(&[
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                    data::type_::ValueType::Custom(data::type_::CustomTypeId(1)),
+                ])),
+                data::type_::ValueType::Custom(data::type_::CustomTypeId(2)),
+            ]),
+            custom_shapes: data::Storage::Static(&[
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(0),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(0),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(1),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(0),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(2),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(1),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(1),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(2),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Exact(0),
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(0),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+                data::type_::CustomValueShapeDescriptor {
+                    type_id: data::type_::CustomTypeId(2),
+                    arguments: data::Storage::Static(&[]),
+                    constructor: data::type_::CustomConstructorRefinement::Any,
+                },
+            ]),
+        },
+    },
+    value_functions: data::Storage::Static(&[]),
+    never_functions: data::Storage::Static(&[]),
+}

@@ -305,7 +305,8 @@ entry_target!(
     ExecutionIntFunctionFunctionBody,
     int_function_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_int_function_function
 );
 entry_target!(
     function::FloatFunctionFunctionId,
@@ -354,7 +355,8 @@ entry_target!(
     ExecutionBoolFunctionFunctionBody,
     bool_function_function,
     |id| *id,
-    |_, target| *target.function()
+    |_, target| *target.function(),
+    compiled_bool_function_function
 );
 entry_target!(
     function::NilFunctionFunctionId,

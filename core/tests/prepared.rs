@@ -1,6 +1,8 @@
 use data::compiled::bit_array::BitArrayValues;
+use data::compiled::string::{StringRange, StringValues};
 use data::compiled::{
     BitArrayImplementation, CompiledFunction, CompiledImplementation, CompiledProgress,
+    StringImplementation,
 };
 use geam_core::__prepared_support as data;
 use geam_core::embedding::{
@@ -10,8 +12,9 @@ use geam_core::embedding::{
 #[cfg(feature = "tokio")]
 use geam_core::execution::TokioHost;
 use geam_core::{
-    EchoOutput, ExecutionError, HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile,
-    compile_typed_host_program, compile_typed_module, compile_typed_program,
+    EchoOutput, ExecutionError, HostProviderSet, ModuleSource, PackageSource, PanicKind,
+    PanicMessage, StatelessHostProfile, compile_typed_host_program, compile_typed_module,
+    compile_typed_program,
 };
 use std::convert::Infallible;
 use std::sync::Mutex;
@@ -23,6 +26,18 @@ static NUMERIC_HOSTED: data::HostedModuleArtifact = include!("fixtures/prepared/
 static NUMERIC_ENTRY: data::HostedEntryArtifact = include!("fixtures/prepared/numeric_entry.rs");
 static NUMERIC_SWITCH: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/numeric_switch.rs");
+static STRING_RANGES: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/string_ranges.rs");
+static STRING_RANGES_HOSTED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/string_ranges_hosted.rs");
+static STRING_RANGES_ENTRY: data::HostedEntryArtifact =
+    include!("fixtures/prepared/string_ranges_entry.rs");
+static STRING_CHECKPOINT_ASSERTION: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/string_checkpoint_assertion.rs");
+static STRING_CHECKPOINT_STOPS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/string_checkpoint_stops.rs");
+static STRING_CHECKPOINT_HOSTED_STOP: data::HostedModuleArtifact =
+    include!("fixtures/prepared/string_checkpoint_hosted_stop.rs");
 static INT_LIST: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/int_list.rs");
 static INT_LIST_HOSTED: data::HostedModuleArtifact =
     include!("fixtures/prepared/int_list_hosted.rs");
@@ -34,6 +49,1156 @@ static LIST_CONSTRUCTION_ENTRY: data::HostedEntryArtifact =
 static LIST_CONSTRUCTION_HOSTED: data::HostedModuleArtifact =
     include!("fixtures/prepared/list_construction_hosted.rs");
 static LIST_NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/list_native.rs");
+
+#[test]
+fn string_checkpoint_generation_matches_assertion_plain_stop_and_hosted_list_artifacts() {
+    let source = include_str!("fixtures/prepared/string_checkpoints.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "after_step",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/string_checkpoint_assertion.rs").trim()
+    );
+
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+            "list_stop",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/string_checkpoint_stops.rs").trim()
+    );
+
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new("example", "src/example.gleam", source)],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+            "list_stop",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/string_checkpoint_hosted_stop.rs").trim()
+    );
+    assert!(
+        STRING_CHECKPOINT_HOSTED_STOP
+            .module
+            .program
+            .compiled
+            .ints
+            .is_empty()
+    );
+    assert!(
+        STRING_CHECKPOINT_HOSTED_STOP
+            .module
+            .program
+            .compiled
+            .int_lists
+            .is_empty()
+    );
+}
+
+#[test]
+fn string_checkpoint_assertion_resumes_after_arithmetic_without_replaying_it() {
+    use data::graph::BlockGraphExitId;
+    use geam_core::{PanicDetails, Value};
+
+    let CompiledImplementation::String(implementation) =
+        &STRING_CHECKPOINT_ASSERTION.program.compiled.ints[0].implementation
+    else {
+        panic!("after_step must use its generated String implementation");
+    };
+    let mut values = StringValues::default();
+    values.ints.push(7);
+    values.strings.push(StringRange::literal("λtail"));
+    assert_eq!(
+        (implementation.run)(implementation.entry, &mut values, &mut 1),
+        CompiledProgress::Yield(1)
+    );
+    assert_eq!(values.ints, [7, 8]);
+    assert_eq!(values.text(values.strings[0]), "λtail");
+    assert_eq!(
+        (implementation.run)(1, &mut values, &mut 100),
+        CompiledProgress::Complete(BlockGraphExitId(0))
+    );
+    assert_eq!(values.ints, [8]);
+    assert!(values.strings.is_empty());
+
+    let source = include_str!("fixtures/prepared/string_checkpoints.gleam");
+    let mut failures = Vec::new();
+    for prepared in [false, true] {
+        let (module, function) = if prepared {
+            let mut bindings = STRING_CHECKPOINT_ASSERTION.load().unwrap();
+            let function = bindings
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "after_step",
+                ))
+                .unwrap();
+            (bindings.seal(), function)
+        } else {
+            let (bindings, function) = ModuleBuilder::new(
+                compile_typed_module("example", "src/example.gleam", source).unwrap(),
+            )
+            .unwrap()
+            .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                "after_step",
+            ))
+            .unwrap();
+            (bindings.seal(), function)
+        };
+        for total in [
+            BigInt::from(7),
+            BigInt::from(i128::MAX),
+            BigInt::from(1) << 100,
+        ] {
+            let expected = &total + 1;
+            assert_eq!(
+                module
+                    .call(&function, ("λtail".into(), total), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        let error = module
+            .call(&function, ("bad".into(), 7.into()), &mut Vec::new())
+            .unwrap_err()
+            .into_materialized();
+        let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+            panic!("source assertion expected");
+        };
+        assert_eq!(panic.kind(), PanicKind::LetAssert);
+        assert_eq!(
+            panic.message(),
+            &PanicMessage::Explicit("lambda required".into())
+        );
+        assert_eq!(panic.site().module(), "example");
+        assert_eq!(panic.site().function(), "after_step");
+        assert!(
+            matches!(panic.details(), Some(PanicDetails::LetAssert { value: Value::String(value), .. }) if value.as_str() == "bad")
+        );
+        failures.push(panic);
+    }
+    assert_eq!(failures[0], failures[1]);
+}
+
+#[test]
+fn string_checkpoint_stop_returns_to_the_source_panic_owner_and_keeps_list_fallback() {
+    let compiled = &STRING_CHECKPOINT_STOPS.program.compiled;
+    assert_eq!(compiled.ints.len(), 1);
+    assert!(compiled.int_lists.is_empty());
+    let CompiledImplementation::String(implementation) = &compiled.ints[0].implementation else {
+        panic!("stop must use its generated String implementation");
+    };
+    assert_eq!(implementation.checkpoints.len(), 1);
+    let mut values = StringValues::default();
+    values.strings.push(StringRange::literal("source message"));
+    assert_eq!(
+        (implementation.run)(implementation.entry, &mut values, &mut 0),
+        CompiledProgress::Yield(0)
+    );
+    assert_eq!(values.text(values.strings[0]), "source message");
+    assert_eq!(
+        (implementation.run)(0, &mut values, &mut 100),
+        CompiledProgress::Interpreted(0)
+    );
+    assert_eq!(values.text(values.strings[0]), "source message");
+
+    let source = include_str!("fixtures/prepared/string_checkpoints.gleam");
+    let mut failures = Vec::new();
+    for prepared in [false, true] {
+        let (module, stop, list_stop) = if prepared {
+            let mut bindings = STRING_CHECKPOINT_STOPS.load().unwrap();
+            let stop = bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))
+                .unwrap();
+            let list_stop = bindings
+                .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+                    "list_stop",
+                ))
+                .unwrap();
+            (bindings.seal(), stop, list_stop)
+        } else {
+            let (mut bindings, stop) = ModuleBuilder::new(
+                compile_typed_module("example", "src/example.gleam", source).unwrap(),
+            )
+            .unwrap()
+            .function(FunctionDeclaration::<(StringValue,), BigInt>::new("stop"))
+            .unwrap();
+            let list_stop = bindings
+                .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+                    "list_stop",
+                ))
+                .unwrap();
+            (bindings.seal(), stop, list_stop)
+        };
+        for (name, error) in [
+            (
+                "stop",
+                module
+                    .call(&stop, ("source message".into(),), &mut Vec::new())
+                    .unwrap_err(),
+            ),
+            (
+                "list_stop",
+                module
+                    .call(&list_stop, ("source message".into(),), &mut Vec::new())
+                    .err()
+                    .unwrap(),
+            ),
+        ] {
+            let CallError::Execution(ExecutionError::Panic(panic)) = error.into_materialized()
+            else {
+                panic!("source panic expected");
+            };
+            assert_eq!(panic.kind(), PanicKind::Panic);
+            assert_eq!(
+                panic.message(),
+                &PanicMessage::Explicit("source message".into())
+            );
+            assert_eq!(panic.site().module(), "example");
+            assert_eq!(panic.site().function(), name);
+            assert_eq!(panic.details(), None);
+            failures.push(panic);
+        }
+    }
+    assert_eq!(failures[0], failures[2]);
+    assert_eq!(failures[1], failures[3]);
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn string_checkpoint_hosted_list_stop_preserves_the_interpreted_panic_contract() {
+    let mut bindings = STRING_CHECKPOINT_HOSTED_STOP
+        .load(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
+        .unwrap();
+    let function = bindings
+        .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
+            "list_stop",
+        ))
+        .unwrap();
+    let mut module = bindings.seal();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let error = runtime
+        .block_on(
+            module.with_execution(&host, &mut (), &mut Vec::new(), async |scope| {
+                scope
+                    .call(&function, ("hosted source message".into(),))
+                    .await
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap()
+        .err()
+        .unwrap()
+        .into_materialized();
+    let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+        panic!("hosted source panic expected");
+    };
+    assert_eq!(panic.kind(), PanicKind::Panic);
+    assert_eq!(
+        panic.message(),
+        &PanicMessage::Explicit("hosted source message".into())
+    );
+    assert_eq!(panic.site().module(), "example");
+    assert_eq!(panic.site().function(), "list_stop");
+    assert_eq!(panic.details(), None);
+}
+
+macro_rules! string_functions {
+    ($bindings:ident, $count:expr) => {
+        (
+            $count,
+            $bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new("select"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (StringValue, StringValue, bool, BigInt),
+                    BigInt,
+                >::new("aliases"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (StringValue, StringValue, BigInt),
+                    BigInt,
+                >::new("alternate"))
+                .unwrap(),
+            $bindings
+                .function(
+                    FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"),
+                )
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(StringValue,), bool>::new(
+                    "empty_prefix",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(), BigInt>::new("literal_only"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "asserted",
+                ))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<
+                    (StringValue, BigInt),
+                    (StringValue, BigInt, List<BigInt>, bool),
+                >::new("caller"))
+                .unwrap(),
+            $bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+                    "unsupported",
+                ))
+                .unwrap(),
+        )
+    };
+}
+
+#[test]
+fn generated_string_ranges_match_dynamic_sources_aliases_guards_literals_and_big_fallbacks() {
+    let source = include_str!("fixtures/prepared/string_ranges.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, count) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "count",
+        ))
+        .unwrap();
+    let _ = string_functions!(bindings, count);
+    bindings
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new("spin"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(), BigInt>::new("main"))
+        .unwrap();
+    for name in ["assert_literal", "assert_prefix"] {
+        bindings
+            .function(FunctionDeclaration::<(StringValue,), BigInt>::new(name))
+            .unwrap();
+    }
+    bindings
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "assert_suffix",
+        ))
+        .unwrap();
+    bindings
+        .function(
+            FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new(
+                "bits_with_boolean_guard",
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/string_ranges.rs").trim()
+    );
+    assert_eq!(
+        STRING_RANGES
+            .program
+            .compiled
+            .ints
+            .iter()
+            .map(|target| target.function.0)
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12]
+    );
+    assert_eq!(STRING_RANGES.program.compiled.bools.len(), 2);
+    assert!(
+        STRING_RANGES
+            .program
+            .compiled
+            .ints
+            .iter()
+            .take(11)
+            .all(|target| matches!(target.implementation, CompiledImplementation::String(_)))
+    );
+    assert!(matches!(
+        STRING_RANGES.program.compiled.ints[11].implementation,
+        CompiledImplementation::BitArray(_)
+    ));
+    for prepared in [false, true] {
+        let (module, functions) = if prepared {
+            let mut bindings = STRING_RANGES.load().unwrap();
+            let count = bindings
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "count",
+                ))
+                .unwrap();
+            let functions = string_functions!(bindings, count);
+            (bindings.seal(), functions)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, count) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "count",
+                ))
+                .unwrap();
+            let functions = string_functions!(bindings, count);
+            (bindings.seal(), functions)
+        };
+        let (
+            count,
+            select,
+            aliases,
+            alternate,
+            same,
+            empty,
+            literal,
+            asserted,
+            caller,
+            unsupported,
+        ) = functions;
+        let big: BigInt = BigInt::from(1) << 180;
+        for repeats in [0, 1, 17, 4096] {
+            let input = StringValue::from("λ".repeat(repeats));
+            for total in [
+                BigInt::from(5),
+                i64::MAX.into(),
+                BigInt::from(i64::MAX) - 7,
+                big.clone(),
+            ] {
+                assert_eq!(
+                    module
+                        .call(&count, (input.clone(), total.clone()), &mut Vec::new())
+                        .unwrap(),
+                    total + BigInt::from(repeats)
+                );
+            }
+        }
+        for (text, expected) in [
+            ("red", 7),
+            ("blue", 9),
+            ("\n\"\\λ", 11),
+            ("", -1),
+            ("redder", -1),
+        ] {
+            assert_eq!(
+                module
+                    .call(&select, (StringValue::from(text),), &mut Vec::new())
+                    .unwrap(),
+                expected.into()
+            );
+        }
+        let original = StringValue::from("hidden:λλλλλλλλλλλλλλλλλλλλλλλλλλλλλλλλ:end");
+        let input = original.slice(7..original.len() - 4);
+        assert_eq!(
+            module
+                .call(&count, (input, 0.into()), &mut Vec::new())
+                .unwrap(),
+            32.into()
+        );
+        for (left, right, flag, extra) in [
+            ("λtail", "tail", true, 2),
+            ("λtail", "tail", false, 4),
+            ("λtail", "different", true, 8),
+            ("tail", "tail", true, 16),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &aliases,
+                        (left.into(), right.into(), flag, 10.into()),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                (10 + extra).into()
+            );
+        }
+        assert_eq!(
+            module
+                .call(
+                    &alternate,
+                    ("λλ".into(), "mmm".into(), 4.into()),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            9.into()
+        );
+        assert_eq!(
+            module.call(&literal, (), &mut Vec::new()).unwrap(),
+            7.into()
+        );
+        for (left, right, expected) in [("λ", "λ", true), ("λ", "m", false), ("", "", true)] {
+            assert!(
+                module
+                    .call(
+                        &same,
+                        (left.into(), right.into(), expected),
+                        &mut Vec::new()
+                    )
+                    .unwrap()
+            );
+            assert!(
+                !module
+                    .call(
+                        &same,
+                        (left.into(), right.into(), !expected),
+                        &mut Vec::new()
+                    )
+                    .unwrap()
+            );
+        }
+        for text in ["", "λ", "\n\"\\", "longer than inline string storage"] {
+            assert!(
+                module
+                    .call(&empty, (text.into(),), &mut Vec::new())
+                    .unwrap()
+            );
+        }
+        assert_eq!(
+            module
+                .call(
+                    &asserted,
+                    ("λtail".into(), i64::MAX.into()),
+                    &mut Vec::new()
+                )
+                .unwrap(),
+            BigInt::from(i64::MAX) + 1
+        );
+        let retained = StringValue::from("λ".repeat(64));
+        let pointer = retained.as_str().as_ptr();
+        let result = module
+            .call(&caller, (retained, 2.into()), &mut Vec::new())
+            .unwrap();
+        assert_eq!(result.0.as_str().as_ptr(), pointer);
+        assert_eq!(result.1, 66.into());
+        assert_eq!(result.2.to_vec(), [3.into(), 5.into()]);
+        assert!(result.3);
+        assert_eq!(
+            module
+                .call(&unsupported, ("".into(),), &mut Vec::new())
+                .unwrap(),
+            1.into()
+        );
+        for (function, text, message, kind) in [
+            (&count, "λλbad", "expected lambda prefix", PanicKind::Panic),
+            (&asserted, "bad", "lambda required", PanicKind::LetAssert),
+        ] {
+            let error = module
+                .call(function, (text.into(), 5.into()), &mut Vec::new())
+                .unwrap_err()
+                .into_materialized();
+            let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                panic!("source failure expected");
+            };
+            assert_eq!(panic.kind(), kind);
+            assert_eq!(panic.message(), &PanicMessage::Explicit(message.into()));
+            assert_eq!(panic.site().module(), "example");
+        }
+    }
+}
+
+#[test]
+fn generated_string_assertions_keep_literal_unused_prefix_and_scalar_guard_semantics() {
+    let source = include_str!("fixtures/prepared/string_ranges.gleam");
+    for prepared in [false, true] {
+        let (module, literal, prefix, suffix, bits) = if prepared {
+            let mut bindings = STRING_RANGES.load().unwrap();
+            let literal = bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+                    "assert_literal",
+                ))
+                .unwrap();
+            let prefix = bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+                    "assert_prefix",
+                ))
+                .unwrap();
+            let suffix = bindings
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "assert_suffix",
+                ))
+                .unwrap();
+            let bits = bindings
+                .function(
+                    FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new(
+                        "bits_with_boolean_guard",
+                    ),
+                )
+                .unwrap();
+            (bindings.seal(), literal, prefix, suffix, bits)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, literal) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+                    "assert_literal",
+                ))
+                .unwrap();
+            let prefix = bindings
+                .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+                    "assert_prefix",
+                ))
+                .unwrap();
+            let suffix = bindings
+                .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+                    "assert_suffix",
+                ))
+                .unwrap();
+            let bits = bindings
+                .function(
+                    FunctionDeclaration::<(BitArrayValue, bool, bool), BigInt>::new(
+                        "bits_with_boolean_guard",
+                    ),
+                )
+                .unwrap();
+            (bindings.seal(), literal, prefix, suffix, bits)
+        };
+        assert_eq!(
+            module
+                .call(&literal, ("\n\"\\λ".into(),), &mut Vec::new())
+                .unwrap(),
+            17.into()
+        );
+        for text in ["λ", "λtail", "λλλλ"] {
+            assert_eq!(
+                module
+                    .call(&prefix, (text.into(),), &mut Vec::new())
+                    .unwrap(),
+                19.into()
+            );
+        }
+        let big: BigInt = BigInt::from(1) << 100;
+        for (text, total, expected) in [
+            ("λtail", BigInt::from(7), BigInt::from(30)),
+            ("λother", BigInt::from(0), BigInt::from(29)),
+            ("λtail", BigInt::from(-1), BigInt::from(-1)),
+            ("λtail", big.clone(), big + 23),
+        ] {
+            assert_eq!(
+                module
+                    .call(&suffix, (text.into(), total), &mut Vec::new())
+                    .unwrap(),
+                expected
+            );
+        }
+        for (left, right, expected) in [
+            (true, true, 7),
+            (false, false, 7),
+            (true, false, 0),
+            (false, true, 0),
+        ] {
+            assert_eq!(
+                module
+                    .call(
+                        &bits,
+                        (BitArrayValue::from_bytes(vec![7, 8]), left, right),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                expected.into()
+            );
+        }
+        for (function, message) in [(&literal, "literal required"), (&prefix, "prefix required")] {
+            let error = module
+                .call(function, ("wrong".into(),), &mut Vec::new())
+                .unwrap_err()
+                .into_materialized();
+            assert!(
+                matches!(error, CallError::Execution(ExecutionError::Panic(ref panic))
+                if panic.kind() == PanicKind::LetAssert && panic.message() == &PanicMessage::Explicit(message.into()))
+            );
+        }
+    }
+}
+
+#[test]
+fn string_compiled_links_reject_a_universal_foreign_match_before_execution() {
+    // An irrefutable String pattern is valid graph data, but the generated
+    // String leaf contract only supports literal and prefix assertions.
+    // Keep the no-binding assertion's real headers, slots and exits intact.
+    const ARTIFACT: data::ModuleArtifact<Infallible> =
+        include!("fixtures/prepared/string_ranges.rs");
+    let mut artifact = ARTIFACT;
+    let functions = STRING_RANGES
+        .program
+        .functions
+        .value_returns
+        .int_functions
+        .iter()
+        .enumerate()
+        .map(|(index, function)| {
+            let graph = &function.body.block_graph;
+            let blocks = graph
+                .blocks
+                .iter()
+                .map(|block| {
+                    let mut terminator = block.terminator.clone();
+                    if index == 10
+                        && let data::graph::Terminator::Match(matcher) = &mut terminator
+                    {
+                        assert!(matcher.success.bindings.is_empty());
+                        matcher.pattern = data::graph::MatchPattern::Discard;
+                    }
+                    data::graph::BlockHeader {
+                        params: block.params.clone(),
+                        instructions: block.instructions.clone(),
+                        terminator,
+                    }
+                })
+                .collect::<Vec<_>>();
+            data::function::ExecutableFunction {
+                entry: data::function::FunctionEntry {
+                    parameter_count: function.entry.parameter_count,
+                },
+                body: data::function::ProfiledFunctionBody {
+                    block_graph: data::graph::ProfiledBlockGraph {
+                        entry: graph.entry,
+                        blocks: blocks.into(),
+                        params: data::Storage::Static(&graph.params),
+                        instructions: data::Storage::Static(&graph.instructions),
+                    },
+                    exits: data::Storage::Static(&function.body.exits),
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    artifact.program.functions.value_returns.int_functions = functions.into();
+    let error = Box::leak(Box::new(artifact)).load().err().unwrap();
+    assert_eq!(
+        error.to_string(),
+        "invalid prepared program: Compiled(CompiledError { family: Int, function: 10, reason: UnsupportedGraph }); regenerate the prepared program"
+    );
+}
+
+#[test]
+fn string_ranges_hosted_and_standalone_use_the_same_generated_links() {
+    let source = include_str!("fixtures/prepared/string_ranges.gleam");
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new("example", "src/example.gleam", source)],
+        )],
+        HostProviderSet::<work_provider::Profile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "count",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (StringValue, StringValue, bool, BigInt),
+            BigInt,
+        >::new("aliases"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(StringValue, StringValue, bool), bool>::new("same"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(StringValue,), bool>::new(
+            "empty_prefix",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "asserted",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<
+            (StringValue, BigInt),
+            (StringValue, BigInt, List<BigInt>, bool),
+        >::new("caller"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+            "running",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/string_ranges_hosted.rs").trim()
+    );
+    let mut bindings = STRING_RANGES_HOSTED
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let count = bindings
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "count",
+        ))
+        .unwrap();
+    let mut module = bindings.seal();
+    assert_eq!(STRING_RANGES_ENTRY.program.compiled.ints.len(), 2);
+    #[cfg(feature = "tokio")]
+    {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let host = TokioHost::new(runtime.handle().clone());
+        let mut entry = STRING_RANGES_ENTRY
+            .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+            .unwrap();
+        let mut echo = Vec::new();
+        assert_eq!(
+            runtime
+                .block_on(
+                    module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                        scope.call(&count, ("λλλ".into(), 4.into())).await
+                    })
+                )
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .unwrap(),
+            BigInt::from(7)
+        );
+        runtime
+            .block_on(entry.run(&host, &mut (), &mut echo))
+            .unwrap();
+        assert!(echo.is_empty());
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_string_hosted_calls_keep_live_values_across_error_cancel_and_reentry() {
+    use geam_core::{PanicDetails, PanicKind, Value};
+    use std::future::{Future, poll_fn};
+    use std::task::Poll;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut bindings = STRING_RANGES_HOSTED
+        .load(HostProviderSet::<work_provider::Profile>::new([]).unwrap())
+        .unwrap();
+    let caller = bindings
+        .function(FunctionDeclaration::<
+            (StringValue, BigInt),
+            (StringValue, BigInt, List<BigInt>, bool),
+        >::new("caller"))
+        .unwrap();
+    let asserted = bindings
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "asserted",
+        ))
+        .unwrap();
+    let running = bindings
+        .function(FunctionDeclaration::<(StringValue,), BigInt>::new(
+            "running",
+        ))
+        .unwrap();
+    let mut module = bindings.seal();
+    let (started, ready) = tokio::sync::oneshot::channel();
+    let mut started = Some(started);
+    let mut outputs = Vec::new();
+    let mut echo = |output: EchoOutput| {
+        outputs.push(output.to_string());
+        if let Some(started) = started.take() {
+            started.send(()).unwrap();
+        }
+    };
+    runtime.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                let original = StringValue::from("λ".repeat(128));
+                let pointer = original.as_str().as_ptr();
+                let (text, count, values, same) =
+                    scope.call(&caller, (original, 2.into())).await.unwrap();
+                assert_eq!(text.as_str().as_ptr(), pointer);
+                assert_eq!(count, BigInt::from(130));
+                assert_eq!(values.len(), 2);
+                assert_eq!(values.read_item(0, Clone::clone), Some(3.into()));
+                assert_eq!(values.read_item(1, Clone::clone), Some(5.into()));
+                assert!(same);
+                let error = scope
+                    .call(&asserted, (StringValue::from("bad"), 4.into()))
+                    .await
+                    .unwrap_err()
+                    .into_materialized();
+                let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                    panic!("string let-assert must fail");
+                };
+                assert_eq!(panic.kind(), PanicKind::LetAssert);
+                assert!(matches!(
+                    panic.details(),
+                    Some(PanicDetails::LetAssert { value: Value::String(value), .. })
+                        if value.as_str() == "bad"
+                ));
+                let mut pending =
+                    Box::pin(scope.call(&running, (StringValue::from("λ".repeat(128)),)));
+                let mut ready = Box::pin(ready);
+                poll_fn(|context| {
+                    if let Poll::Ready(result) = pending.as_mut().poll(context) {
+                        panic!("infinite string call returned: {result:?}");
+                    }
+                    ready.as_mut().poll(context)
+                })
+                .await
+                .unwrap();
+                drop(pending);
+                let result = scope
+                    .call(&caller, (StringValue::from("λλ"), 9.into()))
+                    .await
+                    .unwrap();
+                assert_eq!(result.1, BigInt::from(11));
+                assert_eq!(text.as_str(), "λ".repeat(128));
+                assert_eq!(values.read_item(0, Clone::clone), Some(3.into()));
+                assert_eq!(values.read_item(1, Clone::clone), Some(5.into()));
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    });
+    assert_eq!(outputs.len(), 1);
+    assert!(outputs[0].ends_with("\"entered-string\""));
+    drop(module);
+}
+
+#[derive(Default)]
+struct StringCheckpointTrace {
+    allowance: usize,
+    steps: usize,
+    prefixes: Vec<StringPrefix>,
+}
+
+struct StringPrefix {
+    progress: CompiledProgress,
+    ints: Vec<i128>,
+    bools: Vec<bool>,
+    strings: Vec<String>,
+}
+
+static STRING_CHECKPOINT_TRACE: Mutex<StringCheckpointTrace> = Mutex::new(StringCheckpointTrace {
+    allowance: 1,
+    steps: 0,
+    prefixes: Vec::new(),
+});
+
+fn traced_string_count(
+    point: usize,
+    values: &mut StringValues,
+    budget: &mut usize,
+) -> CompiledProgress {
+    let CompiledImplementation::String(implementation) =
+        &STRING_RANGES.program.compiled.ints[0].implementation
+    else {
+        panic!("string count fixture must use its generated implementation");
+    };
+    let mut trace = STRING_CHECKPOINT_TRACE.lock().unwrap();
+    let allowance = trace.allowance.min(*budget);
+    let mut remaining = allowance;
+    let progress = (implementation.run)(point, values, &mut remaining);
+    let consumed = allowance - remaining;
+    *budget -= consumed;
+    trace.steps += consumed;
+    trace.prefixes.push(StringPrefix {
+        progress,
+        ints: values.ints.clone(),
+        bools: values.bools.clone(),
+        strings: values
+            .strings
+            .iter()
+            .map(|value| values.text(*value).to_owned())
+            .collect(),
+    });
+    progress
+}
+
+#[test]
+fn generated_string_checkpoints_restore_each_completed_prefix_and_never_replay_overflow() {
+    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/string_ranges.rs");
+    let mut artifact = BASE;
+    let target = artifact.entries.ints[0].function;
+    let function = artifact
+        .program
+        .compiled
+        .ints
+        .iter()
+        .find(|function| function.function == target)
+        .unwrap();
+    let CompiledImplementation::String(implementation) = &function.implementation else {
+        panic!("count must select its String implementation");
+    };
+    artifact.program.compiled.ints = vec![CompiledFunction {
+        function: target,
+        implementation: CompiledImplementation::String(StringImplementation {
+            entry: implementation.entry,
+            checkpoints: implementation.checkpoints.clone(),
+            run: traced_string_count,
+        }),
+    }]
+    .into();
+    let artifact = Box::leak(Box::new(artifact));
+    let mut bindings = artifact.load().unwrap();
+    let count = bindings
+        .function(FunctionDeclaration::<(StringValue, BigInt), BigInt>::new(
+            "count",
+        ))
+        .unwrap();
+    let module = bindings.seal();
+    let CompiledImplementation::String(implementation) =
+        &STRING_RANGES.program.compiled.ints[0].implementation
+    else {
+        panic!("generated string count");
+    };
+    for allowance in [1, 2, 3, 4, 7, 31, 1024] {
+        *STRING_CHECKPOINT_TRACE.lock().unwrap() = StringCheckpointTrace {
+            allowance,
+            ..Default::default()
+        };
+        assert_eq!(
+            module
+                .call(&count, ("λλ".into(), 3.into()), &mut Vec::new())
+                .unwrap(),
+            5.into()
+        );
+        let trace = STRING_CHECKPOINT_TRACE.lock().unwrap();
+        assert_eq!(trace.steps, 12);
+        for prefix in &trace.prefixes {
+            let StringPrefix {
+                progress,
+                ints,
+                bools,
+                strings,
+            } = prefix;
+            match progress {
+                CompiledProgress::Yield(next) => {
+                    let checkpoint = implementation.checkpoints[*next];
+                    assert_eq!(
+                        (ints.len(), bools.len(), strings.len()),
+                        (checkpoint.ints, checkpoint.bools, checkpoint.strings)
+                    );
+                }
+                CompiledProgress::Complete(_) => assert_eq!(ints, &[5]),
+                CompiledProgress::Interpreted(_) => {
+                    panic!("small prefix count must stay generated")
+                }
+            }
+        }
+        if allowance == 1 {
+            assert_eq!(
+                trace
+                    .prefixes
+                    .iter()
+                    .map(|prefix| (
+                        prefix.ints.clone(),
+                        prefix
+                            .strings
+                            .iter()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                    ))
+                    .collect::<Vec<_>>(),
+                [
+                    (vec![3], vec!["λλ"]),
+                    (vec![3], vec!["λλ", "λ"]),
+                    (vec![3, 4], vec!["λλ", "λ"]),
+                    (vec![4], vec!["λ"]),
+                    (vec![4], vec!["λ"]),
+                    (vec![4], vec!["λ", ""]),
+                    (vec![4, 5], vec!["λ", ""]),
+                    (vec![5], vec![""]),
+                    (vec![5], vec![""]),
+                    (vec![5], vec!["", ""]),
+                    (vec![5], vec![]),
+                    (vec![5], vec![]),
+                ]
+            );
+        }
+    }
+    for (initial, expected_steps, suffix) in [(i64::MAX, 3, "λ"), (i64::MAX - 1, 7, "")] {
+        *STRING_CHECKPOINT_TRACE.lock().unwrap() = StringCheckpointTrace {
+            allowance: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            module
+                .call(&count, ("λλ".into(), initial.into()), &mut Vec::new())
+                .unwrap(),
+            BigInt::from(initial) + 2
+        );
+        let trace = STRING_CHECKPOINT_TRACE.lock().unwrap();
+        assert_eq!(trace.steps, expected_steps);
+        let prefix = trace.prefixes.last().unwrap();
+        let CompiledProgress::Interpreted(point) = &prefix.progress else {
+            panic!("completed overflow must leave at the next checkpoint");
+        };
+        assert_eq!(implementation.checkpoints[*point].instruction, 2);
+        assert_eq!(prefix.ints.last(), Some(&(i128::from(i64::MAX) + 1)));
+        assert_eq!(
+            &prefix.strings,
+            &[
+                String::from(if initial == i64::MAX { "λλ" } else { "λ" }),
+                String::from(suffix)
+            ]
+        );
+    }
+    let big: BigInt = BigInt::from(1) << 180;
+    *STRING_CHECKPOINT_TRACE.lock().unwrap() = StringCheckpointTrace {
+        allowance: 1,
+        ..Default::default()
+    };
+    assert_eq!(
+        module
+            .call(&count, ("λ".into(), big.clone()), &mut Vec::new())
+            .unwrap(),
+        big + 1
+    );
+    assert!(STRING_CHECKPOINT_TRACE.lock().unwrap().prefixes.is_empty());
+    std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            *STRING_CHECKPOINT_TRACE.lock().unwrap() = StringCheckpointTrace {
+                allowance: 31,
+                ..Default::default()
+            };
+            assert_eq!(
+                module
+                    .call(
+                        &count,
+                        (StringValue::from("λ".repeat(10_000)), 0.into()),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                10_000.into()
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
 
 #[path = "fixtures/prepared/list_provider.rs"]
 mod list_provider;
@@ -107,9 +1272,12 @@ fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_
         .int_lists
         .iter()
         .map(|target| match target.implementation {
-            data::compiled::CompiledImplementation::Numeric(_) => "numeric",
-            data::compiled::CompiledImplementation::BitArray(_) => "bit_array",
-            data::compiled::CompiledImplementation::IntList(_) => "int_list",
+            CompiledImplementation::Numeric(_) => "numeric",
+            CompiledImplementation::BitArray(_) => "bit_array",
+            CompiledImplementation::IntList(_) => "int_list",
+            CompiledImplementation::CustomLoop(_) => "custom_loop",
+            CompiledImplementation::String(_) => "string",
+            CompiledImplementation::FunctionCalls(_) => "function_calls",
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -2077,6 +3245,11 @@ fn compiled_checkpoints_advance_with_one_step_and_preserve_completed_outputs() {
             bools: 0,
             bit_arrays: 0,
             int_lists: 0,
+            strings: 0,
+            customs: 0,
+            custom_lists: 0,
+            int_functions: 0,
+            bool_functions: 0,
         }
     );
     assert_eq!(
@@ -3143,7 +4316,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 16; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 19; regenerate the prepared program"
     );
 }
 
@@ -4351,6 +5524,11 @@ fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindi
     actual_bodies
         .function(FunctionDeclaration::<(), BigInt>::new("producer"))
         .unwrap();
+    actual_bodies
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
     assert_eq!(
         actual_bodies.prepare().unwrap().emit_rust(),
         callable_declarations::prepare().emit_rust()
@@ -4411,6 +5589,58 @@ fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_i
 }
 
 static NATIVE_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_bool_native_bridge_resumes_the_source_capture_and_caller_once() {
+    let typed = compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (dynamic, predicate) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
+    let mut prepared = CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+    let prepared_predicate = prepared
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for (mut module, predicate) in [
+        (dynamic.seal().unwrap(), predicate),
+        (prepared.seal(), prepared_predicate),
+    ] {
+        let mut echo = Vec::new();
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    assert!(!scope.call(&predicate, (7.into(),)).await.unwrap());
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(
+            echo.iter()
+                .map(|event| event.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["8"]
+        );
+    }
+}
 
 #[test]
 fn native_view_artifact_matches_declaration_only_preparation() {

@@ -1,12 +1,26 @@
+pub(crate) mod calls;
+mod entries;
+pub use calls::{
+    CallContract, CallContractTarget, CallTarget, CreationContract, FunctionCallsImplementation,
+    ReturnContract, TailContract,
+};
+pub(super) use entries::CompiledEntries;
+
 use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{
-    BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
+    BoolFunctionId, CustomFunctionId, ExecutionBoolFunctionBody, ExecutionIntFunctionBody,
+    ExecutionProfile, IntFunctionId, IntListFunctionId,
 };
-use crate::plan::execution::graph::BlockId;
-use crate::plan::execution::storage::Table;
+use crate::plan::execution::graph::{
+    BlockId, BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, ParamLocal,
+};
+use crate::plan::execution::storage::{Node, Table};
+use crate::plan::execution::type_::FunctionType;
 use crate::runtime::compiled::bit_array::BitArrayKernel;
+use crate::runtime::compiled::custom_loop::{CallbackKernel, CustomLoopKernel};
 use crate::runtime::compiled::int_list::IntListKernel;
 use crate::runtime::compiled::numeric::NumericKernel;
+use crate::runtime::compiled::string::StringKernel;
 
 /// Compiler-generated implementations, separate from the canonical graph.
 ///
@@ -17,6 +31,8 @@ pub struct CompiledFunctions {
     pub bools: Table<CompiledFunction<BoolFunctionId>>,
     pub customs: Table<CompiledFunction<usize>>,
     pub int_lists: Table<CompiledFunction<IntListFunctionId>>,
+    pub callbacks: CompiledCallbacks,
+    pub function_calls: Table<CompiledFunction<CallTarget>>,
 }
 
 pub struct CompiledFunction<Id> {
@@ -28,6 +44,9 @@ pub enum CompiledImplementation {
     Numeric(NumericImplementation),
     BitArray(BitArrayImplementation),
     IntList(IntListImplementation),
+    CustomLoop(Node<CustomLoopImplementation>),
+    String(StringImplementation),
+    FunctionCalls(Node<FunctionCallsImplementation>),
 }
 
 impl CompiledImplementation {
@@ -36,6 +55,9 @@ impl CompiledImplementation {
             Self::Numeric(value) => value.entry,
             Self::BitArray(value) => value.entry,
             Self::IntList(value) => value.entry,
+            Self::CustomLoop(value) => value.entry,
+            Self::String(value) => value.entry,
+            Self::FunctionCalls(value) => value.entry,
         }
     }
 
@@ -44,6 +66,9 @@ impl CompiledImplementation {
             Self::Numeric(value) => &value.checkpoints,
             Self::BitArray(value) => &value.checkpoints,
             Self::IntList(value) => &value.checkpoints,
+            Self::CustomLoop(value) => &value.checkpoints,
+            Self::String(value) => &value.checkpoints,
+            Self::FunctionCalls(value) => &value.checkpoints,
         }
     }
 }
@@ -66,6 +91,78 @@ pub struct IntListImplementation {
     pub run: IntListKernel,
 }
 
+pub struct CustomLoopImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub calls: Table<CompiledLoopCall>,
+    pub run: CustomLoopKernel,
+}
+
+/// Leaf bodies shared by supported callers. No caller/callee cross product is
+/// retained; a caller binds its actual typed function value once on entry.
+pub struct CompiledCallbacks {
+    pub ints: Table<CompiledCallback<IntFunctionId, i128, IntLocalId>>,
+    pub bools: Table<CompiledCallback<BoolFunctionId, bool, BoolLocalId>>,
+}
+
+pub struct CompiledCallback<Id, Value, Local: 'static> {
+    pub function: Id,
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: CallbackKernel<Value>,
+    pub returns: Table<Local>,
+}
+
+/// Admission resolves these views once against the same immutable function
+/// tables. Runtime connections borrow them without classifying targets again.
+pub(crate) struct CompiledCallbackBodies<'data, Profile: ExecutionProfile> {
+    pub(crate) ints:
+        Vec<CompiledCallbackBody<'data, ExecutionIntFunctionBody<Profile>, IntLocalId>>,
+    pub(crate) bools:
+        Vec<CompiledCallbackBody<'data, ExecutionBoolFunctionBody<Profile>, BoolLocalId>>,
+}
+
+pub(crate) struct CompiledCallbackBody<'data, Body, Local> {
+    pub(crate) body: &'data Body,
+    pub(crate) checkpoints: &'data [CompiledCheckpoint],
+    pub(crate) returns: &'data [Local],
+}
+
+impl<Profile: ExecutionProfile> CompiledCallbackBodies<'_, Profile> {
+    pub(in crate::plan::execution) const fn interpreted() -> Self {
+        Self {
+            ints: Vec::new(),
+            bools: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledLoopCall {
+    pub point: usize,
+    pub function: CompiledLoopFunction,
+    pub args: Table<ParamLocal>,
+    pub output: ParamLocal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompiledLoopFunction {
+    Int {
+        local: IntFunctionLocalId,
+        type_: FunctionType,
+    },
+    Bool {
+        local: BoolFunctionLocalId,
+        type_: FunctionType,
+    },
+}
+
+pub struct StringImplementation {
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub run: StringKernel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompiledCheckpoint {
     pub block: BlockId,
@@ -74,6 +171,11 @@ pub struct CompiledCheckpoint {
     pub bools: usize,
     pub bit_arrays: usize,
     pub int_lists: usize,
+    pub strings: usize,
+    pub customs: usize,
+    pub custom_lists: usize,
+    pub int_functions: usize,
+    pub bool_functions: usize,
 }
 
 impl CompiledFunctions {
@@ -83,6 +185,8 @@ impl CompiledFunctions {
             bools: Table::Static(&[]),
             customs: Table::Static(&[]),
             int_lists: Table::Static(&[]),
+            callbacks: CompiledCallbacks::interpreted(),
+            function_calls: Table::Static(&[]),
         }
     }
 
@@ -92,10 +196,15 @@ impl CompiledFunctions {
             bools: Table::Static(&self.bools),
             customs: Table::Static(&self.customs),
             int_lists: Table::Static(&self.int_lists),
+            callbacks: self.callbacks.borrowed(),
+            function_calls: Table::Static(&self.function_calls),
         }
     }
 
     pub(crate) fn int(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
+        if let Some(implementation) = self.call_root(CallTarget::Int(id)) {
+            return Some(implementation);
+        }
         self.ints
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
@@ -103,6 +212,9 @@ impl CompiledFunctions {
     }
 
     pub(crate) fn bool(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
+        if let Some(implementation) = self.call_root(CallTarget::Bool(id)) {
+            return Some(implementation);
+        }
         self.bools
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
@@ -124,6 +236,53 @@ impl CompiledFunctions {
             .ok()
             .map(|index| &self.int_lists[index].implementation)
     }
+
+    pub(crate) fn call_root(&self, target: CallTarget) -> Option<&CompiledImplementation> {
+        self.call(target).filter(|implementation| matches!(implementation, CompiledImplementation::FunctionCalls(calls) if calls.root))
+    }
+
+    pub(crate) fn call(&self, target: CallTarget) -> Option<&CompiledImplementation> {
+        self.function_calls
+            .binary_search_by_key(&target.key(), |entry| entry.function.key())
+            .ok()
+            .map(|index| &self.function_calls[index].implementation)
+    }
+}
+
+impl CompiledCallbacks {
+    pub const fn interpreted() -> Self {
+        Self {
+            ints: Table::Static(&[]),
+            bools: Table::Static(&[]),
+        }
+    }
+
+    fn borrowed(&'static self) -> Self {
+        Self {
+            ints: Table::Static(&self.ints),
+            bools: Table::Static(&self.bools),
+        }
+    }
+
+    pub(crate) fn int(
+        &self,
+        id: IntFunctionId,
+    ) -> Option<&CompiledCallback<IntFunctionId, i128, IntLocalId>> {
+        self.ints
+            .binary_search_by_key(&id.0, |entry| entry.function.0)
+            .ok()
+            .map(|index| &self.ints[index])
+    }
+
+    pub(crate) fn bool(
+        &self,
+        id: BoolFunctionId,
+    ) -> Option<&CompiledCallback<BoolFunctionId, bool, BoolLocalId>> {
+        self.bools
+            .binary_search_by_key(&id.0, |entry| entry.function.0)
+            .ok()
+            .map(|index| &self.bools[index])
+    }
 }
 
 impl Emit for CompiledCheckpoint {
@@ -137,8 +296,42 @@ impl Emit for CompiledCheckpoint {
                 ("bools", &self.bools),
                 ("bit_arrays", &self.bit_arrays),
                 ("int_lists", &self.int_lists),
+                ("strings", &self.strings),
+                ("customs", &self.customs),
+                ("custom_lists", &self.custom_lists),
+                ("int_functions", &self.int_functions),
+                ("bool_functions", &self.bool_functions),
             ],
         );
+    }
+}
+
+impl Emit for CompiledLoopCall {
+    fn emit(&self, output: &mut Rust) {
+        output.structure(
+            "compiled::CompiledLoopCall",
+            &[
+                ("point", &self.point),
+                ("function", &self.function),
+                ("args", &self.args),
+                ("output", &self.output),
+            ],
+        );
+    }
+}
+
+impl Emit for CompiledLoopFunction {
+    fn emit(&self, output: &mut Rust) {
+        match self {
+            Self::Int { local, type_ } => output.structure(
+                "compiled::CompiledLoopFunction::Int",
+                &[("local", local), ("type_", type_)],
+            ),
+            Self::Bool { local, type_ } => output.structure(
+                "compiled::CompiledLoopFunction::Bool",
+                &[("local", local), ("type_", type_)],
+            ),
+        }
     }
 }
 
@@ -147,6 +340,7 @@ mod tests {
     use super::{
         BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
         CompiledImplementation, IntListImplementation, NumericImplementation, Rust,
+        StringImplementation,
     };
     use crate::plan::execution::function::{
         BoolFunctionId, CustomFunctionId, IntFunctionId, IntListFunctionId,
@@ -157,10 +351,11 @@ mod tests {
         CustomTypeId, CustomValueShape, CustomValueShapeId, IntListTypeId, ListTypeId,
     };
     use crate::runtime::compiled::tests::{
-        metadata_bit_array, metadata_int_list, metadata_numeric,
+        metadata_bit_array, metadata_int_list, metadata_numeric, metadata_string,
     };
 
     static FUNCTIONS: CompiledFunctions = CompiledFunctions {
+        function_calls: Table::Static(&[]),
         ints: Table::Static(&[CompiledFunction {
             function: IntFunctionId(2),
             implementation: CompiledImplementation::Numeric(NumericImplementation {
@@ -171,10 +366,10 @@ mod tests {
         }]),
         bools: Table::Static(&[CompiledFunction {
             function: BoolFunctionId(3),
-            implementation: CompiledImplementation::IntList(IntListImplementation {
+            implementation: CompiledImplementation::String(StringImplementation {
                 entry: 1,
                 checkpoints: Table::Static(&[]),
-                run: metadata_int_list,
+                run: metadata_string,
             }),
         }]),
         customs: Table::Static(&[CompiledFunction {
@@ -198,6 +393,7 @@ mod tests {
                 run: metadata_int_list,
             }),
         }]),
+        callbacks: crate::plan::execution::compiled::CompiledCallbacks::interpreted(),
     };
 
     #[test]
@@ -302,6 +498,11 @@ mod tests {
                 bools: 1,
                 bit_arrays: 3,
                 int_lists: 2,
+                strings: 4,
+                customs: 0,
+                custom_lists: 0,
+                int_functions: 0,
+                bool_functions: 0,
             }),
             r#"
 data::compiled::CompiledCheckpoint {
@@ -311,6 +512,11 @@ data::compiled::CompiledCheckpoint {
     bools: 1,
     bit_arrays: 3,
     int_lists: 2,
+    strings: 4,
+    customs: 0,
+    custom_lists: 0,
+    int_functions: 0,
+    bool_functions: 0,
 }
 "#
             .trim_matches('\n')

@@ -80,7 +80,7 @@ pub trait ExternalFunctionInstructionView {
     fn instruction(&self) -> &ExternalFunctionInstruction;
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum FunctionCapture {
     Int {
         target: IntLocalId,

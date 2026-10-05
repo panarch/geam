@@ -241,19 +241,46 @@ pub mod source {
 }
 pub mod compiled {
     pub use crate::plan::execution::compiled::{
-        BitArrayImplementation, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
-        CompiledImplementation, IntListImplementation, NumericImplementation,
+        BitArrayImplementation, CallContract, CallContractTarget, CallTarget, CompiledCallback,
+        CompiledCallbacks, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
+        CompiledImplementation, CompiledLoopCall, CompiledLoopFunction, CreationContract,
+        CustomLoopImplementation, FunctionCallsImplementation, IntListImplementation,
+        NumericImplementation, ReturnContract, StringImplementation, TailContract,
     };
     pub use crate::runtime::compiled::CompiledProgress;
 
+    pub mod calls {
+        pub use crate::runtime::compiled::calls::{
+            BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallCaptures,
+            CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallResume,
+            CallStart, CallStorage, CallValues, IntCallable,
+        };
+    }
+
     pub mod numeric {
         pub use crate::runtime::compiled::numeric::{NumericKernel, NumericValues};
+    }
+
+    pub mod custom {
+        pub use crate::runtime::compiled::custom::{CustomInput, CustomValues};
+    }
+
+    pub mod custom_loop {
+        pub use crate::runtime::compiled::custom_loop::{
+            BoolCallback, CallbackArguments, CallbackInputs, CallbackKernel, CallbackProgress,
+            CallbackStop, CustomList, CustomListOps, CustomLoopKernel, CustomLoopProgress,
+            CustomLoopValues, IntCallback,
+        };
     }
 
     pub mod int_list {
         pub use crate::runtime::compiled::int_list::{
             IntList, IntListElement, IntListKernel, IntListOps, IntListReader, IntListValues,
         };
+    }
+
+    pub mod string {
+        pub use crate::runtime::compiled::string::{StringKernel, StringRange, StringValues};
     }
 
     pub mod bit_array {

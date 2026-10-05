@@ -6,7 +6,7 @@ use super::{
     LoweringContext, ProgramConstantTemplates, SpecializationOutcome, SpecializationState,
     resolve_specialization_fixed_point,
 };
-use crate::plan::execution::compiled::CompiledFunctions;
+use crate::plan::execution::compiled::{CompiledEntries, CompiledFunctions};
 use crate::plan::execution::function as execution_function;
 use crate::plan::execution::{
     ExecutionModuleContext, ExecutionProgram, ExecutionProgramCommon, LibraryFunctionEntries,
@@ -157,6 +157,8 @@ fn lower_plain(
         }),
         functions: Box::new(lowered.functions).into(),
         compiled: CompiledFunctions::interpreted(),
+        compiled_callback_bodies: super::super::compiled::CompiledCallbackBodies::interpreted(),
+        compiled_entries: CompiledEntries::default(),
     };
     (program, entry_ids)
 }
