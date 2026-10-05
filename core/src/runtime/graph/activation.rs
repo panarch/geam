@@ -1497,7 +1497,7 @@ mod tests {
                 assert_eq!(mapped.load(Ordering::SeqCst), 1);
                 assert!(echo.is_empty());
             }
-            let input = CallInputs::new(&[], &[], &[], &[]);
+            let input = CallInputs::new(&[], &[], &[], &[], &[]);
             assert!(
                 storage
                     .function_calls

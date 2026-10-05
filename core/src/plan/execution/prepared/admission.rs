@@ -1901,11 +1901,11 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
         for (format, expected) in [
             (
                 1,
-                "prepared format 1 is incompatible with format 19; regenerate the prepared program",
+                "prepared format 1 is incompatible with format 20; regenerate the prepared program",
             ),
             (
                 8,
-                "prepared format 8 is incompatible with format 19; regenerate the prepared program",
+                "prepared format 8 is incompatible with format 20; regenerate the prepared program",
             ),
         ] {
             artifact.format = format;
@@ -2023,7 +2023,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 19; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 20; regenerate the prepared program",
                 ),
             ),
             (
@@ -2248,7 +2248,7 @@ pub fn main() { let assert 3 = choose(Ok(False)) Nil }
             (
                 Change::Format,
                 Some(
-                    "prepared format 1 is incompatible with format 19; regenerate the prepared program",
+                    "prepared format 1 is incompatible with format 20; regenerate the prepared program",
                 ),
             ),
             (

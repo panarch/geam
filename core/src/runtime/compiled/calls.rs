@@ -4,17 +4,20 @@ use crate::plan::execution::function::{
     BoolFunctionFunctionId, BoolFunctionId, IntFunctionFunctionId, IntFunctionId,
 };
 use crate::plan::execution::graph::{
-    BlockGraphExitId, BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId,
+    BlockGraphExitId, BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntListLocalId,
+    IntLocalId,
 };
 use crate::plan::execution::type_::FunctionType;
 use crate::runtime::CaptureStorage;
 use crate::runtime::captures::Captures;
+use crate::runtime::compiled::int_list::{IntList, IntListOps};
 use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::evaluated::{
     EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind, EvaluatedFunction,
-    EvaluatedIntFunction,
+    EvaluatedIntFunction, EvaluatedListCapture,
 };
 use crate::runtime::integer::IntegerValue;
+use crate::runtime::state::list::{IntListValueId, RuntimeListStorage};
 
 /// Opaque canonical values at generated/canonical boundaries. Inside a
 /// generated body, Small integers and callable locals remain concrete Rust
@@ -23,6 +26,7 @@ use crate::runtime::integer::IntegerValue;
 pub struct CallValues {
     pub ints: Vec<CallInteger>,
     pub bools: Vec<bool>,
+    pub int_lists: Vec<IntList>,
     pub int_functions: Vec<IntCallable>,
     pub bool_functions: Vec<BoolCallable>,
 }
@@ -33,6 +37,7 @@ pub struct CallValues {
 pub struct CallInputs<'values> {
     ints: &'values [IntegerValue],
     bools: &'values [bool],
+    int_lists: &'values [IntListValueId],
     int_functions: &'values [EvaluatedIntFunction],
     bool_functions: &'values [EvaluatedBoolFunction],
 }
@@ -72,6 +77,7 @@ pub struct CallCapture(EvaluatedCapture);
 pub struct CallOps<'execution> {
     captures: &'execution CaptureStorage,
     numeric: &'execution mut NumericValues,
+    lists: IntListOps<'execution>,
 }
 
 pub trait CallExecution: Send {
@@ -201,12 +207,14 @@ impl<'values> CallInputs<'values> {
     pub(in crate::runtime) fn new(
         ints: &'values [IntegerValue],
         bools: &'values [bool],
+        int_lists: &'values [IntListValueId],
         int_functions: &'values [EvaluatedIntFunction],
         bool_functions: &'values [EvaluatedBoolFunction],
     ) -> Self {
         Self {
             ints,
             bools,
+            int_lists,
             int_functions,
             bool_functions,
         }
@@ -218,6 +226,10 @@ impl<'values> CallInputs<'values> {
 
     pub fn bool(&self, index: usize) -> Option<bool> {
         self.bools.get(index).copied()
+    }
+
+    pub fn int_list(&self, index: usize) -> Option<IntList> {
+        self.int_lists.get(index).cloned().map(IntList)
     }
 
     pub fn int_function(&self, index: usize) -> Option<IntCallable> {
@@ -298,6 +310,19 @@ impl CallCaptureInputs<'_> {
             })
     }
 
+    pub fn int_list(&self, local: IntListLocalId) -> Option<IntList> {
+        self.0
+            .values()
+            .iter()
+            .find_map(|capture| match capture.kind() {
+                EvaluatedCaptureKind::List(EvaluatedListCapture::Int {
+                    local: target,
+                    value,
+                }) if *target == local => Some(IntList(value.clone())),
+                _ => None,
+            })
+    }
+
     pub fn int_function(&self, local: IntFunctionLocalId) -> Option<IntCallable> {
         self.0
             .values()
@@ -340,6 +365,13 @@ impl CallCapture {
         }))
     }
 
+    pub fn int_list(local: IntListLocalId, value: IntList) -> Self {
+        Self(EvaluatedCapture::list(EvaluatedListCapture::Int {
+            local,
+            value: value.0,
+        }))
+    }
+
     pub fn int_function(local: IntFunctionLocalId, value: IntCallable) -> Self {
         Self(EvaluatedCapture::from_kind(
             EvaluatedCaptureKind::IntFunction {
@@ -363,8 +395,13 @@ impl<'execution> CallOps<'execution> {
     pub(in crate::runtime) fn new(
         captures: &'execution CaptureStorage,
         numeric: &'execution mut NumericValues,
+        lists: &'execution RuntimeListStorage,
     ) -> Self {
-        Self { captures, numeric }
+        Self {
+            captures,
+            numeric,
+            lists: IntListOps::new(lists),
+        }
     }
 
     /// Existing execution-owned numeric storage. Generated calls pass their
@@ -372,6 +409,10 @@ impl<'execution> CallOps<'execution> {
     /// result of the shared structured numeric body.
     pub fn numeric(&mut self) -> &mut NumericValues {
         self.numeric
+    }
+
+    pub fn lists(&self) -> &IntListOps<'_> {
+        &self.lists
     }
 
     pub fn belongs_to_execution(&self, captures: &CallCaptureInputs<'_>) -> bool {
@@ -435,7 +476,7 @@ mod tests {
     use crate::plan::execution::compiled::CallTarget;
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
     use crate::plan::execution::graph::{
-        BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId,
+        BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntListLocalId, IntLocalId,
     };
     use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::runtime::CaptureStorage;
@@ -443,6 +484,8 @@ mod tests {
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::evaluated::{EvaluatedCapture, EvaluatedCaptureKind};
     use crate::runtime::integer::IntegerValue;
+    use crate::runtime::plan_src;
+    use crate::runtime::state::list::RuntimeListStorage;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -481,7 +524,7 @@ mod tests {
         let dropped = Arc::new(AtomicUsize::new(0));
         let mut cache = CallStorage::default();
         let ints = [IntegerValue::from(7)];
-        let inputs = CallInputs::new(&ints, &[], &[], &[]);
+        let inputs = CallInputs::new(&ints, &[], &[], &[], &[]);
         let target = CallTarget::Int(IntFunctionId(2));
         assert!(cache.reuse(target, 3, inputs).is_none());
         let idle = Box::new(IdleWorkspace {
@@ -500,7 +543,7 @@ mod tests {
         let big = [IntegerValue::from(1_i128 << 100)];
         assert!(
             cache
-                .reuse(target, 3, CallInputs::new(&big, &[], &[], &[]))
+                .reuse(target, 3, CallInputs::new(&big, &[], &[], &[], &[]))
                 .is_none()
         );
         assert_eq!(dropped.load(Ordering::SeqCst), 0);
@@ -515,8 +558,12 @@ mod tests {
         );
         let captures = CaptureStorage::default();
         let mut numeric = NumericValues::default();
+        let lists = RuntimeListStorage::default();
         let mut budget = 0;
-        let progress = execution.advance(&mut CallOps::new(&captures, &mut numeric), &mut budget);
+        let progress = execution.advance(
+            &mut CallOps::new(&captures, &mut numeric, &lists),
+            &mut budget,
+        );
         drop(progress);
         assert_eq!(dropped.load(Ordering::SeqCst), 1);
         cache.recycle(Box::new(IdleWorkspace {
@@ -563,10 +610,11 @@ mod tests {
     }
 
     #[test]
-    fn entry_inputs_borrow_original_columns_and_clone_only_selected_callable_values() {
+    fn entry_inputs_borrow_original_columns_and_clone_only_selected_handles() {
         let storage = CaptureStorage::default();
         let mut numeric = NumericValues::default();
-        let ops = CallOps::new(&storage, &mut numeric);
+        let lists = RuntimeListStorage::default();
+        let ops = CallOps::new(&storage, &mut numeric, &lists);
         let integer = ops.int_reference(
             IntFunctionId(2),
             FunctionType::new(vec![ValueType::Int], ValueType::Int),
@@ -579,9 +627,23 @@ mod tests {
         let bools = [false, true];
         let int_functions = [integer.0];
         let bool_functions = [boolean.0];
-        let inputs = CallInputs::new(&ints, &bools, &int_functions, &bool_functions);
+        let plan = plan_src("pub fn main() { [1] }");
+        let int_lists = [ops
+            .lists()
+            .value(plan.int_list_function_id(0).type_id(), &[3, 4])
+            .0];
+        let inputs = CallInputs::new(&ints, &bools, &int_lists, &int_functions, &bool_functions);
         assert!(std::ptr::eq(inputs.ints.as_ptr(), ints.as_ptr()));
         assert!(std::ptr::eq(inputs.bools.as_ptr(), bools.as_ptr()));
+        assert!(std::ptr::eq(inputs.int_lists.as_ptr(), int_lists.as_ptr()));
+        let selected_list = inputs.int_list(0).unwrap();
+        assert_eq!(selected_list.0, int_lists[0]);
+        assert!(std::ptr::eq(
+            selected_list.0.values(),
+            int_lists[0].values()
+        ));
+        assert_eq!(ops.lists().index(&selected_list, 1), Some(4));
+        assert!(inputs.int_list(1).is_none());
         assert!(std::ptr::eq(
             inputs.int_functions.as_ptr(),
             int_functions.as_ptr()
@@ -616,7 +678,8 @@ mod tests {
         let storage = CaptureStorage::default();
         let other_storage = storage.for_execution();
         let mut numeric = NumericValues::default();
-        let ops = CallOps::new(&storage, &mut numeric);
+        let lists = RuntimeListStorage::default();
+        let ops = CallOps::new(&storage, &mut numeric, &lists);
         let int_type = FunctionType::new(vec![ValueType::Int], ValueType::Int);
         let bool_type = FunctionType::new(vec![ValueType::Bool], ValueType::Bool);
         let int = ops.int_reference(IntFunctionId(2), int_type.clone());
@@ -643,12 +706,25 @@ mod tests {
                 CallCapture::bool(BoolLocalId(0), true),
                 CallCapture::int_function(IntFunctionLocalId(0), int.clone()),
                 CallCapture::bool_function(BoolFunctionLocalId(0), boolean.clone()),
+                CallCapture::int_list(
+                    IntListLocalId(2),
+                    ops.lists().value(
+                        plan_src("pub fn main() { [1] }")
+                            .int_list_function_id(0)
+                            .type_id(),
+                        &[3, 4],
+                    ),
+                ),
             ],
         );
         let captures = closure.captures();
         assert!(std::ptr::eq(captures.0, closure.0.capture_frame()));
         assert_eq!(captures.int(IntLocalId(1)), Some(7));
         assert_eq!(captures.bool(BoolLocalId(0)), Some(true));
+        let list = captures.int_list(IntListLocalId(2)).unwrap();
+        assert_eq!(ops.lists().index(&list, 0), Some(3));
+        assert_eq!(list.len(), 2);
+        assert!(captures.int_list(IntListLocalId(1)).is_none());
         assert_eq!(
             captures.int_function(IntFunctionLocalId(0)).unwrap().0,
             int.0
@@ -696,7 +772,7 @@ mod tests {
             },
         )]);
         assert_eq!(CallCaptureInputs(&big).int(IntLocalId(0)), None);
-        let mut ops = CallOps::new(&storage, &mut numeric);
+        let mut ops = CallOps::new(&storage, &mut numeric, &lists);
         ops.numeric().ints.push(42);
         assert_eq!(numeric.ints, vec![42]);
         let retained = captures.retain();

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 19,
+        format: 20,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -2841,6 +2841,7 @@ pub fn native_predicate(value: Int) -> Bool {
             },
             compiled: {
                 use data::compiled::calls::{BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                use data::compiled::int_list::IntList;
                 enum FunctionState {
                     Int0Point0 {  },
                     Int0Point1 { int0: i128 },
@@ -2858,13 +2859,13 @@ pub fn native_predicate(value: Int) -> Bool {
                     Bool0Point3 { bool0: bool, bool_function0: BoolCallable, bool1: bool },
                     Bool0Point4 { bool0: bool, bool_function0: BoolCallable, bool1: bool, bool_function1: BoolCallable },
                     Bool0Point5 { bool0: bool, bool_function0: BoolCallable, bool1: bool, bool_function1: BoolCallable, int0: i128 },
-                    Bool0Point6 {  },
-                    Bool0Point7 { bool0: bool },
+                    Bool0Point6 { bool0: bool, bool_function0: BoolCallable, bool1: bool, bool_function1: BoolCallable, int0: i128, int_list0: IntList },
+                    Bool0Point7 {  },
                     Bool0Point8 { bool0: bool },
-                    Bool0Point9 {  },
+                    Bool0Point9 { bool0: bool },
                     Bool0Point10 {  },
-                    Bool0Point11 { bool0: bool },
-                    Bool0Point12 {  },
+                    Bool0Point11 {  },
+                    Bool0Point12 { bool0: bool },
                     Bool0Point13 {  },
                     Bool0Point14 {  },
                     Bool0Point15 {  },
@@ -2873,6 +2874,7 @@ pub fn native_predicate(value: Int) -> Bool {
                     Bool0Point18 {  },
                     Bool0Point19 {  },
                     Bool0Point20 {  },
+                    Bool0Point21 {  },
                     Bool1Point0 { int0: i128 },
                     Bool1Point1 { int0: i128, bool_function0: BoolCallable },
                     Bool1Point2 { int0: i128, bool_function0: BoolCallable, bool_function1: BoolCallable },
@@ -2888,124 +2890,127 @@ pub fn native_predicate(value: Int) -> Bool {
                     fn values(self) -> CallValues {
                         match self {
                             Self::Int0Point0 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int0Point1 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int0Point2 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int0Point3 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int0Point4 { int0, int_function0, int1, int_function1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] }
                             },
                             Self::Int0Point5 { int0, int_function0, int1, int_function1, int2 } => {
-                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] }
                             },
                             Self::Int3Point0 { int_function0, int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int3Point1 { int_function0, int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int4Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int4Point1 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point0 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point1 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point2 { bool0, bool_function0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool0Point3 { bool0, bool_function0, bool1 } => {
-                                CallValues { ints: vec![], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool0Point4 { bool0, bool_function0, bool1, bool_function1 } => {
-                                CallValues { ints: vec![], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
                             Self::Bool0Point5 { bool0, bool_function0, bool1, bool_function1, int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
-                            Self::Bool0Point6 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool0Point6 { bool0, bool_function0, bool1, bool_function1, int0, int_list0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![int_list0], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
-                            Self::Bool0Point7 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool0Point7 {  } => {
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point8 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Bool0Point9 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool0Point9 { bool0 } => {
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point10 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Bool0Point11 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool0Point11 {  } => {
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Bool0Point12 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool0Point12 { bool0 } => {
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point13 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point14 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point15 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point16 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point17 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point18 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point19 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point20 {  } => {
-                                CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Bool0Point21 {  } => {
+                                CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool1Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool1Point1 { int0, bool_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
                             Self::Bool1Point2 { int0, bool_function0, bool_function1 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
                             Self::Bool1Point3 { int0, bool_function0, bool_function1, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
                             Self::Bool1Point4 { int0, bool_function0, bool_function1, int1, bool0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
                             Self::Bool1Point5 { int0, bool_function0, bool_function1, int1, bool0, bool1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] }
                             },
                             Self::Bool2Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool2Point1 { int0, bool0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::IntFunction3Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Canonical { values, .. } => values,
                         }
@@ -3053,7 +3058,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                     custom_lists: 0,
                                     int_functions: 2,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0, int_function1], bool_functions: vec![] } }
                             },
                             Self::Int3Call0 { int_function0, int0 } => {
                                 let int1 = result;
@@ -3069,7 +3074,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -3374,13 +3379,13 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int0Point1 { int0 })
                         },
                         FunctionState::Int0Point1 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0 }); }
                             *budget -= 1;
-                            FunctionStep::IntFunctionBridge { function: data::function::IntFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1136, 1158)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntFunctionReturn::Int0Call1 { int0 } }
+                            FunctionStep::IntFunctionBridge { function: data::function::IntFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1136, 1158)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntFunctionReturn::Int0Call1 { int0 } }
                         },
                         FunctionState::Int0Point2 { int0, int_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point2 { int0, int_function0 }); }
@@ -3398,13 +3403,13 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Int0Point3 { int0, int_function0, int1 })
                         },
                         FunctionState::Int0Point3 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point3 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::IntFunctionBridge { function: data::function::IntFunctionFunctionId(1), site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1178, 1202)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntFunctionReturn::Int0Call3 { int0, int_function0, int1 } }
+                            FunctionStep::IntFunctionBridge { function: data::function::IntFunctionFunctionId(1), site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1178, 1202)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntFunctionReturn::Int0Call3 { int0, int_function0, int1 } }
                         },
                         FunctionState::Int0Point4 { int0, int_function0, int1, int_function1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point4 { int0, int_function0, int1, int_function1 }); }
@@ -3415,7 +3420,7 @@ pub fn native_predicate(value: Int) -> Bool {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int0Call4 { int0, int_function0, int1, int_function1 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1218, 1228)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int0Call4 { int0, int_function0, int1, int_function1 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "run", data::source::SourceSpan::new(1218, 1228)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int0Call4 { int0, int_function0, int1, int_function1 } }
                         },
                         FunctionState::Int0Point5 { int0, int_function0, int1, int_function1, int2 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point5 { int0, int_function0, int1, int_function1, int2 }); }
@@ -3442,7 +3447,7 @@ pub fn native_predicate(value: Int) -> Bool {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_1(target, &captures, (int0,)) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int3Call0 { int_function0, int0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "apply", data::source::SourceSpan::new(128, 143)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int_function0, int0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "apply", data::source::SourceSpan::new(128, 143)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int3Call0 { int_function0, int0 } }
                         },
                         FunctionState::Int3Point1 { int_function0, int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int_function0, int0, int1 }); }
@@ -3465,7 +3470,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int4Point1 { int0, int1 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
@@ -3484,7 +3489,7 @@ pub fn native_predicate(value: Int) -> Bool {
                         FunctionState::Bool0Point1 { bool0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { bool0 }); }
                             *budget -= 1;
-                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1261, 1288)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolFunctionReturn::Bool0Call1 { bool0 } }
+                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1261, 1288)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolFunctionReturn::Bool0Call1 { bool0 } }
                         },
                         FunctionState::Bool0Point2 { bool0, bool_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 { bool0, bool_function0 }); }
@@ -3495,7 +3500,7 @@ pub fn native_predicate(value: Int) -> Bool {
                         FunctionState::Bool0Point3 { bool0, bool_function0, bool1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point3 { bool0, bool_function0, bool1 }); }
                             *budget -= 1;
-                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1319, 1346)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool1], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolFunctionReturn::Bool0Call3 { bool0, bool_function0, bool1 } }
+                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(0), site: data::source::HostCallSite::from_static("library", "check", data::source::SourceSpan::new(1319, 1346)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolFunctionReturn::Bool0Call3 { bool0, bool_function0, bool1 } }
                         },
                         FunctionState::Bool0Point4 { bool0, bool_function0, bool1, bool_function1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point4 { bool0, bool_function0, bool1, bool_function1 }); }
@@ -3513,100 +3518,108 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 2,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }; }
                             FunctionStep::Next(FunctionState::Bool0Point5 { bool0, bool_function0, bool1, bool_function1, int0 })
                         },
                         FunctionState::Bool0Point5 { bool0, bool_function0, bool1, bool_function1, int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 { bool0, bool_function0, bool1, bool_function1, int0 }); }
+                            *budget -= 1;
+                            let int_list0 = ops.lists().value(data::type_::IntListTypeId {
+                                list_type: data::type_::ListTypeId(0),
+                            }, &[int0 as i64]);
+                            FunctionStep::Next(FunctionState::Bool0Point6 { bool0, bool_function0, bool1, bool_function1, int0, int_list0 })
+                        },
+                        FunctionState::Bool0Point6 { bool0, bool_function0, bool1, bool_function1, int0, int_list0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(0),
-                                instruction: 5,
+                                instruction: 6,
                                 ints: 1,
                                 bools: 2,
                                 bit_arrays: 0,
-                                int_lists: 0,
+                                int_lists: 1,
                                 strings: 0,
                                 customs: 0,
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 2,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![int_list0], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }
                         },
-                        FunctionState::Bool0Point6 {  } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point6 {  }); }
+                        FunctionState::Bool0Point7 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 {  }); }
                             *budget -= 1;
                             let bool0 = true;
-                            FunctionStep::Next(FunctionState::Bool0Point7 { bool0 })
-                        },
-                        FunctionState::Bool0Point7 { bool0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 { bool0 }); }
-                            *budget -= 1;
                             FunctionStep::Next(FunctionState::Bool0Point8 { bool0 })
                         },
                         FunctionState::Bool0Point8 { bool0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point8 { bool0 }); }
                             *budget -= 1;
-                            FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
+                            FunctionStep::Next(FunctionState::Bool0Point9 { bool0 })
                         },
-                        FunctionState::Bool0Point9 {  } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point9 {  }); }
+                        FunctionState::Bool0Point9 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point9 { bool0 }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point10 {  })
+                            FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
                         },
                         FunctionState::Bool0Point10 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point10 {  }); }
                             *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point11 {  })
+                        },
+                        FunctionState::Bool0Point11 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point11 {  }); }
+                            *budget -= 1;
                             let bool0 = false;
-                            FunctionStep::Next(FunctionState::Bool0Point11 { bool0 })
+                            FunctionStep::Next(FunctionState::Bool0Point12 { bool0 })
                         },
-                        FunctionState::Bool0Point11 { bool0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point11 { bool0 }); }
+                        FunctionState::Bool0Point12 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 { bool0 }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point8 { bool0 })
-                        },
-                        FunctionState::Bool0Point12 {  } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point12 {  }); }
-                            *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point13 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point9 { bool0 })
                         },
                         FunctionState::Bool0Point13 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point13 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point10 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point14 {  })
                         },
                         FunctionState::Bool0Point14 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point14 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point15 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point11 {  })
                         },
                         FunctionState::Bool0Point15 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point15 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point13 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point16 {  })
                         },
                         FunctionState::Bool0Point16 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point16 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point17 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point14 {  })
                         },
                         FunctionState::Bool0Point17 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point17 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point15 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point18 {  })
                         },
                         FunctionState::Bool0Point18 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point18 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point19 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point16 {  })
                         },
                         FunctionState::Bool0Point19 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point19 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point17 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point20 {  })
                         },
                         FunctionState::Bool0Point20 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point20 {  }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool0Point19 {  })
+                            FunctionStep::Next(FunctionState::Bool0Point18 {  })
+                        },
+                        FunctionState::Bool0Point21 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point21 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point20 {  })
                         },
                         FunctionState::Bool1Point0 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point0 { int0 }); }
@@ -3622,7 +3635,7 @@ pub fn native_predicate(value: Int) -> Bool {
                         FunctionState::Bool1Point1 { int0, bool_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point1 { int0, bool_function0 }); }
                             *budget -= 1;
-                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(1), site: data::source::HostCallSite::from_static("library", "native_predicate", data::source::SourceSpan::new(1764, 1816)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0.clone()] }, captures: None }, caller: BoolFunctionReturn::Bool1Call1 { int0, bool_function0 } }
+                            FunctionStep::BoolFunctionBridge { function: data::function::BoolFunctionFunctionId(1), site: data::source::HostCallSite::from_static("library", "native_predicate", data::source::SourceSpan::new(1764, 1816)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0.clone()] }, captures: None }, caller: BoolFunctionReturn::Bool1Call1 { int0, bool_function0 } }
                         },
                         FunctionState::Bool1Point2 { int0, bool_function0, bool_function1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point2 { int0, bool_function0, bool_function1 }); }
@@ -3640,7 +3653,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 2,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0, bool_function1] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point3 { int0, bool_function0, bool_function1, int1 })
                         },
                         FunctionState::Bool1Point3 { int0, bool_function0, bool_function1, int1 } => {
@@ -3652,7 +3665,7 @@ pub fn native_predicate(value: Int) -> Bool {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_2(target, &captures, (int1,)) {
                                 return FunctionStep::BoolCall { callee, caller: BoolReturn::Bool1Call3 { int0, bool_function0, bool_function1, int1 } };
                             }
-                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("library", "native_predicate", data::source::SourceSpan::new(1822, 1842)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool1Call3 { int0, bool_function0, bool_function1, int1 } }
+                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("library", "native_predicate", data::source::SourceSpan::new(1822, 1842)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool1Call3 { int0, bool_function0, bool_function1, int1 } }
                         },
                         FunctionState::Bool1Point4 { int0, bool_function0, bool_function1, int1, bool0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point4 { int0, bool_function0, bool_function1, int1, bool0 }); }
@@ -3694,7 +3707,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
                 }
@@ -3777,13 +3790,13 @@ pub fn native_predicate(value: Int) -> Bool {
                         3 => FunctionState::Bool0Point3 { bool0: values.bool(0)?, bool_function0: values.bool_function(0)?, bool1: values.bool(1)? },
                         4 => FunctionState::Bool0Point4 { bool0: values.bool(0)?, bool_function0: values.bool_function(0)?, bool1: values.bool(1)?, bool_function1: values.bool_function(1)? },
                         5 => FunctionState::Bool0Point5 { bool0: values.bool(0)?, bool_function0: values.bool_function(0)?, bool1: values.bool(1)?, bool_function1: values.bool_function(1)?, int0: values.int(0)? },
-                        6 => FunctionState::Bool0Point6 {  },
-                        7 => FunctionState::Bool0Point7 { bool0: values.bool(0)? },
+                        6 => FunctionState::Bool0Point6 { bool0: values.bool(0)?, bool_function0: values.bool_function(0)?, bool1: values.bool(1)?, bool_function1: values.bool_function(1)?, int0: values.int(0)?, int_list0: values.int_list(0)? },
+                        7 => FunctionState::Bool0Point7 {  },
                         8 => FunctionState::Bool0Point8 { bool0: values.bool(0)? },
-                        9 => FunctionState::Bool0Point9 {  },
+                        9 => FunctionState::Bool0Point9 { bool0: values.bool(0)? },
                         10 => FunctionState::Bool0Point10 {  },
-                        11 => FunctionState::Bool0Point11 { bool0: values.bool(0)? },
-                        12 => FunctionState::Bool0Point12 {  },
+                        11 => FunctionState::Bool0Point11 {  },
+                        12 => FunctionState::Bool0Point12 { bool0: values.bool(0)? },
                         13 => FunctionState::Bool0Point13 {  },
                         14 => FunctionState::Bool0Point14 {  },
                         15 => FunctionState::Bool0Point15 {  },
@@ -3792,6 +3805,7 @@ pub fn native_predicate(value: Int) -> Bool {
                         18 => FunctionState::Bool0Point18 {  },
                         19 => FunctionState::Bool0Point19 {  },
                         20 => FunctionState::Bool0Point20 {  },
+                        21 => FunctionState::Bool0Point21 {  },
                         _ => return None,
                     };
                     Some(active)
@@ -4300,6 +4314,19 @@ pub fn native_predicate(value: Int) -> Bool {
                                         bool_functions: 2,
                                     },
                                     data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 6,
+                                        ints: 1,
+                                        bools: 2,
+                                        bit_arrays: 0,
+                                        int_lists: 1,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 2,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(6),
                                         instruction: 0,
                                         ints: 0,
@@ -4558,6 +4585,31 @@ pub fn native_predicate(value: Int) -> Bool {
                                         },
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        data::graph::ParamLocal::BoolFunction {
+                                            local: data::graph::BoolFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                        data::graph::ParamLocal::BoolFunction {
+                                            local: data::graph::BoolFunctionLocalId(1),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                            local: data::graph::IntListLocalId(0),
+                                            type_id: data::type_::IntListTypeId {
+                                                list_type: data::type_::ListTypeId(0),
+                                            },
+                                        }),
+                                    ]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
@@ -4615,7 +4667,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 creations: data::Storage::Static(&[]),
                                 returns: data::Storage::Static(&[
                                     data::compiled::ReturnContract {
-                                        point: 8,
+                                        point: 9,
                                         value: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     },
                                 ]),

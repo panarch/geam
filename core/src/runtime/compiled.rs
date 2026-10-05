@@ -138,7 +138,7 @@ pub(crate) mod tests {
     fn function_call_metadata_fixture_rejects_execution() {
         metadata_calls(
             0,
-            CallInputs::new(&[], &[], &[], &[]),
+            CallInputs::new(&[], &[], &[], &[], &[]),
             &mut CallStorage::default(),
         );
     }
