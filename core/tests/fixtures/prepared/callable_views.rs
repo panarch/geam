@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 18,
+        format: 19,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -65,6 +65,10 @@ pub fn check() {
     let increment = support.wrap(support.wrap(fn(value) { value + 1 }))
     let nested = support.wrap(fn(value) { support.make_constant(value) })
     a() && a == alias && a != b && list() == [42] && is_answer(increment(41)) && nested(42)() == 42
+}
+pub fn native_predicate(value: Int) -> Bool {
+    let predicate = support.wrap(fn(input) { echo input input > value })
+    !predicate(value + 1)
 }
 "#)),
                 },

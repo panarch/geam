@@ -1,4 +1,5 @@
 mod bit_array;
+pub(in crate::plan::execution::prepared) mod calls;
 mod custom;
 mod custom_loop;
 mod int_list;
@@ -9,7 +10,7 @@ use self::shape::{
     CompiledBoolean, CompiledEdge, CompiledInstruction, CompiledTerminator, CompiledTest,
     KernelKind, NumericComparison, NumericInteger, NumericOperation,
 };
-use crate::plan::execution::compiled::{CompiledCheckpoint, CompiledLoopFunction};
+use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint, CompiledLoopFunction};
 use crate::plan::execution::function::{
     BoolFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
     ExecutionProfile, FunctionBodyOwner, FunctionExit, FunctionTables, IntFunctionId,
@@ -80,6 +81,7 @@ impl<'program, Profile: ExecutionProfile> CompiledCodegen<'program, Profile> {
 
 impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
     fn emit(&self, output: &mut Rust) {
+        let calls = calls::CallCodegen::new(self.functions);
         let ints = self
             .functions
             .value_returns
@@ -87,6 +89,9 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             .iter()
             .enumerate()
             .filter_map(|(index, function)| {
+                if calls.is_root(CallTarget::Int(IntFunctionId(index))) {
+                    return None;
+                }
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
@@ -111,6 +116,9 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             .iter()
             .enumerate()
             .filter_map(|(index, function)| {
+                if calls.is_root(CallTarget::Bool(BoolFunctionId(index))) {
+                    return None;
+                }
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
                     return None;
                 };
@@ -171,7 +179,12 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
                 })
             })
             .collect::<Vec<_>>();
-        if ints.is_empty() && bools.is_empty() && customs.is_empty() && int_lists.is_empty() {
+        if ints.is_empty()
+            && bools.is_empty()
+            && customs.is_empty()
+            && int_lists.is_empty()
+            && calls.is_empty()
+        {
             output.call("compiled::CompiledFunctions::interpreted", &[]);
             return;
         }
@@ -309,6 +322,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         for callback in &callback_bools {
             callback.body.write_callback(&mut source, &callback.returns);
         }
+        calls.write_code(&mut source);
         for function in &ints {
             function.body.write_code(
                 &mut source,
@@ -380,6 +394,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         } else {
             source.push_str("callbacks: data::compiled::CompiledCallbacks::interpreted(),\n");
         }
+        calls.write_targets(&mut source);
         source.close("}\n");
         source.close("}");
         output.code(source.as_str());
@@ -1555,7 +1570,7 @@ fn int_expression(block: BlockId, expression: &NumericInteger<'_>) -> String {
 }
 
 fn division(left: String, right: String, operator: &str) -> String {
-    if right == "0_i128" {
+    if right == "0_i128" || (operator == "%" && matches!(right.as_str(), "1_i128" | "-1_i128")) {
         "0_i128".to_owned()
     } else {
         format!("if {right} == 0 {{ 0_i128 }} else {{ {left} {operator} {right} }}")
@@ -1565,21 +1580,11 @@ fn division(left: String, right: String, operator: &str) -> String {
 fn test_expression(block: BlockId, test: &CompiledTest<'_>) -> String {
     match test {
         CompiledTest::Not(value) => format!("!b{}_v{}", block.0, value.0),
-        CompiledTest::Compare(comparison, left, right) => {
-            let operator = match comparison {
-                NumericComparison::Equal => "==",
-                NumericComparison::NotEqual => "!=",
-                NumericComparison::Less => "<",
-                NumericComparison::LessEqual => "<=",
-                NumericComparison::Greater => ">",
-                NumericComparison::GreaterEqual => ">=",
-            };
-            format!(
-                "{} {operator} {}",
-                operand_expression(block, *left),
-                operand_expression(block, *right)
-            )
-        }
+        CompiledTest::Compare(comparison, left, right) => integer_comparison(
+            comparison,
+            operand_expression(block, *left),
+            operand_expression(block, *right),
+        ),
         CompiledTest::IntList(test) => int_list::test_expression(block, test),
         CompiledTest::CustomListLength {
             list,
@@ -1600,6 +1605,27 @@ fn test_expression(block: BlockId, test: &CompiledTest<'_>) -> String {
             right.0
         ),
     }
+}
+
+fn integer_comparison(comparison: &NumericComparison, left: String, right: String) -> String {
+    if left == right {
+        return matches!(
+            comparison,
+            NumericComparison::Equal
+                | NumericComparison::LessEqual
+                | NumericComparison::GreaterEqual
+        )
+        .to_string();
+    }
+    let operator = match comparison {
+        NumericComparison::Equal => "==",
+        NumericComparison::NotEqual => "!=",
+        NumericComparison::Less => "<",
+        NumericComparison::LessEqual => "<=",
+        NumericComparison::Greater => ">",
+        NumericComparison::GreaterEqual => ">=",
+    };
+    format!("{left} {operator} {right}")
 }
 
 fn length_expression(subject: &str, length: usize, at_least: bool) -> String {
@@ -2047,6 +2073,19 @@ pub fn main() { same([7]) }
                 "0_i128"
             );
         }
+        for right in [-1, 1] {
+            assert_eq!(
+                int_expression(
+                    block,
+                    &NumericInteger::Binary(
+                        NumericOperation::Remainder,
+                        left,
+                        IntegerOperand::Immediate(right)
+                    )
+                ),
+                "0_i128"
+            );
+        }
         let literal = IntegerLiteral::from(BigInt::from(i64::MIN));
         assert_eq!(
             int_expression(block, &NumericInteger::Value(&literal)),
@@ -2068,6 +2107,21 @@ pub fn main() { same([7]) }
                 test_expression(block, &CompiledTest::Compare(comparison, left, right)),
                 expected
             );
+        }
+        for operand in [left, right] {
+            for (comparison, expected) in [
+                (NumericComparison::Equal, "true"),
+                (NumericComparison::NotEqual, "false"),
+                (NumericComparison::Less, "false"),
+                (NumericComparison::LessEqual, "true"),
+                (NumericComparison::Greater, "false"),
+                (NumericComparison::GreaterEqual, "true"),
+            ] {
+                assert_eq!(
+                    test_expression(block, &CompiledTest::Compare(comparison, operand, operand)),
+                    expected
+                );
+            }
         }
         assert_eq!(
             test_expression(block, &CompiledTest::Not(BoolLocalId(5))),
@@ -2961,6 +3015,8 @@ let (b1_i0, b1_v0,) = {branch};
         int_lists: data::Storage::Static(&[
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        function_calls: data::Storage::Static(&[
+        ]),
     }
 }
 "#;
@@ -3243,6 +3299,8 @@ let (b1_i0, b1_v0,) = {branch};
         int_lists: data::Storage::Static(&[
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        function_calls: data::Storage::Static(&[
+        ]),
     }
 }
 "#;
@@ -3868,6 +3926,8 @@ pub fn main() {
             },
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        function_calls: data::Storage::Static(&[
+        ]),
     }
 }"#
         );

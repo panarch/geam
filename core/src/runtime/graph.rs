@@ -47,6 +47,7 @@ impl GraphPosition {
 pub(in crate::runtime) struct CompletedGraph {
     exit: BlockGraphExitId,
     environment: BlockEnvironment,
+    direct_return: bool,
 }
 
 impl CompletedGraph {
@@ -58,7 +59,7 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        value.take(&mut self.environment)
+        value.take_return(&mut self.environment, self.direct_return)
     }
 
     pub(in crate::runtime) fn into_retained(self, transfer: &Transfer) -> RetainedValues {
@@ -73,7 +74,7 @@ impl CompletedGraph {
     where
         Value: GraphValue,
     {
-        let returned = value.take(&mut self.environment);
+        let returned = value.take_return(&mut self.environment, self.direct_return);
         pool.recycle(self.environment);
         returned
     }

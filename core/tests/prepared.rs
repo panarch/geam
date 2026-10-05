@@ -1277,6 +1277,7 @@ fn list_construction_and_tail_return_match_dynamic_execution_including_late_big_
             CompiledImplementation::IntList(_) => "int_list",
             CompiledImplementation::CustomLoop(_) => "custom_loop",
             CompiledImplementation::String(_) => "string",
+            CompiledImplementation::FunctionCalls(_) => "function_calls",
         })
         .collect::<Vec<_>>();
     assert_eq!(
@@ -4315,7 +4316,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 18; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 19; regenerate the prepared program"
     );
 }
 
@@ -5523,6 +5524,11 @@ fn native_callable_artifact_uses_declarations_only_and_requires_fresh_body_bindi
     actual_bodies
         .function(FunctionDeclaration::<(), BigInt>::new("producer"))
         .unwrap();
+    actual_bodies
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
     assert_eq!(
         actual_bodies.prepare().unwrap().emit_rust(),
         callable_declarations::prepare().emit_rust()
@@ -5583,6 +5589,58 @@ fn declaration_only_callable_artifacts_run_app_bodies_with_dynamic_capture_and_i
 }
 
 static NATIVE_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/callable_views.rs");
+
+#[cfg(feature = "tokio")]
+#[test]
+fn generated_bool_native_bridge_resumes_the_source_capture_and_caller_once() {
+    let typed = compile_typed_host_program(
+        "application",
+        "library",
+        callable_declarations::packages(),
+        callable_provider::implementations(),
+    )
+    .unwrap();
+    let (dynamic, predicate) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
+    let mut prepared = CALLABLES
+        .load(callable_provider::implementations())
+        .unwrap();
+    let prepared_predicate = prepared
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
+        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for (mut module, predicate) in [
+        (dynamic.seal().unwrap(), predicate),
+        (prepared.seal(), prepared_predicate),
+    ] {
+        let mut echo = Vec::new();
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    assert!(!scope.call(&predicate, (7.into(),)).await.unwrap());
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(
+            echo.iter()
+                .map(|event| event.value().inspect().to_string())
+                .collect::<Vec<_>>(),
+            ["8"]
+        );
+    }
+}
 
 #[test]
 fn native_view_artifact_matches_declaration_only_preparation() {

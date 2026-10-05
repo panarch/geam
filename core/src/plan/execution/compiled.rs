@@ -1,3 +1,11 @@
+pub(crate) mod calls;
+mod entries;
+pub use calls::{
+    CallContract, CallContractTarget, CallTarget, CreationContract, FunctionCallsImplementation,
+    ReturnContract, TailContract,
+};
+pub(super) use entries::CompiledEntries;
+
 use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{
     BoolFunctionId, CustomFunctionId, ExecutionBoolFunctionBody, ExecutionIntFunctionBody,
@@ -24,6 +32,7 @@ pub struct CompiledFunctions {
     pub customs: Table<CompiledFunction<usize>>,
     pub int_lists: Table<CompiledFunction<IntListFunctionId>>,
     pub callbacks: CompiledCallbacks,
+    pub function_calls: Table<CompiledFunction<CallTarget>>,
 }
 
 pub struct CompiledFunction<Id> {
@@ -37,6 +46,7 @@ pub enum CompiledImplementation {
     IntList(IntListImplementation),
     CustomLoop(Node<CustomLoopImplementation>),
     String(StringImplementation),
+    FunctionCalls(Node<FunctionCallsImplementation>),
 }
 
 impl CompiledImplementation {
@@ -47,6 +57,7 @@ impl CompiledImplementation {
             Self::IntList(value) => value.entry,
             Self::CustomLoop(value) => value.entry,
             Self::String(value) => value.entry,
+            Self::FunctionCalls(value) => value.entry,
         }
     }
 
@@ -57,6 +68,7 @@ impl CompiledImplementation {
             Self::IntList(value) => &value.checkpoints,
             Self::CustomLoop(value) => &value.checkpoints,
             Self::String(value) => &value.checkpoints,
+            Self::FunctionCalls(value) => &value.checkpoints,
         }
     }
 }
@@ -174,6 +186,7 @@ impl CompiledFunctions {
             customs: Table::Static(&[]),
             int_lists: Table::Static(&[]),
             callbacks: CompiledCallbacks::interpreted(),
+            function_calls: Table::Static(&[]),
         }
     }
 
@@ -184,10 +197,14 @@ impl CompiledFunctions {
             customs: Table::Static(&self.customs),
             int_lists: Table::Static(&self.int_lists),
             callbacks: self.callbacks.borrowed(),
+            function_calls: Table::Static(&self.function_calls),
         }
     }
 
     pub(crate) fn int(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
+        if let Some(implementation) = self.call_root(CallTarget::Int(id)) {
+            return Some(implementation);
+        }
         self.ints
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
@@ -195,6 +212,9 @@ impl CompiledFunctions {
     }
 
     pub(crate) fn bool(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
+        if let Some(implementation) = self.call_root(CallTarget::Bool(id)) {
+            return Some(implementation);
+        }
         self.bools
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
@@ -215,6 +235,17 @@ impl CompiledFunctions {
             })
             .ok()
             .map(|index| &self.int_lists[index].implementation)
+    }
+
+    pub(crate) fn call_root(&self, target: CallTarget) -> Option<&CompiledImplementation> {
+        self.call(target).filter(|implementation| matches!(implementation, CompiledImplementation::FunctionCalls(calls) if calls.root))
+    }
+
+    pub(crate) fn call(&self, target: CallTarget) -> Option<&CompiledImplementation> {
+        self.function_calls
+            .binary_search_by_key(&target.key(), |entry| entry.function.key())
+            .ok()
+            .map(|index| &self.function_calls[index].implementation)
     }
 }
 
@@ -324,6 +355,7 @@ mod tests {
     };
 
     static FUNCTIONS: CompiledFunctions = CompiledFunctions {
+        function_calls: Table::Static(&[]),
         ints: Table::Static(&[CompiledFunction {
             function: IntFunctionId(2),
             implementation: CompiledImplementation::Numeric(NumericImplementation {

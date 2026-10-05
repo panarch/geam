@@ -1,4 +1,5 @@
 pub(crate) mod bit_array;
+pub(crate) mod calls;
 pub(crate) mod custom;
 pub(crate) mod custom_loop;
 pub(crate) mod int_list;
@@ -22,6 +23,7 @@ pub enum CompiledProgress {
 pub(crate) mod tests {
     use super::CompiledProgress;
     use super::bit_array::BitArrayValues;
+    use super::calls::{CallExecution, CallInputs, CallStorage};
     use super::custom::CustomValues;
     use super::custom_loop::{
         CallbackInputs, CallbackProgress, CustomListOps, CustomLoopProgress, CustomLoopValues,
@@ -82,6 +84,14 @@ pub(crate) mod tests {
         panic!("metadata fixture must not execute a string kernel")
     }
 
+    pub(crate) fn metadata_calls(
+        _: usize,
+        _: CallInputs<'_>,
+        _: &mut CallStorage,
+    ) -> Option<Box<dyn CallExecution>> {
+        panic!("metadata fixture must not execute a function-call kernel")
+    }
+
     #[test]
     #[should_panic(expected = "metadata fixture must not execute a numeric kernel")]
     fn numeric_metadata_fixture_rejects_execution() {
@@ -121,5 +131,15 @@ pub(crate) mod tests {
     #[should_panic(expected = "metadata fixture must not execute a string kernel")]
     fn string_metadata_fixture_rejects_execution() {
         metadata_string(0, &mut StringValues::default(), &mut 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "metadata fixture must not execute a function-call kernel")]
+    fn function_call_metadata_fixture_rejects_execution() {
+        metadata_calls(
+            0,
+            CallInputs::new(&[], &[], &[], &[]),
+            &mut CallStorage::default(),
+        );
     }
 }

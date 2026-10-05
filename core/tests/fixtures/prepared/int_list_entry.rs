@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 18,
+    format: 19,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -4365,6 +4365,8 @@ pub fn main() -> Int {
                 int_lists: data::Storage::Static(&[
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                function_calls: data::Storage::Static(&[
+                ]),
             }
         },
         constants: data::constant::ProfiledConstantTable {

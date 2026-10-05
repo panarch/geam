@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 18,
+    format: 19,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -16241,6 +16241,1781 @@ fn integer_comparisons() {
                 Next(usize),
                 Exit(data::compiled::CompiledProgress),
             }
+            use data::compiled::calls::{BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+            enum FunctionState {
+                Int1Point0 {  },
+                Int1Point1 { int_function0: IntCallable },
+                Int1Point2 { int_function0: IntCallable, int0: i128 },
+                Int1Point3 { int_function0: IntCallable, int0: i128, int1: i128 },
+                Int3Point0 { int0: i128 },
+                Int4Point0 { int0: i128 },
+                Int4Point1 { int0: i128, int1: i128 },
+                Int6Point0 { int0: i128 },
+                Int6Point1 {  },
+                Int6Point2 { int0: i128 },
+                Int6Point3 { int0: i128 },
+                Int6Point4 { int0: i128, int1: i128 },
+                Int7Point0 { int0: i128, int1: i128 },
+                Int7Point1 { int0: i128, int1: i128, int2: i128 },
+                Bool0Point0 { bool0: bool },
+                Bool2Point0 {  },
+                Bool2Point1 { int0: i128 },
+                Bool2Point2 { int0: i128, int1: i128 },
+                Bool2Point3 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point4 { int0: i128, int1: i128 },
+                Bool2Point5 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point6 { int0: i128, int1: i128 },
+                Bool2Point7 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point8 { int0: i128, int1: i128 },
+                Bool2Point9 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point10 { int0: i128, int1: i128 },
+                Bool2Point11 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point12 { int0: i128, int1: i128 },
+                Bool2Point13 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point14 { int0: i128, int1: i128 },
+                Bool2Point15 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point16 { int0: i128, int1: i128 },
+                Bool2Point17 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point18 { int0: i128, int1: i128 },
+                Bool2Point19 { int0: i128, int1: i128, int2: i128 },
+                Bool2Point20 { int0: i128, int1: i128 },
+                Bool2Point21 { int0: i128 },
+                Bool2Point22 {  },
+                Bool2Point23 { int0: i128, int1: i128 },
+                Bool2Point24 { int0: i128, int1: i128 },
+                Bool2Point25 { int0: i128, int1: i128 },
+                Bool2Point26 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point27 { int0: i128, int1: i128 },
+                Bool2Point28 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point29 { int0: i128, int1: i128 },
+                Bool2Point30 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point31 { int0: i128, int1: i128 },
+                Bool2Point32 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point33 { int0: i128, int1: i128 },
+                Bool2Point34 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point35 { int0: i128, int1: i128 },
+                Bool2Point36 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point37 { int0: i128, int1: i128 },
+                Bool2Point38 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point39 { int0: i128, int1: i128 },
+                Bool2Point40 { int0: i128, int1: i128, bool0: bool },
+                Bool2Point41 { int0: i128 },
+                Bool2Point42 {  },
+                Bool2Point43 { bool0: bool },
+                Bool2Point44 { bool0: bool },
+                Bool2Point45 { bool0: bool },
+                Bool2Point46 { bool0: bool },
+                Bool2Point47 { bool0: bool },
+                Bool2Point48 { bool0: bool },
+                Bool2Point49 { bool0: bool },
+                Bool2Point50 { bool0: bool },
+                Bool2Point51 { bool0: bool },
+                Bool2Point52 { bool0: bool },
+                Bool2Point53 { bool0: bool },
+                Bool2Point54 { bool0: bool },
+                Bool2Point55 { int0: i128 },
+                Bool2Point56 { int0: i128 },
+                Bool2Point57 { int0: i128 },
+                Bool2Point58 { int0: i128 },
+                Bool2Point59 { int0: i128 },
+                Bool2Point60 { int0: i128 },
+                Bool2Point61 { int0: i128 },
+                Bool2Point62 { int0: i128 },
+                Bool2Point63 { int0: i128 },
+                IntFunction0Point0 { int_function0: IntCallable },
+                IntFunction2Point0 { int0: i128 },
+                IntFunction2Point1 { int0: i128, int_function0: IntCallable },
+                IntFunction3Point0 {  },
+                IntFunction3Point1 { int_function0: IntCallable },
+                BoolFunction0Point0 { bool_function0: BoolCallable },
+                Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+            }
+            enum IntReturn {
+                Int1Call2 { int_function0: IntCallable, int0: i128 },
+            }
+            impl IntReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                        Self::Int1Call2 { .. } => data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3959)),
+                    }
+                }
+                fn small(self, result: i128) -> FunctionState {
+                    match self {
+                        Self::Int1Call2 { int_function0, int0 } => {
+                            let int1 = result;
+                            FunctionState::Int1Point3 { int_function0, int0, int1 }
+                        },
+                    }
+                }
+                fn resume(self, result: CallInteger) -> FunctionState {
+                    if let Some(result) = result.small() {
+                        return self.small(result);
+                    }
+                    match self {
+                        Self::Int1Call2 { int_function0, int0 } => {
+                            let int1 = result;
+                            FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 3,
+                                ints: 2,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 1,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                        },
+                    }
+                }
+            }
+            enum BoolReturn {
+            }
+            impl BoolReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                    }
+                }
+                fn small(self, result: bool) -> FunctionState {
+                    let _ = result;
+                    match self {
+                    }
+                }
+                fn resume(self, result: bool) -> FunctionState { self.small(result) }
+            }
+            enum IntFunctionReturn {
+                Int1Call0 {  },
+            }
+            impl IntFunctionReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                        Self::Int1Call0 { .. } => data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3956)),
+                    }
+                }
+                fn small(self, result: IntCallable) -> FunctionState {
+                    match self {
+                        Self::Int1Call0 {  } => {
+                            let int_function0 = result.with_type(data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::ValueType::Int,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                            });
+                            FunctionState::Int1Point1 { int_function0 }
+                        },
+                    }
+                }
+                fn resume(self, result: IntCallable) -> FunctionState { self.small(result) }
+            }
+            enum BoolFunctionReturn {
+            }
+            impl BoolFunctionReturn {
+                fn site(&self) -> data::source::HostCallSite {
+                    match *self {
+                    }
+                }
+                fn small(self, result: BoolCallable) -> FunctionState {
+                    let _ = result;
+                    match self {
+                    }
+                }
+                fn resume(self, result: BoolCallable) -> FunctionState { self.small(result) }
+            }
+            #[allow(clippy::large_enum_variant, reason = "Typed locals stay inline to avoid allocating at each generated step.")]
+            enum FunctionStep {
+                Next(FunctionState),
+                Yield(FunctionState),
+                Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
+                IntCall { callee: FunctionState, caller: IntReturn },
+                Int { value: i128, exit: data::graph::BlockGraphExitId },
+                IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
+                Bool { value: bool, exit: data::graph::BlockGraphExitId },
+                IntFunctionCall { callee: FunctionState, caller: IntFunctionReturn },
+                IntFunction { value: IntCallable, exit: data::graph::BlockGraphExitId },
+                BoolFunction { value: BoolCallable, exit: data::graph::BlockGraphExitId },
+            }
+            struct FunctionExecution {
+                active: Option<FunctionState>,
+                integer_returns: Vec<IntReturn>,
+                boolean_returns: Vec<BoolReturn>,
+                integer_function_returns: Vec<IntFunctionReturn>,
+                boolean_function_returns: Vec<BoolFunctionReturn>,
+            }
+            impl FunctionExecution {
+                fn new(active: FunctionState) -> Self {
+                    Self {
+                        active: Some(active),
+                        integer_returns: Vec::new(),
+                        boolean_returns: Vec::new(),
+                        integer_function_returns: Vec::new(),
+                        boolean_function_returns: Vec::new(),
+                    }
+                }
+            }
+            impl CallExecution for FunctionExecution {
+                fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
+                    if self.active.is_some() { return false; }
+                    let active = match target {
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(1)) => calls_int_1_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(3)) => calls_int_3_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(4)) => calls_int_4_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(6)) => calls_int_6_state(point, values),
+                        data::compiled::CallTarget::Int(data::function::IntFunctionId(7)) => calls_int_7_state(point, values),
+                        data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)) => calls_bool_0_state(point, values),
+                        data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)) => calls_bool_2_state(point, values),
+                        data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)) => calls_intfunction_0_state(point, values),
+                        data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(2)) => calls_intfunction_2_state(point, values),
+                        data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(3)) => calls_intfunction_3_state(point, values),
+                        data::compiled::CallTarget::BoolFunction(data::function::BoolFunctionFunctionId(0)) => calls_boolfunction_0_state(point, values),
+                        _ => None,
+                    };
+                    let Some(active) = active else { return false; };
+                    self.active = Some(active);
+                    true
+                }
+                fn retained_bytes(&self) -> usize {
+                    std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
+                }
+                fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+                    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                    loop {
+                        match function_step(active, ops, budget) {
+                            FunctionStep::Next(next) => active = next,
+                            FunctionStep::Yield(active) => {
+                                self.active = Some(active);
+                                return CallProgress::Yield(self);
+                            },
+                            FunctionStep::IntCall { callee, caller } => {
+                                self.integer_returns.push(caller);
+                                active = callee;
+                            },
+                            FunctionStep::Int { value, exit } => {
+                                if let Some(caller) = self.integer_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self };
+                                }
+                            },
+                            FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
+                                function, site, arguments,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(caller.resume(value));
+                                    self
+                                }),
+                            },
+                            FunctionStep::Bool { value, exit } => {
+                                if let Some(caller) = self.boolean_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return CallProgress::Complete { exit, output: CallOutput::Bool(value), execution: self };
+                                }
+                            },
+                            FunctionStep::IntFunctionCall { callee, caller } => {
+                                self.integer_function_returns.push(caller);
+                                active = callee;
+                            },
+                            FunctionStep::IntFunction { value, exit } => {
+                                if let Some(caller) = self.integer_function_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return CallProgress::Complete { exit, output: CallOutput::IntFunction(value), execution: self };
+                                }
+                            },
+                            FunctionStep::BoolFunction { value, exit } => {
+                                if let Some(caller) = self.boolean_function_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return CallProgress::Complete { exit, output: CallOutput::BoolFunction(value), execution: self };
+                                }
+                            },
+                            FunctionStep::Canonical { target, point, values } => {
+                                match target {
+                                    data::compiled::CallTarget::Int(function) => {
+                                        if let Some(caller) = self.integer_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedInt {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::Bool(function) => {
+                                        if let Some(caller) = self.boolean_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedBool {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::IntFunction(function) => {
+                                        if let Some(caller) = self.integer_function_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedIntFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                    data::compiled::CallTarget::BoolFunction(function) => {
+                                        if let Some(caller) = self.boolean_function_returns.pop() {
+                                            let site = caller.site();
+                                            return CallProgress::InterpretedBoolFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(caller.resume(value));
+                                                    self
+                                                }),
+                                            };
+                                        }
+                                        return CallProgress::Interpreted { point, values };
+                                    },
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+            fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
+                match active {
+                    FunctionState::Canonical { target, point, values } => FunctionStep::Canonical { target, point, values },
+                    FunctionState::Int1Point0 {  } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point0 {  }); }
+                        *budget -= 1;
+                        FunctionStep::IntFunctionCall { callee: FunctionState::IntFunction3Point0 {  }, caller: IntFunctionReturn::Int1Call0 {  } }
+                    },
+                    FunctionState::Int1Point1 { int_function0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point1 { int_function0 }); }
+                        *budget -= 1;
+                        let int0 = 0_i128;
+                        if int0 < i128::from(i64::MIN) || int0 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 2,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 1,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Int1Point2 { int_function0, int0 })
+                    },
+                    FunctionState::Int1Point2 { int_function0, int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point2 { int_function0, int0 }); }
+                        *budget -= 1;
+                        let callable = &int_function0;
+                        let captures = callable.captures();
+                        let target = callable.target();
+                        if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, (int0,)) {
+                            return FunctionStep::IntCall { callee, caller: IntReturn::Int1Call2 { int_function0, int0 } };
+                        }
+                        FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3959)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int1Call2 { int_function0, int0 } }
+                    },
+                    FunctionState::Int1Point3 { int_function0, int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point3 { int_function0, int0, int1 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int3Point0 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int4Point0 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int4Point0 { int0 }); }
+                        *budget -= 1;
+                        let int1 = int0 + 1_i128;
+                        if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int4Point1 { int0, int1 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int4Point1 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int4Point1 { int0, int1 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int6Point0 { int0 } => {
+                        let values = ops.numeric();
+                        let progress = numeric_int_6_entry((int0,), values, budget);
+                        calls_int_6_numeric(progress, values)
+                    },
+                    FunctionState::Int6Point1 {  } => {
+                        let values = ops.numeric();
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        let progress = numeric_int_6(1, values, budget);
+                        calls_int_6_numeric(progress, values)
+                    },
+                    FunctionState::Int6Point2 { int0 } => {
+                        let values = ops.numeric();
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[int0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        let progress = numeric_int_6(2, values, budget);
+                        calls_int_6_numeric(progress, values)
+                    },
+                    FunctionState::Int6Point3 { int0 } => {
+                        let values = ops.numeric();
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[int0]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        let progress = numeric_int_6(3, values, budget);
+                        calls_int_6_numeric(progress, values)
+                    },
+                    FunctionState::Int6Point4 { int0, int1 } => {
+                        let values = ops.numeric();
+                        values.ints.clear();
+                        values.ints.extend_from_slice(&[int0, int1]);
+                        values.bools.clear();
+                        values.bools.extend_from_slice(&[]);
+                        let progress = numeric_int_6(4, values, budget);
+                        calls_int_6_numeric(progress, values)
+                    },
+                    FunctionState::Int7Point0 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point0 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = int1 + int0;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int1, int2 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Int7Point1 { int0, int1, int2 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int1, int2 }); }
+                        *budget -= 1;
+                        FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Bool0Point0 { bool0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { bool0 }); }
+                        *budget -= 1;
+                        FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Bool2Point0 {  } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point0 {  }); }
+                        *budget -= 1;
+                        let int0 = -9223372036854775808_i128;
+                        if int0 < i128::from(i64::MIN) || int0 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 1,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point1 { int0 })
+                    },
+                    FunctionState::Bool2Point1 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point1 { int0 }); }
+                        *budget -= 1;
+                        let int1 = 9223372036854775807_i128;
+                        if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 2,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point2 { int0, int1 })
+                    },
+                    FunctionState::Bool2Point2 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point2 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = 9223372036854775807_i128 + 1_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 3,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point3 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point3 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(0),
+                            instruction: 3,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point4 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point4 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = int0 - 1_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(1),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point5 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point5 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(1),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point6 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point6 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = if -1_i128 == 0 { 0_i128 } else { -9223372036854775808_i128 / -1_i128 };
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(2),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point7 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point7 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(2),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point8 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point8 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = 0_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(3),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point9 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point9 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(3),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point10 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point10 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = if 3_i128 == 0 { 0_i128 } else { -7_i128 / 3_i128 };
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(4),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point11 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point11 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(4),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point12 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point12 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = if 3_i128 == 0 { 0_i128 } else { -7_i128 % 3_i128 };
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(5),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point13 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point13 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(5),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point14 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point14 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = 0_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(6),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point15 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point15 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(6),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point16 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point16 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = 0_i128;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(7),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point17 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point17 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(7),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point18 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point18 { int0, int1 }); }
+                        *budget -= 1;
+                        let int2 = int0 * int0;
+                        if int2 < i128::from(i64::MIN) || int2 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(8),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        FunctionStep::Next(FunctionState::Bool2Point19 { int0, int1, int2 })
+                    },
+                    FunctionState::Bool2Point19 { int0, int1, int2 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(8),
+                            instruction: 1,
+                            ints: 3,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point20 { int0, int1 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(9),
+                            instruction: 0,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point21 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(10),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point22 {  } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(11),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point23 { int0, int1 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(12),
+                            instruction: 0,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point24 { int0, int1 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(13),
+                            instruction: 0,
+                            ints: 2,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point25 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point25 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int1 < int0;
+                        FunctionStep::Next(FunctionState::Bool2Point26 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point26 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(14),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point27 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point27 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Bool2Point28 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point28 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(15),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point29 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point29 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int0 < int1;
+                        FunctionStep::Next(FunctionState::Bool2Point30 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point30 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(16),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point31 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point31 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int0 <= int1;
+                        FunctionStep::Next(FunctionState::Bool2Point32 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point32 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(17),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point33 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point33 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int0 > int1;
+                        FunctionStep::Next(FunctionState::Bool2Point34 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point34 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(18),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point35 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point35 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        FunctionStep::Next(FunctionState::Bool2Point36 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point36 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(19),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point37 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point37 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int1 > int0;
+                        FunctionStep::Next(FunctionState::Bool2Point38 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point38 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(20),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point39 { int0, int1 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point39 { int0, int1 }); }
+                        *budget -= 1;
+                        let bool0 = int1 >= int0;
+                        FunctionStep::Next(FunctionState::Bool2Point40 { int0, int1, bool0 })
+                    },
+                    FunctionState::Bool2Point40 { int0, int1, bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(21),
+                            instruction: 1,
+                            ints: 2,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point41 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(22),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point42 {  } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point42 {  }); }
+                        *budget -= 1;
+                        let bool0 = true;
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point43 { bool0 }); }
+                        *budget -= 1;
+                        FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Bool2Point43 { bool0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point43 { bool0 }); }
+                        *budget -= 1;
+                        FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::Bool2Point44 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(24),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point45 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(25),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point46 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(26),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point47 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(27),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point48 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(28),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point49 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(29),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point50 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(30),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point51 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(31),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point52 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(32),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point53 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(36),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point54 { bool0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(37),
+                            instruction: 0,
+                            ints: 0,
+                            bools: 1,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point55 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(38),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point56 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(39),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point57 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(40),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point58 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(41),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point59 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(42),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point60 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(43),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point61 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(44),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point62 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(45),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::Bool2Point63 { int0 } => {
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point: data::compiled::CompiledCheckpoint {
+                            block: data::graph::BlockId(46),
+                            instruction: 0,
+                            ints: 1,
+                            bools: 0,
+                            bit_arrays: 0,
+                            int_lists: 0,
+                            strings: 0,
+                            customs: 0,
+                            custom_lists: 0,
+                            int_functions: 0,
+                            bool_functions: 0,
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                    },
+                    FunctionState::IntFunction0Point0 { int_function0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point0 { int_function0 }); }
+                        *budget -= 1;
+                        FunctionStep::IntFunction { value: int_function0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::IntFunction2Point0 { int0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction2Point0 { int0 }); }
+                        *budget -= 1;
+                        let int_function0 = ops.int_closure(data::function::IntFunctionId(7), data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::Int,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                        }, vec![CallCapture::int(data::graph::IntLocalId(1), int0)]);
+                        FunctionStep::Next(FunctionState::IntFunction2Point1 { int0, int_function0 })
+                    },
+                    FunctionState::IntFunction2Point1 { int0, int_function0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction2Point1 { int0, int_function0 }); }
+                        *budget -= 1;
+                        FunctionStep::IntFunction { value: int_function0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::IntFunction3Point0 {  } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction3Point0 {  }); }
+                        *budget -= 1;
+                        let int_function0 = ops.int_reference(data::function::IntFunctionId(8), data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::Int,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                        });
+                        FunctionStep::Next(FunctionState::IntFunction3Point1 { int_function0 })
+                    },
+                    FunctionState::IntFunction3Point1 { int_function0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction3Point1 { int_function0 }); }
+                        *budget -= 1;
+                        FunctionStep::IntFunction { value: int_function0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                    FunctionState::BoolFunction0Point0 { bool_function0 } => {
+                        if *budget == 0 { return FunctionStep::Yield(FunctionState::BoolFunction0Point0 { bool_function0 }); }
+                        *budget -= 1;
+                        FunctionStep::BoolFunction { value: bool_function0, exit: data::graph::BlockGraphExitId(0) }
+                    },
+                }
+            }
+            fn calls_entry_0(target: data::function::IntFunctionId, captures: &CallCaptureInputs<'_>, inputs: (i128,)) -> Option<FunctionState> {
+                let (argument0,) = inputs;
+                match target.0 {
+                    3 => Some(FunctionState::Int3Point0 { int0: argument0 }),
+                    4 => Some(FunctionState::Int4Point0 { int0: argument0 }),
+                    6 => Some(FunctionState::Int6Point0 { int0: argument0 }),
+                    7 => Some(FunctionState::Int7Point0 { int0: argument0, int1: captures.int(data::graph::IntLocalId(1))? }),
+                    _ => None,
+                }
+            }
+            fn calls_int_1_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int1Point0 {  },
+                    1 => FunctionState::Int1Point1 { int_function0: values.int_function(0)? },
+                    2 => {
+                        if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(3) | data::function::IntFunctionId(4) | data::function::IntFunctionId(6) | data::function::IntFunctionId(7)) { return None; }
+                        FunctionState::Int1Point2 { int_function0: values.int_function(0)?, int0: values.int(0)? }
+                    },
+                    3 => FunctionState::Int1Point3 { int_function0: values.int_function(0)?, int0: values.int(0)?, int1: values.int(1)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point, values) { return Some(execution); }
+                let active = calls_int_1_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int3Point0 { int0: values.int(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point, values) { return Some(execution); }
+                let active = calls_int_3_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_4_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int4Point0 { int0: values.int(0)? },
+                    1 => FunctionState::Int4Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_4_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(4)), point, values) { return Some(execution); }
+                let active = calls_int_4_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_6_numeric(progress: data::compiled::CompiledProgress, values: &data::compiled::numeric::NumericValues) -> FunctionStep {
+                const STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; 5] = [
+                    |values| FunctionState::Int6Point0 { int0: values.ints[0] },
+                    |_values| FunctionState::Int6Point1 {  },
+                    |values| FunctionState::Int6Point2 { int0: values.ints[0] },
+                    |values| FunctionState::Int6Point3 { int0: values.ints[0] },
+                    |values| FunctionState::Int6Point4 { int0: values.ints[0], int1: values.ints[1] },
+                ];
+                const RETURNS: [fn(data::graph::BlockGraphExitId, &data::compiled::numeric::NumericValues) -> FunctionStep; 1] = [
+                    |exit, values| FunctionStep::Int { value: values.ints[data::graph::IntLocalId(0).0], exit },
+                ];
+                match progress {
+                    data::compiled::CompiledProgress::Yield(point) => FunctionStep::Yield(STATES[point](values)),
+                    data::compiled::CompiledProgress::Interpreted(point) => {
+                        const POINTS: [data::compiled::CompiledCheckpoint; 5] = [
+                            data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 0,
+                                ints: 1,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            },
+                            data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(1),
+                                instruction: 0,
+                                ints: 0,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            },
+                            data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(1),
+                                instruction: 1,
+                                ints: 1,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            },
+                            data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(2),
+                                instruction: 0,
+                                ints: 1,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            },
+                            data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(2),
+                                instruction: 1,
+                                ints: 2,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 0,
+                            },
+                        ];
+                        FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                    },
+                    data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
+                }
+            }
+            fn calls_int_6_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int6Point0 { int0: values.int(0)? },
+                    1 => FunctionState::Int6Point1 {  },
+                    2 => FunctionState::Int6Point2 { int0: values.int(0)? },
+                    3 => FunctionState::Int6Point3 { int0: values.int(0)? },
+                    4 => FunctionState::Int6Point4 { int0: values.int(0)?, int1: values.int(1)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_6_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point, values) { return Some(execution); }
+                let active = calls_int_6_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_int_7_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Int7Point0 { int0: values.int(0)?, int1: values.int(1)? },
+                    1 => FunctionState::Int7Point1 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_int_7_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point, values) { return Some(execution); }
+                let active = calls_int_7_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_bool_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Bool0Point0 { bool0: values.bool(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_bool_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point, values) { return Some(execution); }
+                let active = calls_bool_0_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_bool_2_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::Bool2Point0 {  },
+                    1 => FunctionState::Bool2Point1 { int0: values.int(0)? },
+                    2 => FunctionState::Bool2Point2 { int0: values.int(0)?, int1: values.int(1)? },
+                    3 => FunctionState::Bool2Point3 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    4 => FunctionState::Bool2Point4 { int0: values.int(0)?, int1: values.int(1)? },
+                    5 => FunctionState::Bool2Point5 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    6 => FunctionState::Bool2Point6 { int0: values.int(0)?, int1: values.int(1)? },
+                    7 => FunctionState::Bool2Point7 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    8 => FunctionState::Bool2Point8 { int0: values.int(0)?, int1: values.int(1)? },
+                    9 => FunctionState::Bool2Point9 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    10 => FunctionState::Bool2Point10 { int0: values.int(0)?, int1: values.int(1)? },
+                    11 => FunctionState::Bool2Point11 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    12 => FunctionState::Bool2Point12 { int0: values.int(0)?, int1: values.int(1)? },
+                    13 => FunctionState::Bool2Point13 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    14 => FunctionState::Bool2Point14 { int0: values.int(0)?, int1: values.int(1)? },
+                    15 => FunctionState::Bool2Point15 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    16 => FunctionState::Bool2Point16 { int0: values.int(0)?, int1: values.int(1)? },
+                    17 => FunctionState::Bool2Point17 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    18 => FunctionState::Bool2Point18 { int0: values.int(0)?, int1: values.int(1)? },
+                    19 => FunctionState::Bool2Point19 { int0: values.int(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                    20 => FunctionState::Bool2Point20 { int0: values.int(0)?, int1: values.int(1)? },
+                    21 => FunctionState::Bool2Point21 { int0: values.int(0)? },
+                    22 => FunctionState::Bool2Point22 {  },
+                    23 => FunctionState::Bool2Point23 { int0: values.int(0)?, int1: values.int(1)? },
+                    24 => FunctionState::Bool2Point24 { int0: values.int(0)?, int1: values.int(1)? },
+                    25 => FunctionState::Bool2Point25 { int0: values.int(0)?, int1: values.int(1)? },
+                    26 => FunctionState::Bool2Point26 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    27 => FunctionState::Bool2Point27 { int0: values.int(0)?, int1: values.int(1)? },
+                    28 => FunctionState::Bool2Point28 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    29 => FunctionState::Bool2Point29 { int0: values.int(0)?, int1: values.int(1)? },
+                    30 => FunctionState::Bool2Point30 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    31 => FunctionState::Bool2Point31 { int0: values.int(0)?, int1: values.int(1)? },
+                    32 => FunctionState::Bool2Point32 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    33 => FunctionState::Bool2Point33 { int0: values.int(0)?, int1: values.int(1)? },
+                    34 => FunctionState::Bool2Point34 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    35 => FunctionState::Bool2Point35 { int0: values.int(0)?, int1: values.int(1)? },
+                    36 => FunctionState::Bool2Point36 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    37 => FunctionState::Bool2Point37 { int0: values.int(0)?, int1: values.int(1)? },
+                    38 => FunctionState::Bool2Point38 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    39 => FunctionState::Bool2Point39 { int0: values.int(0)?, int1: values.int(1)? },
+                    40 => FunctionState::Bool2Point40 { int0: values.int(0)?, int1: values.int(1)?, bool0: values.bool(0)? },
+                    41 => FunctionState::Bool2Point41 { int0: values.int(0)? },
+                    42 => FunctionState::Bool2Point42 {  },
+                    43 => FunctionState::Bool2Point43 { bool0: values.bool(0)? },
+                    44 => FunctionState::Bool2Point44 { bool0: values.bool(0)? },
+                    45 => FunctionState::Bool2Point45 { bool0: values.bool(0)? },
+                    46 => FunctionState::Bool2Point46 { bool0: values.bool(0)? },
+                    47 => FunctionState::Bool2Point47 { bool0: values.bool(0)? },
+                    48 => FunctionState::Bool2Point48 { bool0: values.bool(0)? },
+                    49 => FunctionState::Bool2Point49 { bool0: values.bool(0)? },
+                    50 => FunctionState::Bool2Point50 { bool0: values.bool(0)? },
+                    51 => FunctionState::Bool2Point51 { bool0: values.bool(0)? },
+                    52 => FunctionState::Bool2Point52 { bool0: values.bool(0)? },
+                    53 => FunctionState::Bool2Point53 { bool0: values.bool(0)? },
+                    54 => FunctionState::Bool2Point54 { bool0: values.bool(0)? },
+                    55 => FunctionState::Bool2Point55 { int0: values.int(0)? },
+                    56 => FunctionState::Bool2Point56 { int0: values.int(0)? },
+                    57 => FunctionState::Bool2Point57 { int0: values.int(0)? },
+                    58 => FunctionState::Bool2Point58 { int0: values.int(0)? },
+                    59 => FunctionState::Bool2Point59 { int0: values.int(0)? },
+                    60 => FunctionState::Bool2Point60 { int0: values.int(0)? },
+                    61 => FunctionState::Bool2Point61 { int0: values.int(0)? },
+                    62 => FunctionState::Bool2Point62 { int0: values.int(0)? },
+                    63 => FunctionState::Bool2Point63 { int0: values.int(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_bool_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point, values) { return Some(execution); }
+                let active = calls_bool_2_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_intfunction_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::IntFunction0Point0 { int_function0: values.int_function(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_intfunction_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)), point, values) { return Some(execution); }
+                let active = calls_intfunction_0_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_intfunction_2_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::IntFunction2Point0 { int0: values.int(0)? },
+                    1 => FunctionState::IntFunction2Point1 { int0: values.int(0)?, int_function0: values.int_function(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_intfunction_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(2)), point, values) { return Some(execution); }
+                let active = calls_intfunction_2_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_intfunction_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::IntFunction3Point0 {  },
+                    1 => FunctionState::IntFunction3Point1 { int_function0: values.int_function(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_intfunction_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(3)), point, values) { return Some(execution); }
+                let active = calls_intfunction_3_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
+            fn calls_boolfunction_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                let active = match point {
+                    0 => FunctionState::BoolFunction0Point0 { bool_function0: values.bool_function(0)? },
+                    _ => return None,
+                };
+                Some(active)
+            }
+            fn calls_boolfunction_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                if let Some(execution) = storage.reuse(data::compiled::CallTarget::BoolFunction(data::function::BoolFunctionFunctionId(0)), point, values) { return Some(execution); }
+                let active = calls_boolfunction_0_state(point, values)?;
+                Some(Box::new(FunctionExecution::new(active)))
+            }
 
             fn numeric_int_6(
                 point: usize,
@@ -16739,6 +18514,1804 @@ fn integer_comparisons() {
                     },
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                function_calls: data::Storage::Static(&[
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 3,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[
+                                data::compiled::CallContract {
+                                    point: 0,
+                                    output: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                    target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(3))),
+                                    args: data::Storage::Static(&[]),
+                                    site: data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3956)),
+                                },
+                                data::compiled::CallContract {
+                                    point: 2,
+                                    output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    target: data::compiled::CallContractTarget::IntValue(data::graph::IntFunctionLocalId(0)),
+                                    args: data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    ]),
+                                    site: data::source::HostCallSite::from_static("example", "fail", data::source::SourceSpan::new(3949, 3959)),
+                                },
+                            ]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 3,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_1_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_3_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(4)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 1,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_4_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 2,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_6_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 1,
+                                    value: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_int_7_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_bool_0_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: false,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 3,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(1),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(2),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(3),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(4),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(5),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(6),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(6),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(7),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(7),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(8),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(8),
+                                    instruction: 1,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(9),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(10),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(11),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(12),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(13),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(14),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(14),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(15),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(15),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(16),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(16),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(17),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(17),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(18),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(18),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(19),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(19),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(20),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(20),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(21),
+                                    instruction: 0,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(21),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(22),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(23),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(23),
+                                    instruction: 1,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(24),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(25),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(26),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(27),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(28),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(29),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(30),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(31),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(32),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(36),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(37),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 1,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(38),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(39),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(40),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(41),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(42),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(43),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(44),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(45),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(46),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 43,
+                                    value: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_bool_2_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(0)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_intfunction_0_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(2)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                ]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[
+                                data::compiled::CreationContract {
+                                    point: 0,
+                                    output: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(7)),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    },
+                                    reference: false,
+                                    captures: data::Storage::Static(&[
+                                        data::graph::FunctionCapture::Int {
+                                            target: data::graph::IntLocalId(1),
+                                            source: data::graph::IntLocalId(0),
+                                        },
+                                    ]),
+                                },
+                            ]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 1,
+                                    value: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_intfunction_2_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::IntFunction(data::function::IntFunctionFunctionId(3)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 0,
+                                },
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[]),
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[
+                                data::compiled::CreationContract {
+                                    point: 0,
+                                    output: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(8)),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::Int,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                    },
+                                    reference: true,
+                                    captures: data::Storage::Static(&[]),
+                                },
+                            ]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 1,
+                                    value: data::graph::ParamLocal::IntFunction {
+                                        local: data::graph::IntFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                    },
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_intfunction_3_start,
+                        })),
+                    },
+                    data::compiled::CompiledFunction {
+                        function: data::compiled::CallTarget::BoolFunction(data::function::BoolFunctionFunctionId(0)),
+                        implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                            root: true,
+                            entry: 0,
+                            checkpoints: data::Storage::Static(&[
+                                data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 0,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 0,
+                                    bool_functions: 1,
+                                },
+                            ]),
+                            locals: data::Storage::Static(&[
+                                data::Storage::Static(&[
+                                    data::graph::ParamLocal::BoolFunction {
+                                        local: data::graph::BoolFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                        },
+                                    },
+                                ]),
+                            ]),
+                            calls: data::Storage::Static(&[]),
+                            creations: data::Storage::Static(&[]),
+                            returns: data::Storage::Static(&[
+                                data::compiled::ReturnContract {
+                                    point: 0,
+                                    value: data::graph::ParamLocal::BoolFunction {
+                                        local: data::graph::BoolFunctionLocalId(0),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                        },
+                                    },
+                                },
+                            ]),
+                            tails: data::Storage::Static(&[]),
+                            start: calls_boolfunction_0_start,
+                        })),
+                    },
+                ]),
             }
         },
         constants: data::constant::ProfiledConstantTable {

@@ -107,6 +107,7 @@ impl<'plan, Plan: ExecutableRuntimePlan> CustomLoopExecution<'plan, Plan> {
                     CompletedGraph {
                         exit,
                         environment: self.frame.position.environment,
+                        direct_return: false,
                     },
                     storage,
                 )

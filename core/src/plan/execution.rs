@@ -195,6 +195,7 @@ pub(crate) struct ExecutionProgram<Profile: ExecutionProfile> {
     functions: Node<FunctionTables<Profile>>,
     compiled: compiled::CompiledFunctions,
     compiled_callback_bodies: compiled::CompiledCallbackBodies<'static, Profile>,
+    compiled_entries: compiled::CompiledEntries,
 }
 
 struct ExecutionProgramCommon<Graph: ExecutionGraphProfile> {
