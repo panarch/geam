@@ -1,3 +1,4 @@
+use geam::HostFailure;
 use geam::provider::advanced::{
     Equality, Hashing, Inspection, NativeKind, NativeValue, RetainedExternalPayload,
 };
@@ -9,8 +10,8 @@ pub struct Component;
 #[geam::module(path = "example_native_records")]
 mod records {
     use super::{
-        BigInt, Call, Callback, Equality, Hashing, HostResult, Inspection, NativeKind, NativeValue,
-        RetainedExternalPayload, StringValue, Value,
+        BigInt, Call, Callback, Equality, Hashing, HostFailure, HostResult, Inspection, NativeKind,
+        NativeValue, RetainedExternalPayload, StringValue, Value,
     };
 
     #[geam::external(name = "Key", retained)]
@@ -60,10 +61,13 @@ mod records {
     }
 
     #[geam::function]
-    fn key(name: StringValue) -> Key {
-        Key {
-            value: NativeValue::symbol(name.into_ecostring()),
-        }
+    fn key(name: StringValue) -> HostResult<Key> {
+        let name = name
+            .into_ecostring()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        Ok(Key {
+            value: NativeValue::symbol(name),
+        })
     }
 
     #[geam::function]

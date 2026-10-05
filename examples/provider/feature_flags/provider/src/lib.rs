@@ -54,7 +54,8 @@ mod feature_flags {
 
     #[geam::function]
     fn enabled(#[geam::call] call: &Call<RunState>, name: StringValue) -> bool {
-        call.state().enabled.contains(name.as_str())
+        name.as_str()
+            .is_ok_and(|name| call.state().enabled.contains(name))
     }
 }
 

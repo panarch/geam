@@ -109,10 +109,10 @@ impl<Graph: ExecutionGraphProfile> FunctionCodegen<'_, Graph> {
         let subject = format!("b{}_s{}", point.block.0, view.subject.0);
         let condition = match view.pattern {
             StringMatchPattern::Literal(text) => {
-                literal_condition(&format!("values.text({subject})"), text)
+                literal_condition(&format!("values.bytes({subject})"), text)
             }
             StringMatchPattern::Prefix(text) => format!(
-                "values.text({subject}).starts_with({})",
+                "values.bytes({subject}).starts_with({}.as_bytes())",
                 Rust::expression(text)
             ),
         };
@@ -167,14 +167,14 @@ pub(super) fn literal_condition(subject: &str, text: &str) -> String {
     if text.is_empty() {
         format!("{subject}.is_empty()")
     } else {
-        format!("{subject} == {}", Rust::expression(text))
+        format!("{subject} == {}.as_bytes()", Rust::expression(text))
     }
 }
 
 pub(super) fn test_expression(block: BlockId, test: &StringTest<'_>) -> String {
     match test {
         StringTest::Prefix { value, prefix } => format!(
-            "values.text(b{}_s{}).starts_with({})",
+            "values.bytes(b{}_s{}).starts_with({}.as_bytes())",
             block.0,
             value.0,
             Rust::expression(prefix)
@@ -184,7 +184,7 @@ pub(super) fn test_expression(block: BlockId, test: &StringTest<'_>) -> String {
             right,
             negate,
         } => format!(
-            "values.text(b{}_s{}) {} values.text(b{}_s{})",
+            "values.bytes(b{}_s{}) {} values.bytes(b{}_s{})",
             block.0,
             left.0,
             if *negate { "!=" } else { "==" },
@@ -208,12 +208,12 @@ mod tests {
     #[test]
     fn literal_conditions_emit_empty_checks_and_exact_escaped_comparisons() {
         assert_eq!(
-            literal_condition("values.text(b3_s2)", ""),
-            "values.text(b3_s2).is_empty()"
+            literal_condition("values.bytes(b3_s2)", ""),
+            "values.bytes(b3_s2).is_empty()"
         );
         assert_eq!(
-            literal_condition("values.text(b3_s2)", "\n\"\\λ"),
-            "values.text(b3_s2) == \"\\n\\\"\\\\λ\""
+            literal_condition("values.bytes(b3_s2)", "\n\"\\λ"),
+            "values.bytes(b3_s2) == \"\\n\\\"\\\\λ\".as_bytes()"
         );
     }
 
@@ -240,7 +240,7 @@ mod tests {
 fn check(text: String) { let assert "λ" <> _ = text 1 }
 pub fn main() { check("λtail") }
 "#,
-                r#"if values.text(b0_s0).starts_with("λ") {
+                r#"if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
     ()
 } else {
     (b0_s0,)
@@ -255,7 +255,7 @@ fn check(text: String) {
 }
 pub fn main() { check("λtail") }
 "#,
-                r#"if values.text(b0_s0).starts_with("λ") {
+                r#"if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
     let m1 = b0_s0.drop_prefix(2);
     (m1,)
 } else {
@@ -332,7 +332,7 @@ pub fn main() { check("λtail") }
                     value: StringLocalId(2),
                     prefix: "\n\"\\한",
                 },
-                "values.text(b3_s2).starts_with(\"\\n\\\"\\\\한\")",
+                "values.bytes(b3_s2).starts_with(\"\\n\\\"\\\\한\".as_bytes())",
             ),
             (
                 StringTest::Equal {
@@ -340,7 +340,7 @@ pub fn main() { check("λtail") }
                     right: StringLocalId(5),
                     negate: false,
                 },
-                "values.text(b3_s2) == values.text(b3_s5)",
+                "values.bytes(b3_s2) == values.bytes(b3_s5)",
             ),
             (
                 StringTest::Equal {
@@ -348,7 +348,7 @@ pub fn main() { check("λtail") }
                     right: StringLocalId(5),
                     negate: true,
                 },
-                "values.text(b3_s2) != values.text(b3_s5)",
+                "values.bytes(b3_s2) != values.bytes(b3_s5)",
             ),
         ] {
             assert_eq!(test_expression(BlockId(3), &test), expected);
@@ -418,7 +418,7 @@ pub fn main() { examine("λtail") }
         });
         assert_eq!(
             code.as_str(),
-            r#"if values.text(b0_s0).starts_with("λ") {
+            r#"if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
     let m2 = b0_s0;
     let m0 = data::compiled::string::StringRange::literal("λ");
     let m1 = b0_s0.drop_prefix(2);
@@ -446,7 +446,7 @@ pub fn main() { examine("λtail") }
         });
         assert_eq!(
             code.as_str(),
-            r#"if values.text(b0_s0) == "λ" {
+            r#"if values.bytes(b0_s0) == "λ".as_bytes() {
     let m0 = b0_s0;
     (m0,)
 } else {

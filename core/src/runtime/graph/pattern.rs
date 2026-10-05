@@ -95,7 +95,7 @@ where
             Ok(matches!(value, EvaluatedValueRef::Float(value) if value == pattern))
         }
         MatchPattern::String(pattern) => Ok(
-            matches!(value, EvaluatedValueRef::String(value) if value.as_str() == pattern.as_str()),
+            matches!(value, EvaluatedValueRef::String(value) if value.as_bytes() == pattern.as_bytes()),
         ),
         MatchPattern::Bool(pattern) => {
             Ok(matches!(value, EvaluatedValueRef::Bool(value) if value == pattern))
@@ -175,7 +175,7 @@ where
             let EvaluatedValueRef::String(value) = value else {
                 return Ok(false);
             };
-            if !value.starts_with(prefix.as_str()) {
+            if !value.starts_with(prefix.as_bytes()) {
                 return Ok(false);
             }
             if let Some(binding) = left {
@@ -998,7 +998,7 @@ pub fn main() {
         );
         let lists = RuntimeListStorage::default();
         let mut text = EcoString::from("shared string payload retained by partial bindings");
-        let allocation = text.as_str().as_ptr();
+        let allocation = text.as_ptr();
         let inner = lists.string(
             plan.string_list_function_id(0).type_id(),
             vec![text.clone().into(), text.clone().into()],
@@ -1796,7 +1796,7 @@ pub fn main() {
         let constructor = custom_pattern_constructor(pattern);
         let descriptor = plan.custom_constructor(constructor);
         let mut text = EcoString::from("shared string payload retained before field corruption");
-        let allocation = text.as_str().as_ptr();
+        let allocation = text.as_ptr();
         let subject = EvaluatedValue::Custom(EvaluatedCustomValue::from_fields(
             constructor,
             vec![

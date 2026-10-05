@@ -1,14 +1,15 @@
 use crate::plan::{PanicSite, SourceContext, SourceSpan};
-use crate::runtime::Value;
-use ecow::EcoString;
+use crate::runtime::{StringValue, Value};
 use miette::NamedSource;
 use num_bigint::BigInt;
+use std::borrow::Cow;
 use std::fmt;
+use std::str::Utf8Error;
 
 #[derive(Debug, Clone)]
 pub struct Panic<Subject = Value> {
     kind: PanicKind,
-    message: PanicMessage,
+    message: Box<PanicMessage>,
     site: PanicSite,
     source: Option<Box<NamedSource<String>>>,
     details: Option<Box<PanicDetails<Subject>>>,
@@ -29,7 +30,7 @@ pub enum PanicKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanicMessage {
     Default,
-    Explicit(EcoString),
+    Explicit(StringValue),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +49,7 @@ pub enum BitArraySegmentPanicReason {
     InvalidFloatSize { bit_size: BigInt },
     InsufficientBits { requested: usize, available: usize },
     SizeOutOfRange { bit_size: BigInt },
+    InvalidStringEncoding { error: Utf8Error },
 }
 
 impl<Subject> Panic<Subject> {
@@ -60,7 +62,7 @@ impl<Subject> Panic<Subject> {
     ) -> Self {
         Self {
             kind,
-            message,
+            message: Box::new(message),
             site,
             source: source_context
                 .map(SourceContext::named_source)
@@ -89,7 +91,7 @@ impl<Subject> Panic<Subject> {
         self.source.as_deref()
     }
 
-    pub(in crate::runtime::error) fn message_text(&self) -> std::borrow::Cow<'_, str> {
+    pub(in crate::runtime::error) fn message_text(&self) -> Cow<'_, str> {
         self.message.text(self.kind)
     }
 
@@ -199,17 +201,20 @@ impl PanicKind {
 }
 
 impl PanicMessage {
-    pub(crate) fn from_optional_explicit(message: Option<EcoString>) -> Self {
+    pub(crate) fn from_optional_explicit(message: Option<StringValue>) -> Self {
         match message {
             Some(message) => Self::Explicit(message),
             None => Self::Default,
         }
     }
 
-    pub(in crate::runtime) fn text(&self, kind: PanicKind) -> std::borrow::Cow<'_, str> {
+    pub(in crate::runtime) fn text(&self, kind: PanicKind) -> Cow<'_, str> {
         match self {
-            Self::Explicit(message) => std::borrow::Cow::Borrowed(message.as_str()),
-            Self::Default => std::borrow::Cow::Borrowed(kind.default_message()),
+            Self::Explicit(message) => match message.as_str() {
+                Ok(text) => Cow::Borrowed(text),
+                Err(_) => Cow::Owned(message.to_string()),
+            },
+            Self::Default => Cow::Borrowed(kind.default_message()),
         }
     }
 }

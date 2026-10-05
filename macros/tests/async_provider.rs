@@ -167,40 +167,52 @@ pub fn delayed(value: String) -> future.Future(String) {
     let host = execution_fixture::TestHost::default();
     let mut state = State::default();
     let mut echo = Echo::default();
-    let input = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
-    let address = input.as_ptr().addr() + 7;
-    let results = host
-        .block_on(
-            module.with_execution(&host, &mut state, &mut echo, async move |scope| {
-                let direct = scope
-                    .call(&direct, (input.clone(),))
-                    .await
-                    .expect("ordinary provider");
-                let awaited = scope
-                    .call(&awaited, (input.clone(),))
-                    .await
-                    .expect("suspended callback");
-                let work = scope
-                    .call(&delayed, (input,))
-                    .await
-                    .expect("construct work");
-                let first = scope.observe(&work).await.expect("complete work");
-                let again = scope.observe(&work).await.expect("shared completion");
-                let completed = first.read(Clone::clone);
-                again.read(|text| {
-                    assert_eq!(text.as_ptr().addr(), address);
-                    assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
-                });
-                vec![direct, awaited, completed]
-            }),
-        )
-        .expect("execution")
-        .try_into_value()
-        .unwrap();
+    let mut retained = Vec::new();
+    for (input, expected) in [
+        (
+            StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz"),
+            b"abcdefghijklmnopqrstuvwxyz".as_slice(),
+        ),
+        (
+            StringValue::from_bytes(b"prefix:\xff\0cdefghijklmnopqrstuvwxyz".to_vec()),
+            b"\xff\0cdefghijklmnopqrstuvwxyz".as_slice(),
+        ),
+    ] {
+        let address = input.as_ptr().addr() + 7;
+        let (direct, awaited, delayed) = (&direct, &awaited, &delayed);
+        let results = host
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async move |scope| {
+                    let direct = scope
+                        .call(direct, (input.clone(),))
+                        .await
+                        .expect("ordinary provider");
+                    let awaited = scope
+                        .call(awaited, (input.clone(),))
+                        .await
+                        .expect("suspended callback");
+                    let work = scope.call(delayed, (input,)).await.expect("construct work");
+                    let first = scope.observe(&work).await.expect("complete work");
+                    let again = scope.observe(&work).await.expect("shared completion");
+                    let completed = first.read(Clone::clone);
+                    again.read(|text| {
+                        assert_eq!(text.as_ptr().addr(), address);
+                        assert_eq!(text.as_bytes(), expected);
+                    });
+                    vec![direct, awaited, completed]
+                }),
+            )
+            .expect("execution")
+            .try_into_value()
+            .unwrap();
+        retained.push((results, expected, address));
+    }
     drop(module);
-    for text in results {
-        assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(text.as_ptr().addr(), address);
+    for (results, expected, address) in retained {
+        for text in results {
+            assert_eq!(text.as_bytes(), expected);
+            assert_eq!(text.as_ptr().addr(), address);
+        }
     }
     assert_eq!(echo.0, 0);
 }

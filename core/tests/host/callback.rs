@@ -469,17 +469,23 @@ pub fn main() {
     );
     assert_eq!(first_echo.len(), 3);
     assert_eq!(
-        first_echo[0].message().map(|message| message.as_str()),
+        first_echo[0]
+            .message()
+            .map(|message| message.as_str().unwrap()),
         Some("before"),
     );
     assert_eq!(first_echo[0].value(), &Value::Int(0.into()));
     assert_eq!(
-        first_echo[1].message().map(|message| message.as_str()),
+        first_echo[1]
+            .message()
+            .map(|message| message.as_str().unwrap()),
         Some("bridge"),
     );
     assert_eq!(first_echo[1].value(), &Value::Int(41.into()));
     assert_eq!(
-        first_echo[2].message().map(|message| message.as_str()),
+        first_echo[2]
+            .message()
+            .map(|message| message.as_str().unwrap()),
         Some("after"),
     );
     assert_eq!(first_echo[2].value(), &Value::Int(42.into()));
@@ -487,7 +493,7 @@ pub fn main() {
     assert_eq!(
         second_echo
             .iter()
-            .map(|output| output.message().map(|message| message.as_str()))
+            .map(|output| output.message().map(|message| message.as_str().unwrap()))
             .collect::<Vec<_>>(),
         [Some("before"), Some("bridge"), Some("after")],
     );

@@ -81,6 +81,7 @@ pub enum BitArraySegment {
     String {
         value: StringExpr,
         encoding: StringEncoding,
+        site: PanicSite,
     },
     UtfCodepoint {
         value: UtfCodepointExpr,

@@ -291,7 +291,7 @@ mod tests {
             name: geam_core::StringValue,
         ) -> Result<HostCallCompletion<'call, Dynamic>, HostCallError> {
             let value = call.create_external(DynamicPayload::from_native(NativeValue::symbol(
-                name.into_ecostring(),
+                name.into_ecostring().unwrap(),
             )));
             Ok(call.return_value(value))
         }
@@ -301,7 +301,7 @@ mod tests {
             name: geam_core::StringValue,
         ) -> Result<HostCallCompletion<'call, SnapshotType>, HostCallError> {
             let value = call.create_external(DynamicPayload::from_native(NativeValue::symbol(
-                name.into_ecostring(),
+                name.into_ecostring().unwrap(),
             )));
             Ok(call.return_value(value))
         }

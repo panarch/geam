@@ -71,7 +71,7 @@ mod tests {
         );
         assert_eq!(environment.values.bit_arrays[0].value().bit_len(), 9);
         assert_eq!(environment.values.bit_arrays[1].value().bytes(), &[0xcd]);
-        assert_eq!(environment.values.strings[0].as_str(), "retained");
+        assert_eq!(environment.values.strings[0].as_str().unwrap(), "retained");
         assert!(!environment.load_bit_array(&mut values));
         assert!(values.bit_arrays.is_empty());
         assert!(values.ints.is_empty());

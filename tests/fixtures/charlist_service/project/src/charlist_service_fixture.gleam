@@ -11,6 +11,10 @@ pub fn header() -> #(Charlist, Charlist)
 @external(erlang, "charlist_service_fixture", "metadata")
 pub fn metadata() -> #(#(Charlist, Int, Charlist), List(#(Charlist, Charlist)))
 
+pub fn text_round_trip(text: String) -> String {
+  charlist.to_string(from_text(text))
+}
+
 pub fn main() {
   assert charlist.to_string(from_text("")) == ""
   assert charlist.to_string(from_text("AZ")) == "AZ"

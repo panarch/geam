@@ -15,8 +15,8 @@ use crate::{Component, GleamJsonHostProfile};
 pub(super) mod provider {
     use super::{decode, encode};
     use crate::BitArrayValue;
-    use geam_core::StringValue;
     use geam_core::provider::{ExternalPayload, HostResult};
+    use geam_core::{HostFailure, StringValue};
     use geam_stdlib::provider_support::StoredStringTree;
     use num_bigint::BigInt;
 
@@ -74,8 +74,8 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn do_string(value: StringValue) -> JsonPayload {
-        encode::do_string(value)
+    fn do_string(value: StringValue) -> HostResult<JsonPayload> {
+        encode::do_string(value).map_err(Into::into)
     }
 
     #[geam_macros::function]
@@ -99,20 +99,25 @@ pub(super) mod provider {
     }
 
     #[geam_macros::function]
-    fn do_object(entries: geam_core::provider::List<(StringValue, JsonPayload)>) -> JsonPayload {
+    fn do_object(
+        entries: geam_core::provider::List<(StringValue, JsonPayload)>,
+    ) -> HostResult<JsonPayload> {
         let mut index = 0;
         let mut trees = vec![StoredStringTree::text("{".into())];
         while let Some((key, value)) = entries.get(index) {
             if index != 0 {
                 trees.push(StoredStringTree::text(",".into()));
             }
-            trees.push(StoredStringTree::text(encode::encode_string(&key)));
+            trees.push(StoredStringTree::text(encode::encode_string(
+                key.as_str()
+                    .map_err(|error| HostFailure::new(error.to_string()))?,
+            )));
             trees.push(StoredStringTree::text(":".into()));
             trees.push(value.tree().clone());
             index += 1;
         }
         trees.push(StoredStringTree::text("}".into()));
-        JsonPayload::from_tree(StoredStringTree::sequence(trees))
+        Ok(JsonPayload::from_tree(StoredStringTree::sequence(trees)))
     }
 
     #[geam_macros::function]

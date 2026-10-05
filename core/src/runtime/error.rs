@@ -7,8 +7,7 @@ mod shared;
 mod subject;
 
 use crate::plan::{PanicSite, SourceContext, SourceSpan};
-use crate::runtime::Value;
-use ecow::EcoString;
+use crate::runtime::{StringValue, Value};
 
 pub(crate) use self::host::HostCallOrigin;
 pub use self::host::{HostError, HostLocation, HostOrigin};
@@ -72,7 +71,7 @@ impl<Subject> ExecutionError<Subject> {
     pub(crate) fn source_panic(
         source_context: Option<&SourceContext>,
         kind: PanicKind,
-        message: Option<EcoString>,
+        message: Option<StringValue>,
         site: PanicSite,
     ) -> Self {
         Self::Panic(Panic::new(
@@ -86,7 +85,7 @@ impl<Subject> ExecutionError<Subject> {
 
     pub(crate) fn let_assert_panic(
         source_context: Option<&SourceContext>,
-        message: Option<EcoString>,
+        message: Option<StringValue>,
         site: PanicSite,
         value: Subject,
         pattern_span: SourceSpan,

@@ -367,7 +367,7 @@ fn generic_values_pass_through_every_runtime_family_without_reconstruction() {
     };
     assert_eq!(same[0], RuntimeValue::Bool(true));
     assert_eq!(same[1], RuntimeValue::Bool(true));
-    assert!(matches!(&same[2], RuntimeValue::String(value) if value.starts_with("#(")));
+    assert!(matches!(&same[2], RuntimeValue::String(value) if value.starts_with(b"#(")));
     assert_eq!(values[6], RuntimeValue::Bool(false));
     assert_eq!(values[7], RuntimeValue::Bool(true));
     assert_eq!(values[8], RuntimeValue::Bool(true));

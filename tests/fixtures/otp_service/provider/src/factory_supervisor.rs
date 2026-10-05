@@ -808,7 +808,7 @@ pub fn probe() {{
         >,
         name: StringValue,
     ) -> Result<HostCallCompletion<'call, super::Name<A>>, HostCallError> {
-        let name = call.create_external(name.as_str().into());
+        let name = call.create_external(name.into_ecostring().unwrap());
         Ok(call.return_value(name))
     }
 

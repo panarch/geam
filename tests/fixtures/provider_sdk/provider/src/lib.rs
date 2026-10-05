@@ -295,7 +295,7 @@ where
     let decorated = {
         let state = call.state();
         state.calls += 1;
-        format!("{}{}", state.prefix, value)
+        StringValue::from(state.prefix.clone()).concat(&value)
     };
     let transform = call.owned_callable(transform, &constructions);
     Ok(call.resume(constructions, move |context| {
@@ -303,7 +303,7 @@ where
             let transformed = transform
                 .invoke(
                     &context,
-                    move |_, _| (decorated.into(), ()),
+                    move |_, _| (decorated, ()),
                     |_, _, value| Ok(value),
                 )
                 .await?;
@@ -337,7 +337,7 @@ where
 {
     let (prefix, ()) = call.captures(captures);
     call.state().calls += 1;
-    Ok(call.return_value(format!("{prefix}{value}").into()))
+    Ok(call.return_value(prefix.concat(&value)))
 }
 
 fn catalog_new<'call, Profile>(
@@ -359,9 +359,13 @@ fn catalog_insert<'call, Profile>(
 where
     Profile: HostComponentProfile<Component>,
 {
-    let updated = call
-        .external_payload(catalog)
-        .insert(key.as_str(), value.as_str());
+    let updated = call.external_payload(catalog).insert(
+        key.as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?,
+        value
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?,
+    );
     let updated = call.create_external(updated);
     Ok(call.return_value(updated))
 }
@@ -407,7 +411,7 @@ fn non_empty<'call, Profile>(
 where
     Profile: HostComponentProfile<Component>,
 {
-    if value.as_str().is_empty() {
+    if value.is_empty() {
         Ok(call.return_custom::<GleamError<StringValue, BigInt>>((BigInt::from(0), ())))
     } else {
         Ok(call.return_custom::<GleamOk<StringValue, BigInt>>((value, ())))

@@ -80,6 +80,7 @@ im = "15"
 imbl = "7"
 jiff = "0.2.35"
 jiter = { version = "0.16", default-features = false }
+memchr = "2.8"
 miette = "7"
 num-bigint = "0.4.6"
 num-traits = "0.2"

@@ -40,7 +40,7 @@ mod tests {
     fn eligibility_precedes_moves_and_restore_keeps_completed_prefix_and_other_families() {
         let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
         let text = StringValue::from("prefix:abcdefghijklmnopqrstuvwxyz");
-        let pointer = text.as_str().as_ptr();
+        let pointer = text.as_ptr();
         environment.values.strings = vec![text];
         let big: BigInt = BigInt::from(1) << 180;
         environment.values.ints = vec![i64::MAX.into(), big.into()];
@@ -50,7 +50,7 @@ mod tests {
         assert!(!environment.load_string(&mut values));
         assert!(values.strings.is_empty());
         assert!(values.bools.is_empty());
-        assert_eq!(environment.values.strings[0].as_str().as_ptr(), pointer);
+        assert_eq!(environment.values.strings[0].as_ptr(), pointer);
         environment.values.ints.pop();
         assert!(environment.load_string(&mut values));
         assert!(environment.values.strings.is_empty());
@@ -63,7 +63,7 @@ mod tests {
                 .values
                 .strings
                 .iter()
-                .map(StringValue::as_str)
+                .map(|value| value.as_str().unwrap())
                 .collect::<Vec<_>>(),
             [
                 "abcdefghijklmnopqrstuvwxyz",
@@ -71,10 +71,10 @@ mod tests {
             ]
         );
         assert_eq!(
-            environment.values.strings[0].as_str().as_ptr(),
+            environment.values.strings[0].as_ptr(),
             pointer.wrapping_add(7)
         );
-        assert_eq!(environment.values.strings[1].as_str().as_ptr(), pointer);
+        assert_eq!(environment.values.strings[1].as_ptr(), pointer);
         assert_eq!(
             environment.values.ints[1].bigint().as_ref(),
             &(BigInt::from(i64::MAX) + 1)

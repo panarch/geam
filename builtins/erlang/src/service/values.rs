@@ -301,7 +301,10 @@ pub fn main() {
             call.source_hash::<Charlist>(value),
             call.source_hash::<Charlist>(same)
         );
-        assert_eq!(call.inspect::<Charlist>(value).as_str(), &*inspection);
+        assert_eq!(
+            call.inspect::<Charlist>(value).as_str(),
+            inspection.as_str().unwrap()
+        );
         let different = charlist_from_string(
             &mut call,
             constructions.at::<HostTypeIndex0>(),

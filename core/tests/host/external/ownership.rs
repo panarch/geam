@@ -364,7 +364,7 @@ pub fn main() {
     drop(execution);
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("external list"),
     );
     assert_eq!(

@@ -9,6 +9,9 @@ pub(in crate::string) fn grapheme_slice(
     index: BigInt,
     length: BigInt,
 ) -> Result<StringValue, HostFailure> {
+    let text = string
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
     if index.sign() == Sign::Minus || length.sign() == Sign::Minus {
         return Err(HostFailure::new(
             "string grapheme slice requires non-negative bounds",
@@ -21,7 +24,7 @@ pub(in crate::string) fn grapheme_slice(
     if length == 0 {
         return Ok(StringValue::new());
     }
-    let mut graphemes = string.grapheme_indices(true).skip(index);
+    let mut graphemes = text.grapheme_indices(true).skip(index);
     let Some((start, first)) = graphemes.next() else {
         return Ok(StringValue::new());
     };
@@ -48,29 +51,36 @@ pub(in crate::string) fn unsafe_byte_slice(
         .ok_or_else(|| HostFailure::new("string byte slice range is not representable"))?;
     string
         .get(index..end)
-        .ok_or_else(|| HostFailure::new("string byte slice is outside UTF-8 boundaries"))
+        .ok_or_else(|| HostFailure::new("string byte slice is out of bounds"))
 }
 
 pub(in crate::string) fn erl_split(string: StringValue, pattern: StringValue) -> Vec<StringValue> {
-    match string.split_once(pattern.as_str()) {
-        Some((first, rest)) if !pattern.is_empty() => {
-            vec![
-                string.slice(0..first.len()),
-                string.slice(string.len() - rest.len()..string.len()),
-            ]
-        }
-        _ => vec![string],
+    if pattern.is_empty() {
+        return vec![string];
+    }
+    match memchr::memmem::find(string.as_bytes(), pattern.as_bytes()) {
+        Some(index) => vec![
+            string.slice(0..index),
+            string.slice(index + pattern.len()..string.len()),
+        ],
+        None => vec![string],
     }
 }
 
-pub(in crate::string) fn erl_trim(string: StringValue, leading: bool) -> StringValue {
-    if leading {
-        let rest = string.trim_start_matches(is_pattern_whitespace);
+pub(in crate::string) fn erl_trim(
+    string: StringValue,
+    leading: bool,
+) -> Result<StringValue, HostFailure> {
+    let text = string
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    Ok(if leading {
+        let rest = text.trim_start_matches(is_pattern_whitespace);
         string.slice(string.len() - rest.len()..string.len())
     } else {
-        let rest = string.trim_end_matches(is_pattern_whitespace);
+        let rest = text.trim_end_matches(is_pattern_whitespace);
         string.slice(0..rest.len())
-    }
+    })
 }
 
 fn is_pattern_whitespace(codepoint: char) -> bool {
@@ -112,7 +122,7 @@ mod tests {
         );
         assert_eq!(parts[0].as_ptr(), text.as_ptr());
         assert_eq!(parts[1].as_ptr(), text.as_ptr().wrapping_add(29));
-        let trimmed = erl_trim(erl_trim(text.clone(), true), false);
+        let trimmed = erl_trim(erl_trim(text.clone(), true).unwrap(), false).unwrap();
         assert_eq!(
             trimmed,
             "abcdefghijklmnopqrstuvwxyz,ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -160,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn checks_byte_ranges_and_utf8_boundaries() {
+    fn checks_byte_ranges_without_requiring_utf8_boundaries() {
         assert_eq!(
             unsafe_byte_slice("a👍b".into(), 1.into(), 4.into()),
             Ok("👍".into()),
@@ -185,9 +195,15 @@ mod tests {
         );
         assert_eq!(
             unsafe_byte_slice("👍".into(), 1.into(), 1.into())
-                .expect_err("partial UTF-8 range should be rejected")
+                .unwrap()
+                .as_bytes(),
+            &[0x9f]
+        );
+        assert_eq!(
+            unsafe_byte_slice("abc".into(), 4.into(), 1.into())
+                .unwrap_err()
                 .message(),
-            "string byte slice is outside UTF-8 boundaries",
+            "string byte slice is out of bounds"
         );
     }
 
@@ -201,6 +217,38 @@ mod tests {
         }
         for codepoint in ['\u{00a0}', '\u{1680}', '\u{2000}', '\u{3000}', 'A'] {
             assert!(!is_pattern_whitespace(codepoint));
+        }
+    }
+    #[test]
+    fn raw_byte_split_and_unicode_validation_use_the_whole_visible_range() {
+        let raw = StringValue::from_bytes(vec![b'a', 0xff, b'b', 0xff]);
+        let pattern = StringValue::from_bytes(vec![0xff]);
+        let parts = erl_split(raw.clone(), pattern);
+        assert_eq!(parts[0], "a");
+        assert_eq!(parts[1].as_bytes(), &[b'b', 0xff]);
+        assert_eq!(
+            erl_split(raw.clone(), "".into()),
+            std::slice::from_ref(&raw)
+        );
+        assert_eq!(
+            unsafe_byte_slice(raw.clone(), 1.into(), 1.into())
+                .unwrap()
+                .as_bytes(),
+            &[0xff]
+        );
+        for leading in [true, false] {
+            assert_eq!(
+                erl_trim(raw.clone(), leading).unwrap_err().message(),
+                "invalid utf-8 sequence of 1 bytes from index 1"
+            );
+        }
+        for length in [0, 1] {
+            assert_eq!(
+                grapheme_slice(raw.clone(), 0.into(), length.into())
+                    .unwrap_err()
+                    .message(),
+                "invalid utf-8 sequence of 1 bytes from index 1"
+            );
         }
     }
 }

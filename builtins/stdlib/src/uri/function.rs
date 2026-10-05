@@ -4,13 +4,16 @@ use crate::HostFailure;
 use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
-pub(super) fn pop_codeunit(string: StringValue) -> (BigInt, StringValue) {
-    let Some(value) = string.chars().next() else {
-        return (BigInt::from(0), string);
+pub(super) fn pop_codeunit(string: StringValue) -> Result<(BigInt, StringValue), HostFailure> {
+    let text = string
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    let Some(value) = text.chars().next() else {
+        return Ok((BigInt::from(0), string));
     };
     let rest = string.slice(value.len_utf8()..string.len());
 
-    (BigInt::from(u32::from(value)), rest)
+    Ok((BigInt::from(u32::from(value)), rest))
 }
 
 pub(super) fn codeunit_slice(
@@ -18,6 +21,9 @@ pub(super) fn codeunit_slice(
     from: BigInt,
     length: BigInt,
 ) -> Result<StringValue, HostFailure> {
+    let text = string
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
     let from = from
         .to_usize()
         .ok_or_else(|| HostFailure::new("URI string slice index is not representable"))?;
@@ -27,24 +33,24 @@ pub(super) fn codeunit_slice(
     let end = from
         .checked_add(length)
         .ok_or_else(|| HostFailure::new("URI string slice range is not representable"))?;
-    let from = scalar_byte_index(&string, from)
+    let from = scalar_byte_index(text, from)
         .ok_or_else(|| HostFailure::new("URI string slice starts outside the string"))?;
-    let end = scalar_byte_index(&string, end)
+    let end = scalar_byte_index(text, end)
         .ok_or_else(|| HostFailure::new("URI string slice ends outside the string"))?;
 
     Ok(string.slice(from..end))
 }
 
 pub(super) fn parse_query(query: StringValue) -> Result<Vec<(StringValue, StringValue)>, ()> {
-    codec::parse_query(&query).ok_or(())
+    codec::parse_query(query.as_str().map_err(|_| ())?).ok_or(())
 }
 
 pub(super) fn percent_encode(value: StringValue) -> StringValue {
-    codec::percent_encode(&value)
+    codec::percent_encode(value.as_bytes())
 }
 
 pub(super) fn percent_decode(value: StringValue) -> Result<StringValue, ()> {
-    codec::percent_decode(&value).ok_or(())
+    codec::percent_decode(value.as_str().map_err(|_| ())?).ok_or(())
 }
 
 fn scalar_byte_index(string: &str, index: usize) -> Option<usize> {
@@ -64,6 +70,7 @@ mod tests {
         compile_typed_host_program, plan_host_program,
     };
     use ecow::EcoString;
+    use geam_core::StringValue;
     use geam_core::{HostError, InvariantError};
     use num_bigint::BigInt;
 
@@ -118,7 +125,12 @@ pub fn main() {
                 )],
             )],
             HostProviderSet::with_providers(
-                Vec::<HostModule<GleamStdlibProfile>>::new(),
+                [
+                    HostModule::<GleamStdlibProfile>::new_for_profile("gleam_stdlib", "fixture")
+                        .unwrap()
+                        .with_function("raw", || StringValue::from_bytes(vec![0xff]))
+                        .unwrap(),
+                ],
                 [provider],
             )
             .expect("synthetic URI provider module should be unique"),
@@ -223,6 +235,34 @@ pub fn main() {
     }
 
     #[test]
+    fn invalid_text_fails_at_uri_codepoint_native_origins() {
+        for (body, function) in [
+            ("pop_codeunit(fixture.raw())", "pop_codeunit"),
+            ("codeunit_slice(fixture.raw(), 0, 0)", "codeunit_slice"),
+        ] {
+            let source = format!(
+                r#"{URI_DECLARATIONS}
+import fixture
+pub fn main() {{ {body} }}
+"#
+            );
+            let error = crate::execution_fixture::run(
+                &mut execution(&source),
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .unwrap_err();
+            let error = expect_uri_host_error(error);
+            assert_eq!(error.module(), "gleam/uri");
+            assert_eq!(error.function(), function);
+            assert_eq!(
+                error.failure().message(),
+                "invalid utf-8 sequence of 1 bytes from index 0"
+            );
+        }
+    }
+
+    #[test]
     #[should_panic(expected = "invalid URI slice should remain a host failure")]
     fn uri_host_failure_assertion_rejects_other_execution_errors() {
         let _ = expect_uri_host_error(ExecutionError::Invariant(
@@ -239,5 +279,24 @@ pub fn main() {
             panic!("invalid URI slice should remain a host failure");
         };
         error
+    }
+    #[test]
+    fn percent_encoding_preserves_raw_bytes_and_text_consumers_keep_their_failure_contracts() {
+        use super::{codeunit_slice, parse_query, percent_decode, percent_encode, pop_codeunit};
+        let raw = StringValue::from_bytes(vec![b'a', 0xff, 0, 0xc3]);
+        assert_eq!(percent_encode(raw.clone()), "a%FF%00%C3");
+        assert_eq!(percent_decode(raw.clone()), Err(()));
+        assert_eq!(percent_decode("%FF".into()), Err(()));
+        assert_eq!(parse_query(raw.clone()), Err(()));
+        assert_eq!(
+            codeunit_slice(raw.clone(), 0.into(), 0.into())
+                .unwrap_err()
+                .message(),
+            "invalid utf-8 sequence of 1 bytes from index 1"
+        );
+        assert_eq!(
+            pop_codeunit(raw).unwrap_err().message(),
+            "invalid utf-8 sequence of 1 bytes from index 1"
+        );
     }
 }

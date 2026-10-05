@@ -7,7 +7,10 @@ mod files {
 
     #[geam::function]
     async fn read(path: StringValue) -> Result<StringValue, StringValue> {
-        async_fs::read_to_string(path.as_str())
+        let path = path
+            .as_str()
+            .map_err(|error| StringValue::from(error.to_string()))?;
+        async_fs::read_to_string(path)
             .await
             .map(StringValue::from)
             .map_err(|error| StringValue::from(error.to_string()))

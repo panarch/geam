@@ -1,10 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use camino::Utf8PathBuf;
-use ecow::EcoString;
 
 use crate::plan::{EchoSite, SourceContext};
-use crate::runtime::Value;
+use crate::runtime::{StringValue, Value};
 
 pub trait EchoSink: Send {
     fn emit(&mut self, output: EchoOutput);
@@ -13,7 +12,7 @@ pub trait EchoSink: Send {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EchoOutput {
     location: EchoLocation,
-    message: Option<EcoString>,
+    message: Option<StringValue>,
     value: Value,
 }
 
@@ -28,7 +27,7 @@ pub enum EchoLocation {
 }
 
 impl EchoOutput {
-    pub fn new(location: EchoLocation, message: Option<EcoString>, value: Value) -> Self {
+    pub fn new(location: EchoLocation, message: Option<StringValue>, value: Value) -> Self {
         Self {
             location,
             message,
@@ -40,7 +39,7 @@ impl EchoOutput {
         &self.location
     }
 
-    pub fn message(&self) -> Option<&EcoString> {
+    pub fn message(&self) -> Option<&StringValue> {
         self.message.as_ref()
     }
 
@@ -133,7 +132,10 @@ impl Display for EchoOutput {
         }
         if let Some(message) = &self.message {
             output.push(' ');
-            output.push_str(message);
+            match message.as_str() {
+                Ok(text) => output.push_str(text),
+                Err(_) => output.push_str(&message.to_string()),
+            }
         }
         output.push('\n');
         self.value.inspect().write_to(&mut output);
@@ -181,7 +183,7 @@ mod tests {
 
         assert_eq!(output.location().echo_site(), &site);
         assert_eq!(
-            output.message().map(|message| message.as_str()),
+            output.message().map(|message| message.as_str().unwrap()),
             Some("selected")
         );
         assert_eq!(output.value(), &Value::Bool(true));
@@ -273,5 +275,57 @@ mod tests {
                 Value::Int(1.into()),
             )],
         );
+    }
+    #[test]
+    fn source_echo_and_panic_preserve_raw_messages_and_render_explicit_bytes() {
+        use crate::embedding::{CallError, FunctionDeclaration, ModuleBuilder};
+        use crate::{ExecutionError, PanicKind, PanicSite, StringValue, compile_typed_module};
+        let source = "pub fn print(message: String) { echo message as message }\npub fn fail(message: String) -> Nil { panic as message }";
+        let typed = compile_typed_module("messages", "src/messages.gleam", source).unwrap();
+        let (mut builder, print) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+                "print",
+            ))
+            .unwrap();
+        let fail = builder
+            .function(FunctionDeclaration::<(StringValue,), ()>::new("fail"))
+            .unwrap();
+        let module = builder.seal();
+        let raw = StringValue::from_bytes(vec![255, 0]);
+        let mut outputs = Vec::new();
+        for _ in 0..2 {
+            assert_eq!(
+                module.call(&print, (raw.clone(),), &mut outputs).unwrap(),
+                raw
+            );
+        }
+        for output in outputs {
+            assert_eq!(output.message(), Some(&raw));
+            assert_eq!(output.value(), &Value::String(raw.clone()));
+            assert_eq!(
+                output.to_string(),
+                "messages::print@32..55 <<255, 0>>\n<<255, 0>>"
+            );
+        }
+        let error = module
+            .call(&fail, (raw.clone(),), &mut Vec::new())
+            .unwrap_err()
+            .into_materialized();
+        let start = source.find("panic as message").unwrap();
+        assert_eq!(
+            error,
+            CallError::Execution(ExecutionError::source_panic(
+                None,
+                PanicKind::Panic,
+                Some(raw),
+                PanicSite::new(
+                    "messages".into(),
+                    "fail".into(),
+                    SourceSpan::new(start, start + "panic as message".len())
+                ),
+            ))
+        );
+        assert_eq!(error.to_string(), "panic: <<255, 0>>");
     }
 }

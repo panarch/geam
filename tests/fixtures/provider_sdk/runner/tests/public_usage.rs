@@ -1,4 +1,5 @@
 use ecow::EcoString;
+use geam::embedding::{FunctionDeclaration, HostedModuleBuilder, StringValue};
 extern crate geam as geam_core;
 #[path = "../../../../support/execution_host.rs"]
 mod execution_fixture;
@@ -84,6 +85,104 @@ pub fn keep_function(function: fn(item) -> String) -> fn(item) -> String
 pub fn function_is_callable(function: fn(item) -> String) -> Bool
 
 "#;
+
+#[test]
+fn raw_callbacks_keep_bytes_and_text_catalog_consumption_fails_explicitly() {
+    let source = r#"
+import provider/sdk
+pub fn pass(text: String) -> String {
+  sdk.decorate(text, sdk.make_transform("λ:"))
+}
+pub fn insert(key: String, value: String) {
+  let _ = sdk.catalog_insert(sdk.catalog_new(), key, value)
+  Nil
+}
+"#;
+    let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+        EcoString::from("prefix"),
+        EcoString::from("sdk:").into(),
+    )]));
+    let typed = compile_typed_host_program(
+        "provider_sdk_example",
+        "main",
+        [PackageSource::new(
+            "provider_sdk_example",
+            Vec::<&str>::new(),
+            [
+                ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
+                ModuleSource::new("main", "src/main.gleam", source),
+            ],
+        )],
+        HostProviderSet::from_providers(
+            <Component as HostProviderComponentRegistration<Profile>>::providers().unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, pass) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+            "pass",
+        ))
+        .unwrap();
+    let insert = bindings
+        .function(FunctionDeclaration::<(StringValue, StringValue), ()>::new(
+            "insert",
+        ))
+        .unwrap();
+    let mut module = bindings.seal().unwrap();
+    let mut state = RunState {
+        provider: Component::initialize(&configuration).unwrap(),
+    };
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    let raw = StringValue::from_bytes(vec![255, 0]);
+    for _ in 0..2 {
+        host.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                let passed = scope.call(&pass, (raw.clone(),)).await.unwrap();
+                assert_eq!(
+                    passed.as_bytes(),
+                    &[0xce, 0xbb, b':', b's', b'd', b'k', b':', 255, 0]
+                );
+                for (key, value, expected) in [
+                    (
+                        raw.clone(),
+                        "value".into(),
+                        "invalid utf-8 sequence of 1 bytes from index 0",
+                    ),
+                    (
+                        "key".into(),
+                        raw.clone(),
+                        "invalid utf-8 sequence of 1 bytes from index 0",
+                    ),
+                    (
+                        "key".into(),
+                        StringValue::from_bytes(vec![0xc3]),
+                        "incomplete utf-8 byte sequence from index 0",
+                    ),
+                ] {
+                    let error = scope.call(&insert, (key, value)).await.unwrap_err();
+                    assert_eq!(
+                        error.to_string(),
+                        format!(
+                            "host function provider_sdk_example::provider/sdk.catalog_insert failed: {expected}"
+                        )
+                    );
+                }
+                scope
+                    .call(&insert, ("key".into(), "é🙂".into()))
+                    .await
+                    .unwrap();
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+    }
+    assert_eq!(state.provider.calls(), 4);
+    assert!(echo.is_empty());
+}
 
 #[test]
 fn independent_path_provider_public_usage() {

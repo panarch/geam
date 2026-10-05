@@ -30,6 +30,6 @@ mod counter {
         let state = call.state_mut();
         let next = state.next;
         state.next += 1;
-        format!("{label}:{next}").into()
+        label.concat(&format!(":{next}").into())
     }
 }

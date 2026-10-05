@@ -1178,6 +1178,7 @@ dependencies = [
  "hex",
  "im",
  "imbl",
+ "memchr",
  "num-bigint",
  "num-traits",
  "rand 0.10.2",

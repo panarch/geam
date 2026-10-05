@@ -90,12 +90,15 @@ mod native {
     }
 
     #[geam_macros::function]
-    fn key(#[geam_macros::call] call: &mut Call<State>, name: StringValue) -> Key {
-        Key {
-            value: RefCell::new(NativeValue::symbol(name.into_ecostring())),
+    fn key(#[geam_macros::call] call: &mut Call<State>, name: StringValue) -> HostResult<Key> {
+        let name = name
+            .into_ecostring()
+            .map_err(|error| geam_core::HostFailure::new(error.to_string()))?;
+        Ok(Key {
+            value: RefCell::new(NativeValue::symbol(name)),
             projections: Arc::clone(&call.state().projections),
             drops: Arc::clone(&call.state().drops),
-        }
+        })
     }
 
     #[geam_macros::function]

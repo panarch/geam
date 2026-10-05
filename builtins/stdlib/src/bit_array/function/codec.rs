@@ -22,7 +22,7 @@ pub(in crate::bit_array) fn base64_encode(value: BitArrayValue, padding: bool) -
 }
 
 pub(in crate::bit_array) fn decode64(value: StringValue) -> Result<BitArrayValue, ()> {
-    decode_base64(&value)
+    decode_base64(value.as_bytes())
         .map(BitArrayValue::from_bytes)
         .map_err(|_| ())
 }
@@ -37,9 +37,10 @@ pub(in crate::bit_array) fn base16_decode(value: StringValue) -> Result<BitArray
         .map_err(|_| ())
 }
 
-fn decode_base64(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
+fn decode_base64(value: &[u8]) -> Result<Vec<u8>, base64::DecodeError> {
     let encoded = value
-        .bytes()
+        .iter()
+        .copied()
         .filter(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
         .collect::<Vec<_>>();
     ERLANG_BASE64.decode(encoded)
@@ -52,15 +53,18 @@ mod tests {
 
     #[test]
     fn matches_erlang_base64_whitespace_and_trailing_bit_acceptance() {
-        assert_eq!(decode_base64("aG  \t\nVsbG8="), Ok(b"hello".to_vec()));
-        assert_eq!(decode_base64("AB=="), Ok(vec![0]));
+        assert_eq!(
+            decode_base64("aG  \t\nVsbG8=".as_bytes()),
+            Ok(b"hello".to_vec())
+        );
+        assert_eq!(decode_base64("AB==".as_bytes()), Ok(vec![0]));
         for invalid in [
             "=", "A===", "AAAA====", "AA=A", "AA==junk", "A", "AA", "AAA",
         ] {
-            assert!(decode_base64(invalid).is_err(), "{invalid:?}");
+            assert!(decode_base64(invalid.as_bytes()).is_err(), "{invalid:?}");
         }
-        assert!(decode_base64("aG\u{000c}VsbG8=").is_err());
-        assert!(decode_base64("aG\u{000b}VsbG8=").is_err());
+        assert!(decode_base64("aG\u{000c}VsbG8=".as_bytes()).is_err());
+        assert!(decode_base64("aG\u{000b}VsbG8=".as_bytes()).is_err());
     }
 
     #[test]

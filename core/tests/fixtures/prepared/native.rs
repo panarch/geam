@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 19,
+        format: 20,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -4452,6 +4452,7 @@ fn integer_comparisons() {
                                                 data::graph::BitArraySegment::String {
                                                     value: data::graph::StringLocalId(0),
                                                     encoding: data::graph::StringEncoding::Utf8,
+                                                    site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(1003, 1013)),
                                                 },
                                             ]))),
                                         }),
@@ -4492,6 +4493,7 @@ fn integer_comparisons() {
                                                 data::graph::BitArraySegment::String {
                                                     value: data::graph::StringLocalId(1),
                                                     encoding: data::graph::StringEncoding::Utf8,
+                                                    site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(1033, 1043)),
                                                 },
                                             ]))),
                                         }),
@@ -4832,6 +4834,7 @@ fn integer_comparisons() {
                                                 data::graph::BitArraySegment::String {
                                                     value: data::graph::StringLocalId(4),
                                                     encoding: data::graph::StringEncoding::Utf8,
+                                                    site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(1175, 1185)),
                                                 },
                                             ]))),
                                         }),
@@ -4851,6 +4854,7 @@ fn integer_comparisons() {
                                                 data::graph::BitArraySegment::String {
                                                     value: data::graph::StringLocalId(5),
                                                     encoding: data::graph::StringEncoding::Utf8,
+                                                    site: data::source::PanicSite::from_static("main", "run", data::source::SourceSpan::new(1192, 1202)),
                                                 },
                                             ]))),
                                         }),

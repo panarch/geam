@@ -1,0 +1,5 @@
+name = "raw_string_values_embedding"
+version = "0.1.0"
+
+[dependencies]
+raw_string_values_fixture = { path = "../../project" }

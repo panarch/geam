@@ -1,8 +1,8 @@
 use ecow::EcoString;
 use geam_core::{
     EchoOutput, EchoSink, ExecutionError, HostComponentProfile, HostModule, HostProfile,
-    HostProviderSet, HostedExecution, PanicKind, PanicMessage, Value, compile_typed_host_project,
-    plan_host_program,
+    HostProviderSet, HostedExecution, PanicKind, PanicMessage, StringValue, Value,
+    compile_typed_host_project, plan_host_program,
 };
 use geam_stdlib::{
     Component, GleamStdlibHostProfile, GleamStdlibProfile, GleamStdlibRunState, GleamStdlibStores,
@@ -200,7 +200,7 @@ fn assert_outputs<'expected>(
     assert_eq!(
         outputs
             .iter()
-            .map(|output| (output.stream(), output.text().as_str()))
+            .map(|output| (output.stream(), output.text().as_str().unwrap()))
             .collect::<Vec<_>>(),
         expected.into_iter().collect::<Vec<_>>(),
     );
@@ -229,7 +229,7 @@ struct RecordingEchoSink {
 enum RecordedEvent {
     Io(IoStream, geam_core::StringValue),
     Echo {
-        message: Option<EcoString>,
+        message: Option<StringValue>,
         value: EcoString,
     },
 }

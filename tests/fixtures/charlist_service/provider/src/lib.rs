@@ -1,5 +1,6 @@
 //! An independent manual consumer of the producer-owned Charlist construction API.
 
+use geam::HostFailure;
 use geam::gleam_erlang::{Charlist, GleamErlangHostProfile, service};
 use geam::host::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstructions,
@@ -91,7 +92,8 @@ where
         &mut call,
         constructions.at::<HostTypeIndex0>(),
         constructions.at::<CharactersIndex>(),
-        &text,
+        text.as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?,
     );
     Ok(call.return_value(value))
 }
