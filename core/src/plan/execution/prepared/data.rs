@@ -241,12 +241,21 @@ pub mod source {
 }
 pub mod compiled {
     pub use crate::plan::execution::compiled::{
-        BitArrayImplementation, CompiledCallback, CompiledCallbacks, CompiledCheckpoint,
-        CompiledFunction, CompiledFunctions, CompiledImplementation, CompiledLoopCall,
-        CompiledLoopFunction, CustomLoopImplementation, IntListImplementation,
-        NumericImplementation, StringImplementation,
+        BitArrayImplementation, CallContract, CallContractTarget, CallTarget, CompiledCallback,
+        CompiledCallbacks, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
+        CompiledImplementation, CompiledLoopCall, CompiledLoopFunction, CreationContract,
+        CustomLoopImplementation, FunctionCallsImplementation, IntListImplementation,
+        NumericImplementation, ReturnContract, StringImplementation, TailContract,
     };
     pub use crate::runtime::compiled::CompiledProgress;
+
+    pub mod calls {
+        pub use crate::runtime::compiled::calls::{
+            BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallCaptures,
+            CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallResume,
+            CallStart, CallStorage, CallValues, IntCallable,
+        };
+    }
 
     pub mod numeric {
         pub use crate::runtime::compiled::numeric::{NumericKernel, NumericValues};

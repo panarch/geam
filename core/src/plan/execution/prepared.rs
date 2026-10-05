@@ -10,7 +10,7 @@ pub(crate) use admission::{AdmittedHostedModule, AdmittedModule};
 pub use entry::{HostedEntryArtifact, PreparedHostedEntry};
 pub use hosted::{HostedModuleArtifact, PreparedHostedModule};
 
-use super::compiled::{CompiledCallbackBodies, CompiledFunctions};
+use super::compiled::{CompiledCallbackBodies, CompiledEntries, CompiledFunctions};
 use super::constant::ProfiledConstantTable;
 use super::function::{
     ExecutionProfile, FunctionCatalog, FunctionTables, ProfiledRuntimeFunctionId,
@@ -24,7 +24,7 @@ use crate::plan::ModuleId;
 use rust::{Emit, Rust};
 use std::convert::Infallible;
 
-const FORMAT_VERSION: u32 = 18;
+const FORMAT_VERSION: u32 = 19;
 
 /// A prepared plain program which can be emitted as compiler-visible Rust data.
 pub struct PreparedModule {
@@ -229,6 +229,7 @@ impl<Profile: ExecutionProfile> ProgramTables<Profile> {
             functions: Node::Static(&self.functions),
             compiled: self.compiled.borrowed(),
             compiled_callback_bodies,
+            compiled_entries: CompiledEntries::new(&self.compiled, &self.functions),
         }
     }
 }
@@ -299,6 +300,7 @@ mod tests {
             functions,
             compiled,
             compiled_callback_bodies: _,
+            ..
         } = plan.program;
         let common = std::sync::Arc::try_unwrap(common).ok().unwrap();
         let functions = owned_table(functions);

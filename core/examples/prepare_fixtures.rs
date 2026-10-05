@@ -574,6 +574,47 @@ fn main() -> Result<(), Box<dyn Error>> {
             .function(FunctionDeclaration::<(StringValue,), List<BigInt>>::new(
                 "list_stop",
             ))?;
+    let calls = geam_core::compile_typed_module(
+        "example",
+        "src/example.gleam",
+        include_str!("../tests/fixtures/prepared/function_calls.gleam"),
+    )?;
+    let (mut calls, _) = ModuleBuilder::new(calls)?
+        .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+            "capture_chain",
+        ))?;
+    calls.function(FunctionDeclaration::<(bool, BigInt), BigInt>::new(
+        "dynamic_target",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("nested"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), bool>::new("mutual"))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "callable_captures",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "aliases",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("canonical"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("big_return"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), BigInt>::new("failure"))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "producer_suffix_int",
+    ))?;
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), bool>::new(
+        "producer_suffix_bool",
+    ))?;
+
+    calls.function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+        "reuse_callback",
+    ))?;
+    calls
+        .function(FunctionDeclaration::<(BigInt, BigInt, BigInt), BigInt>::new("repeated_roots"))?;
+    calls.function(FunctionDeclaration::<(BigInt,), bool>::new(
+        "canonical_bool",
+    ))?;
+    calls.function(FunctionDeclaration::<(bool, BigInt, BigInt), bool>::new(
+        "bool_captures",
+    ))?;
 
     let custom_source = include_str!("../tests/fixtures/prepared/custom_scalars.gleam");
     let custom =
@@ -723,6 +764,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             checkpoint_hosted.prepare()?.emit_rust(),
         ),
         ("numeric.rs", numeric.prepare().emit_rust()),
+        ("function_calls.rs", calls.prepare().emit_rust()),
         ("numeric_hosted.rs", hosted_numeric.prepare()?.emit_rust()),
         ("numeric_entry.rs", numeric_entry.emit_rust()),
         ("bit_array_entry.rs", bit_entry.emit_rust()),

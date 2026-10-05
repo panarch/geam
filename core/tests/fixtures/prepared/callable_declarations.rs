@@ -168,6 +168,10 @@ pub fn check() {
     let nested = support.wrap(fn(value) { support.make_constant(value) })
     a() && a == alias && a != b && list() == [42] && is_answer(increment(41)) && nested(42)() == 42
 }
+pub fn native_predicate(value: Int) -> Bool {
+    let predicate = support.wrap(fn(input) { echo input input > value })
+    !predicate(value + 1)
+}
 "#,
             )],
         ),
@@ -220,6 +224,11 @@ pub(crate) fn prepare() -> PreparedHostedModule {
         .unwrap();
     preparation
         .function(FunctionDeclaration::<(), BigInt>::new("producer"))
+        .unwrap();
+    preparation
+        .function(FunctionDeclaration::<(BigInt,), bool>::new(
+            "native_predicate",
+        ))
         .unwrap();
     preparation.prepare().unwrap()
 }

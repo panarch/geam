@@ -656,7 +656,7 @@ fn add_slot(point: &mut CompiledCheckpoint, slot: &ParamSlot, kind: KernelKind) 
 }
 
 impl<'graph> CompiledInstruction<'graph> {
-    fn inspect<Graph: ExecutionGraphProfile>(
+    pub(super) fn inspect<Graph: ExecutionGraphProfile>(
         instruction: &'graph ProfiledInstruction<Graph>,
         kind: KernelKind,
     ) -> Option<Self> {
@@ -774,7 +774,7 @@ impl<'graph> NumericInteger<'graph> {
 }
 
 impl<'graph> CompiledTest<'graph> {
-    fn inspect(test: &'graph BoolTest, kind: KernelKind) -> Option<Self> {
+    pub(super) fn inspect(test: &'graph BoolTest, kind: KernelKind) -> Option<Self> {
         let (comparison, left, right) = match test {
             BoolTest::Not(value) => return Some(Self::Not(*value)),
             BoolTest::ListLengthEquals {

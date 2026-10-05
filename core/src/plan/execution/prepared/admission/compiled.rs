@@ -1,3 +1,5 @@
+mod calls;
+
 use super::super::codegen::CompiledShape;
 use super::super::codegen::shape::KernelKind;
 use crate::plan::execution::compiled::{
@@ -25,6 +27,8 @@ enum Family {
     IntList,
     IntCallback,
     BoolCallback,
+    IntFunction,
+    BoolFunction,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +45,12 @@ enum Reason {
     Kernel,
     Calls,
     Returns,
+    CallRoot,
+    CallLocals,
+    CallMapping,
+    CallCaptures,
+    CallReturns,
+    CallTails,
 }
 
 pub(super) fn admit<'data, Profile: ExecutionProfile>(
@@ -48,6 +58,7 @@ pub(super) fn admit<'data, Profile: ExecutionProfile>(
     functions: &'data FunctionTables<Profile>,
     custom_types: &CustomTypeTable,
 ) -> Result<CompiledCallbackBodies<'data, Profile>, CompiledError> {
+    calls::all(compiled, functions)?;
     targets(
         &compiled.ints,
         Family::Int,
@@ -276,6 +287,7 @@ fn value_shape<'body, Body: ExecutionFunctionBody>(
             return CompiledShape::inspect_bits(body.function_body())
                 .ok_or(Reason::UnsupportedGraph);
         }
+        CompiledImplementation::FunctionCalls(_) => return Err(Reason::Kernel),
     };
     let shape = CompiledShape::inspect(body.function_body()).ok_or(Reason::UnsupportedGraph)?;
     if shape.kind == expected {
@@ -481,6 +493,7 @@ pub fn main() { walk("λλ", 3) }
                 entries.push(make());
             }
             let compiled = CompiledFunctions {
+                function_calls: vec![].into(),
                 ints: vec![].into(),
                 bools: vec![].into(),
                 customs: vec![].into(),
@@ -535,6 +548,7 @@ pub fn main() { scan(<<1, 2>>, 0) }
         };
 
         let mut compiled = CompiledFunctions {
+            function_calls: vec![].into(),
             ints: vec![].into(),
             bools: vec![].into(),
             customs: vec![target].into(),
@@ -616,6 +630,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             })
             .unwrap();
         let mut compiled = CompiledFunctions {
+            function_calls: vec![].into(),
             customs: vec![].into(),
             int_lists: vec![].into(),
             ints: vec![CompiledFunction {
@@ -721,6 +736,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
                 entries.push(make_target());
             }
             let compiled = CompiledFunctions {
+                function_calls: vec![].into(),
                 customs: vec![].into(),
                 int_lists: vec![].into(),
                 ints: entries.into(),
@@ -800,6 +816,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
                 })
             };
             let compiled = CompiledFunctions {
+                function_calls: vec![].into(),
                 customs: vec![].into(),
                 int_lists: vec![].into(),
                 ints: vec![CompiledFunction {
@@ -851,6 +868,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
         );
         let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
         let mut compiled = CompiledFunctions {
+            function_calls: vec![].into(),
             customs: vec![].into(),
             int_lists: vec![].into(),
             ints: vec![].into(),
@@ -919,6 +937,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
         assert_eq!(
             all(
                 &CompiledFunctions {
+                    function_calls: vec![].into(),
                     customs: vec![].into(),
                     int_lists: vec![].into(),
                     ints: Vec::from(compiled).into(),

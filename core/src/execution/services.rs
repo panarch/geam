@@ -56,8 +56,9 @@ mod tests {
         HostExecutionState, UnitExit,
     };
     use crate::execution_fixture::TestHost;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    use std::task::{Context, Poll, Waker};
+    use std::task::{Context, Poll, Wake, Waker};
     use std::time::Instant;
 
     #[derive(Default)]
@@ -113,17 +114,27 @@ mod tests {
         }
     }
 
+    struct WakeCount(AtomicUsize);
+
+    impl Wake for WakeCount {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
     #[test]
     fn every_service_polls_and_registers_its_wake_despite_earlier_progress() {
         let host = TestHost::default();
         let clock = ExecutionClock::new(&host);
-        let mut cx = Context::from_waker(Waker::noop());
         for (first, rest, expected) in [
             (false, false, Poll::Pending),
             (false, true, Poll::Ready(())),
             (true, false, Poll::Ready(())),
             (true, true, Poll::Ready(())),
         ] {
+            let signal = Arc::new(WakeCount(AtomicUsize::new(0)));
+            let waker = Waker::from(Arc::clone(&signal));
+            let mut cx = Context::from_waker(&waker);
             let mut services = ExecutionServices::<Service, Service>::default();
             services.first.ready = first;
             services.rest.ready = rest;
@@ -131,15 +142,11 @@ mod tests {
             assert_eq!((services.first.polls, services.rest.polls), (1, 1));
             assert_eq!(services.first.now, Some(host.now()));
             assert_eq!(services.rest.now, Some(host.now()));
-            assert!(
-                services
-                    .first
-                    .waiter
-                    .as_ref()
-                    .unwrap()
-                    .will_wake(cx.waker())
-            );
-            assert!(services.rest.waiter.as_ref().unwrap().will_wake(cx.waker()));
+            assert_eq!(signal.0.load(Ordering::SeqCst), 0);
+            services.first.waiter.as_ref().unwrap().wake_by_ref();
+            assert_eq!(signal.0.load(Ordering::SeqCst), 1);
+            services.rest.waiter.as_ref().unwrap().wake_by_ref();
+            assert_eq!(signal.0.load(Ordering::SeqCst), 2);
         }
     }
 

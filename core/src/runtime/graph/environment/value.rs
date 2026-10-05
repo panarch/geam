@@ -34,6 +34,10 @@ pub(in crate::runtime) trait GraphValue: Sync {
     type Evaluated: Send + 'static;
 
     fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated;
+
+    fn take_return(&self, environment: &mut BlockEnvironment, _direct: bool) -> Self::Evaluated {
+        self.take(environment)
+    }
 }
 
 impl GraphValue for Infallible {
@@ -62,12 +66,38 @@ macro_rules! local_value {
     };
 }
 
-local_value!(IntLocalId, IntegerValue, ints);
+// Admission seals the return family. Only completion consumes the generated
+// output; ordinary operands continue reading their original local columns.
+macro_rules! call_return {
+    ($local:ty, $value:ty, $field:ident) => {
+        impl GraphValue for $local {
+            type Evaluated = $value;
+
+            fn take(&self, environment: &mut BlockEnvironment) -> Self::Evaluated {
+                environment.values.$field.swap_remove(self.0)
+            }
+
+            fn take_return(
+                &self,
+                environment: &mut BlockEnvironment,
+                direct: bool,
+            ) -> Self::Evaluated {
+                if direct {
+                    environment.values.$field.swap_remove(0)
+                } else {
+                    self.take(environment)
+                }
+            }
+        }
+    };
+}
+
+call_return!(IntLocalId, IntegerValue, ints);
 local_value!(FloatLocalId, f64, floats);
 local_value!(StringLocalId, StringValue, strings);
 local_value!(BitArrayLocalId, EvaluatedBitArray, bit_arrays);
 local_value!(UtfCodepointLocalId, char, utf_codepoints);
-local_value!(BoolLocalId, bool, bools);
+call_return!(BoolLocalId, bool, bools);
 local_value!(TupleLocalId, Vec<EvaluatedValue>, tuples);
 local_value!(ParameterListLocalId, ParameterListValueId, parameter_lists);
 local_value!(
@@ -91,7 +121,7 @@ local_value!(NilListLocalId, NilListValueId, nil_lists);
 local_value!(TupleListLocalId, TupleListValueId, tuple_lists);
 local_value!(ListListLocalId, ListListValueId, list_lists);
 local_value!(FunctionListLocalId, FunctionListValueId, function_lists);
-local_value!(IntFunctionLocalId, EvaluatedIntFunction, int_functions);
+call_return!(IntFunctionLocalId, EvaluatedIntFunction, int_functions);
 local_value!(
     FloatFunctionLocalId,
     EvaluatedFloatFunction,
@@ -112,7 +142,7 @@ local_value!(
     EvaluatedUtfCodepointFunction,
     utf_codepoint_functions
 );
-local_value!(BoolFunctionLocalId, EvaluatedBoolFunction, bool_functions);
+call_return!(BoolFunctionLocalId, EvaluatedBoolFunction, bool_functions);
 local_value!(NilFunctionLocalId, EvaluatedNilFunction, nil_functions);
 local_value!(
     TupleFunctionLocalId,
@@ -275,8 +305,15 @@ mod tests {
     use super::super::{BlockEnvironment, RetainedValues};
     use super::GraphValue;
     use crate::Value;
-    use crate::plan::execution::graph::{IntLocalId, NilLocalId, TupleLocalId};
-    use crate::runtime::EvaluatedValue;
+    use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
+    use crate::plan::execution::graph::{
+        BoolFunctionLocalId, BoolLocalId, IntFunctionLocalId, IntLocalId, NilLocalId, TupleLocalId,
+    };
+    use crate::plan::execution::type_::{FunctionType, ValueType};
+    use crate::runtime::compiled::calls::{CallCapture, CallInteger, CallOps, CallOutput};
+    use crate::runtime::compiled::numeric::NumericValues;
+    use crate::runtime::integer::IntegerValue;
+    use crate::runtime::{CaptureStorage, EvaluatedValue};
 
     #[test]
     fn typed_extraction_moves_the_result_and_leaves_environment_cleanup_to_its_owner() {
@@ -499,5 +536,41 @@ pub fn main() {
             Ok(Value::Tuple(vec![Value::Bool(true); 8])),
         );
         assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn generated_returns_consume_only_the_result_in_every_supported_family() {
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        let integer = IntegerValue::from(1_i128 << 100);
+        environment.store_call_output(CallOutput::Int(CallInteger(integer.clone())));
+        assert_eq!(IntLocalId(3).take_return(&mut environment, true), integer);
+        environment.store_call_output(CallOutput::Bool(true));
+        assert!(BoolLocalId(2).take_return(&mut environment, true));
+        assert!(environment.values.ints.is_empty());
+        assert!(environment.values.bools.is_empty());
+
+        let captures = CaptureStorage::default();
+        let mut numeric = NumericValues::default();
+        let ops = CallOps::new(&captures, &mut numeric);
+        let integer_function = ops.int_closure(
+            IntFunctionId(2),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+            vec![CallCapture::int(IntLocalId(0), 7)],
+        );
+        let alias = integer_function.clone();
+        environment.store_call_output(CallOutput::IntFunction(integer_function));
+        let returned = IntFunctionLocalId(1).take_return(&mut environment, true);
+        assert_eq!(returned, alias.0);
+        let boolean_function = ops.bool_closure(
+            BoolFunctionId(3),
+            FunctionType::new(vec![ValueType::Bool], ValueType::Bool),
+            vec![CallCapture::bool(BoolLocalId(0), false)],
+        );
+        let alias = boolean_function.clone();
+        environment.store_call_output(CallOutput::BoolFunction(boolean_function));
+        let returned = BoolFunctionLocalId(1).take_return(&mut environment, true);
+        assert_eq!(returned, alias.0);
+        assert!(environment.values.int_functions.is_empty());
+        assert!(environment.values.bool_functions.is_empty());
     }
 }
