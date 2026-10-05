@@ -2,6 +2,20 @@ import gleam/bytes_tree.{type BytesTree}
 import gleam/list
 import gleam/string_tree
 
+@external(erlang, "bytes_tree_service_native", "make")
+fn make(bytes: BitArray) -> BytesTree
+
+@external(erlang, "bytes_tree_service_native", "make_pair")
+fn make_pair(bytes: BitArray) -> #(BytesTree, BytesTree)
+
+@external(erlang, "bytes_tree_service_native", "make_result")
+fn make_result(bytes: BitArray, success: Bool) -> Result(BytesTree, BytesTree)
+
+@external(erlang, "bytes_tree_service_native", "make_nested")
+fn make_nested(
+  bytes: BitArray,
+) -> List(#(Result(BytesTree, BytesTree), BytesTree))
+
 @external(erlang, "bytes_tree_service_native", "read")
 fn read(tree: BytesTree) -> BitArray
 
@@ -33,6 +47,7 @@ fn nest(tree: BytesTree, depth: Int) -> BytesTree {
 }
 
 pub fn verify() -> BitArray {
+  verify_outputs()
   let empty = bytes_tree.new()
   let assert <<>> = read(empty)
   let assert <<>> = read(bytes_tree.from_string(""))
@@ -63,8 +78,61 @@ pub fn verify() -> BitArray {
   expected
 }
 
+fn verify_outputs() -> Nil {
+  let assert <<>> = bytes_tree.to_bit_array(make(<<>>))
+  let original = <<0, 255, 128, 42>>
+  let tree = make(original)
+  let alias = tree
+  let assert True = bytes_tree.to_bit_array(tree) == original
+  let assert True = read(tree) == original
+  let grown = tree |> bytes_tree.prepend(<<7>>) |> bytes_tree.append(<<8>>)
+  let assert True = bytes_tree.to_bit_array(grown) == <<7, original:bits, 8>>
+  let assert True = bytes_tree.to_bit_array(alias) == original
+  let assert True = bytes_tree.to_bit_array(make(original)) == original
+  let partial = <<5:size(3)>>
+  let assert <<160>> = bytes_tree.to_bit_array(make(partial))
+  let assert True =
+    bytes_tree.to_bit_array(make(partial))
+    == bytes_tree.to_bit_array(bytes_tree.from_bit_array(partial))
+  let assert <<5:size(3)>> = partial
+  let assert <<_:bytes-size(1), slice:bytes-size(2), _:bytes>> = <<
+    42,
+    255,
+    0,
+    99,
+  >>
+  let assert <<255, 0>> = bytes_tree.to_bit_array(make(slice))
+  let pair = make_pair(original)
+  let assert True = bytes_tree.to_bit_array(pair.0) == original
+  let assert True = bytes_tree.to_bit_array(pair.1) == original
+  let assert Ok(ok) = make_result(original, True)
+  let assert Error(error) = make_result(original, False)
+  let assert True = bytes_tree.to_bit_array(ok) == original
+  let assert True = bytes_tree.to_bit_array(error) == original
+  let assert [#(Ok(first), first_alias), #(Error(second), second_alias)] =
+    make_nested(original)
+  let combined = bytes_tree.concat([first, first_alias, second, second_alias])
+  let assert True =
+    bytes_tree.to_bit_array(combined)
+    == <<original:bits, original:bits, original:bits, original:bits>>
+  let large =
+    list.repeat(original, 4096)
+    |> bytes_tree.concat_bit_arrays
+    |> bytes_tree.to_bit_array
+  let assert True = bytes_tree.to_bit_array(make(large)) == large
+  Nil
+}
+
 pub fn capture() -> Nil {
   retain(mixed())
+}
+
+pub fn capture_generated() -> Nil {
+  let tree = make(<<0, 255, 128, 42>>)
+  let alias = tree
+  let grown = bytes_tree.concat([tree, make(<<5:size(3)>>)])
+  let assert <<0, 255, 128, 42, 160>> = bytes_tree.to_bit_array(grown)
+  retain(alias)
 }
 
 pub fn paused() -> #(BitArray, BitArray) {
@@ -79,5 +147,6 @@ pub fn main() -> Nil {
   let expected = verify()
   let assert True = paused() == #(expected, expected)
   capture()
+  capture_generated()
   Nil
 }
