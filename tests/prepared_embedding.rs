@@ -74,7 +74,7 @@ fn prepares_packages_and_runs_without_the_original_gleam_project() {
     );
 
     fs::write(application.join("gleam/src/prepared_consumer.gleam"),
-        "import support\npub fn double(value: Int) -> Int { support.double(value) }\npub fn fail() -> Int { support.fail() }\n"
+        "import support\npub fn double(value: Int) -> Int { let calculate = support.double calculate(value) }\npub fn fail() -> Int { support.fail() }\n"
     ).unwrap();
     fs::write(application.join("gleam/src/support.gleam"),
         "pub fn double(value: Int) -> Int { value * 2 }\n\npub fn fail() -> Int {\n  echo 7\n  panic as \"prepared failure\"\n}\n"

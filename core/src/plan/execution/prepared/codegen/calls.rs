@@ -550,8 +550,18 @@ impl<'graph, Graph: ExecutionGraphProfile> CallCodegen<'graph, Graph> {
     }
 
     fn write_start(&self, source: &mut Code, function: &CallFunction<'_, Graph>) {
+        let inputs = if function
+            .shape
+            .locals
+            .iter()
+            .any(|locals| !locals.is_empty())
+        {
+            "values"
+        } else {
+            "_values"
+        };
         source.open(&format!(
-            "fn {}_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {{\n",
+            "fn {}_state(point: usize, {inputs}: CallInputs<'_>) -> Option<FunctionState> {{\n",
             function_name(function.target)
         ));
         source.open("let active = match point {\n");
@@ -1859,6 +1869,48 @@ fn calls_int_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallSto
 },
 "#
         );
+    }
+
+    #[test]
+    fn zero_argument_forwarding_has_no_unused_state_input() {
+        let input = r#"
+fn identity(value: Int) -> Int { value }
+fn stop() -> Int { panic as "stopped" }
+fn fail() -> Int { stop() }
+pub fn main() -> Int { let calculate = identity let _ = calculate(7) fail() }
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", input).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let codegen = CallCodegen::new(&plan.program.functions);
+        let forward = codegen
+            .functions
+            .iter()
+            .find(|function| function.shape.locals.iter().all(Vec::is_empty))
+            .unwrap();
+        let mut source = Code::default();
+        codegen.write_start(&mut source, forward);
+        assert_eq!(
+            source.as_str(),
+            r#"fn calls_int_2_state(point: usize, _values: CallInputs<'_>) -> Option<FunctionState> {
+    let active = match point {
+        0 => FunctionState::Int2Point0 {  },
+        _ => return None,
+    };
+    Some(active)
+}
+fn calls_int_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(2)), point, values) { return Some(execution); }
+    let active = calls_int_2_state(point, values)?;
+    Some(Box::new(FunctionExecution::new(active)))
+}
+"#
+        );
+        let mut echo = Vec::new();
+        let error = crate::run_main(&plan, &mut echo).unwrap_err();
+        assert!(matches!(error, crate::ExecutionError::Panic(panic)
+            if panic.message() == &crate::PanicMessage::Explicit("stopped".into())
+                && panic.site().function() == "stop"));
+        assert!(echo.is_empty());
     }
 
     #[test]
