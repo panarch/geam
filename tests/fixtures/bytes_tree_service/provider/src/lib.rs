@@ -1,4 +1,4 @@
-//! Ordinary native consumption of the original standard-library BytesTree.
+//! Ordinary native construction and consumption of the original BytesTree.
 
 use futures_channel::oneshot;
 use geam::gleam_stdlib::service;
@@ -24,6 +24,50 @@ mod native {
     use geam::provider::{BitArrayValue, Call, HostResult};
     use std::future::poll_fn;
     use std::task::Poll;
+
+    #[geam::function]
+    fn make(bytes: BitArrayValue) -> service::BytesTreeOutput {
+        service::BytesTreeOutput::from_bit_array(bytes)
+    }
+
+    #[geam::function]
+    fn make_pair(bytes: BitArrayValue) -> (service::BytesTreeOutput, service::BytesTreeOutput) {
+        (
+            service::BytesTreeOutput::from_bit_array(bytes.clone()),
+            service::BytesTreeOutput::from_bit_array(bytes),
+        )
+    }
+
+    #[geam::function]
+    fn make_result(
+        bytes: BitArrayValue,
+        success: bool,
+    ) -> Result<service::BytesTreeOutput, service::BytesTreeOutput> {
+        if success {
+            Ok(service::BytesTreeOutput::from_bit_array(bytes))
+        } else {
+            Err(service::BytesTreeOutput::from_bit_array(bytes))
+        }
+    }
+
+    #[geam::function]
+    fn make_nested(
+        bytes: BitArrayValue,
+    ) -> Vec<(
+        Result<service::BytesTreeOutput, service::BytesTreeOutput>,
+        service::BytesTreeOutput,
+    )> {
+        vec![
+            (
+                Ok(service::BytesTreeOutput::from_bit_array(bytes.clone())),
+                service::BytesTreeOutput::from_bit_array(bytes.clone()),
+            ),
+            (
+                Err(service::BytesTreeOutput::from_bit_array(bytes.clone())),
+                service::BytesTreeOutput::from_bit_array(bytes),
+            ),
+        ]
+    }
 
     #[geam::function]
     fn read(tree: service::BytesTreeInput) -> BitArrayValue {

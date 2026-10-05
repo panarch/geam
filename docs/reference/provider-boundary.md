@@ -997,6 +997,67 @@ similarly consumes typed key/item pairs under an exact `DictOf<Key, Item>` token
 It retains the producer's storage and value semantics, with the last equal pair
 winning as in `dict.from_list`, including when the Dict is nested in a return.
 
+## Constructing Standard-Library BytesTree Outputs
+
+Enable `provider,gleam-stdlib` to return the original opaque
+`gleam/bytes_tree.BytesTree` from another provider:
+
+```rust
+#[geam::provider(package = "binary_source", modules = [native])]
+pub struct Component;
+
+#[geam::module(path = "binary_source")]
+mod native {
+    use geam::gleam_stdlib::service;
+    use geam::provider::BitArrayValue;
+
+    #[geam::function]
+    fn make(bytes: BitArrayValue) -> service::BytesTreeOutput {
+        service::BytesTreeOutput::from_bit_array(bytes)
+    }
+}
+```
+
+The original source declaration remains nominal:
+
+```gleam
+import gleam/bytes_tree.{type BytesTree}
+
+@external(erlang, "binary_source_native", "make")
+pub fn make(bytes: BitArray) -> BytesTree
+```
+
+Keep the qualified `service::BytesTreeOutput` spelling so the macro selects the
+producer's output codec. Compose the provider component and
+`geam::gleam_stdlib::Component<Io>`, implement `GleamStdlibHostProfile` and both
+component projections, and register the original stdlib providers. The stdlib
+owns the opaque schema and sharing grant. The consumer does not redeclare
+constructors, supply a foreign storage binding, or receive a manual HostCall or
+construction token. Missing grants and incompatible source declarations remain
+linkage errors before execution.
+
+`BytesTreeOutput::from_bit_array` moves an owned BitArray handle into the output
+adapter. Returning it constructs one original binary leaf, retaining the same
+immutable byte storage and selected byte range without copying or flattening
+the payload. It requires only fixed-size custom-node and field metadata. The leaf
+retains its bytes independently of the native call and input aliases; original
+append, prepend, and concat operations preserve those aliases.
+
+Construction follows original `bytes_tree.from_bit_array`: a partial final byte
+is padded with zero bits. A leaf made from `<<5:size(3)>>` therefore contains
+`<<160>>`. Padding shares the canonical byte storage and extends only its logical
+bit length; it leaves input aliases unchanged. `bytes_tree.to_bit_array` then
+concatenates the stored bits without adding padding. UTF-8 is not required.
+
+The same adapter works inside native tuples, Results, and `Vec` List outputs;
+the macro registers the exact construction permissions for the nested positions.
+It constructs binary leaves only. Receiving an existing tree uses
+`BytesTreeInput`; this API does not expose a native recursive tree builder or
+Text/Many constructors. The
+[independent BytesTree fixture](../../tests/fixtures/bytes_tree_service)
+demonstrates direct and nested output, unchanged stdlib consumption, typed
+embedding, retained aliases, and built standalone execution.
+
 ## Consuming Standard-Library BytesTree Inputs
 
 Enable `provider,gleam-stdlib` to receive the original opaque
