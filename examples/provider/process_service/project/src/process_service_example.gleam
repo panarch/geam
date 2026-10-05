@@ -7,16 +7,6 @@ type Request {
   Stop
 }
 
-fn worker(inbox: process.Subject(Request)) {
-  case process.receive_forever(inbox) {
-    Add(value, reply) -> {
-      process.send(reply, value + 7)
-      worker(inbox)
-    }
-    Stop -> Nil
-  }
-}
-
 pub fn main() {
   let name = process.new_name("calculator")
   let ready = process.new_subject()
@@ -28,8 +18,8 @@ pub fn main() {
     })
   process.receive_forever(ready)
   let assert True = process.is_alive(pid)
-  let assert Ok(42) = service.request(name, Add(35, _), 1000)
-  let assert Ok(17) = service.request(name, Add(10, _), 1000)
+  let assert Ok(42) = service.request_forever(name, Add(35, _))
+  let assert Ok(17) = service.request_forever(name, Add(10, _))
   io.println("named service replied: 42, 17")
 
   let silent_name = process.new_name("silent")
@@ -44,9 +34,23 @@ pub fn main() {
     service.request(silent_name, Add(1, _), 0)
   io.println("request timeout and unavailable name handled")
 
-  let assert Error(service.TargetExited) =
-    service.request(name, fn(_) { Stop }, 5)
+  let monitor = process.monitor(pid)
+  process.send(process.named_subject(name), Stop)
+  let assert process.ProcessDown(_, _, process.Normal) =
+    process.new_selector()
+    |> process.select_specific_monitor(monitor, fn(down) { down })
+    |> process.selector_receive_forever
   let assert False = process.is_alive(pid)
   let assert Error(service.Unavailable) = service.request(name, Add(1, _), 0)
   io.println("worker stopped and name released")
+}
+
+fn worker(inbox: process.Subject(Request)) {
+  case process.receive_forever(inbox) {
+    Add(value, reply) -> {
+      process.send(reply, value + 7)
+      worker(inbox)
+    }
+    Stop -> Nil
+  }
 }
