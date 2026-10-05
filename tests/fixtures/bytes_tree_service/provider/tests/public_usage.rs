@@ -67,6 +67,7 @@ struct Fixture {
     module: HostedModule<Profile>,
     verify: Function<(), BitArrayValue>,
     capture: Function<(), ()>,
+    capture_generated: Function<(), ()>,
     paused: Function<(), (BitArrayValue, BitArrayValue)>,
 }
 
@@ -103,6 +104,9 @@ fn fixture() -> (Fixture, State) {
     let capture = bindings
         .function(FunctionDeclaration::new("capture"))
         .unwrap();
+    let capture_generated = bindings
+        .function(FunctionDeclaration::new("capture_generated"))
+        .unwrap();
     let paused = bindings
         .function(FunctionDeclaration::new("paused"))
         .unwrap();
@@ -111,6 +115,7 @@ fn fixture() -> (Fixture, State) {
             module: bindings.seal().unwrap(),
             verify,
             capture,
+            capture_generated,
             paused,
         },
         State {
@@ -118,6 +123,40 @@ fn fixture() -> (Fixture, State) {
             provider: RunState::default(),
         },
     )
+}
+
+#[test]
+fn native_generated_tree_remains_readable_after_its_execution_and_host_are_dropped() {
+    let (
+        Fixture {
+            mut module,
+            capture_generated,
+            ..
+        },
+        mut state,
+    ) = fixture();
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    for _ in 0..2 {
+        host.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                scope.call(&capture_generated, ()).await
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap()
+        .unwrap();
+    }
+    drop(module);
+    let input = state.provider.retained.take().unwrap();
+    drop(state);
+    drop(host);
+    let bytes = input.to_bit_array();
+    drop(input);
+    assert_eq!(bytes.bytes(), [0, 255, 128, 42]);
+    assert_eq!(bytes.bit_len(), 32);
+    assert!(echo.is_empty());
 }
 
 const EXPECTED: &[u8] = &[
@@ -132,6 +171,7 @@ fn original_source_and_retained_input_remain_readable_after_execution_closure() 
             verify,
             capture,
             paused,
+            ..
         },
         mut state,
     ) = fixture();
