@@ -52,12 +52,21 @@ impl<Request> Requests<Request> {
         }
     }
 
-    pub(crate) fn next(&self, cx: &mut Context<'_>) -> Option<Request> {
+    pub(crate) fn next(&self, driver: &Arc<Waker>) -> Option<Request> {
         for _ in 0..64 {
-            let waker = Arc::new(cx.waker().clone());
             let (entry, previous) = {
                 let mut queue = self.queue.lock();
-                (queue.messages.pop_first(), queue.driver.replace(waker))
+                let entry = queue.messages.pop_first();
+                let previous = if queue
+                    .driver
+                    .as_ref()
+                    .is_some_and(|registered| Arc::ptr_eq(registered, driver))
+                {
+                    None
+                } else {
+                    queue.driver.replace(Arc::clone(driver))
+                };
+                (entry, previous)
             };
             drop(previous);
             let (_, message) = entry?;
@@ -68,7 +77,7 @@ impl<Request> Requests<Request> {
                 }
             }
         }
-        cx.waker().wake_by_ref();
+        driver.wake_by_ref();
         None
     }
 
@@ -229,13 +238,13 @@ mod tests {
         let notifications = Arc::new(Notifications::default());
         let waker = Waker::from(Arc::clone(&notifications));
         let mut cx = Context::from_waker(&waker);
-        assert!(requests.next(&mut cx).is_none());
+        assert!(requests.next(&Arc::new(cx.waker().clone())).is_none());
         let mut response = submit_input(&sender, &drops);
         assert_eq!(notifications.0.load(Ordering::Relaxed), 1);
         assert!(Pin::new(&mut response).poll(&mut cx).is_pending());
         assert_eq!(drops.load(Ordering::Relaxed), 0);
 
-        let Request { input, reply } = requests.next(&mut cx).unwrap();
+        let Request { input, reply } = requests.next(&Arc::new(cx.waker().clone())).unwrap();
         assert!(!reply.is_canceled());
         drop(input);
         assert_eq!(reply.send(Cell::new(42)), Ok(()));
@@ -250,6 +259,88 @@ mod tests {
     }
 
     #[test]
+    fn queues_reuse_the_prepared_driver_and_notify_only_its_replacement() {
+        let queues = [
+            Requests::<(usize, Reply<usize>)>::new(),
+            Requests::new(),
+            Requests::new(),
+        ];
+        let first = Arc::new(Notifications::default());
+        let driver = Arc::new(Waker::from(Arc::clone(&first)));
+        let previous = Arc::downgrade(&driver);
+        for _ in 0..100 {
+            for requests in &queues {
+                assert!(requests.next(&driver).is_none());
+                assert!(
+                    requests
+                        .queue
+                        .lock()
+                        .driver
+                        .as_ref()
+                        .is_some_and(|registered| Arc::ptr_eq(registered, &driver))
+                );
+            }
+        }
+        assert_eq!(Arc::strong_count(&driver), 4);
+        drop(driver);
+
+        let second = Arc::new(Notifications::default());
+        let driver = Arc::new(Waker::from(Arc::clone(&second)));
+        for (index, requests) in queues.iter().enumerate() {
+            assert!(requests.next(&driver).is_none());
+            let mut response = requests.sender().submit(|reply| (index + 17, reply));
+            let (value, reply) = requests.next(&driver).unwrap();
+            assert_eq!(value, index + 17);
+            assert_eq!(reply.send(value), Ok(()));
+            assert_eq!(
+                Pin::new(&mut response).poll(&mut Context::from_waker(&driver)),
+                Poll::Ready(Ok(index + 17))
+            );
+        }
+        assert!(previous.upgrade().is_none());
+        assert_eq!(first.0.load(Ordering::Relaxed), 0);
+        assert_eq!(second.0.load(Ordering::Relaxed), 3);
+        assert_eq!(Arc::strong_count(&driver), 4);
+        let registered = Arc::downgrade(&driver);
+        drop(driver);
+        for requests in &queues {
+            requests.close();
+        }
+        assert!(registered.upgrade().is_none());
+    }
+
+    #[test]
+    fn requests_submitted_before_and_after_empty_inspection_keep_fifo_and_wake_the_driver() {
+        let requests = Requests::new();
+        let sender = requests.sender();
+        let notifications = Arc::new(Notifications::default());
+        let driver = Arc::new(Waker::from(Arc::clone(&notifications)));
+        let mut first = sender.submit(|reply: Reply<usize>| (13, reply));
+        let mut second = sender.submit(|reply| (29, reply));
+        assert_eq!(notifications.0.load(Ordering::Relaxed), 0);
+        for (expected, response) in [(13, &mut first), (29, &mut second)] {
+            let (value, reply) = requests.next(&driver).unwrap();
+            assert_eq!(value, expected);
+            assert_eq!(reply.send(value), Ok(()));
+            assert_eq!(
+                Pin::new(response).poll(&mut Context::from_waker(&driver)),
+                Poll::Ready(Ok(expected))
+            );
+        }
+        assert!(requests.next(&driver).is_none());
+        let mut third = sender.submit(|reply| (41, reply));
+        assert_eq!(notifications.0.load(Ordering::Relaxed), 1);
+        let (value, reply) = requests.next(&driver).unwrap();
+        assert_eq!(value, 41);
+        assert_eq!(reply.send(value), Ok(()));
+        assert_eq!(
+            Pin::new(&mut third).poll(&mut Context::from_waker(&driver)),
+            Poll::Ready(Ok(41))
+        );
+        assert!(requests.next(&driver).is_none());
+    }
+
+    #[test]
     fn abandoning_a_request_releases_its_input_without_another_driver_poll() {
         let requests = Requests::new();
         let sender = requests.sender();
@@ -261,11 +352,7 @@ mod tests {
         assert_eq!(drops.load(Ordering::Relaxed), 100);
         let pending = requests.queue.lock().messages.len();
         assert_eq!(pending, 0);
-        assert!(
-            requests
-                .next(&mut Context::from_waker(Waker::noop()))
-                .is_none()
-        );
+        assert!(requests.next(&Arc::new(Waker::noop().clone())).is_none());
     }
 
     #[test]
@@ -302,14 +389,14 @@ mod tests {
         barrier.wait();
 
         let mut cx = Context::from_waker(Waker::noop());
-        let request = requests.next(&mut cx);
+        let request = requests.next(&Arc::new(cx.waker().clone()));
         barrier.wait();
         cancelling.join().unwrap();
         let (input, reply) = request.unwrap();
         assert!(input.is_none());
         reply.send(42).unwrap();
         assert_eq!(Pin::new(&mut live).poll(&mut cx), Poll::Ready(Ok(42)));
-        assert!(requests.next(&mut cx).is_none());
+        assert!(requests.next(&Arc::new(cx.waker().clone())).is_none());
     }
 
     #[test]
@@ -331,15 +418,15 @@ mod tests {
             let mut live = sender.submit(|reply| (None, reply));
             barrier.wait();
             // Every cancelled request is empty but still retained by its destructor.
-            assert!(requests.next(&mut cx).is_none());
+            assert!(requests.next(&Arc::new(cx.waker().clone())).is_none());
             assert_eq!(notifications.0.load(Ordering::Relaxed), 1);
-            let (input, reply) = requests.next(&mut cx).unwrap();
+            let (input, reply) = requests.next(&Arc::new(cx.waker().clone())).unwrap();
             assert!(input.is_none());
             reply.send(42).unwrap();
             assert_eq!(Pin::new(&mut live).poll(&mut cx), Poll::Ready(Ok(42)));
             barrier.wait();
         });
-        assert!(requests.next(&mut cx).is_none());
+        assert!(requests.next(&Arc::new(cx.waker().clone())).is_none());
     }
 
     #[test]
@@ -372,9 +459,7 @@ mod tests {
         let sender = requests.sender();
         let drops = Arc::new(AtomicUsize::new(0));
         let response = submit_input(&sender, &drops);
-        let request = requests
-            .next(&mut Context::from_waker(Waker::noop()))
-            .unwrap();
+        let request = requests.next(&Arc::new(Waker::noop().clone())).unwrap();
         drop(response);
         assert!(request.reply.is_canceled());
         drop(request);
@@ -406,13 +491,13 @@ mod tests {
             barrier: Arc::clone(&barrier),
             wakes: Arc::clone(&wakes),
         }));
-        assert!(requests.next(&mut Context::from_waker(&waker)).is_none());
+        assert!(requests.next(&Arc::new(waker.clone())).is_none());
         drop(waker);
         let cancelled = sender.submit(|reply: Reply<usize>| (None::<PauseDrop>, reply));
         let mut live = sender.submit(|reply: Reply<usize>| (None::<PauseDrop>, reply));
         assert_eq!(wakes.load(Ordering::SeqCst), 2);
         let request = std::thread::scope(|threads| {
-            let worker = threads.spawn(|| requests.next(&mut Context::from_waker(Waker::noop())));
+            let worker = threads.spawn(|| requests.next(&Arc::new(Waker::noop().clone())));
             // Replacing the previous Waker pauses after removing the first weak entry.
             barrier.wait();
             drop(cancelled);
@@ -425,6 +510,6 @@ mod tests {
         reply.send(42).expect("live receiver");
         let mut cx = Context::from_waker(Waker::noop());
         assert_eq!(Pin::new(&mut live).poll(&mut cx), Poll::Ready(Ok(42)));
-        assert!(requests.next(&mut cx).is_none());
+        assert!(requests.next(&Arc::new(cx.waker().clone())).is_none());
     }
 }

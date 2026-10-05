@@ -203,6 +203,7 @@ mod tests {
     use crate::runtime::state::RuntimeState;
     use crate::runtime::work::Cancelled;
     use std::num::NonZeroUsize;
+    use std::sync::Arc;
     use std::task::{Context, Poll, Waker};
 
     #[test]
@@ -256,14 +257,14 @@ mod tests {
                     assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
                 } else {
                     services
-                        .next(&mut cx)
+                        .next(&Arc::new(cx.waker().clone()))
                         .expect("queued native operation")
                         .service(&plan, &mut state)
                         .expect("live observer")
                         .deliver();
                     assert_eq!(waiting.as_mut().poll(&mut cx), Poll::Ready(expected));
                 }
-                assert!(services.next(&mut cx).is_none());
+                assert!(services.next(&Arc::new(cx.waker().clone())).is_none());
                 assert!(echo.is_empty());
             }
         }

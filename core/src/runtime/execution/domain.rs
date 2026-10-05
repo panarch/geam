@@ -19,7 +19,7 @@ use std::future::{Future, poll_fn};
 use std::num::NonZeroUsize;
 use std::pin::{Pin, pin};
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 pub(crate) struct Domain<'host, Profile: HostProfile> {
     plan: Arc<HostedProgram<Profile>>,
@@ -30,6 +30,7 @@ pub(crate) struct Domain<'host, Profile: HostProfile> {
     lists: RuntimeListStorage,
     work: ExecutionWork<Profile>,
     entries: Requests<Entry<Profile>>,
+    driver_waker: Option<Arc<Waker>>,
     tasks: FuturesUnordered<Box<dyn HostTask>>,
     units: Units<Profile>,
     closed: bool,
@@ -74,6 +75,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
             lists: RuntimeListStorage::default(),
             work: ExecutionWork::new(captures.for_execution()),
             entries: Requests::new(),
+            driver_waker: None,
             tasks: FuturesUnordered::new(),
             units,
             closed: false,
@@ -141,6 +143,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         self.closed = true;
         self.entries.close();
         self.work.close();
+        self.driver_waker = None;
         self.units.close();
         for task in self.tasks.iter() {
             task.cancel();
@@ -148,6 +151,14 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
     }
 
     fn service(&mut self, cx: &mut Context<'_>) {
+        let driver = match &self.driver_waker {
+            Some(driver) if driver.will_wake(cx.waker()) => Arc::clone(driver),
+            _ => {
+                let driver = Arc::new(cx.waker().clone());
+                self.driver_waker = Some(Arc::clone(&driver));
+                driver
+            }
+        };
         // Bound each service turn, including while the Rust body waits.
         for _ in 0..self.budget.get() {
             let finished = self.units.finish_next(cx);
@@ -156,9 +167,9 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                 .state()
                 .poll(cx, ExecutionClock::new(self.host))
                 .is_ready();
-            let entry = self.entries.next(cx);
+            let entry = self.entries.next(&driver);
             let spawned = self.units.next_spawn();
-            let request = self.work.next(cx);
+            let request = self.work.next(&driver);
             let empty =
                 !finished && !progress && entry.is_none() && spawned.is_none() && request.is_none();
             if let Some(entry) = entry
@@ -403,7 +414,7 @@ mod tests {
     mod factory;
 
     use super::Domain;
-    use crate::execution::{ExecutionHost, HostTask, TaskExit, Worker};
+    use crate::execution::{ExecutionHost, ExecutionOutcome, HostTask, TaskExit, Worker};
     use crate::host::{HostProfile, HostProviderSet};
     use crate::plan::execution::{HostedProgram, LibraryFunctionEntries};
     use crate::plan::{LibraryEntry, LibraryValueType};
@@ -418,7 +429,7 @@ mod tests {
     use std::pin::Pin;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::task::{Context, Poll, Waker};
+    use std::task::{Context, Poll, Wake, Waker};
     use std::time::Instant;
 
     struct Profile;
@@ -596,6 +607,159 @@ mod tests {
             let index: usize = output.value().inspect().to_string().parse().unwrap();
             self.0[index].fetch_add(1, Ordering::SeqCst);
         }
+    }
+
+    #[derive(Default)]
+    struct Notifications(AtomicUsize);
+
+    impl Wake for Notifications {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn service_turns_share_one_driver_and_switch_notifications_to_a_new_task() {
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        let host = ManualHost::default();
+        let mut state = Cell::new(0);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let mut domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        let first = Arc::new(Notifications::default());
+        let first_waker = Waker::from(Arc::clone(&first));
+        let mut first_cx = Context::from_waker(&first_waker);
+        domain.service(&mut first_cx);
+        let driver = domain.driver_waker.as_ref().unwrap();
+        assert_eq!(Arc::strong_count(driver), 2);
+        let previous = Arc::downgrade(driver);
+
+        let context = domain.work.execution();
+        for _ in 0..100 {
+            domain.service(&mut first_cx);
+            let driver = domain.driver_waker.as_ref().unwrap();
+            assert!(Arc::ptr_eq(driver, &previous.upgrade().unwrap()));
+            assert_eq!(Arc::strong_count(driver), 4);
+        }
+        let second = Arc::new(Notifications::default());
+        let second_waker = Waker::from(Arc::clone(&second));
+        let mut second_cx = Context::from_waker(&second_waker);
+        domain.service(&mut second_cx);
+        assert!(previous.upgrade().is_none());
+        assert_eq!(Arc::strong_count(domain.driver_waker.as_ref().unwrap()), 4);
+
+        let first_before = first.0.load(Ordering::SeqCst);
+        let second_before = second.0.load(Ordering::SeqCst);
+        let mut response = std::pin::pin!(context.with_state(|state| {
+            state.set(state.get() + 1);
+            state.get()
+        }));
+        assert!(response.as_mut().poll(&mut second_cx).is_pending());
+        assert_eq!(first.0.load(Ordering::SeqCst), first_before);
+        assert_eq!(second.0.load(Ordering::SeqCst), second_before + 1);
+        domain.service(&mut second_cx);
+        assert_eq!(response.as_mut().poll(&mut second_cx), Poll::Ready(Ok(1)));
+
+        let registered = Arc::downgrade(domain.driver_waker.as_ref().unwrap());
+        domain.close();
+        assert!(domain.driver_waker.is_none());
+        assert!(registered.upgrade().is_none());
+        domain.close();
+        drop(domain);
+        assert_eq!(state.get(), 1);
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn a_ready_body_avoids_driver_preparation_and_shutdown_releases_existing_registration() {
+        for prepare_driver in [false, true] {
+            let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+            let host = ManualHost::default();
+            let mut state = Cell::new(0);
+            let mut stores = Cell::new(());
+            let mut echo = Vec::new();
+            let mut domain = Domain::new(
+                plan,
+                &host,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::MIN,
+            );
+            let notifications = Arc::new(Notifications::default());
+            let waker = Waker::from(notifications);
+            let mut cx = Context::from_waker(&waker);
+            let previous = if prepare_driver {
+                domain.service(&mut cx);
+                Some(Arc::downgrade(domain.driver_waker.as_ref().unwrap()))
+            } else {
+                None
+            };
+            let mut body = std::pin::pin!(std::future::ready(23));
+            assert_eq!(
+                domain
+                    .poll_body(body.as_mut(), &mut cx)
+                    .map(|result| result.unwrap()),
+                Poll::Ready(ExecutionOutcome::Returned(23))
+            );
+            assert_eq!(domain.driver_waker.is_some(), prepare_driver);
+            assert_eq!(
+                host.finish(domain.drive(std::future::ready(31))).unwrap(),
+                ExecutionOutcome::Returned(31)
+            );
+            assert!(previous.is_none_or(|driver| driver.upgrade().is_none()));
+            assert_eq!(state.get(), 0);
+        }
+    }
+
+    #[test]
+    fn dropping_the_domain_releases_its_driver_and_rejects_later_requests() {
+        fn increment(state: &mut Cell<usize>) -> usize {
+            state.set(state.get() + 1);
+            state.get()
+        }
+
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        let host = ManualHost::default();
+        let mut state = Cell::new(0);
+        let mut stores = Cell::new(());
+        let mut echo = Vec::new();
+        let mut domain = Domain::new(
+            plan,
+            &host,
+            &mut state,
+            &mut stores,
+            &mut echo,
+            Default::default(),
+            NonZeroUsize::MIN,
+        );
+        let context = domain.work.execution();
+        let notifications = Arc::new(Notifications::default());
+        let waker = Waker::from(notifications);
+        let mut cx = Context::from_waker(&waker);
+        domain.service(&mut cx);
+        let mut completed = std::pin::pin!(context.with_state(increment));
+        assert!(completed.as_mut().poll(&mut cx).is_pending());
+        domain.service(&mut cx);
+        assert_eq!(completed.as_mut().poll(&mut cx), Poll::Ready(Ok(1)));
+        let registered = Arc::downgrade(domain.driver_waker.as_ref().unwrap());
+        let mut pending = std::pin::pin!(context.with_state(increment));
+        assert!(pending.as_mut().poll(&mut cx).is_pending());
+        drop(domain);
+        assert!(registered.upgrade().is_none());
+        assert_eq!(pending.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
+        let mut later = std::pin::pin!(context.with_state(increment));
+        assert_eq!(later.as_mut().poll(&mut cx), Poll::Ready(Err(Cancelled)));
+        assert_eq!(state.get(), 1);
     }
 
     #[test]
@@ -1846,12 +2010,7 @@ mod source_work {
             Default::default(),
             NonZeroUsize::MIN,
         );
-        assert!(
-            driver
-                .work
-                .next(&mut Context::from_waker(Waker::noop()))
-                .is_none()
-        );
+        assert!(driver.work.next(&Arc::new(Waker::noop().clone())).is_none());
         for cancelled in [false, true] {
             let wake = Arc::new(CheckWake {
                 context: driver.work.execution(),
@@ -1867,7 +2026,7 @@ mod source_work {
             assert!(receiver.as_mut().poll(&mut cx).is_pending());
             let request = driver
                 .work
-                .next(&mut Context::from_waker(Waker::noop()))
+                .next(&Arc::new(Waker::noop().clone()))
                 .expect("claimed state request");
             let receiver = if cancelled {
                 drop(receiver);
@@ -1986,7 +2145,12 @@ mod source_work {
         drop(second);
         let mut cx = Context::from_waker(Waker::noop());
         assert!(abandoned.as_mut().poll(&mut cx).is_pending());
-        drop(driver.work.next(&mut cx).expect("unserviced state request"));
+        drop(
+            driver
+                .work
+                .next(&Arc::new(cx.waker().clone()))
+                .expect("unserviced state request"),
+        );
         assert_eq!(
             abandoned.as_mut().poll(&mut cx).map(Result::err),
             Poll::Ready(Some(Cancelled))
@@ -2585,7 +2749,10 @@ pub fn make() {{
                         let mut observer = std::pin::pin!(work.observe());
                         for index in 0..=discarded {
                             assert!(observer.as_mut().poll(&mut cx).is_pending());
-                            let request = driver.work.next(&mut cx).expect("next native boundary");
+                            let request = driver
+                                .work
+                                .next(&Arc::new(cx.waker().clone()))
+                                .expect("next native boundary");
                             if index == discarded {
                                 drop(request);
                             } else {
@@ -2754,7 +2921,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                     );
                     let request = driver
                         .work
-                        .next(&mut cx)
+                        .next(&Arc::new(cx.waker().clone()))
                         .expect("composition requested its runtime");
                     if index == discarded {
                         drop(request);
@@ -3823,10 +3990,18 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
             if cancelled {
                 let mut observer = std::pin::pin!(work.observe());
                 assert!(observer.as_mut().poll(&mut cx).is_pending());
-                let request = driver.work.next(&mut cx).expect("decode the input");
+                let request = driver
+                    .work
+                    .next(&Arc::new(cx.waker().clone()))
+                    .expect("decode the input");
                 driver.dispatch(request);
                 assert!(observer.as_mut().poll(&mut cx).is_pending());
-                drop(driver.work.next(&mut cx).expect("encode the completion"));
+                drop(
+                    driver
+                        .work
+                        .next(&Arc::new(cx.waker().clone()))
+                        .expect("encode the completion"),
+                );
                 assert_eq!(
                     observer.as_mut().poll(&mut cx).map(Result::err),
                     Poll::Ready(Some(Cancelled))
@@ -4306,7 +4481,10 @@ mod work_requests {
         }));
         assert!(state_request.as_mut().poll(&mut cx).is_pending());
         assert_eq!(execution.state.get(), 2);
-        let request = execution.work.next(&mut cx).expect("state request");
+        let request = execution
+            .work
+            .next(&Arc::new(cx.waker().clone()))
+            .expect("state request");
         let wakes_before_delivery = wake.0.load(Ordering::SeqCst);
         execution.dispatch(request);
         assert_eq!(state_request.as_mut().poll(&mut cx), Poll::Ready(Ok(2)));
@@ -4580,7 +4758,7 @@ pub fn make() { #(fn(value: Int) {
                 }
                 let request = execution
                     .work
-                    .next(&mut cx)
+                    .next(&Arc::new(cx.waker().clone()))
                     .expect("next conversion boundary");
                 execution.dispatch(request);
                 assert!(
@@ -4661,7 +4839,7 @@ pub fn make() { #(fn(value: Int) {
             } else {
                 let request = execution
                     .work
-                    .next(&mut cx)
+                    .next(&Arc::new(cx.waker().clone()))
                     .expect("completion decoder request");
                 execution.dispatch(request);
                 drop(execution);
@@ -4704,7 +4882,10 @@ pub fn make() { #(fn(value: Int) {
             let mut request = Box::pin(context.with_state(|state| state.set(99)));
             let mut cx = Context::from_waker(Waker::noop());
             assert!(request.as_mut().poll(&mut cx).is_pending());
-            let operation = execution.work.next(&mut cx).expect("claimed request");
+            let operation = execution
+                .work
+                .next(&Arc::new(cx.waker().clone()))
+                .expect("claimed request");
             let receiver = if cancel {
                 drop(request);
                 None
@@ -4744,7 +4925,7 @@ pub fn make() { #(fn(value: Int) {
             assert!(request.as_mut().poll(&mut cx).is_pending());
             let operation = execution
                 .work
-                .next(&mut cx)
+                .next(&Arc::new(cx.waker().clone()))
                 .expect("claimed runtime request");
             let receiver = if cancel {
                 drop(request);
@@ -4914,7 +5095,10 @@ pub fn make() { #(fn(value: Int) {
         let mut request = Box::pin(context.invoke(callback, HostCallOrigin::Entry, arguments));
         let mut cx = Context::from_waker(Waker::noop());
         assert!(request.as_mut().poll(&mut cx).is_pending());
-        let request_to_service = execution.work.next(&mut cx).expect("claimed request");
+        let request_to_service = execution
+            .work
+            .next(&Arc::new(cx.waker().clone()))
+            .expect("claimed request");
         drop(request);
         execution.dispatch(request_to_service);
         executor

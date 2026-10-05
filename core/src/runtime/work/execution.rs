@@ -8,8 +8,8 @@ use crate::runtime::execution::{ExecutionContext, ExecutionServices};
 use crate::runtime::state::RuntimeStateFor;
 use crate::runtime::{CallbackInputs, RetainedCallable, StoredRuntimeValue};
 use std::future::Future;
-use std::sync::OnceLock;
-use std::task::Context;
+use std::sync::{Arc, OnceLock};
+use std::task::Waker;
 
 pub(in crate::runtime) struct ExecutionWork<Profile: HostProfile> {
     initialized: OnceLock<WorkScope<Completion>>,
@@ -39,8 +39,8 @@ impl<Profile: HostProfile> ExecutionWork<Profile> {
         }
     }
 
-    pub(in crate::runtime) fn next(&self, cx: &mut Context<'_>) -> Option<Request<Profile>> {
-        self.execution.next(cx)
+    pub(in crate::runtime) fn next(&self, driver: &Arc<Waker>) -> Option<Request<Profile>> {
+        self.execution.next(driver)
     }
 
     pub(in crate::runtime) fn execution(&self) -> ExecutionContext<Profile> {
@@ -162,7 +162,7 @@ mod tests {
     fn ordinary_execution_does_not_initialize_work_and_work_contexts_share_closure() {
         let execution = ExecutionWork::<Profile>::new(Default::default());
         let mut cx = Context::from_waker(Waker::noop());
-        assert!(execution.next(&mut cx).is_none());
+        assert!(execution.next(&Arc::new(cx.waker().clone())).is_none());
         assert!(execution.initialized.get().is_none());
         let ordinary = execution.execution();
         let mut request = pin!(ordinary.with_state(std::mem::take));

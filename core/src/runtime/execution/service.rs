@@ -5,7 +5,7 @@ use crate::runtime::work::Cancelled;
 use crate::runtime::work::request::{Reply, Requests, Sender};
 use std::future::Future;
 use std::sync::{Arc, OnceLock};
-use std::task::Context;
+use std::task::Waker;
 
 pub(in crate::runtime) struct Services<Plan: ExecutableRuntimePlan> {
     requests: Requests<Request<Plan>>,
@@ -58,8 +58,8 @@ impl<Plan: ExecutableRuntimePlan> Services<Plan> {
         }
     }
 
-    pub(super) fn next(&self, cx: &mut Context<'_>) -> Option<Request<Plan>> {
-        self.requests.next(cx)
+    pub(super) fn next(&self, driver: &Arc<Waker>) -> Option<Request<Plan>> {
+        self.requests.next(driver)
     }
 
     pub(super) fn close(&self) {

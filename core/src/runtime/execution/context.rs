@@ -9,9 +9,9 @@ use crate::runtime::work::Cancelled;
 use crate::runtime::work::request::{Reply, Requests, Sender};
 use crate::runtime::{CallbackInputs, HostCallOrigin, RetainedCallable, StoredRuntimeValue};
 use std::future::Future;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::Context;
+use std::sync::{Arc, OnceLock};
+use std::task::Waker;
 
 pub(in crate::runtime) struct ExecutionServices<Profile: HostProfile> {
     initialized: OnceLock<Initialized<Profile>>,
@@ -64,7 +64,7 @@ impl<Profile: HostProfile> ExecutionServices<Profile> {
         }
     }
 
-    pub(in crate::runtime) fn next(&self, cx: &mut Context<'_>) -> Option<Request<Profile>> {
+    pub(in crate::runtime) fn next(&self, driver: &Arc<Waker>) -> Option<Request<Profile>> {
         let initialized = self.initialized.get()?;
         if initialized
             .callback_first
@@ -72,15 +72,15 @@ impl<Profile: HostProfile> ExecutionServices<Profile> {
         {
             initialized
                 .callbacks
-                .next(cx)
+                .next(driver)
                 .map(Request::Callback)
-                .or_else(|| initialized.services.next(cx).map(Request::Service))
+                .or_else(|| initialized.services.next(driver).map(Request::Service))
         } else {
             initialized
                 .services
-                .next(cx)
+                .next(driver)
                 .map(Request::Service)
-                .or_else(|| initialized.callbacks.next(cx).map(Request::Callback))
+                .or_else(|| initialized.callbacks.next(driver).map(Request::Callback))
         }
     }
 
