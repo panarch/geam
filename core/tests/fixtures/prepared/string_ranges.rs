@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 22,
+    format: 23,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -3603,7 +3603,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(0);
                     }
                     *budget -= 1;
-                    if values.text(b0_s0).starts_with("λ") {
+                    if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                         let (b1_i0, b1_s0,) = (b0_i0, b0_s0,);
                         if *budget == 0 {
 
@@ -3685,7 +3685,7 @@ data::ModuleArtifact {
                             return data::compiled::CompiledProgress::Yield(5);
                         }
                         *budget -= 1;
-                        if values.text(b2_s0) == values.text(b2_s1) {
+                        if values.bytes(b2_s0) == values.bytes(b2_s1) {
                             let (b3_i0,) = (b2_i0,);
                             if *budget == 0 {
 
@@ -3894,7 +3894,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
                 }
                 *budget -= 1;
-                if values.text(b2_s0) == values.text(b2_s1) {
+                if values.bytes(b2_s0) == values.bytes(b2_s1) {
                     let (b3_i0,) = (b2_i0,);
 
                     values.ints.clear();
@@ -4051,7 +4051,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0) == "red" {
+                if values.bytes(b0_s0) == "red".as_bytes() {
                     let () = ();
                     if *budget == 0 {
 
@@ -4087,7 +4087,7 @@ data::ModuleArtifact {
                     values.strings.clear();
                     values.strings.extend_from_slice(&[]);
                     data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(0))
-                } else if values.text(b0_s0) == "blue" {
+                } else if values.bytes(b0_s0) == "blue".as_bytes() {
                     let () = ();
                     if *budget == 0 {
 
@@ -4123,7 +4123,7 @@ data::ModuleArtifact {
                     values.strings.clear();
                     values.strings.extend_from_slice(&[]);
                     data::compiled::CompiledProgress::Complete(data::graph::BlockGraphExitId(1))
-                } else if values.text(b0_s0) == "\n\"\\λ" {
+                } else if values.bytes(b0_s0) == "\n\"\\λ".as_bytes() {
                     let () = ();
                     if *budget == 0 {
 
@@ -4497,7 +4497,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                let (b11_i0, b11_s0, b11_s1,) = if values.text(b0_s0).starts_with("λ") {
+                let (b11_i0, b11_s0, b11_s1,) = if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let (b1_i0, b1_v0, b1_s0, b1_s1,) = (b0_i0, b0_v0, b0_s0, b0_s1,);
                     if *budget == 0 {
 
@@ -4524,7 +4524,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(2);
                     }
                     *budget -= 1;
-                    let (b10_i0, b10_s0, b10_s1,) = if values.text(b1_s2) == values.text(b1_s1) {
+                    let (b10_i0, b10_s0, b10_s1,) = if values.bytes(b1_s2) == values.bytes(b1_s1) {
                         let (b2_i0, b2_v0, b2_s0, b2_s1,) = (b1_i0, b1_v0, b1_s0, b1_s1,);
                         if *budget == 0 {
 
@@ -4578,7 +4578,7 @@ data::ModuleArtifact {
                                 return data::compiled::CompiledProgress::Yield(6);
                             }
                             *budget -= 1;
-                            if values.text(b3_s0) == values.text(b3_s0) {
+                            if values.bytes(b3_s0) == values.bytes(b3_s0) {
                                 let (b4_i0, b4_s0,) = (b3_i0, b3_s1,);
                                 if *budget == 0 {
 
@@ -4605,7 +4605,7 @@ data::ModuleArtifact {
                                     return data::compiled::CompiledProgress::Yield(8);
                                 }
                                 *budget -= 1;
-                                if values.text(b4_s0) == values.text(b4_s1) {
+                                if values.bytes(b4_s0) == values.bytes(b4_s1) {
                                     let (b5_i0,) = (b4_i0,);
                                     if *budget == 0 {
 
@@ -4805,7 +4805,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(17);
                 }
                 *budget -= 1;
-                let (b15_i0, b15_s0,) = if values.text(b11_s0).starts_with("λ") {
+                let (b15_i0, b15_s0,) = if values.bytes(b11_s0).starts_with("λ".as_bytes()) {
                     let (b12_i0, b12_s0, b12_s1,) = (b11_i0, b11_s0, b11_s1,);
                     if *budget == 0 {
 
@@ -4832,7 +4832,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(19);
                     }
                     *budget -= 1;
-                    if values.text(b12_s2) == values.text(b12_s1) {
+                    if values.bytes(b12_s2) == values.bytes(b12_s1) {
                         let (b13_i0, b13_s0,) = (b12_i0, b12_s0,);
                         if *budget == 0 {
 
@@ -4942,7 +4942,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(24);
                 }
                 *budget -= 1;
-                if values.text(b15_s0).starts_with("λ") {
+                if values.bytes(b15_s0).starts_with("λ".as_bytes()) {
                     let (b16_i0,) = (b15_i0,);
                     if *budget == 0 {
 
@@ -5085,7 +5085,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
                 }
                 *budget -= 1;
-                if values.text(b1_s2) == values.text(b1_s1) {
+                if values.bytes(b1_s2) == values.bytes(b1_s1) {
                     let (b2_i0, b2_v0, b2_s0, b2_s1,) = (b1_i0, b1_v0, b1_s0, b1_s1,);
 
                     values.ints.clear();
@@ -5227,7 +5227,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(6));
                 }
                 *budget -= 1;
-                if values.text(b3_s0) == values.text(b3_s0) {
+                if values.bytes(b3_s0) == values.bytes(b3_s0) {
                     let (b4_i0, b4_s0,) = (b3_i0, b3_s1,);
 
                     values.ints.clear();
@@ -5298,7 +5298,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(8));
                 }
                 *budget -= 1;
-                if values.text(b4_s0) == values.text(b4_s1) {
+                if values.bytes(b4_s0) == values.bytes(b4_s1) {
                     let (b5_i0,) = (b4_i0,);
 
                     values.ints.clear();
@@ -5589,7 +5589,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(17));
                 }
                 *budget -= 1;
-                if values.text(b11_s0).starts_with("λ") {
+                if values.bytes(b11_s0).starts_with("λ".as_bytes()) {
                     let (b12_i0, b12_s0, b12_s1,) = (b11_i0, b11_s0, b11_s1,);
 
                     values.ints.clear();
@@ -5660,7 +5660,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(19));
                 }
                 *budget -= 1;
-                if values.text(b12_s2) == values.text(b12_s1) {
+                if values.bytes(b12_s2) == values.bytes(b12_s1) {
                     let (b13_i0, b13_s0,) = (b12_i0, b12_s0,);
 
                     values.ints.clear();
@@ -5830,7 +5830,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(24));
                 }
                 *budget -= 1;
-                if values.text(b15_s0).starts_with("λ") {
+                if values.bytes(b15_s0).starts_with("λ".as_bytes()) {
                     let (b16_i0,) = (b15_i0,);
 
                     values.ints.clear();
@@ -6138,7 +6138,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(0);
                     }
                     *budget -= 1;
-                    if values.text(b0_s0).starts_with("λ") {
+                    if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                         let (b1_i0, b1_s0, b1_s1,) = (b0_i0, b0_s0, b0_s1,);
                         if *budget == 0 {
 
@@ -6207,7 +6207,7 @@ data::ModuleArtifact {
                             return data::compiled::CompiledProgress::Yield(4);
                         }
                         *budget -= 1;
-                        if values.text(b2_s0).starts_with("m") {
+                        if values.bytes(b2_s0).starts_with("m".as_bytes()) {
                             let (b3_i0, b3_s0, b3_s1,) = (b2_i0, b2_s0, b2_s1,);
                             if *budget == 0 {
 
@@ -6289,7 +6289,7 @@ data::ModuleArtifact {
                                 return data::compiled::CompiledProgress::Yield(9);
                             }
                             *budget -= 1;
-                            if values.text(b4_s0) == values.text(b4_s2) {
+                            if values.bytes(b4_s0) == values.bytes(b4_s2) {
                                 let (b5_i0, b5_s0, b5_s1,) = (b4_i0, b4_s0, b4_s1,);
                                 if *budget == 0 {
 
@@ -6303,7 +6303,7 @@ data::ModuleArtifact {
                                     return data::compiled::CompiledProgress::Yield(10);
                                 }
                                 *budget -= 1;
-                                if values.text(b5_s1).is_empty() {
+                                if values.bytes(b5_s1).is_empty() {
                                     let (b6_i0,) = (b5_i0,);
                                     if *budget == 0 {
 
@@ -6491,7 +6491,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
                 }
                 *budget -= 1;
-                if values.text(b2_s0).starts_with("m") {
+                if values.bytes(b2_s0).starts_with("m".as_bytes()) {
                     let (b3_i0, b3_s0, b3_s1,) = (b2_i0, b2_s0, b2_s1,);
 
                     values.ints.clear();
@@ -6662,7 +6662,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(9));
                 }
                 *budget -= 1;
-                if values.text(b4_s0) == values.text(b4_s2) {
+                if values.bytes(b4_s0) == values.bytes(b4_s2) {
                     let (b5_i0, b5_s0, b5_s1,) = (b4_i0, b4_s0, b4_s1,);
 
                     values.ints.clear();
@@ -6704,7 +6704,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(10));
                 }
                 *budget -= 1;
-                if values.text(b5_s1).is_empty() {
+                if values.bytes(b5_s1).is_empty() {
                     let (b6_i0,) = (b5_i0,);
 
                     values.ints.clear();
@@ -6880,7 +6880,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(1);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let (b1_s0,) = (b0_s0,);
                     if *budget == 0 {
 
@@ -6920,7 +6920,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(4);
                     }
                     *budget -= 1;
-                    if values.text(b1_s1) == values.text(b1_s2) {
+                    if values.bytes(b1_s1) == values.bytes(b1_s2) {
                         let (b2_s0,) = (b1_s0,);
                         if *budget == 0 {
 
@@ -7056,7 +7056,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let (b1_s0,) = (b0_s0,);
 
                     values.ints.clear();
@@ -7156,7 +7156,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
                 }
                 *budget -= 1;
-                if values.text(b1_s1) == values.text(b1_s2) {
+                if values.bytes(b1_s1) == values.bytes(b1_s2) {
                     let (b2_s0,) = (b1_s0,);
 
                     values.ints.clear();
@@ -7437,7 +7437,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let m2 = b0_s0;
                     let m0 = data::compiled::string::StringRange::literal("λ");
                     let m1 = b0_s0.drop_prefix(2);
@@ -7454,7 +7454,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(1);
                     }
                     *budget -= 1;
-                    if values.text(b1_s1) != values.text(b1_s2) {
+                    if values.bytes(b1_s1) != values.bytes(b1_s2) {
                         let (b2_i0, b2_s0,) = (b1_i0, b1_s0,);
                         if *budget == 0 {
 
@@ -7481,7 +7481,7 @@ data::ModuleArtifact {
                             return data::compiled::CompiledProgress::Yield(3);
                         }
                         *budget -= 1;
-                        if values.text(b2_s0) == values.text(b2_s1) {
+                        if values.bytes(b2_s0) == values.bytes(b2_s1) {
                             let (b3_i0,) = (b2_i0,);
                             if *budget == 0 {
 
@@ -7657,7 +7657,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                if values.text(b1_s1) != values.text(b1_s2) {
+                if values.bytes(b1_s1) != values.bytes(b1_s2) {
                     let (b2_i0, b2_s0,) = (b1_i0, b1_s0,);
 
                     values.ints.clear();
@@ -7728,7 +7728,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(3));
                 }
                 *budget -= 1;
-                if values.text(b2_s0) == values.text(b2_s1) {
+                if values.bytes(b2_s0) == values.bytes(b2_s1) {
                     let (b3_i0,) = (b2_i0,);
 
                     values.ints.clear();
@@ -8035,7 +8035,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(0);
                     }
                     *budget -= 1;
-                    if values.text(b0_s0).starts_with("λ") {
+                    if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                         let (b1_s0,) = (b0_s0,);
                         if *budget == 0 {
 
@@ -8364,7 +8364,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0) == "\n\"\\λ" {
+                if values.bytes(b0_s0) == "\n\"\\λ".as_bytes() {
                     let m0 = b0_s0;
                     let (b1_s0,) = (m0,);
                     if *budget == 0 {
@@ -8379,7 +8379,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(1);
                     }
                     *budget -= 1;
-                    if values.text(b1_s0) == "\n\"\\λ" {
+                    if values.bytes(b1_s0) == "\n\"\\λ".as_bytes() {
                         let () = ();
                         if *budget == 0 {
 
@@ -8507,7 +8507,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                if values.text(b1_s0) == "\n\"\\λ" {
+                if values.bytes(b1_s0) == "\n\"\\λ".as_bytes() {
                     let () = ();
 
                     values.ints.clear();
@@ -8746,7 +8746,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let () = ();
                     if *budget == 0 {
 
@@ -8983,7 +8983,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let m1 = b0_s0.drop_prefix(2);
                     let (b1_i0, b1_s0,) = (b0_i0, m1,);
                     if *budget == 0 {
@@ -9012,7 +9012,7 @@ data::ModuleArtifact {
                             return data::compiled::CompiledProgress::Yield(2);
                         }
                         *budget -= 1;
-                        if values.text(b2_s0) == "tail" {
+                        if values.bytes(b2_s0) == "tail".as_bytes() {
                             let (b3_i0,) = (b2_i0,);
                             if *budget == 0 {
 
@@ -9241,7 +9241,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(2));
                 }
                 *budget -= 1;
-                if values.text(b2_s0) == "tail" {
+                if values.bytes(b2_s0) == "tail".as_bytes() {
                     let (b3_i0,) = (b2_i0,);
 
                     values.ints.clear();
@@ -9763,7 +9763,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                let b0_v1 = values.text(b0_s0) == values.text(b0_s1);
+                let b0_v1 = values.bytes(b0_s0) == values.bytes(b0_s1);
                 if *budget == 0 {
 
                     values.ints.clear();
@@ -9776,7 +9776,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(1);
                 }
                 *budget -= 1;
-                let b0_v2 = values.text(b0_s0) != values.text(b0_s1);
+                let b0_v2 = values.bytes(b0_s0) != values.bytes(b0_s1);
                 if *budget == 0 {
 
                     values.ints.clear();
@@ -9881,7 +9881,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                let b0_v2 = values.text(b0_s0) != values.text(b0_s1);
+                let b0_v2 = values.bytes(b0_s0) != values.bytes(b0_s1);
 
                 values.ints.clear();
                 values.ints.extend_from_slice(&[]);
@@ -10099,7 +10099,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(0);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("") {
+                if values.bytes(b0_s0).starts_with("".as_bytes()) {
                     let (b1_s0,) = (b0_s0,);
                     if *budget == 0 {
 
@@ -10152,7 +10152,7 @@ data::ModuleArtifact {
                         return data::compiled::CompiledProgress::Yield(4);
                     }
                     *budget -= 1;
-                    if values.text(b1_s1) == values.text(b1_s3) {
+                    if values.bytes(b1_s1) == values.bytes(b1_s3) {
                         let (b2_s0, b2_s1,) = (b1_s0, b1_s2,);
                         if *budget == 0 {
 
@@ -10166,7 +10166,7 @@ data::ModuleArtifact {
                             return data::compiled::CompiledProgress::Yield(5);
                         }
                         *budget -= 1;
-                        let b2_v0 = values.text(b2_s1) == values.text(b2_s0);
+                        let b2_v0 = values.bytes(b2_s1) == values.bytes(b2_s0);
                         if *budget == 0 {
 
                             values.ints.clear();
@@ -10368,7 +10368,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(4));
                 }
                 *budget -= 1;
-                if values.text(b1_s1) == values.text(b1_s3) {
+                if values.bytes(b1_s1) == values.bytes(b1_s3) {
                     let (b2_s0, b2_s1,) = (b1_s0, b1_s2,);
 
                     values.ints.clear();
@@ -10410,7 +10410,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
                 }
                 *budget -= 1;
-                let b2_v0 = values.text(b2_s1) == values.text(b2_s0);
+                let b2_v0 = values.bytes(b2_s1) == values.bytes(b2_s0);
 
                 values.ints.clear();
                 values.ints.extend_from_slice(&[]);

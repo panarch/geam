@@ -110,6 +110,78 @@ mod explain {
     );
 }
 
+#[test]
+fn raw_string_encoding_is_byte_preserving_or_a_source_segment_failure() {
+    use geam_core::embedding::{CallError, ModuleBuilder};
+    use geam_core::{
+        BitArraySegmentPanicReason, BitArrayValue, PanicDetails, PanicKind, PanicMessage,
+        PanicSite, SourceSpan, StringValue,
+    };
+    for (encoding, expected) in [
+        ("utf8", vec![0xc3, 0xa9]),
+        ("utf16-big", vec![0, 0xe9]),
+        ("utf16-little", vec![0xe9, 0]),
+        ("utf32-big", vec![0, 0, 0, 0xe9]),
+        ("utf32-little", vec![0xe9, 0, 0, 0]),
+    ] {
+        let segment = format!("text:{encoding}");
+        let source = format!("pub fn encode(text: String) {{ <<{segment}>> }}");
+        let typed = compile_typed_module("encoding", "src/encoding.gleam", &source).unwrap();
+        let (bindings, encode) = ModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(StringValue,), BitArrayValue>::new(
+                "encode",
+            ))
+            .unwrap();
+        let module = bindings.seal();
+        let valid = StringValue::from_bytes("é".as_bytes().to_vec());
+        assert_eq!(
+            module
+                .call(&encode, (valid,), &mut Vec::new())
+                .unwrap()
+                .bytes(),
+            expected
+        );
+        let bytes = vec![b'a', 0xff];
+        let utf8_error = std::str::from_utf8(&bytes).unwrap_err();
+        let raw = StringValue::from_bytes(bytes);
+        if encoding == "utf8" {
+            assert_eq!(
+                module
+                    .call(&encode, (raw,), &mut Vec::new())
+                    .unwrap()
+                    .bytes(),
+                &[b'a', 0xff]
+            );
+        } else {
+            let error = module
+                .call(&encode, (raw,), &mut Vec::new())
+                .unwrap_err()
+                .into_materialized();
+            let start = source.find(&segment).unwrap();
+            let CallError::Execution(ExecutionError::Panic(panic)) = error else {
+                panic!("expected a source encoding failure");
+            };
+            assert_eq!(panic.kind(), PanicKind::BitArraySegment);
+            assert_eq!(panic.message(), &PanicMessage::Default);
+            assert_eq!(
+                panic.site(),
+                &PanicSite::new(
+                    "encoding".into(),
+                    "encode".into(),
+                    SourceSpan::new(start, start + segment.len()),
+                ),
+            );
+            assert_eq!(
+                panic.details(),
+                Some(&PanicDetails::BitArraySegment {
+                    reason: BitArraySegmentPanicReason::InvalidStringEncoding { error: utf8_error },
+                }),
+            );
+        }
+    }
+}
+
 mod values {
     execution_cases!("values";
         integer_return,

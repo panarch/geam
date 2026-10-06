@@ -18,6 +18,7 @@ use geam_core::{
 };
 use std::convert::Infallible;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static ARITHMETIC: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/arithmetic.rs");
 
@@ -137,7 +138,7 @@ fn string_checkpoint_assertion_resumes_after_arithmetic_without_replaying_it() {
         CompiledProgress::Yield(1)
     );
     assert_eq!(values.ints, [7, 8]);
-    assert_eq!(values.text(values.strings[0]), "λtail");
+    assert_eq!(values.bytes(values.strings[0]), "λtail".as_bytes());
     assert_eq!(
         (implementation.run)(1, &mut values, &mut 100),
         CompiledProgress::Complete(BlockGraphExitId(0))
@@ -195,7 +196,7 @@ fn string_checkpoint_assertion_resumes_after_arithmetic_without_replaying_it() {
         assert_eq!(panic.site().module(), "example");
         assert_eq!(panic.site().function(), "after_step");
         assert!(
-            matches!(panic.details(), Some(PanicDetails::LetAssert { value: Value::String(value), .. }) if value.as_str() == "bad")
+            matches!(panic.details(), Some(PanicDetails::LetAssert { value: Value::String(value), .. }) if value.as_str().unwrap() == "bad")
         );
         failures.push(panic);
     }
@@ -217,12 +218,12 @@ fn string_checkpoint_stop_returns_to_the_source_panic_owner_and_keeps_list_fallb
         (implementation.run)(implementation.entry, &mut values, &mut 0),
         CompiledProgress::Yield(0)
     );
-    assert_eq!(values.text(values.strings[0]), "source message");
+    assert_eq!(values.bytes(values.strings[0]), "source message".as_bytes());
     assert_eq!(
         (implementation.run)(0, &mut values, &mut 100),
         CompiledProgress::Interpreted(0)
     );
-    assert_eq!(values.text(values.strings[0]), "source message");
+    assert_eq!(values.bytes(values.strings[0]), "source message".as_bytes());
 
     let source = include_str!("fixtures/prepared/string_checkpoints.gleam");
     let mut failures = Vec::new();
@@ -380,6 +381,111 @@ macro_rules! string_functions {
                 .unwrap(),
         )
     };
+}
+
+#[test]
+fn generated_string_kernel_and_graph_accept_the_same_raw_suffixes() {
+    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/string_ranges.rs");
+    let mut artifact = BASE;
+    let target = &artifact.program.compiled.ints[2];
+    assert_eq!(target.function.0, 2);
+    let CompiledImplementation::String(implementation) = &target.implementation else {
+        panic!("aliases must use its generated String implementation");
+    };
+    artifact.program.compiled.ints = vec![CompiledFunction {
+        function: target.function,
+        implementation: CompiledImplementation::String(StringImplementation {
+            entry: implementation.entry,
+            checkpoints: implementation.checkpoints.clone(),
+            run: observe_raw_string_aliases,
+        }),
+    }]
+    .into();
+    let artifact = Box::leak(Box::new(artifact));
+    for prepared in [false, true] {
+        RAW_STRING_KERNEL_CALLS.store(0, Ordering::Relaxed);
+        let (module, aliases) = if prepared {
+            let mut builder = artifact.load().unwrap();
+            let aliases = builder
+                .function(FunctionDeclaration::<
+                    (StringValue, StringValue, bool, BigInt),
+                    BigInt,
+                >::new("aliases"))
+                .unwrap();
+            (builder.seal(), aliases)
+        } else {
+            let (bindings, aliases) = ModuleBuilder::new(
+                compile_typed_module(
+                    "example",
+                    "src/example.gleam",
+                    include_str!("fixtures/prepared/string_ranges.gleam"),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .function(FunctionDeclaration::<
+                (StringValue, StringValue, bool, BigInt),
+                BigInt,
+            >::new("aliases"))
+            .unwrap();
+            (bindings.seal(), aliases)
+        };
+        for raw in [
+            vec![],
+            vec![0],
+            vec![0x80],
+            vec![0xff],
+            vec![0xc3],
+            "é🙂".as_bytes().to_vec(),
+        ] {
+            let tail = StringValue::from_bytes(raw.clone());
+            let input = StringValue::from("λ").concat(&tail);
+            for _ in 0..2 {
+                assert_eq!(
+                    module
+                        .call(
+                            &aliases,
+                            (input.clone(), tail.clone(), true, 7.into()),
+                            &mut Vec::new()
+                        )
+                        .unwrap(),
+                    BigInt::from(9)
+                );
+                assert_eq!(tail.as_bytes(), raw);
+            }
+            drop(input);
+            assert_eq!(
+                module
+                    .call(
+                        &aliases,
+                        (tail.clone(), tail, true, 7.into()),
+                        &mut Vec::new()
+                    )
+                    .unwrap(),
+                BigInt::from(23)
+            );
+        }
+        assert_eq!(
+            RAW_STRING_KERNEL_CALLS.load(Ordering::Relaxed) > 0,
+            prepared
+        );
+    }
+}
+
+static RAW_STRING_KERNEL_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+fn observe_raw_string_aliases(
+    point: usize,
+    values: &mut StringValues,
+    budget: &mut usize,
+) -> CompiledProgress {
+    RAW_STRING_KERNEL_CALLS.fetch_add(1, Ordering::Relaxed);
+    let CompiledImplementation::String(implementation) =
+        &STRING_RANGES.program.compiled.ints[2].implementation
+    else {
+        panic!("aliases must use its generated String implementation");
+    };
+    (implementation.run)(point, values, budget)
 }
 
 #[test]
@@ -585,11 +691,11 @@ fn generated_string_ranges_match_dynamic_sources_aliases_guards_literals_and_big
             BigInt::from(i64::MAX) + 1
         );
         let retained = StringValue::from("λ".repeat(64));
-        let pointer = retained.as_str().as_ptr();
+        let pointer = retained.as_ptr();
         let result = module
             .call(&caller, (retained, 2.into()), &mut Vec::new())
             .unwrap();
-        assert_eq!(result.0.as_str().as_ptr(), pointer);
+        assert_eq!(result.0.as_ptr(), pointer);
         assert_eq!(result.1, 66.into());
         assert_eq!(result.2.to_vec(), [3.into(), 5.into()]);
         assert!(result.3);
@@ -930,10 +1036,10 @@ fn generated_string_hosted_calls_keep_live_values_across_error_cancel_and_reentr
             std::time::Duration::from_secs(10),
             module.with_execution(&host, &mut (), &mut echo, async |scope| {
                 let original = StringValue::from("λ".repeat(128));
-                let pointer = original.as_str().as_ptr();
+                let pointer = original.as_ptr();
                 let (text, count, values, same) =
                     scope.call(&caller, (original, 2.into())).await.unwrap();
-                assert_eq!(text.as_str().as_ptr(), pointer);
+                assert_eq!(text.as_ptr(), pointer);
                 assert_eq!(count, BigInt::from(130));
                 assert_eq!(values.len(), 2);
                 assert_eq!(values.read_item(0, Clone::clone), Some(3.into()));
@@ -951,7 +1057,7 @@ fn generated_string_hosted_calls_keep_live_values_across_error_cancel_and_reentr
                 assert!(matches!(
                     panic.details(),
                     Some(PanicDetails::LetAssert { value: Value::String(value), .. })
-                        if value.as_str() == "bad"
+                        if value.as_str().unwrap() == "bad"
                 ));
                 let mut pending =
                     Box::pin(scope.call(&running, (StringValue::from("λ".repeat(128)),)));
@@ -970,7 +1076,7 @@ fn generated_string_hosted_calls_keep_live_values_across_error_cancel_and_reentr
                     .await
                     .unwrap();
                 assert_eq!(result.1, BigInt::from(11));
-                assert_eq!(text.as_str(), "λ".repeat(128));
+                assert_eq!(text.as_str().unwrap(), "λ".repeat(128));
                 assert_eq!(values.read_item(0, Clone::clone), Some(3.into()));
                 assert_eq!(values.read_item(1, Clone::clone), Some(5.into()));
             }),
@@ -1030,7 +1136,11 @@ fn traced_string_count(
         strings: values
             .strings
             .iter()
-            .map(|value| values.text(*value).to_owned())
+            .map(|value| {
+                std::str::from_utf8(values.bytes(*value))
+                    .unwrap()
+                    .to_owned()
+            })
             .collect(),
     });
     progress
@@ -1513,7 +1623,7 @@ fn generated_list_returns_preserve_caller_values_and_scope_cancellation() {
                         )
                         .await
                         .unwrap();
-                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(text.as_str().unwrap(), "caller");
                     assert_eq!(offset, BigInt::from(7));
                     assert_eq!(
                         (0..original.len())
@@ -1647,7 +1757,7 @@ fn generated_list_tail_calls_preserve_native_wait_result_identity_and_failure_or
                         )
                         .await
                         .unwrap();
-                    assert_eq!(text.as_str(), "native");
+                    assert_eq!(text.as_str().unwrap(), "native");
                     assert_eq!(value, BigInt::from(7));
                     assert_eq!(
                         (0..result.len())
@@ -2198,7 +2308,7 @@ fn generated_int_list_calls_keep_other_caller_values_and_release_abandoned_execu
                         )
                         .await
                         .unwrap();
-                    assert_eq!(big_text.as_str(), "big");
+                    assert_eq!(big_text.as_str().unwrap(), "big");
                     assert_eq!(big_count, &big + 1);
                     assert_eq!(big_values.read_item(0, Clone::clone), Some(big.clone()));
                     assert_eq!(big_captured, &big * 2 + 3);
@@ -2230,7 +2340,7 @@ fn generated_int_list_calls_keep_other_caller_values_and_release_abandoned_execu
                         }) if actual == &ListValue::int(vec![])
                     ));
 
-                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(text.as_str().unwrap(), "caller");
                     assert_eq!(count, BigInt::from(7));
                     assert_eq!(captured, BigInt::from(9));
                     assert_eq!(values.len(), 3);
@@ -3164,7 +3274,7 @@ fn numeric_control_flow_matches_preparation_and_compiled_execution() {
                 &mut Vec::new(),
             )
             .unwrap();
-        assert_eq!(text.as_str(), "retained");
+        assert_eq!(text.as_str().unwrap(), "retained");
         assert_eq!(first, BigInt::from(205));
         assert_eq!(values.to_vec(), vec![7.into(), 12.into()]);
         assert_eq!(last, BigInt::from(19));
@@ -3469,7 +3579,7 @@ fn generated_hosted_calls_keep_scope_cancellation_captures_and_standalone_output
                         .call(&caller, (i64::MAX.into(), 1.into(), "caller".into()))
                         .await
                         .unwrap();
-                    assert_eq!(text.as_str(), "caller");
+                    assert_eq!(text.as_str().unwrap(), "caller");
                     assert_eq!(first, BigInt::from(i64::MAX) + 1);
                     assert_eq!(values.len(), 2);
                     assert_eq!(values.read_item(0, Clone::clone), Some(i64::MAX.into()));
@@ -3811,7 +3921,10 @@ fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
         .unwrap();
     let module = bindings.seal();
     let mut echo = Vec::new();
-    assert_eq!(module.call(&main, (), &mut echo).unwrap().as_str(), "value");
+    assert_eq!(
+        module.call(&main, (), &mut echo).unwrap().as_str().unwrap(),
+        "value"
+    );
     assert!(echo.is_empty());
 
     let mut bindings = MULTI_SUBJECT_PATTERNS.load().unwrap();
@@ -3821,7 +3934,10 @@ fn multi_subject_patterns_preserve_dynamic_and_compiled_prepared_results() {
     let module = bindings.seal();
     for _ in 0..2 {
         let mut echo = Vec::new();
-        assert_eq!(module.call(&main, (), &mut echo).unwrap().as_str(), "value");
+        assert_eq!(
+            module.call(&main, (), &mut echo).unwrap().as_str().unwrap(),
+            "value"
+        );
         assert!(echo.is_empty());
     }
 }
@@ -3857,7 +3973,7 @@ fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_resu
         for _ in 0..2 {
             let mut echo = Vec::new();
             assert_eq!(
-                module.call(&main, (), &mut echo).unwrap().as_str(),
+                module.call(&main, (), &mut echo).unwrap().as_str().unwrap(),
                 "present:missing:failed:nested:empty:none:done"
             );
             assert!(echo.is_empty());
@@ -3931,7 +4047,7 @@ fn unconstructed_pattern_variants_preserve_dynamic_and_prepared_results() {
         for _ in 0..2 {
             let mut echo = Vec::new();
             assert_eq!(
-                module.call(&main, (), &mut echo).unwrap().as_str(),
+                module.call(&main, (), &mut echo).unwrap().as_str().unwrap(),
                 "unnamed:empty:number:fallback"
             );
             assert!(echo.is_empty());
@@ -4317,7 +4433,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 22; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 23; regenerate the prepared program"
     );
 }
 
@@ -5153,7 +5269,7 @@ fn dynamic_and_prepared_strings_share_input_storage_after_native_calls() {
             .unwrap();
         drop(module);
         assert!(same);
-        assert_eq!(text.as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(text.as_str().unwrap(), "abcdefghijklmnopqrstuvwxyz");
         assert_eq!(text.as_ptr().addr(), address);
         assert!(echo.is_empty());
     }

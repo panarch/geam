@@ -13,8 +13,13 @@ pub(super) fn to_string_tree(json: impl Deref<Target = JsonPayload>) -> StringTr
     StringTreePayload::from_stored(json.tree().clone())
 }
 
-pub(super) fn do_string(value: StringValue) -> JsonPayload {
-    JsonPayload::from_tree(StoredStringTree::text(encode_string(&value)))
+pub(super) fn do_string(value: StringValue) -> Result<JsonPayload, HostFailure> {
+    let text = value
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    Ok(JsonPayload::from_tree(StoredStringTree::text(
+        encode_string(text),
+    )))
 }
 
 pub(super) fn do_bool(value: bool) -> JsonPayload {
@@ -89,6 +94,41 @@ mod tests {
     use crate::GleamJsonProfile;
     use crate::test_support::{execution, execution_with_modules, run_state};
     use crate::{ExecutionError, HostError, HostModule, InvariantError, ValueType};
+    use geam_core::StringValue;
+
+    #[test]
+    fn invalid_string_values_and_object_keys_fail_at_the_json_native_boundary() {
+        for (body, function) in [
+            ("do_string(raw.raw())", "do_string"),
+            ("do_object([#(raw.raw(), do_int(1))])", "do_object"),
+        ] {
+            let raw = HostModule::<GleamJsonProfile>::new_for_profile("gleam_json", "host/raw")
+                .unwrap()
+                .with_function("raw", || StringValue::from_bytes(vec![0xff]))
+                .unwrap();
+            let source = format!(
+                r#"
+import host/raw
+pub fn main() {{ {body} }}
+"#
+            );
+            let mut execution = execution_with_modules(&source, [raw]);
+            let error = crate::execution_fixture::run(
+                &mut execution,
+                &mut run_state([0; 32]),
+                &mut Vec::new(),
+            )
+            .unwrap_err();
+            let error = expect_json_host_error(error);
+            assert_eq!(error.package(), "gleam_json");
+            assert_eq!(error.module(), "gleam/json");
+            assert_eq!(error.function(), function);
+            assert_eq!(
+                error.failure().message(),
+                "invalid utf-8 sequence of 1 bytes from index 0"
+            );
+        }
+    }
 
     #[test]
     fn encodes_strings_with_the_otp_json_escape_set() {

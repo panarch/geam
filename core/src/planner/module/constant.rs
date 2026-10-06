@@ -670,6 +670,7 @@ fn plan_bit_array_segment(
             Ok(ConstantBitArraySegment::String {
                 value: into_string(value)?,
                 encoding: encoding_with_endianness(encoding, options.endianness),
+                site,
             })
         }
     }

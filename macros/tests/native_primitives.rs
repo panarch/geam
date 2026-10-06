@@ -153,6 +153,7 @@ fn automatic_scalar_adapters_link_and_run_the_actual_prepared_loop() {
         }};
     }
     let original_string: StringValue = "λ shared".repeat(4096).into();
+    let raw_string = StringValue::from_bytes(vec![0xff; 4096]).slice(1..4095);
     let original_bits = BitArrayValue::try_from_parts(vec![0xb7, 0xc8], 13).unwrap();
     for count in [1usize, 3, 129] {
         assert_eq!(
@@ -176,16 +177,11 @@ fn automatic_scalar_adapters_link_and_run_the_actual_prepared_loop() {
         let original = f64::from_bits(0x7ff8_0000_0000_0042);
         let returned = call!(8, &keep_float, (count.into(), original), count);
         assert_eq!(returned.to_bits(), original.to_bits());
-        let returned = call!(
-            8,
-            &keep_string,
-            (count.into(), original_string.clone()),
-            count
-        );
-        assert_eq!(
-            returned.as_str().as_ptr(),
-            original_string.as_str().as_ptr()
-        );
+        for value in [&original_string, &raw_string] {
+            let returned = call!(8, &keep_string, (count.into(), value.clone()), count);
+            assert_eq!(returned.as_bytes(), value.as_bytes());
+            assert_eq!(returned.as_ptr(), value.as_ptr());
+        }
         let returned = call!(8, &keep_bits, (count.into(), original_bits.clone()), count);
         assert_eq!(returned.bit_len(), 13);
         assert_eq!(returned.bytes().as_ptr(), original_bits.bytes().as_ptr());

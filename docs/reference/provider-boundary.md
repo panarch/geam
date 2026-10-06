@@ -69,17 +69,52 @@ Provider crates import the Geam-owned boundary types from `geam::provider`;
 they do not add direct dependencies on `ecow` or `num-bigint` merely to name
 Gleam values. `BitArrayValue` and `List` follow the same rule.
 
-`StringValue` is immutable. Construct it with `"text".into()`, read it through
-`as_str()` or ordinary `str` methods, and return an input directly to preserve
-its storage. Clones and larger substrings share their original buffer; a small
-visible range can therefore keep a large allocation alive. `detached()` copies
-the visible text into independent storage. `into_ecostring()` converts to flat
-text, copying a substring when needed; metadata and `ExternalPayload::inspect`
-continue to use `EcoString`.
+`StringValue` is an immutable, byte-preserving Gleam String. Use
+`"text".into()` for known UTF-8 and `StringValue::from_bytes(Vec<u8>)` for native
+bytes, such as a cryptographic digest. Both use the existing String family;
+there is no intermediate encoding or separate binary return type.
 
-Providers migrating from the previous String mapping should use `StringValue`
-in source-value signatures and stored source fields. Transformations such as
-`value.to_uppercase()` return a Rust `String`; convert the result with `.into()`.
+`as_bytes()` always borrows the exact visible bytes. `as_str()` returns
+`Result<&str, Utf8Error>` and validates only the visible range. A text consumer
+must handle that result at its native boundary; a byte consumer should use
+`as_bytes()` directly. For example:
+
+```rust
+use geam::provider::{HostFailure, HostResult, StringValue};
+
+#[geam::function]
+fn uppercase(value: StringValue) -> HostResult<StringValue> {
+    let text = value.as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    Ok(text.to_uppercase().into())
+}
+```
+
+`len()` counts bytes. `get(start..end)` checks ordered, in-bounds byte positions
+and can select part of a UTF-8 character. `slice` requires those same bounds and
+panics on invalid bounds. `concat` preserves exact bytes; joining `C3` and `A9`
+produces the valid text `é`. Prefix/suffix methods take `&[u8]`. Equality,
+ordering, hashing and `Borrow<[u8]>` use the visible bytes, independent of the
+backing. `Borrow<str>`, `AsRef<str>` and `Deref<str>` are no longer available;
+use checked text access instead of implicit `str` methods or string map keys.
+
+Normal text keeps EcoString's inline/shared storage and cheap checked access.
+Raw construction moves the Vec without a payload copy and allocates a shared
+owner. Clones and larger ranges retain that owner. Empty/small ranges release
+the parent, while `detached()` copies only visible bytes into independent
+storage. A larger range can keep a much larger parent alive. Repeated `as_str`
+on raw backing repeats validation; validate once when performing several text
+operations. `into_ecostring()` returns a checked owned conversion and can move
+a complete text backing. Metadata and `ExternalPayload::inspect` remain
+UTF-8 `EcoString` values.
+
+Unicode operations validate the whole visible String and fail through the
+native host boundary on invalid UTF-8. Explicit decode and parse APIs retain
+their existing Result/Option failure meanings. IO writes exact bytes; Debug,
+Display, echo and panic diagnostics represent invalid text as decimal bytes,
+for example `<<255, 254>>`, while their structured values preserve the original
+String. The [raw String fixture](https://github.com/panarch/geam/tree/main/tests/fixtures/raw_string_values)
+shows separately registered SHA-1 and base64 calls through the public facade.
 
 Rust `(T,)` corresponds to Gleam `#(T)`, while Rust `()` keeps its existing
 Gleam `Nil` meaning. Tuple elements can recursively use the scalar and external
@@ -822,7 +857,7 @@ fn non_empty<'call, Profile>(
 where
     Profile: HostComponentProfile<Component>,
 {
-    if value.as_str().is_empty() {
+    if value.is_empty() {
         Ok(call.return_custom::<GleamError<StringValue, BigInt>>((BigInt::from(0), ())))
     } else {
         Ok(call.return_custom::<GleamOk<StringValue, BigInt>>((value, ())))

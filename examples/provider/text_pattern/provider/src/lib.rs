@@ -12,6 +12,7 @@ pub struct Component;
 #[geam::module(path = "example_text_pattern")]
 mod text_pattern {
     use super::{DefaultHasher, ExternalPayload, Hash, Hasher, Regex, StringValue};
+    use geam::provider::{HostFailure, HostResult};
 
     #[geam::external(name = "Pattern", manual)]
     struct Pattern {
@@ -42,7 +43,12 @@ mod text_pattern {
 
     #[geam::function]
     fn compile(source: StringValue) -> Result<Pattern, CompileError> {
-        match Regex::new(source.as_str()) {
+        let text = source
+            .as_str()
+            .map_err(|error| CompileError::CompileError {
+                message: error.to_string().into(),
+            })?;
+        match Regex::new(text) {
             Ok(regex) => Ok(Pattern { source, regex }),
             Err(error) => Err(CompileError::CompileError {
                 message: error.to_string().into(),
@@ -51,25 +57,37 @@ mod text_pattern {
     }
 
     #[geam::function]
-    fn is_match(pattern: &Pattern, text: StringValue) -> bool {
-        pattern.regex.is_match(text.as_str())
+    fn is_match(pattern: &Pattern, text: StringValue) -> HostResult<bool> {
+        let text = text
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        Ok(pattern.regex.is_match(text))
     }
 
     #[geam::function]
-    fn find_all(pattern: &Pattern, text: StringValue) -> Vec<StringValue> {
-        pattern
+    fn find_all(pattern: &Pattern, text: StringValue) -> HostResult<Vec<StringValue>> {
+        let visible = text
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        Ok(pattern
             .regex
-            .find_iter(text.as_str())
+            .find_iter(visible)
             .map(|matched| text.slice(matched.start()..matched.end()))
-            .collect()
+            .collect())
     }
 
     #[geam::function]
-    fn replace_all(pattern: &Pattern, text: StringValue, replacement: StringValue) -> StringValue {
-        pattern
-            .regex
-            .replace_all(text.as_str(), replacement.as_str())
-            .as_ref()
-            .into()
+    fn replace_all(
+        pattern: &Pattern,
+        text: StringValue,
+        replacement: StringValue,
+    ) -> HostResult<StringValue> {
+        let text = text
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        let replacement = replacement
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        Ok(pattern.regex.replace_all(text, replacement).as_ref().into())
     }
 }

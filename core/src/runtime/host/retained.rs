@@ -106,6 +106,11 @@ mod tests {
         round_trip!(f64, 1.25, float);
         round_trip!(StringValue, "hello".into(), string);
         round_trip!(
+            StringValue,
+            StringValue::from_bytes(vec![0, 0xff, 0xc3]),
+            string
+        );
+        round_trip!(
             BitArrayValue,
             BitArrayValue::try_from_parts(vec![0xb7], 5).unwrap(),
             bit_array
@@ -145,7 +150,7 @@ mod tests {
         .join()
         .unwrap();
         assert_eq!(string, original_string);
-        assert_eq!(string.as_str().as_ptr(), original_string.as_str().as_ptr());
+        assert_eq!(string.as_ptr(), original_string.as_ptr());
         assert_eq!(bits, original_bits);
         assert_eq!(bits.bytes().as_ptr(), original_bits.bytes().as_ptr());
         assert_eq!(bits.bit_len(), 13);
@@ -180,7 +185,7 @@ mod tests {
                 .tuple_item(0)
                 .string()
                 .as_str(),
-            "retained"
+            Ok("retained")
         );
         assert_eq!(
             BorrowedValue::from_stored(&returned)

@@ -327,7 +327,7 @@ pub fn run() {
         let expected = if expected.is_empty() {
             Vec::new()
         } else {
-            vec![expected.as_str()]
+            vec![expected.as_str().unwrap()]
         };
         if call.list_len(values) == 0 {
             assert_eq!(populated_columns(row), expected);

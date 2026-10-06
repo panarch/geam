@@ -51,6 +51,7 @@ pub enum BitArraySegment {
     String {
         value: StringLocalId,
         encoding: StringEncoding,
+        site: PanicSite,
     },
     UtfCodepoint {
         value: UtfCodepointLocalId,
@@ -207,7 +208,9 @@ impl Explain for BitArraySegment {
                 context.push_str(endianness(*order));
                 context.push(')');
             }
-            Self::String { value, encoding } => {
+            Self::String {
+                value, encoding, ..
+            } => {
                 context.push_str("string(");
                 value.write_local_label(context.output());
                 context.push_str(", ");
@@ -313,9 +316,13 @@ impl Emit for BitArraySegment {
                     ("site", site),
                 ],
             ),
-            Self::String { value, encoding } => output.structure(
+            Self::String {
+                value,
+                encoding,
+                site,
+            } => output.structure(
                 "graph::BitArraySegment::String",
-                &[("value", value), ("encoding", encoding)],
+                &[("value", value), ("encoding", encoding), ("site", site)],
             ),
             Self::UtfCodepoint { value, encoding } => output.structure(
                 "graph::BitArraySegment::UtfCodepoint",
@@ -453,11 +460,13 @@ data::graph::BitArraySegment::EvaluatedFloat {
                 BitArraySegment::String {
                     value: StringLocalId(2),
                     encoding: StringEncoding::Utf8,
+                    site: site.clone(),
                 },
                 r#"
 data::graph::BitArraySegment::String {
     value: data::graph::StringLocalId(2),
     encoding: data::graph::StringEncoding::Utf8,
+    site: data::source::PanicSite::from_static("example", "main", data::source::SourceSpan::new(3, 8)),
 }"#.trim_start_matches('\n'),
             ),
             (

@@ -148,7 +148,10 @@ pub fn bitwise_shift_right(value: Int, shift: Int) -> Int
     fn implements_integer_formatting_conversion_and_bitwise_operations() {
         let large = BigInt::from(10u8).pow(100);
 
-        assert_eq!(to_string(large.clone()).as_str(), large.to_string());
+        assert_eq!(
+            to_string(large.clone()).as_str().unwrap(),
+            large.to_string()
+        );
         assert_eq!(do_to_base_string(255.into(), 16.into()), Ok("FF".into()));
         assert_eq!(to_float(7.into()), Ok(7.0));
         assert_eq!(bitwise_and(5.into(), 3.into()), BigInt::from(1));

@@ -1116,7 +1116,7 @@ pub fn main() { wrong_receiver(fn() { panic as "cancelled child must never run" 
         mut call: Call<'call, GleamErlangProfile, Key>,
         text: geam_core::StringValue,
     ) -> Result<HostCallCompletion<'call, Key>, HostCallError> {
-        let key = call.create_external(text.into_ecostring());
+        let key = call.create_external(text.into_ecostring().unwrap());
         Ok(call.return_value(key))
     }
 

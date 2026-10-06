@@ -297,12 +297,9 @@ where
         )
         .map_or_else(V::Error, V::Ready),
         I::Concatenate { left, right } => V::Ready(
-            format!(
-                "{}{}",
-                environment.string(*left),
-                environment.string(*right),
-            )
-            .into(),
+            environment
+                .string(*left)
+                .concat(&environment.string(*right)),
         ),
         I::DropPrefix { value, prefix } => {
             let value = environment.string(*value);

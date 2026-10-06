@@ -379,9 +379,14 @@ fn freeze_bit_array_segment(
             endianness: *endianness,
             site: site.clone(),
         },
-        DraftBitArraySegment::String { value, encoding } => E::String {
+        DraftBitArraySegment::String {
+            value,
+            encoding,
+            site,
+        } => E::String {
             value: values.string(value),
             encoding: *encoding,
+            site: site.clone(),
         },
         DraftBitArraySegment::UtfCodepoint { value, encoding } => E::UtfCodepoint {
             value: values.utf_codepoint(value),

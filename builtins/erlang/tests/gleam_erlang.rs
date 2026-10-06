@@ -190,3 +190,81 @@ fn original_erlang_and_geam_pass_the_same_handshaken_public_compositions() {
     assert!(output.stdout.is_empty());
     run_fixture("oracle");
 }
+
+#[test]
+fn raw_strings_fail_at_text_native_origins_and_keep_explicit_lookup_results() {
+    use geam_core::ExecutionError;
+    use geam_core::embedding::{
+        BigInt, CallError, FunctionDeclaration, HostedModuleBuilder, StringValue,
+    };
+    let root = project_root();
+    let mut providers = geam_stdlib::host_providers::<GleamErlangProfile>().unwrap();
+    providers.extend(host_providers::<GleamErlangProfile>().unwrap());
+    let typed = compile_typed_host_project(
+        &root,
+        "raw_text",
+        HostProviderSet::from_providers(providers).unwrap(),
+    )
+    .unwrap();
+    let (mut builder, fail) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt, StringValue), ()>::new(
+            "fail",
+        ))
+        .unwrap();
+    let verify = builder
+        .function(FunctionDeclaration::<(StringValue,), ()>::new("verify"))
+        .unwrap();
+    let mut module = builder.seal().unwrap();
+    let mut state = GleamErlangRunState {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        erlang: Configuration::default(),
+    };
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    for (index, path, function) in [
+        (0, "gleam/erlang/charlist", "from_string"),
+        (1, "gleam/erlang/atom", "create"),
+        (2, "gleam/erlang/process", "new_name"),
+    ] {
+        let error = host
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope
+                        .call(
+                            &fail,
+                            (index.into(), StringValue::from_bytes(b"a\xc3".to_vec())),
+                        )
+                        .await
+                        .unwrap_err()
+                        .into_materialized()
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        let CallError::Execution(ExecutionError::Host(error)) = error else {
+            panic!("invalid text should fail at the native boundary")
+        };
+        assert_eq!(error.package(), "gleam_erlang");
+        assert_eq!(error.module(), path);
+        assert_eq!(error.function(), function);
+        assert_eq!(
+            error.failure().message(),
+            "incomplete utf-8 byte sequence from index 1"
+        );
+    }
+    host.block_on(
+        module.with_execution(&host, &mut state, &mut echo, async |scope| {
+            scope
+                .call(&verify, (StringValue::from_bytes(b"a\xc3".to_vec()),))
+                .await
+                .unwrap();
+        }),
+    )
+    .unwrap()
+    .try_into_value()
+    .unwrap();
+    assert!(echo.is_empty());
+    assert!(state.stdlib.io_outputs().is_empty());
+}

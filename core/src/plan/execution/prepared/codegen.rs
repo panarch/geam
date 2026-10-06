@@ -1233,7 +1233,7 @@ values.strings.extend_from_slice(&[{strings}]);
                 clauses,
                 fallback,
             } => {
-                let subject = format!("values.text(b{}_s{})", point.block.0, subject.0);
+                let subject = format!("values.bytes(b{}_s{})", point.block.0, subject.0);
                 for (literal, edge) in clauses.iter() {
                     let condition = string::literal_condition(&subject, literal.as_str());
                     source.open(&format!("if {condition} {{\n"));
@@ -1814,7 +1814,7 @@ mod tests {
                     value: StringLocalId(2),
                     prefix: "λ\"",
                 }),
-                "values.text(b3_s2).starts_with(\"λ\\\"\")",
+                "values.bytes(b3_s2).starts_with(\"λ\\\"\".as_bytes())",
             ),
             (
                 CompiledTest::String(StringTest::Equal {
@@ -1822,7 +1822,7 @@ mod tests {
                     right: StringLocalId(5),
                     negate: false,
                 }),
-                "values.text(b3_s2) == values.text(b3_s5)",
+                "values.bytes(b3_s2) == values.bytes(b3_s5)",
             ),
             (
                 CompiledTest::BoolEqual {

@@ -557,6 +557,7 @@ pub(crate) enum ConstantBitArraySegment {
     String {
         value: ConstantStringValue,
         encoding: StringEncoding,
+        site: PanicSite,
     },
     Bits(ConstantBitArrayValue),
     SizedBits {
@@ -1154,9 +1155,14 @@ impl ConstantTemplates {
                 bit_size: *bit_size,
                 endianness: *endianness,
             },
-            ConstantBitArraySegment::String { value, encoding } => BitArraySegment::String {
+            ConstantBitArraySegment::String {
+                value,
+                encoding,
+                site,
+            } => BitArraySegment::String {
                 value: self.materialize_string_value(value, substitution),
                 encoding: *encoding,
+                site: site.clone(),
             },
             ConstantBitArraySegment::Bits(value) => {
                 BitArraySegment::Bits(self.materialize_bit_array_value(value, substitution))
@@ -4217,6 +4223,7 @@ mod tests {
                         .into_string()
                         .expect("a String reference should retain its family"),
                     encoding: StringEncoding::Utf16(Endianness::Little),
+                    site: PanicSite::unknown(),
                 },
                 ConstantBitArraySegment::Bits(empty_bits_value.clone()),
                 ConstantBitArraySegment::SizedBits {
@@ -4476,6 +4483,7 @@ mod tests {
                         StringExpr::value("am".into()),
                     ),
                     encoding: StringEncoding::Utf16(Endianness::Little),
+                    site: PanicSite::unknown(),
                 },
                 BitArraySegment::Bits(BitArrayExpr::value(Vec::new())),
                 BitArraySegment::SizedBits {

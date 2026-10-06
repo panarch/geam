@@ -1,0 +1,4 @@
+/project/build/
+/provider/target/
+/embedding/target/
+/embedding/gleam/build/

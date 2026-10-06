@@ -2,7 +2,6 @@ use crate::schema::{Charlist, CharlistSchema};
 use crate::service::charlist_from_string;
 use crate::{Component, GleamErlangHostProfile};
 use ecow::EcoString;
-use geam_core::StringValue;
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallError, HostComponentProfile, HostConstructions,
     HostExternal, HostExternalBinding, HostExternalEquality, HostExternalHashing,
@@ -11,6 +10,7 @@ use geam_core::host::{
     HostTypeList, HostTypeListEnd,
 };
 use geam_core::provider::advanced::NativeValue;
+use geam_core::{HostFailure, StringValue};
 
 pub struct Storage;
 
@@ -33,7 +33,9 @@ fn from_string<'call, Profile: GleamErlangHostProfile>(
         &mut call,
         constructions.at::<HostTypeIndex0>(),
         constructions.at::<HostTypeIndexNext<HostTypeIndex0>>(),
-        &string,
+        string
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?,
     );
     Ok(call.return_value(value))
 }

@@ -539,6 +539,7 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                 };
             }
             let original_string: StringValue = "shared unicode λ".repeat(2048).into();
+            let raw_string = StringValue::from_bytes(vec![0xff; 4096]).slice(1..4095);
             let original_bits = BitArrayValue::try_from_parts(vec![0xb7, 0xc8], 13).unwrap();
             for count in [1usize, 2, 5, 127, 128, 129, 10_000] {
                 let fast = prepared && retained;
@@ -619,16 +620,33 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                     if prepared && retained { 129 } else { 0 }
                 );
             }
-            KEEP_CALLS.store(0, Ordering::Relaxed);
-            KEEP_RETAINED.store(0, Ordering::Relaxed);
-            let result = call!(&keep_string, (129.into(), original_string.clone()));
-            assert_eq!(result, original_string);
-            assert_eq!(result.as_str().as_ptr(), original_string.as_str().as_ptr());
-            assert_eq!(KEEP_CALLS.load(Ordering::Relaxed), 129);
+            for input in [&original_string, &raw_string] {
+                KEEP_CALLS.store(0, Ordering::Relaxed);
+                KEEP_RETAINED.store(0, Ordering::Relaxed);
+                let result = call!(&keep_string, (129.into(), input.clone()));
+                assert_eq!(result.as_bytes(), input.as_bytes());
+                assert_eq!(result.as_ptr(), input.as_ptr());
+                assert_eq!(KEEP_CALLS.load(Ordering::Relaxed), 129);
+                assert_eq!(
+                    KEEP_RETAINED.load(Ordering::Relaxed),
+                    if prepared && retained { 129 } else { 0 }
+                );
+            }
+            *PRIMITIVES.lock().unwrap() = PrimitiveAudit::default();
             assert_eq!(
-                KEEP_RETAINED.load(Ordering::Relaxed),
-                if prepared && retained { 129 } else { 0 }
+                call!(&string, (129.into(), raw_string.clone())),
+                StringValue::from("native odd")
             );
+            {
+                let audit = PRIMITIVES.lock().unwrap();
+                assert_eq!(
+                    audit.inputs,
+                    vec![PrimitiveInput::String(raw_string.clone()); 129]
+                );
+                assert_eq!(audit.retained, if prepared && retained { 129 } else { 0 });
+            }
+            *PRIMITIVES.lock().unwrap() = PrimitiveAudit::default();
+            let raw_result = call!(&keep_string, (129.into(), raw_string.clone()));
             KEEP_CALLS.store(0, Ordering::Relaxed);
             KEEP_RETAINED.store(0, Ordering::Relaxed);
             let result = call!(&keep_bits, (129.into(), original_bits.clone()));
@@ -640,6 +658,8 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                 if prepared && retained { 129 } else { 0 }
             );
             drop(module);
+            drop(raw_string);
+            assert_eq!(raw_result.as_bytes(), vec![0xff; 4094]);
             assert_eq!(result.bit_len(), 13);
             assert_eq!(result.bytes(), &[0xb7, 0xc8]);
         }

@@ -103,7 +103,13 @@ mod tests {
         assert_eq!(integer.kind(), NativeKind::Int);
         assert_eq!(integer.as_int(), Some(42.into()));
         assert_eq!(string.kind(), NativeKind::Binary);
-        assert_eq!(string.as_string().as_deref(), Some("native"));
+        assert_eq!(
+            string
+                .as_string()
+                .as_ref()
+                .map(|value| value.as_str().unwrap()),
+            Some("native")
+        );
         assert!(values.equal(&integer, &values.integer(42.into())));
         assert!(!values.equal(&integer, &values.integer(43.into())));
         assert!(!values.equal(&integer, &string));

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 22,
+        format: 23,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[

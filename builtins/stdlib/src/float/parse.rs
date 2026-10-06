@@ -1,6 +1,6 @@
 use geam_core::StringValue;
 
-pub(super) fn parse_literal(source: &StringValue) -> Option<f64> {
+pub(super) fn parse_literal(source: &str) -> Option<f64> {
     let bytes = source.as_bytes();
     let mut index = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
     let integer_start = index;
@@ -63,13 +63,13 @@ mod tests {
             ("1.25E-2", 0.0125),
         ];
         for (source, expected) in accepted {
-            assert_eq!(parse_literal(&source.into()), Some(expected));
+            assert_eq!(parse_literal(source), Some(expected));
         }
 
         for source in [
             "", "+", "1", ".5", "1.", "1.0e", "1.0e+", "1.0x", " 1.0", "1.0 ", "NaN", "inf",
         ] {
-            assert_eq!(parse_literal(&source.into()), None, "{source}");
+            assert_eq!(parse_literal(source), None, "{source}");
         }
     }
 

@@ -238,7 +238,7 @@ pub fn main() {
     assert_eq!(external.type_().type_name().name(), "Counter");
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("created"),
     );
     let Value::External(echoed) = echoes[0].value() else {

@@ -24,6 +24,9 @@ mod bit_array;
 #[path = "prepared_embedding/large_customs.rs"]
 mod large_customs;
 
+#[path = "prepared_embedding/raw_strings.rs"]
+mod raw_strings;
+
 #[path = "prepared_embedding/application_exit.rs"]
 mod application_exit;
 
@@ -423,6 +426,25 @@ fn copy_directory(source: &Path, destination: &Path) {
         let destination = destination.join(entry.file_name());
         if entry.file_type().unwrap().is_dir() {
             copy_directory(&entry.path(), &destination);
+        } else {
+            fs::copy(entry.path(), destination).unwrap();
+        }
+    }
+}
+
+fn copy_source(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).unwrap();
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        if matches!(
+            entry.file_name().to_str(),
+            Some("target" | "build" | ".cargo")
+        ) {
+            continue;
+        }
+        let destination = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_source(&entry.path(), &destination);
         } else {
             fs::copy(entry.path(), destination).unwrap();
         }

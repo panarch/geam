@@ -37,7 +37,7 @@ impl IoOutput {
         self.stream
     }
 
-    /// Returns the exact text emitted by the Gleam IO operation.
+    /// Returns the exact bytes emitted by the Gleam IO operation as a String value.
     pub fn text(&self) -> &StringValue {
         &self.text
     }
@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(
             outputs
                 .iter()
-                .map(|output| (output.stream(), output.text().as_str()))
+                .map(|output| (output.stream(), output.text().as_str().unwrap()))
                 .collect::<Vec<_>>(),
             [(IoStream::Stdout, "first"), (IoStream::Stderr, "second")],
         );

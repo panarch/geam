@@ -420,10 +420,10 @@ mod tests {
         GleamStdlibProfile, GleamStdlibRunState, HostProviderSet, HostedExecution, ModuleSource,
         PackageSource, compile_typed_host_program, plan_host_program,
     };
-    use geam_core::BitArrayValue;
     use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use geam_core::frontend::HostedTypedProgram;
     use geam_core::plan::{CustomType, FunctionType, ValueType};
+    use geam_core::{BitArrayValue, StringValue};
     use geam_core::{CustomTypeName, HostProviderLinkReason, PlanError};
 
     const DECLARATIONS: &str = r#"
@@ -690,6 +690,57 @@ pub fn main() {
                 "[<<0, 255, 128, 237, 149, 156, 0, 101, 204, 129, 240, 159, 153, 130, 1, 2>>, <<>>], [])",
             )
         );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn raw_string_tree_leaves_reach_bytes_tree_without_text_validation() {
+        let typed = program(
+            r#"
+pub fn main(value: String) {
+  let text = string_tree.concat([
+    string_tree.from_string("λ"),
+    string_tree.from_string(value),
+  ])
+  let tree = bytes_tree.many([
+    bytes_tree.text(text),
+    bytes_tree.many([bytes_tree.text(string_tree.from_string(value))]),
+  ])
+  #(read(tree), read(tree))
+}
+"#,
+            DECLARATIONS,
+            true,
+            "bytes_tree.BytesTree",
+        );
+        let (bindings, function) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<
+                (StringValue,),
+                (BitArrayValue, BitArrayValue),
+            >::new("main"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        for _ in 0..2 {
+            let input = StringValue::from_bytes(vec![255, 0, 195]);
+            let (first, second) = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&function, (input,)).await
+                    }),
+                )
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .unwrap();
+            assert_eq!(first.bytes(), [206, 187, 255, 0, 195, 255, 0, 195]);
+            assert_eq!(second.bytes(), first.bytes());
+            drop(first);
+            assert_eq!(second.bytes(), [206, 187, 255, 0, 195, 255, 0, 195]);
+        }
         assert!(echo.is_empty());
     }
 

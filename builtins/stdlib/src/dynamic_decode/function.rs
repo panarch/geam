@@ -553,7 +553,10 @@ pub fn retained_string() {
             .unwrap()
             .unwrap();
         drop(module);
-        assert_eq!(decoded.as_str(), "abcdefghijklmnopqrstuvwxyz:suffix");
+        assert_eq!(
+            decoded.as_str().unwrap(),
+            "abcdefghijklmnopqrstuvwxyz:suffix"
+        );
         assert_eq!(decoded.as_ptr(), original.as_ptr().wrapping_add(7));
     }
 
@@ -653,7 +656,7 @@ pub fn retained_string() {
             ExecutionError::Panic(ref panic)
                 if panic.kind() == PanicKind::Panic
                     && panic.message()
-                        == &PanicMessage::Explicit(EcoString::from("callback failed"))
+                        == &PanicMessage::Explicit("callback failed".into())
                     && panic.site().module() == "main"
                     && panic.site().function() == "fail"
         ));

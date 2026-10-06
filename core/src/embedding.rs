@@ -435,13 +435,15 @@ pub fn announce(value: String) {
         );
         assert_eq!(first_echo.len(), 1);
         assert_eq!(
-            first_echo[0].message().map(ecow::EcoString::as_str),
+            first_echo[0].message().map(|value| value.as_str().unwrap()),
             Some("embedded")
         );
         assert_eq!(first_echo[0].value(), &Value::String("first".into()));
         assert_eq!(second_echo.len(), 1);
         assert_eq!(
-            second_echo[0].message().map(ecow::EcoString::as_str),
+            second_echo[0]
+                .message()
+                .map(|value| value.as_str().unwrap()),
             Some("embedded")
         );
         assert_eq!(second_echo[0].value(), &Value::String("second".into()));

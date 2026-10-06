@@ -18,10 +18,10 @@ fn priv_directory<'call, Profile: GleamErlangHostProfile>(
     mut call: HostCall<'call, Profile, Component<Profile>, GleamResult<StringValue, ()>>,
     package: StringValue,
 ) -> Result<HostCallCompletion<'call, GleamResult<StringValue, ()>>, HostCallError> {
-    match call
-        .state()
-        .resources
-        .get(package.as_str())
+    match package
+        .as_str()
+        .ok()
+        .and_then(|package| call.state().resources.get(package))
         .and_then(|path| path.to_str())
         .map(StringValue::from)
     {

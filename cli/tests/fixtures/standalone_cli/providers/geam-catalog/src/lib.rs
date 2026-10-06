@@ -6,8 +6,8 @@ use geam::{
     HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
     HostCustomSchema, HostCustomType, HostExternal, HostExternalBinding, HostExternalEquality,
     HostExternalHashing, HostExternalInspection, HostExternalSchema, HostExternalStorage,
-    HostExternalStore, HostExternalType, HostFunctionType, HostListType, HostOwnedCompletion,
-    HostProvider, HostProviderComponent, HostProviderComponentInitialization,
+    HostExternalStore, HostExternalType, HostFailure, HostFunctionType, HostListType,
+    HostOwnedCompletion, HostProvider, HostProviderComponent, HostProviderComponentInitialization,
     HostProviderComponentRegistration, HostProviderConfiguration, HostProviderInitializationError,
     HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
@@ -206,8 +206,14 @@ fn catalog_insert<'call, Profile>(
 where
     Profile: HostComponentProfile<Component>,
 {
+    let key = key
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    let value = value
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
     let value = format!("{}{}", call.state().prefix, value);
-    let updated = call.external_payload(catalog).insert(key.as_str(), value);
+    let updated = call.external_payload(catalog).insert(key, value);
     let updated = call.create_external(updated);
     Ok(call.return_value(updated))
 }

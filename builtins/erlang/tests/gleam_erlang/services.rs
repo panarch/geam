@@ -66,7 +66,7 @@ mod consumer_a {
 
     #[geam_macros::module(path = "service_consumer_a", profile = super::ServiceProfile, component = super::Component, crate_path = geam_core)]
     mod first {
-        use geam_core::provider::{BigInt, Call, HostResult, Value};
+        use geam_core::provider::{BigInt, Call, HostFailure, HostResult, StringValue, Value};
         use geam_erlang::service::{self, ProcessCall};
 
         #[geam_macros::function(profile = Profile)]
@@ -144,9 +144,13 @@ mod consumer_a {
         #[geam_macros::function(profile = Profile)]
         fn new_name<Message>(
             #[geam_macros::call] call: &mut Call<()>,
-            prefix: geam_core::StringValue,
+            prefix: StringValue,
         ) -> HostResult<service::Name<Message>> {
-            call.new_name(&prefix)
+            call.new_name(
+                prefix
+                    .as_str()
+                    .map_err(|error| HostFailure::new(error.to_string()))?,
+            )
         }
 
         #[geam_macros::function(profile = Profile)]
@@ -186,9 +190,7 @@ mod consumer_a {
                     .map(|value| {
                         call.restore_native::<Value<Message>>(&value)
                             .ok_or_else(|| {
-                                geam_core::HostFailure::new(
-                                    "subject message has the wrong source type",
-                                )
+                                HostFailure::new("subject message has the wrong source type")
                             })
                     })
                     .transpose()

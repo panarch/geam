@@ -251,7 +251,11 @@ fn plan_segment(
                 StringEncoding::Utf16(_) => StringEncoding::Utf16(endianness),
                 StringEncoding::Utf32(_) => StringEncoding::Utf32(endianness),
             };
-            Ok(BitArraySegment::String { value, encoding })
+            Ok(BitArraySegment::String {
+                value,
+                encoding,
+                site: site.clone(),
+            })
         }
         SegmentKind::UtfCodepoint(encoding) => {
             if size.is_some()
@@ -591,6 +595,7 @@ mod tests {
                 Ok(BitArraySegment::String {
                     value: StringExpr::value("a".into()),
                     encoding: expected,
+                    site: site.clone(),
                 }),
             );
         }

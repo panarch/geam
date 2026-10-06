@@ -16,9 +16,9 @@ pub(super) fn parse_query(query: &str) -> Option<Vec<(StringValue, StringValue)>
         .collect()
 }
 
-pub(super) fn percent_encode(value: &str) -> StringValue {
+pub(super) fn percent_encode(value: &[u8]) -> StringValue {
     let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
+    for &byte in value {
         if is_unescaped(byte) {
             encoded.push(char::from(byte));
         } else {
@@ -88,11 +88,26 @@ mod tests {
             ("ñ", "%C3%B1"),
             ("100% great+fun", "100%25%20great+fun"),
         ] {
-            assert_eq!(percent_encode(decoded), encoded);
-            assert_eq!(percent_decode(encoded).as_deref(), Some(decoded));
+            assert_eq!(percent_encode(decoded.as_bytes()), encoded);
+            assert_eq!(
+                percent_decode(encoded)
+                    .as_ref()
+                    .map(|value| value.as_str().unwrap()),
+                Some(decoded)
+            );
         }
-        assert_eq!(percent_decode("%c3%b1").as_deref(), Some("ñ"));
-        assert_eq!(percent_decode("+").as_deref(), Some("+"));
+        assert_eq!(
+            percent_decode("%c3%b1")
+                .as_ref()
+                .map(|value| value.as_str().unwrap()),
+            Some("ñ")
+        );
+        assert_eq!(
+            percent_decode("+")
+                .as_ref()
+                .map(|value| value.as_str().unwrap()),
+            Some("+")
+        );
     }
 
     #[test]

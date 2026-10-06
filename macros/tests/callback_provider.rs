@@ -45,7 +45,14 @@ mod callback_provider {
 
     #[geam_macros::function]
     fn entries(#[geam_macros::call] call: &Call<RunState>) -> StringValue {
-        call.state().entries.join("/").into()
+        let mut bytes = Vec::new();
+        for (index, entry) in call.state().entries.iter().enumerate() {
+            if index > 0 {
+                bytes.push(b'/');
+            }
+            bytes.extend_from_slice(entry.as_bytes());
+        }
+        StringValue::from_bytes(bytes)
     }
 
     #[geam_macros::function(await)]

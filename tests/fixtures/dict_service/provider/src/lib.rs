@@ -151,9 +151,9 @@ where
     Profile: HostComponentProfile<Component>,
 {
     let item = match key.as_str() {
-        "LANG" => Some("한국어\0🙂"),
-        "EMPTY" => Some(""),
-        "MESSAGE" => Some("ready"),
+        Ok("LANG") => Some("한국어\0🙂"),
+        Ok("EMPTY") => Some(""),
+        Ok("MESSAGE") => Some("ready"),
         _ => None,
     };
     match item {

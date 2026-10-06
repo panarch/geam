@@ -6,14 +6,17 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub(in crate::string) fn pop_grapheme(
     string: StringValue,
-) -> Result<(StringValue, StringValue), ()> {
-    let Some(grapheme) = string.graphemes(true).next() else {
-        return Err(());
+) -> Result<Result<(StringValue, StringValue), ()>, HostFailure> {
+    let text = string
+        .as_str()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    let Some(grapheme) = text.graphemes(true).next() else {
+        return Ok(Err(()));
     };
-    Ok((
+    Ok(Ok((
         string.slice(0..grapheme.len()),
         string.slice(grapheme.len()..string.len()),
-    ))
+    )))
 }
 
 pub(in crate::string) fn unsafe_int_to_utf_codepoint(value: BigInt) -> Result<char, HostFailure> {
@@ -37,18 +40,22 @@ mod tests {
     fn graphemes_share_large_ranges_and_resegment_the_visible_text() {
         let first = format!("a{}", "\u{301}".repeat(9));
         let original = StringValue::from(format!("{first}abcdefghijklmnopqrstuvwxyz"));
-        let (grapheme, rest) = pop_grapheme(original.clone()).expect("nonempty string");
-        assert_eq!(grapheme.as_str(), first);
+        let (grapheme, rest) = pop_grapheme(original.clone())
+            .expect("valid UTF-8")
+            .expect("nonempty string");
+        assert_eq!(grapheme.as_str().unwrap(), first);
         assert_eq!(grapheme.as_ptr(), original.as_ptr());
         assert_eq!(rest, "abcdefghijklmnopqrstuvwxyz");
         assert_eq!(rest.as_ptr(), original.as_ptr().wrapping_add(first.len()));
         let regional = StringValue::from("\u{1f1e6}\u{1f1e7}\u{1f1e8}abcdefghijklmnopqrstuvwxyz");
         let inside_original_grapheme = regional.slice(4..regional.len());
-        let (grapheme, rest) = pop_grapheme(inside_original_grapheme).expect("valid UTF-8 view");
+        let (grapheme, rest) = pop_grapheme(inside_original_grapheme)
+            .expect("valid UTF-8 view")
+            .expect("nonempty string");
         assert_eq!(grapheme, "\u{1f1e7}\u{1f1e8}");
         assert_eq!(rest, "abcdefghijklmnopqrstuvwxyz");
         assert_eq!(rest.as_ptr(), regional.as_ptr().wrapping_add(12));
-        assert_eq!(pop_grapheme(StringValue::new()), Err(()));
+        assert_eq!(pop_grapheme(StringValue::new()), Ok(Err(())));
     }
 
     #[test]
@@ -75,6 +82,25 @@ mod tests {
                 .expect_err("unrepresentable codepoint should fail")
                 .message(),
             "integer is not a valid Unicode codepoint",
+        );
+    }
+    #[test]
+    fn a_valid_first_grapheme_does_not_hide_an_invalid_tail() {
+        let raw = StringValue::from_bytes(vec![b'a', 0xff]);
+        assert_eq!(
+            pop_grapheme(raw).unwrap_err().message(),
+            "invalid utf-8 sequence of 1 bytes from index 1"
+        );
+        let partial = StringValue::from("é").slice(0..1);
+        assert_eq!(
+            pop_grapheme(partial).unwrap_err().message(),
+            "incomplete utf-8 byte sequence from index 0"
+        );
+        assert_eq!(
+            pop_grapheme(StringValue::from_bytes("é".as_bytes().to_vec()))
+                .unwrap()
+                .unwrap(),
+            ("é".into(), "".into())
         );
     }
 }

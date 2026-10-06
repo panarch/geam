@@ -1082,7 +1082,11 @@ mod tests {
                     assert!(values.equal(&native, &source));
                     assert_eq!(values.hash(&native), values.hash(&source));
                     assert_eq!(
-                        values.string("native".into()).as_string().as_deref(),
+                        values
+                            .string("native".into())
+                            .as_string()
+                            .as_ref()
+                            .map(|value| value.as_str().unwrap()),
                         Some("native")
                     );
                 });

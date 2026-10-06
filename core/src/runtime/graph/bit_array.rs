@@ -84,8 +84,27 @@ where
             };
             append_float(output, environment.float(*value), bit_size, *endianness);
         }
-        BitArraySegment::String { value, encoding } => {
-            append_string(output, environment.string(*value).as_str(), *encoding);
+        BitArraySegment::String {
+            value,
+            encoding,
+            site,
+        } => {
+            let value = environment.string(*value);
+            match encoding {
+                StringEncoding::Utf8 => {
+                    output.extend_from_bitslice(value.as_bytes().view_bits::<Msb0>())
+                }
+                StringEncoding::Utf16(_) | StringEncoding::Utf32(_) => {
+                    let text = value.as_str().map_err(|error| {
+                        state.bit_array_segment_panic(
+                            plan.source_context_for(site.module()),
+                            BitArraySegmentPanicReason::InvalidStringEncoding { error },
+                            site.clone(),
+                        )
+                    })?;
+                    append_string(output, text, *encoding);
+                }
+            }
         }
         BitArraySegment::UtfCodepoint { value, encoding } => {
             append_utf_codepoint(output, environment.utf_codepoint(*value), *encoding);
@@ -1137,5 +1156,55 @@ pub fn main() {
             bit_array(vec![0x41, 0x00, 0x00, 0x00], 32),
             bit_array(vec![0x12], 8),
         ])
+    }
+    #[test]
+    fn invalid_unicode_segment_preserves_the_output_prefix_and_transferable_diagnostic() {
+        use super::{BlockEnvironment, append_segment};
+        use crate::StringValue;
+        use crate::plan::execution::graph::{BitArraySegment, StringEncoding, StringLocalId};
+        use crate::runtime::graph::RetainedValues;
+        use crate::runtime::state::RuntimeState;
+        use miette::Diagnostic;
+
+        let source = "pub fn main() { let text = \"\" <<text:utf16-big>> }";
+        let plan = crate::runtime::plan_src(source);
+        let start = source.find("text:utf16-big").unwrap();
+        let site = PanicSite::new(
+            "main".into(),
+            "main".into(),
+            SourceSpan::new(start, start + "text:utf16-big".len()),
+        );
+        let raw = StringValue::from_bytes(vec![b'a', 255]);
+        let utf8_error = raw.as_str().unwrap_err();
+        let mut environment = BlockEnvironment::from_retained(RetainedValues::empty());
+        environment.push_string(raw);
+        let mut echo = Vec::new();
+        let state = RuntimeState::new(&mut echo);
+        for encoding in [
+            StringEncoding::Utf16(Endianness::Big),
+            StringEncoding::Utf32(Endianness::Little),
+        ] {
+            let mut output = BitVec::from_vec(vec![0x42]);
+            let segment = BitArraySegment::String {
+                value: StringLocalId(0),
+                encoding,
+                site: site.clone(),
+            };
+            let error =
+                append_segment(&plan, &state, &environment, &mut output, &segment).unwrap_err();
+            assert_eq!(output, BitVec::<u8, Msb0>::from_vec(vec![0x42]));
+            assert_eq!(
+                error.help().unwrap().to_string(),
+                "UTF-16 and UTF-32 string segments require valid UTF-8: invalid utf-8 sequence of 1 bytes from index 1",
+            );
+            assert_eq!(
+                error.into_materialized(),
+                ExecutionError::bit_array_segment_panic(
+                    None,
+                    BitArraySegmentPanicReason::InvalidStringEncoding { error: utf8_error },
+                    site.clone(),
+                ),
+            );
+        }
     }
 }

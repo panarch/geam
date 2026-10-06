@@ -31,7 +31,7 @@ pub(super) fn evaluate<State: RuntimeGraphState>(
             &environment.value_ref(right),
         ),
         I::StringStartsWith { value, prefix } => {
-            environment.string(*value).starts_with(prefix.as_str())
+            environment.string(*value).starts_with(prefix.as_bytes())
         }
         I::ListLengthEquals { value, length } => environment.list_len(value) == *length,
         I::ListLengthAtLeast { value, length } => environment.list_len(value) >= *length,

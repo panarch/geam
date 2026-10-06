@@ -16,8 +16,8 @@ mod provider {
     use geam_core::provider::HostResult;
 
     #[geam_macros::function]
-    fn pop_codeunit(string: StringValue) -> (BigInt, StringValue) {
-        function::pop_codeunit(string)
+    fn pop_codeunit(string: StringValue) -> HostResult<(BigInt, StringValue)> {
+        function::pop_codeunit(string).map_err(Into::into)
     }
 
     #[geam_macros::function]

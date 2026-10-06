@@ -25,18 +25,18 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn length(string: StringValue) -> BigInt {
-        function::length(string)
+    fn length(string: StringValue) -> HostResult<BigInt> {
+        function::length(string).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn lowercase(string: StringValue) -> StringValue {
-        function::lowercase(string)
+    fn lowercase(string: StringValue) -> HostResult<StringValue> {
+        function::lowercase(string).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn uppercase(string: StringValue) -> StringValue {
-        function::uppercase(string)
+    fn uppercase(string: StringValue) -> HostResult<StringValue> {
+        function::uppercase(string).map_err(Into::into)
     }
 
     #[geam_macros::function]
@@ -88,17 +88,17 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn erl_trim(string: StringValue, direction: DirectionInput) -> StringValue {
+    fn erl_trim(string: StringValue, direction: DirectionInput) -> HostResult<StringValue> {
         let leading = match direction {
             DirectionInput::Leading => true,
             DirectionInput::Trailing => false,
         };
-        function::erl_trim(string, leading)
+        function::erl_trim(string, leading).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn pop_grapheme(string: StringValue) -> Result<(StringValue, StringValue), ()> {
-        function::pop_grapheme(string)
+    fn pop_grapheme(string: StringValue) -> HostResult<Result<(StringValue, StringValue), ()>> {
+        function::pop_grapheme(string).map_err(Into::into)
     }
 
     #[geam_macros::function]
@@ -245,7 +245,14 @@ fn remove_suffix(string: String, suffix: String) -> String
         let string = host_provider::<GleamStdlibProfile>()
             .expect("official string provider should register");
         let hosts = HostProviderSet::with_providers(
-            Vec::<HostModule<GleamStdlibProfile>>::new(),
+            [
+                HostModule::<GleamStdlibProfile>::new_for_profile("gleam_stdlib", "fixture")
+                    .unwrap()
+                    .with_function("raw", || {
+                        geam_core::StringValue::from_bytes(vec![b'a', 0xff])
+                    })
+                    .unwrap(),
+            ],
             [string_tree, string],
         )
         .expect("string providers should be unique");
@@ -364,9 +371,9 @@ pub fn main() {
                 "string grapheme slice requires non-negative bounds",
             ),
             (
-                r#"pub fn main() { unsafe_byte_slice("👍", 1, 1) }"#,
+                r#"pub fn main() { unsafe_byte_slice("👍", 4, 1) }"#,
                 "unsafe_byte_slice",
-                "string byte slice is outside UTF-8 boundaries",
+                "string byte slice is out of bounds",
             ),
             (
                 r#"pub fn main() { unsafe_int_to_utf_codepoint(-1) }"#,
@@ -388,6 +395,40 @@ pub fn main() {
             assert_eq!(error.module(), "gleam/string");
             assert_eq!(error.function(), function);
             assert_eq!(error.failure().message(), reason);
+        }
+    }
+
+    #[test]
+    fn unicode_native_failures_keep_the_exact_registered_origin() {
+        for (expression, function) in [
+            ("length(fixture.raw())", "length"),
+            ("lowercase(fixture.raw())", "lowercase"),
+            ("uppercase(fixture.raw())", "uppercase"),
+            ("grapheme_slice(fixture.raw(), 0, 0)", "grapheme_slice"),
+            ("erl_trim(fixture.raw(), Leading)", "erl_trim"),
+            ("erl_trim(fixture.raw(), Trailing)", "erl_trim"),
+            ("pop_grapheme(fixture.raw())", "pop_grapheme"),
+        ] {
+            let source = format!(
+                r#"
+import fixture
+pub fn main() {{ {expression} }}
+"#
+            );
+            let error = crate::execution_fixture::run(
+                &mut execution(&source),
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            )
+            .unwrap_err();
+            let error = expect_string_host_error(error);
+            assert_eq!(error.package(), "gleam_stdlib");
+            assert_eq!(error.module(), "gleam/string");
+            assert_eq!(error.function(), function);
+            assert_eq!(
+                error.failure().message(),
+                "invalid utf-8 sequence of 1 bytes from index 1"
+            );
         }
     }
 

@@ -3,6 +3,7 @@ mod geam_bindings;
 use geam::HostProviderConfiguration;
 use geam::embedding::HostedModuleBuilder;
 use geam::execution::{ExecutionOutcome, TokioHost};
+use std::str::Utf8Error;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = tokio::runtime::Builder::new_current_thread().build()?;
@@ -27,15 +28,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let work = scope.call(&functions.greeting, (path.into(),)).await?;
                 println!("created");
                 let result = scope.observe(&work).await?;
-                result.read(|value| match value {
-                    Ok(text) => println!("{}", text.trim_end()),
-                    Err(error) => eprintln!("{error}"),
-                });
+                result.read(|value| {
+                    match value {
+                        Ok(text) => println!("{}", text.as_str()?.trim_end()),
+                        Err(error) => eprintln!("{error}"),
+                    }
+                    Ok::<_, Utf8Error>(())
+                })?;
                 let same_result = scope.observe(&work).await?;
-                same_result.read(|value| match value {
-                    Ok(text) => println!("again: {}", text.trim_end()),
-                    Err(error) => eprintln!("{error}"),
-                });
+                same_result.read(|value| {
+                    match value {
+                        Ok(text) => println!("again: {}", text.as_str()?.trim_end()),
+                        Err(error) => eprintln!("{error}"),
+                    }
+                    Ok::<_, Utf8Error>(())
+                })?;
                 Ok::<_, Box<dyn std::error::Error>>(())
             }),
         )?;

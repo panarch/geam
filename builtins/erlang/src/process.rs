@@ -9,7 +9,6 @@ use crate::schema::{
 };
 use crate::{Component, GleamErlangHostProfile};
 use futures_util::future::BoxFuture;
-use geam_core::StringValue;
 use geam_core::host::native::{NativeCall, NativeRules};
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallContinuation, HostCallError, HostCallable,
@@ -19,6 +18,7 @@ use geam_core::host::{
     HostTypeListEnd, HostTypeParameter, HostValue,
 };
 use geam_core::provider::advanced::NativeValue;
+use geam_core::{HostFailure, StringValue};
 use geam_stdlib::provider_support::{Dynamic, GleamError, GleamOk, GleamResult};
 use num_bigint::{BigInt, Sign};
 use schema::{Down, ExitReason, KillFlag, ProcessFlag, Subject};
@@ -133,7 +133,12 @@ fn new_name<'call, Profile: GleamErlangHostProfile>(
     mut call: Call<'call, Profile, Name<A>>,
     prefix: StringValue,
 ) -> Result<HostCallCompletion<'call, Name<A>>, HostCallError> {
-    let name = crate::service::fresh_name(&mut call, &prefix)?;
+    let name = crate::service::fresh_name(
+        &mut call,
+        prefix
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?,
+    )?;
     let name = call.create_external(name);
     Ok(call.return_value(name))
 }
