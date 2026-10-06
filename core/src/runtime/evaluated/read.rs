@@ -54,13 +54,7 @@ pub(in crate::runtime) enum EvaluatedFunctionRef<'value> {
 }
 
 impl<'value> EvaluatedFunctionRef<'value> {
-    fn retained_parts(
-        &self,
-    ) -> (
-        &'value EvaluatedFunctionIdentity,
-        Option<&'value StoredRuntimeValue>,
-        &'value Captures,
-    ) {
+    fn retained_parts(&self) -> (&'value EvaluatedFunctionIdentity, &'value Captures) {
         match self {
             Self::Generic(value) => value.retained_parts(),
             Self::Never(value) => value.retained_parts(),
@@ -89,11 +83,11 @@ impl<'value> EvaluatedFunctionRef<'value> {
     }
 
     pub(in crate::runtime) fn native_source(&self) -> Option<&'value StoredRuntimeValue> {
-        self.retained_parts().1
+        self.capture_frame().native_source()
     }
 
     pub(in crate::runtime) fn capture_frame(&self) -> &'value Captures {
-        self.retained_parts().2
+        self.retained_parts().1
     }
 }
 

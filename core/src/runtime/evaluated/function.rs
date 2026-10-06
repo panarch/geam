@@ -1,5 +1,4 @@
 use crate::runtime::StoredRuntimeValue;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::EvaluatedCapture;
@@ -21,33 +20,11 @@ pub(crate) struct EvaluatedFunction<Id> {
     runtime_id: Id,
     captures: Captures,
     type_: FunctionType,
-    native_source: Option<Arc<NativeFunctionSource>>,
-}
-
-pub(in crate::runtime) struct NativeFunctionSource {
-    value: StoredRuntimeValue,
-}
-
-impl std::fmt::Debug for NativeFunctionSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("NativeFunctionSource")
-            .field(self.value.type_())
-            .finish()
-    }
-}
-
-impl PartialEq for NativeFunctionSource {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
 }
 
 pub(in crate::runtime) enum FunctionCreation {
     Fresh,
-    RetainedView {
-        identity: EvaluatedFunctionIdentity,
-        source: Arc<NativeFunctionSource>,
-    },
+    RetainedView { identity: EvaluatedFunctionIdentity },
 }
 
 impl FunctionCreation {
@@ -57,21 +34,17 @@ impl FunctionCreation {
         captures: Captures,
         type_: FunctionType,
     ) -> EvaluatedFunction<Id> {
-        let (identity, native_source) = match self {
-            Self::Fresh => (
-                EvaluatedFunctionIdentity::Instance(FunctionInstance(
-                    NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
-                )),
-                None,
-            ),
-            Self::RetainedView { identity, source } => (identity.clone(), Some(Arc::clone(source))),
+        let identity = match self {
+            Self::Fresh => EvaluatedFunctionIdentity::Instance(FunctionInstance(
+                NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
+            )),
+            Self::RetainedView { identity } => identity.clone(),
         };
         EvaluatedFunction {
             identity,
             runtime_id,
             captures,
             type_,
-            native_source,
         }
     }
 }
@@ -493,24 +466,13 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
             runtime_id,
             captures,
             type_,
-            native_source: None,
         }
     }
 }
 
 impl<Id: Clone> EvaluatedFunction<Id> {
-    pub(super) fn retained_parts(
-        &self,
-    ) -> (
-        &EvaluatedFunctionIdentity,
-        Option<&StoredRuntimeValue>,
-        &Captures,
-    ) {
-        (
-            &self.identity,
-            self.native_source.as_ref().map(|source| &source.value),
-            &self.captures,
-        )
+    pub(super) fn retained_parts(&self) -> (&EvaluatedFunctionIdentity, &Captures) {
+        (&self.identity, &self.captures)
     }
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
@@ -550,7 +512,6 @@ impl<Id: Clone> EvaluatedFunction<Id> {
             runtime_id: map(self.runtime_id),
             captures: self.captures,
             type_: self.type_,
-            native_source: self.native_source,
         }
     }
 }
@@ -647,15 +608,9 @@ evaluated_function_value_from!(EvaluatedListFunction, List);
 evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 
 impl EvaluatedFunctionValue {
-    pub(in crate::runtime) fn creation_view(
-        &self,
-        source: &StoredRuntimeValue,
-    ) -> FunctionCreation {
+    pub(in crate::runtime) fn creation_view(&self) -> FunctionCreation {
         FunctionCreation::RetainedView {
             identity: super::EvaluatedFunctionRef::from(self).identity().clone(),
-            source: Arc::new(NativeFunctionSource {
-                value: source.clone_retained(),
-            }),
         }
     }
 
@@ -788,7 +743,7 @@ mod tests {
         ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
         TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
-    use crate::plan::execution::graph::IntLocalId;
+    use crate::plan::execution::graph::{IntFunctionLocalId, IntLocalId};
     use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::runtime::state::RuntimeState;
 
@@ -1216,50 +1171,67 @@ pub fn main() {
         ));
     }
     #[test]
-    fn retained_provenance_keeps_source_identity_and_debug_without_exposing_payload() {
-        use super::{FunctionCreation, NativeFunctionSource};
+    fn retained_provenance_shares_the_view_frame_and_stays_out_of_fresh_captures() {
+        use super::FunctionCreation;
         use crate::plan::execution::runtime::RuntimeExecutionPlan;
         use crate::runtime::StoredRuntimeValue;
-        use std::sync::Arc;
+        use crate::runtime::captures::CaptureStorage;
 
         let plan = crate::runtime::plan_src(
             "pub fn main() { #(fn(value: Int) { value }, fn(value: Int) { value + 1 }) }",
         );
+        let storage = CaptureStorage::default();
         let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Int);
-        let function =
-            EvaluatedIntFunction::reference(IntFunctionId(0), Default::default(), type_.clone());
+        let function = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            storage.capture(Vec::new()),
+            type_.clone(),
+        );
         let stored = StoredRuntimeValue::new(
             EvaluatedValue::Function(function.clone().into()),
             plan.value_metadata(),
         );
-        let source = Arc::new(NativeFunctionSource {
-            value: stored.clone_retained(),
-        });
-        assert_eq!(
-            format!("{source:?}"),
-            "NativeFunctionSource(Function(FunctionType { arguments: [Int], return_: Int }))"
+        let captures = storage.capture_native_view(
+            vec![EvaluatedCapture::int_function(
+                IntFunctionLocalId(0),
+                function.clone(),
+            )],
+            &stored,
         );
-        assert_eq!(source, Arc::clone(&source));
-        let distinct = Arc::new(NativeFunctionSource {
-            value: stored.clone_retained(),
-        });
-        assert_ne!(source, distinct);
         let creation = FunctionCreation::RetainedView {
             identity: function.identity.clone(),
-            source: Arc::clone(&source),
         };
-        let view = creation.instantiate(IntFunctionId(1), Default::default(), type_);
+        let view = creation.instantiate(IntFunctionId(1), captures, type_.clone());
+        let alias = view.clone();
+        let mapped = view.clone().map_runtime_id(|_| IntFunctionId(0));
+        let refined = view.clone().with_type(type_.clone());
+        let retained = alias.capture_frame().native_source().unwrap();
+        assert_eq!(retained.value(), stored.value());
         assert_eq!(view.identity, function.identity);
         assert_eq!(view.runtime_id(), IntFunctionId(1));
-        assert_eq!(view.native_source.as_ref().unwrap(), &source);
-        assert_eq!(view.clone().native_source.as_ref().unwrap(), &source);
+        for copy in [&alias, &mapped, &refined] {
+            assert!(std::ptr::eq(
+                retained,
+                copy.capture_frame().native_source().unwrap()
+            ));
+            assert!(std::ptr::eq(view.captures(), copy.captures()));
+            assert_eq!(copy.identity, function.identity);
+        }
+        let enclosing = EvaluatedIntFunction::closure(
+            IntFunctionId(2),
+            storage.capture(vec![EvaluatedCapture::int_function(
+                IntFunctionLocalId(0),
+                view,
+            )]),
+            type_,
+        );
+        assert!(enclosing.capture_frame().native_source().is_none());
+        assert_ne!(enclosing.identity, function.identity);
+        assert_eq!(enclosing.captures().len(), 1);
+        drop(stored);
         assert_eq!(
-            view.clone()
-                .map_runtime_id(|_| IntFunctionId(0))
-                .native_source
-                .as_ref()
-                .unwrap(),
-            &source
+            alias.capture_frame().native_source().unwrap().value(),
+            &EvaluatedValue::Function(function.into())
         );
     }
 }

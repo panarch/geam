@@ -1,10 +1,10 @@
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::type_::FunctionType;
-use crate::runtime::captures::Captures;
+use crate::runtime::captures::{CaptureStorage, Captures};
 use crate::runtime::error::HostCallOrigin;
 use crate::runtime::evaluated::FunctionCreation;
 use crate::runtime::evaluated::{
-    EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCustomFunction,
     EvaluatedCustomValue, EvaluatedExternalFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
@@ -36,16 +36,19 @@ impl InvocableFunctionValue {
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
+        // Fresh closures use a new capture frame, even when a captured value is a view.
         Self::create(target, captures, type_, FunctionCreation::Fresh)
     }
 
     pub(in crate::runtime) fn retained_view(
         target: RuntimeFunctionId,
-        captures: Captures,
+        storage: &CaptureStorage,
+        values: Vec<EvaluatedCapture>,
         type_: FunctionType,
         source: StoredRuntimeFunction<'_>,
     ) -> Self {
-        let creation = source.function.creation_view(source.source);
+        let captures = storage.capture_native_view(values, source.source);
+        let creation = source.function.creation_view();
         Self::create(target, captures, type_, creation)
     }
 
@@ -226,7 +229,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
 
 pub(in crate::runtime) fn callable_inputs(
     arguments: Box<[EvaluatedValue]>,
-    captures: &crate::runtime::captures::Captures,
+    captures: &Captures,
 ) -> RetainedValues {
     let mut inputs = RetainedValues::empty();
     for value in arguments {

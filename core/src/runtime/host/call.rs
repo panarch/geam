@@ -476,13 +476,10 @@ where
         }
         let mut values = RetainedValues::empty();
         values.push_evaluated(source.source.value().clone());
-        let captures = self
-            .state
-            .captures()
-            .capture(values.into_captures(&view.captures));
         let function = InvocableFunctionValue::retained_view(
             view.target.clone(),
-            captures,
+            self.state.captures(),
+            values.into_captures(&view.captures),
             view.type_.clone(),
             source,
         );
