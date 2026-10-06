@@ -5,7 +5,7 @@ use crate::plan::execution::graph::{
     BlockGraphExitId, BlockId, Edge, IntSwitch, MatchEdge, NeverCallTarget, SourceStopKind,
     Terminator,
 };
-use crate::runtime::ExecutionError;
+use crate::runtime::{ExecutionError, StringValue};
 
 use crate::runtime::captures::Captures;
 use crate::runtime::error::PanicKind;
@@ -48,7 +48,7 @@ pub(in crate::runtime) trait RuntimeGraphState {
         &self,
         source: Option<&crate::plan::SourceContext>,
         kind: PanicKind,
-        message: Option<ecow::EcoString>,
+        message: Option<StringValue>,
         site: crate::plan::PanicSite,
     ) -> Self::Error;
 
@@ -56,7 +56,7 @@ pub(in crate::runtime) trait RuntimeGraphState {
         &self,
         plan: &Plan,
         source: Option<&crate::plan::SourceContext>,
-        message: Option<ecow::EcoString>,
+        message: Option<StringValue>,
         site: crate::plan::PanicSite,
         subject: crate::runtime::EvaluatedValue,
         pattern_span: crate::plan::SourceSpan,
@@ -95,7 +95,7 @@ impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
         &self,
         source: Option<&crate::plan::SourceContext>,
         kind: PanicKind,
-        message: Option<ecow::EcoString>,
+        message: Option<StringValue>,
         site: crate::plan::PanicSite,
     ) -> Self::Error {
         ExecutionError::source_panic(source, kind, message, site)
@@ -105,7 +105,7 @@ impl<Host> RuntimeGraphState for RuntimeState<'_, Host> {
         &self,
         plan: &Plan,
         source: Option<&crate::plan::SourceContext>,
-        message: Option<ecow::EcoString>,
+        message: Option<StringValue>,
         site: crate::plan::PanicSite,
         subject: crate::runtime::EvaluatedValue,
         pattern_span: crate::plan::SourceSpan,
@@ -176,10 +176,9 @@ where
         }
         Terminator::StringSwitch(switch) => {
             let subject = environment.string(switch.subject());
-            let selected = switch
-                .clauses()
-                .iter()
-                .find_map(|(pattern, edge)| (pattern.as_str() == subject.as_str()).then_some(edge));
+            let selected = switch.clauses().iter().find_map(|(pattern, edge)| {
+                (pattern.as_bytes() == subject.as_bytes()).then_some(edge)
+            });
             let edge = match selected {
                 Some(edge) => edge,
                 None => switch.fallback(),
@@ -209,9 +208,7 @@ where
         }
         Terminator::Echo(echo) => {
             let subject = environment.value(echo.subject());
-            let message = echo
-                .message()
-                .map(|message| environment.string(message).into_ecostring());
+            let message = echo.message().map(|message| environment.string(message));
             let value =
                 crate::runtime::materialize::value(plan.value_metadata(), state.lists(), subject);
             let location = crate::runtime::EchoLocation::from_context(
@@ -226,9 +223,7 @@ where
             environment,
         }),
         Terminator::SourceStop(stop) => {
-            let message = stop
-                .message()
-                .map(|message| environment.string(message).into_ecostring());
+            let message = stop.message().map(|message| environment.string(message));
             Err(state.source_panic(
                 plan.source_context_for(stop.site().module()),
                 panic_kind(stop.kind()),
@@ -238,9 +233,7 @@ where
         }
         Terminator::LetAssertPanic(panic) => {
             let subject = environment.value(panic.subject());
-            let message = panic
-                .message()
-                .map(|message| environment.string(message).into_ecostring());
+            let message = panic.message().map(|message| environment.string(message));
             Err(state.let_assert_panic(
                 plan,
                 plan.source_context_for(panic.site().module()),

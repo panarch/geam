@@ -11,3 +11,6 @@ path = "tests/public_usage.rs"
 ecow = "=0.2.6"
 geam = { path = "../../../..", default-features = false }
 provider-sdk-example-provider = { path = "../provider" }
+
+[dev-dependencies]
+geam = { path = "../../../..", default-features = false, features = ["embedding"] }

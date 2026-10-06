@@ -128,7 +128,10 @@ mod native {
 
     #[geam::function]
     async fn request(address: StringValue) -> HostResult<StringValue> {
-        let mut stream = tokio::net::TcpStream::connect(address.as_str())
+        let address = address
+            .as_str()
+            .map_err(|error| HostFailure::new(error.to_string()))?;
+        let mut stream = tokio::net::TcpStream::connect(address)
             .await
             .map_err(|error| HostFailure::new(error.to_string()))?;
         stream

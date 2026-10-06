@@ -2,7 +2,7 @@ mod codec;
 mod type_;
 pub use codec::ProviderValueListDecoder;
 
-use crate::host::HostCall;
+use crate::host::{HostCall, HostRetainedValue};
 use crate::runtime::StoredRuntimeValue;
 use crate::{HostProfile, HostProvider, HostType};
 use std::marker::PhantomData;
@@ -69,6 +69,19 @@ where
 
     pub(crate) fn stored(&self) -> &StoredRuntimeValue {
         &self.context.value
+    }
+
+    #[doc(hidden)]
+    pub fn from_retained(value: HostRetainedValue<Host>) -> Self {
+        Self::from_stored(value.value)
+    }
+
+    #[doc(hidden)]
+    pub fn into_retained(self) -> HostRetainedValue<Host> {
+        HostRetainedValue {
+            value: self.into_stored(),
+            type_: PhantomData,
+        }
     }
 
     pub(crate) fn from_stored(value: StoredRuntimeValue) -> Self {

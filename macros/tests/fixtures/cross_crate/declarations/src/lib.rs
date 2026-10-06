@@ -51,7 +51,7 @@ pub mod values {
             hash.finish()
         }
         fn inspect(&self) -> ecow::EcoString {
-            self.text().into_ecostring()
+            self.text().to_string().into()
         }
     }
 
@@ -96,6 +96,29 @@ pub mod values {
             StatusInput::Ready => "ready".into(),
             StatusInput::Count(value) => format!("count:{value}").into(),
             StatusInput::Tagged(value) => value.with(|token| token.0.clone()),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::SavedText;
+        use geam_core::StringValue;
+        use geam_core::provider::ExternalPayload;
+
+        #[test]
+        fn saved_text_inspection_and_identity_preserve_text_and_raw_payloads() {
+            for (value, expected) in [
+                (StringValue::from("kept"), "kept"),
+                (StringValue::from_bytes(vec![255, 0]), "<<255, 0>>"),
+            ] {
+                let saved = SavedText::new(value.clone());
+                let alias = saved.clone();
+                assert_eq!(saved.inspect(), expected);
+                assert!(saved.source_equal(&alias));
+                assert_eq!(saved.source_hash(), alias.source_hash());
+                drop(saved);
+                assert_eq!(alias.text(), value);
+            }
         }
     }
 }

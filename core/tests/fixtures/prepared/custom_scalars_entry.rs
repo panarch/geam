@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 20,
+    format: 24,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -3656,7 +3656,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call5 { int0, int1, int2, int3, int4 } => {
                             let int5 = result;
@@ -3672,7 +3672,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
                             let int8 = result;
@@ -3688,7 +3688,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } => {
                             let int12 = result;
@@ -3704,7 +3704,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } => {
                             let int16 = result;
@@ -3720,7 +3720,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call22 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1 } => {
                             let int20 = result;
@@ -3736,7 +3736,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } => {
                             let int24 = result;
@@ -3752,7 +3752,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } => {
                             let int28 = result;
@@ -3768,7 +3768,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } => {
                             let int32 = result;
@@ -3784,7 +3784,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32], bools: vec![bool0, bool1, bool2, bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         Self::Int0Call39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } => {
                             let int35 = result;
@@ -3800,7 +3800,7 @@ pub fn main() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35], bools: vec![bool0, bool1, bool2, bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
                 }
@@ -4002,7 +4002,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point1 { int0 })
                     },
                     FunctionState::Int0Point1 { int0 } => {
@@ -4021,13 +4021,13 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point2 { int0, int1 })
                     },
                     FunctionState::Int0Point2 { int0, int1 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point2 { int0, int1 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(1), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)), arguments: CallArguments { values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call2 { int0, int1 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(1), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2500, 2513)), arguments: CallArguments { values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call2 { int0, int1 } }
                     },
                     FunctionState::Int0Point3 { int0, int1, int2 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point3 { int0, int1, int2 }); }
@@ -4045,7 +4045,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point4 { int0, int1, int2, int3 })
                     },
                     FunctionState::Int0Point4 { int0, int1, int2, int3 } => {
@@ -4064,13 +4064,13 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point5 { int0, int1, int2, int3, int4 })
                     },
                     FunctionState::Int0Point5 { int0, int1, int2, int3, int4 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point5 { int0, int1, int2, int3, int4 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(2), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)), arguments: CallArguments { values: CallValues { ints: vec![int3.into(), int4.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call5 { int0, int1, int2, int3, int4 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(2), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2518, 2530)), arguments: CallArguments { values: CallValues { ints: vec![int3.into(), int4.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call5 { int0, int1, int2, int3, int4 } }
                     },
                     FunctionState::Int0Point6 { int0, int1, int2, int3, int4, int5 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point6 { int0, int1, int2, int3, int4, int5 }); }
@@ -4088,7 +4088,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point7 { int0, int1, int2, int3, int4, int5, int6 })
                     },
                     FunctionState::Int0Point7 { int0, int1, int2, int3, int4, int5, int6 } => {
@@ -4107,13 +4107,13 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 })
                     },
                     FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point8 { int0, int1, int2, int3, int4, int5, int6, int7 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(3), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)), arguments: CallArguments { values: CallValues { ints: vec![int7.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(3), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)), arguments: CallArguments { values: CallValues { ints: vec![int7.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } }
                     },
                     FunctionState::Int0Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 }); }
@@ -4131,7 +4131,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point10 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9 })
                     },
                     FunctionState::Int0Point10 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9 } => {
@@ -4150,7 +4150,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point11 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10 })
                     },
                     FunctionState::Int0Point11 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10 } => {
@@ -4169,7 +4169,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point12 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11 })
                     },
                     FunctionState::Int0Point12 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11 } => {
@@ -4181,7 +4181,7 @@ pub fn main() {
                     FunctionState::Int0Point13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(4), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)), arguments: CallArguments { values: CallValues { ints: vec![int10.into(), int11.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(4), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2550, 2569)), arguments: CallArguments { values: CallValues { ints: vec![int10.into(), int11.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call13 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0 } }
                     },
                     FunctionState::Int0Point14 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point14 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12 }); }
@@ -4199,7 +4199,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point15 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13 })
                     },
                     FunctionState::Int0Point15 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13 } => {
@@ -4218,7 +4218,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point16 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14 })
                     },
                     FunctionState::Int0Point16 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14 } => {
@@ -4237,7 +4237,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 })
                     },
                     FunctionState::Int0Point17 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15 } => {
@@ -4261,7 +4261,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point19 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17 })
                     },
                     FunctionState::Int0Point19 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17 } => {
@@ -4280,7 +4280,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point20 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18 })
                     },
                     FunctionState::Int0Point20 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18 } => {
@@ -4299,7 +4299,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point21 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19 })
                     },
                     FunctionState::Int0Point21 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19 } => {
@@ -4329,7 +4329,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point24 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21 })
                     },
                     FunctionState::Int0Point24 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21 } => {
@@ -4348,7 +4348,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point25 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22 })
                     },
                     FunctionState::Int0Point25 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22 } => {
@@ -4367,7 +4367,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into()], bools: vec![bool0, bool1], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point26 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23 })
                     },
                     FunctionState::Int0Point26 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23 } => {
@@ -4379,7 +4379,7 @@ pub fn main() {
                     FunctionState::Int0Point27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(7), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)), arguments: CallArguments { values: CallValues { ints: vec![int22.into(), int23.into()], bools: vec![bool2], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(7), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2617, 2636)), arguments: CallArguments { values: CallValues { ints: vec![int22.into(), int23.into()], bools: vec![bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call27 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2 } }
                     },
                     FunctionState::Int0Point28 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point28 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24 }); }
@@ -4397,7 +4397,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point29 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25 })
                     },
                     FunctionState::Int0Point29 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25 } => {
@@ -4416,7 +4416,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point30 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26 })
                     },
                     FunctionState::Int0Point30 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26 } => {
@@ -4435,7 +4435,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 })
                     },
                     FunctionState::Int0Point31 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27 } => {
@@ -4459,7 +4459,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point33 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29 })
                     },
                     FunctionState::Int0Point33 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29 } => {
@@ -4478,7 +4478,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point34 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30 })
                     },
                     FunctionState::Int0Point34 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30 } => {
@@ -4497,7 +4497,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into()], bools: vec![bool0, bool1, bool2], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into()], bools: vec![bool0, bool1, bool2], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point35 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31 })
                     },
                     FunctionState::Int0Point35 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31 } => {
@@ -4509,7 +4509,7 @@ pub fn main() {
                     FunctionState::Int0Point36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(9), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)), arguments: CallArguments { values: CallValues { ints: vec![int30.into(), int31.into()], bools: vec![bool3], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } }
+                        FunctionStep::IntBridge { function: data::function::IntFunctionId(9), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2660, 2681)), arguments: CallArguments { values: CallValues { ints: vec![int30.into(), int31.into()], bools: vec![bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int0Call36 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3 } }
                     },
                     FunctionState::Int0Point37 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point37 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32 }); }
@@ -4527,7 +4527,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into()], bools: vec![bool0, bool1, bool2, bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point38 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33 })
                     },
                     FunctionState::Int0Point38 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33 } => {
@@ -4546,7 +4546,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into()], bools: vec![bool0, bool1, bool2, bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int0Point39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 })
                     },
                     FunctionState::Int0Point39 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34 } => {
@@ -4570,7 +4570,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35.into(), int36.into()], bools: vec![bool0, bool1, bool2, bool3], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into(), int3.into(), int4.into(), int5.into(), int6.into(), int7.into(), int8.into(), int9.into(), int10.into(), int11.into(), int12.into(), int13.into(), int14.into(), int15.into(), int16.into(), int17.into(), int18.into(), int19.into(), int20.into(), int21.into(), int22.into(), int23.into(), int24.into(), int25.into(), int26.into(), int27.into(), int28.into(), int29.into(), int30.into(), int31.into(), int32.into(), int33.into(), int34.into(), int35.into(), int36.into()], bools: vec![bool0, bool1, bool2, bool3], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point41 { int0, int1, int2, int3, int4, int5, int6, int7, int8, int9, int10, int11, bool0, int12, int13, int14, int15, int16, int17, int18, int19, bool1, int20, int21, int22, int23, bool2, int24, int25, int26, int27, int28, int29, int30, int31, bool3, int32, int33, int34, int35, int36 }); }
                         *budget -= 1;
                         FunctionStep::Int { value: int36, exit: data::graph::BlockGraphExitId(0) }
@@ -4599,7 +4599,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int6Point0 { int0, int1, bool0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point0 { int0, int1, bool0 }); }
@@ -4617,7 +4617,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int6Point1 { int0, int1, bool0, int2 })
                     },
                     FunctionState::Int6Point1 { int0, int1, bool0, int2 } => {
@@ -4633,7 +4633,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int8Point0 { int0, int1 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point0 { int0, int1 }); }
@@ -4651,7 +4651,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int8Point1 { int0, int1, int2 })
                     },
                     FunctionState::Int8Point1 { int0, int1, int2 } => {
@@ -4673,7 +4673,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::Int10Point0 { int0 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point0 { int0 }); }
@@ -4691,7 +4691,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Int10Point1 { int0, int1 })
                     },
                     FunctionState::Int10Point1 { int0, int1 } => {
@@ -4713,7 +4713,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                 }
             }
@@ -4834,6 +4834,8 @@ pub fn main() {
                 int_lists: data::Storage::Static(&[
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                     data::compiled::CompiledFunction {
                         function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),

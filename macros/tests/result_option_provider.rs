@@ -71,9 +71,11 @@ mod prelude_values {
             Err(ParseError::Empty)
         } else {
             value
-                .parse::<i64>()
+                .as_str()
+                .ok()
+                .and_then(|text| text.parse::<i64>().ok())
                 .map(BigInt::from)
-                .map_err(|_| ParseError::Invalid(value))
+                .ok_or(ParseError::Invalid(value))
         }
     }
 

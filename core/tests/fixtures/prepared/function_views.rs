@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 20,
+        format: 24,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -51,12 +51,19 @@ pub fn run() -> Bool {
   let assert Branch([Leaf(leaf)]) = tree
   let nested: fn(Erased) -> fn(Erased) -> Erased =
     coerce(fn(a: Int) { fn(b: Int) { a + b } })
+  let raw: String = coerce(<<255, 0, 195>>)
+  let append = fn(a: String) { a <> raw }
+  let byte_view: fn(BitArray) -> BitArray = coerce(append)
+  let restored_bytes: fn(String) -> String = coerce(byte_view)
   output(view(input(40))) == 42
   && restored == original
   && restored(40) == 42
   && output(callback(input(41))) == 42
   && output(leaf(input(41))) == 42
   && output(nested(input(20))(input(22))) == 42
+  && byte_view(<<255, 0, 195>>) == <<255, 0, 195, 255, 0, 195>>
+  && restored_bytes == append
+  && restored_bytes(raw) == raw <> raw
 }
 
 pub fn invalid_input() -> Bool {
@@ -95,7 +102,7 @@ pub fn stopped() -> Bool {
                                             terminator: data::graph::Terminator::SourceStop(data::graph::SourceStop {
                                                 kind: data::graph::SourceStopKind::Panic,
                                                 message: Some(data::graph::StringLocalId(0)),
-                                                site: data::source::PanicSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1417, 1447)),
+                                                site: data::source::PanicSite::from_static("function_views", "<anonymous:5>", data::source::SourceSpan::new(1758, 1788)),
                                             }),
                                         },
                                     ]),
@@ -114,7 +121,7 @@ pub fn stopped() -> Bool {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
                                                 function: data::function::IntFunctionId(7),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1404, 1410)),
+                                                site: data::source::HostCallSite::from_static("function_views", "<anonymous:5>", data::source::SourceSpan::new(1745, 1751)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -285,7 +292,7 @@ pub fn stopped() -> Bool {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
                                                 function: data::function::IntFunctionId(7),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("function_views", "<anonymous:3>", data::source::SourceSpan::new(1222, 1228)),
+                                                site: data::source::HostCallSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1563, 1569)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -353,19 +360,78 @@ pub fn stopped() -> Bool {
                             },
                         })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
-                            index: 18,
+                            index: 23,
                             return_: data::graph::IntLocalId(0),
                             body: ::core::marker::PhantomData,
                         })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
-                            index: 19,
+                            index: 24,
                             return_: data::graph::IntLocalId(0),
                             body: ::core::marker::PhantomData,
                         })),
                     ]),
                     float_functions: data::Storage::Static(&[]),
-                    string_functions: data::Storage::Static(&[]),
-                    bit_array_functions: data::Storage::Static(&[]),
+                    string_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+                            index: 15,
+                            return_: data::graph::StringLocalId(0),
+                            body: ::core::marker::PhantomData,
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 1,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
+                                                shape: data::type_::ValueShapeId(16),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Concatenate {
+                                                left: data::graph::StringLocalId(0),
+                                                right: data::graph::StringLocalId(1),
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::StringLocalId(2)),
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+                            index: 19,
+                            return_: data::graph::StringLocalId(0),
+                            body: ::core::marker::PhantomData,
+                        })),
+                    ]),
+                    bit_array_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+                            index: 17,
+                            return_: data::graph::BitArrayLocalId(0),
+                            body: ::core::marker::PhantomData,
+                        })),
+                    ]),
                     utf_codepoint_functions: data::Storage::Static(&[]),
                     custom_functions: data::Storage::Static(&[
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
@@ -435,7 +501,7 @@ pub fn stopped() -> Bool {
                             },
                         })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
-                            index: 15,
+                            index: 20,
                             return_: data::graph::ExternalLocal {
                                 id: data::graph::ExternalLocalId(0),
                                 type_id: data::type_::ExternalTypeId(0),
@@ -491,7 +557,7 @@ pub fn stopped() -> Bool {
                             body: ::core::marker::PhantomData,
                         })),
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
-                            index: 17,
+                            index: 22,
                             return_: data::graph::ExternalLocal {
                                 id: data::graph::ExternalLocalId(0),
                                 type_id: data::type_::ExternalTypeId(0),
@@ -639,7 +705,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 failure: data::graph::Edge {
-                                                    target: data::graph::BlockId(20),
+                                                    target: data::graph::BlockId(29),
                                                     args: data::Storage::Static(&[
                                                         data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                             id: data::graph::CustomLocalId(4),
@@ -688,10 +754,10 @@ pub fn stopped() -> Bool {
                                         },
                                         data::graph::BlockHeader {
                                             params: 0..5,
-                                            instructions: 13..19,
+                                            instructions: 13..27,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::EqualInt {
-                                                    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
+                                                    left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(4)),
                                                     right: data::graph::IntegerOperand::Immediate(42),
                                                 },
                                                 true_: data::graph::Edge {
@@ -773,11 +839,44 @@ pub fn stopped() -> Bool {
                                                                 },
                                                             },
                                                         })),
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArray,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -809,12 +908,22 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(19),
+                                                    target: data::graph::BlockId(28),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArray,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -825,6 +934,16 @@ pub fn stopped() -> Bool {
                                                             },
                                                             data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::IntFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -849,8 +968,8 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 5..10,
-                                            instructions: 19..19,
+                                            params: 5..14,
+                                            instructions: 27..27,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::Equal {
                                                     left: data::graph::ParamLocal::IntFunction {
@@ -942,6 +1061,34 @@ pub fn stopped() -> Bool {
                                                                 },
                                                             },
                                                         })),
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -959,12 +1106,27 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(17),
+                                                    target: data::graph::BlockId(26),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::IntFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -984,8 +1146,8 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 10..14,
-                                            instructions: 19..21,
+                                            params: 14..22,
+                                            instructions: 27..29,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::EqualInt {
                                                     left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
@@ -1052,6 +1214,34 @@ pub fn stopped() -> Bool {
                                                                 },
                                                             },
                                                         })),
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1069,7 +1259,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(15),
+                                                    target: data::graph::BlockId(24),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1079,7 +1269,22 @@ pub fn stopped() -> Bool {
                                                                 steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::IntFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -1099,8 +1304,8 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 14..17,
-                                            instructions: 21..25,
+                                            params: 22..29,
+                                            instructions: 29..33,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::EqualInt {
                                                     left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
@@ -1152,6 +1357,34 @@ pub fn stopped() -> Bool {
                                                                 },
                                                             },
                                                         })),
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1179,7 +1412,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(13),
+                                                    target: data::graph::BlockId(22),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1189,7 +1422,22 @@ pub fn stopped() -> Bool {
                                                                 steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::External,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -1209,8 +1457,8 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 17..19,
-                                            instructions: 25..29,
+                                            params: 29..35,
+                                            instructions: 33..37,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::EqualInt {
                                                     left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(1)),
@@ -1247,6 +1495,34 @@ pub fn stopped() -> Bool {
                                                                 },
                                                             },
                                                         })),
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
                                                     ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1269,7 +1545,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(11),
+                                                    target: data::graph::BlockId(20),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1279,7 +1555,22 @@ pub fn stopped() -> Bool {
                                                                 steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::External,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -1299,8 +1590,8 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 19..20,
-                                            instructions: 29..36,
+                                            params: 35..40,
+                                            instructions: 37..44,
                                             terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
                                                 test: data::graph::BoolTest::EqualInt {
                                                     left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(2)),
@@ -1308,7 +1599,36 @@ pub fn stopped() -> Bool {
                                                 },
                                                 true_: data::graph::Edge {
                                                     target: data::graph::BlockId(7),
-                                                    args: data::Storage::Static(&[]),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                    ]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
                                                             data::graph::FamilyTransfer {
@@ -1335,7 +1655,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                                 false_: data::graph::Edge {
-                                                    target: data::graph::BlockId(9),
+                                                    target: data::graph::BlockId(18),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[
@@ -1345,7 +1665,22 @@ pub fn stopped() -> Bool {
                                                                 steps: data::Storage::Static(&[]),
                                                             },
                                                             data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
                                                                 family: data::graph::StorageFamily::External,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
                                                                 length: 0,
                                                                 steps: data::Storage::Static(&[]),
                                                             },
@@ -1365,11 +1700,216 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 20..20,
-                                            instructions: 36..37,
+                                            params: 40..44,
+                                            instructions: 44..56,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::Equal {
+                                                    left: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
+                                                    right: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(2)),
+                                                },
+                                                true_: data::graph::Edge {
+                                                    target: data::graph::BlockId(8),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArray,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                false_: data::graph::Edge {
+                                                    target: data::graph::BlockId(16),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::Int,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArray,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::BitArrayFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 44..47,
+                                            instructions: 56..56,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::Equal {
+                                                    left: data::graph::ParamLocal::StringFunction {
+                                                        local: data::graph::StringFunctionLocalId(1),
+                                                        type_: data::type_::FunctionType {
+                                                            arguments: data::Storage::Static(&[
+                                                                data::type_::ValueType::String,
+                                                            ]),
+                                                            return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                        },
+                                                    },
+                                                    right: data::graph::ParamLocal::StringFunction {
+                                                        local: data::graph::StringFunctionLocalId(0),
+                                                        type_: data::type_::FunctionType {
+                                                            arguments: data::Storage::Static(&[
+                                                                data::type_::ValueType::String,
+                                                            ]),
+                                                            return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                        },
+                                                    },
+                                                },
+                                                true_: data::graph::Edge {
+                                                    target: data::graph::BlockId(9),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(1),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                    ]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 1,
+                                                                steps: data::Storage::Static(&[
+                                                                    data::graph::TransferStep {
+                                                                        source: 1,
+                                                                        destination: 0,
+                                                                    },
+                                                                ]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                false_: data::graph::Edge {
+                                                    target: data::graph::BlockId(14),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 47..49,
+                                            instructions: 56..58,
+                                            terminator: data::graph::Terminator::TestBranch(data::graph::TestBranch {
+                                                test: data::graph::BoolTest::Equal {
+                                                    left: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                                    right: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
+                                                },
+                                                true_: data::graph::Edge {
+                                                    target: data::graph::BlockId(10),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                                false_: data::graph::Edge {
+                                                    target: data::graph::BlockId(12),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::String,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                            data::graph::FamilyTransfer {
+                                                                family: data::graph::StorageFamily::StringFunction,
+                                                                length: 0,
+                                                                steps: data::Storage::Static(&[]),
+                                                            },
+                                                        ]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 49..49,
+                                            instructions: 58..59,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(8),
+                                                    target: data::graph::BlockId(11),
                                                     args: data::Storage::Static(&[
                                                         data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                     ]),
@@ -1380,16 +1920,16 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 20..21,
-                                            instructions: 37..37,
+                                            params: 49..50,
+                                            instructions: 59..59,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 37..37,
+                                            params: 50..50,
+                                            instructions: 59..59,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(10),
+                                                    target: data::graph::BlockId(13),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1398,11 +1938,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 37..38,
+                                            params: 50..50,
+                                            instructions: 59..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(8),
+                                                    target: data::graph::BlockId(11),
                                                     args: data::Storage::Static(&[
                                                         data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                     ]),
@@ -1413,11 +1953,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(12),
+                                                    target: data::graph::BlockId(15),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1426,11 +1966,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(10),
+                                                    target: data::graph::BlockId(13),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1439,11 +1979,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(14),
+                                                    target: data::graph::BlockId(17),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1452,11 +1992,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(12),
+                                                    target: data::graph::BlockId(15),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1465,11 +2005,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(16),
+                                                    target: data::graph::BlockId(19),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1478,11 +2018,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(14),
+                                                    target: data::graph::BlockId(17),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1491,11 +2031,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(18),
+                                                    target: data::graph::BlockId(21),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1504,11 +2044,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(16),
+                                                    target: data::graph::BlockId(19),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1517,11 +2057,11 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..21,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::Jump(data::graph::Jump {
                                                 edge: data::graph::Edge {
-                                                    target: data::graph::BlockId(18),
+                                                    target: data::graph::BlockId(23),
                                                     args: data::Storage::Static(&[]),
                                                     transfer: data::graph::Transfer {
                                                         families: data::Storage::Static(&[]),
@@ -1530,8 +2070,86 @@ pub fn stopped() -> Bool {
                                             }),
                                         },
                                         data::graph::BlockHeader {
-                                            params: 21..22,
-                                            instructions: 38..38,
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(21),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(25),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(23),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(27),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(25),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..50,
+                                            instructions: 60..60,
+                                            terminator: data::graph::Terminator::Jump(data::graph::Jump {
+                                                edge: data::graph::Edge {
+                                                    target: data::graph::BlockId(27),
+                                                    args: data::Storage::Static(&[]),
+                                                    transfer: data::graph::Transfer {
+                                                        families: data::Storage::Static(&[]),
+                                                    },
+                                                },
+                                            }),
+                                        },
+                                        data::graph::BlockHeader {
+                                            params: 50..51,
+                                            instructions: 60..60,
                                             terminator: data::graph::Terminator::LetAssertPanic(data::graph::LetAssertPanic {
                                                 subject: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                                                     id: data::graph::CustomLocalId(0),
@@ -1717,6 +2335,46 @@ pub fn stopped() -> Bool {
                                             shape: data::type_::ValueShapeId(14),
                                         },
                                         data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::IntFunction {
                                                 local: data::graph::IntFunctionLocalId(0),
                                                 type_: data::type_::FunctionType {
@@ -1796,6 +2454,46 @@ pub fn stopped() -> Bool {
                                             shape: data::type_::ValueShapeId(14),
                                         },
                                         data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ExternalFunction(data::graph::ExternalFunctionLocal {
                                                 id: data::graph::ExternalFunctionLocalId(0),
                                                 type_: data::type_::ExternalFunctionType {
@@ -1863,6 +2561,46 @@ pub fn stopped() -> Bool {
                                             shape: data::type_::ValueShapeId(14),
                                         },
                                         data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::ExternalFunction(data::graph::ExternalFunctionLocal {
                                                 id: data::graph::ExternalFunctionLocalId(0),
                                                 type_: data::type_::ExternalFunctionType {
@@ -1912,6 +2650,46 @@ pub fn stopped() -> Bool {
                                             shape: data::type_::ValueShapeId(14),
                                         },
                                         data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::FunctionFunction(data::graph::FunctionFunctionLocal::External(data::graph::ExternalFunctionFunctionLocal {
                                                 id: data::graph::ExternalFunctionFunctionLocalId(0),
                                                 type_: data::type_::FunctionFunctionType {
@@ -1943,8 +2721,132 @@ pub fn stopped() -> Bool {
                                             shape: data::type_::ValueShapeId(14),
                                         },
                                         data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(1),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                            shape: data::type_::ValueShapeId(16),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                        data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                            shape: data::type_::ValueShapeId(15),
+                                            shape: data::type_::ValueShapeId(19),
                                         },
                                         data::graph::ParamSlot {
                                             local: data::graph::ParamLocal::Custom(data::graph::CustomLocal {
@@ -2529,6 +3431,184 @@ pub fn stopped() -> Bool {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
                                                 sign: data::Sign::Plus,
                                                 digits: data::Storage::Static(&[
+                                                    255,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    195,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                                shape: data::type_::ValueShapeId(15),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::Value(data::Storage::Static(&[
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(0),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(1),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(2),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                            ]))),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                shape: data::type_::ValueShapeId(16),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Call {
+                                                function: data::function::StringFunctionId(0),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(947, 970)),
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::StringFunction {
+                                                    local: data::graph::StringFunctionLocalId(0),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[
+                                                            data::type_::ValueType::String,
+                                                        ]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                                family: data::function::FunctionReturnFamily::String,
+                                                kind: data::graph::FunctionInstructionKind::Closure {
+                                                    target: data::graph::FunctionTarget::String(data::function::StringFunctionId(1)),
+                                                    captures: data::Storage::Static(&[
+                                                        data::graph::FunctionCapture::String {
+                                                            target: data::graph::StringLocalId(1),
+                                                            source: data::graph::StringLocalId(0),
+                                                        },
+                                                    ]),
+                                                },
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BitArrayFunction {
+                                                    local: data::graph::BitArrayFunctionLocalId(0),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[
+                                                            data::type_::ValueType::BitArray,
+                                                        ]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(18),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                                family: data::function::FunctionReturnFamily::BitArray,
+                                                kind: data::graph::FunctionInstructionKind::Call {
+                                                    function: data::function::ProfiledFunctionFunctionId::BitArray(data::function::BitArrayFunctionFunctionId(0)),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::StringFunction {
+                                                            local: data::graph::StringFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::String,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                            },
+                                                        },
+                                                    ]),
+                                                    site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1057, 1071)),
+                                                },
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::StringFunction {
+                                                    local: data::graph::StringFunctionLocalId(1),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[
+                                                            data::type_::ValueType::String,
+                                                        ]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(17),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                                family: data::function::FunctionReturnFamily::String,
+                                                kind: data::graph::FunctionInstructionKind::Call {
+                                                    function: data::function::ProfiledFunctionFunctionId::String(data::function::StringFunctionFunctionId(0)),
+                                                    args: data::Storage::Static(&[
+                                                        data::graph::ParamLocal::BitArrayFunction {
+                                                            local: data::graph::BitArrayFunctionLocalId(0),
+                                                            type_: data::type_::FunctionType {
+                                                                arguments: data::Storage::Static(&[
+                                                                    data::type_::ValueType::BitArray,
+                                                                ]),
+                                                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                            },
+                                                        },
+                                                    ]),
+                                                    site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1117, 1134)),
+                                                },
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
                                                     40,
                                                 ]),
                                             })),
@@ -2547,9 +3627,9 @@ pub fn stopped() -> Bool {
                                                     return_type: data::type_::ExternalTypeId(0),
                                                 },
                                                 args: data::Storage::Static(&[
-                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                    data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(941, 950)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1149, 1158)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2582,12 +3662,12 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(936, 951)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1144, 1159)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
-                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
                                                 shape: data::type_::ValueShapeId(1),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
@@ -2598,7 +3678,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(929, 952)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1137, 1160)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2623,7 +3703,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(990, 1002)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1198, 1210)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2654,7 +3734,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1030, 1039)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1238, 1247)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2687,7 +3767,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1021, 1040)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1229, 1248)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2703,7 +3783,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1014, 1041)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1222, 1249)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2734,7 +3814,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1065, 1074)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1273, 1282)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2767,7 +3847,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1060, 1075)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1268, 1283)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2783,7 +3863,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1053, 1076)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1261, 1284)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2814,7 +3894,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1102, 1111)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1310, 1319)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2879,7 +3959,7 @@ pub fn stopped() -> Bool {
                                                             type_id: data::type_::ExternalTypeId(0),
                                                         }),
                                                     ]),
-                                                    site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1095, 1112)),
+                                                    site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1303, 1320)),
                                                 },
                                             }),
                                         }),
@@ -2911,7 +3991,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1113, 1122)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1321, 1330)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2944,7 +4024,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1095, 1123)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1303, 1331)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2960,20 +4040,219 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1088, 1124)),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1296, 1332)),
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    255,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    195,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                                shape: data::type_::ValueShapeId(15),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::Value(data::Storage::Static(&[
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(0),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(1),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(2),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                            ]))),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(1)),
+                                                shape: data::type_::ValueShapeId(15),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
+                                                function: data::graph::BitArrayFunctionLocalId(0),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1344, 1370)),
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(3)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    255,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(4)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(5)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    195,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(6)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    255,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(7)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::NoSign,
+                                                digits: data::Storage::Static(&[]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(8)),
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Value(data::graph::IntegerLiteral {
+                                                sign: data::Sign::Plus,
+                                                digits: data::Storage::Static(&[
+                                                    195,
+                                                ]),
+                                            })),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(2)),
+                                                shape: data::type_::ValueShapeId(15),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::Value(data::Storage::Static(&[
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(3),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(4),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(5),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(6),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(7),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                                data::graph::BitArraySegment::Int {
+                                                    value: data::graph::IntLocalId(8),
+                                                    bit_size: 8,
+                                                    endianness: data::graph::Endianness::Big,
+                                                },
+                                            ]))),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                                shape: data::type_::ValueShapeId(16),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
+                                                function: data::graph::StringFunctionLocalId(0),
+                                                args: data::Storage::Static(&[
+                                                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                                ]),
+                                                site: data::source::HostCallSite::from_static("function_views", "run", data::source::SourceSpan::new(1438, 1457)),
+                                            }),
+                                        }),
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(2)),
+                                                shape: data::type_::ValueShapeId(16),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::Concatenate {
+                                                left: data::graph::StringLocalId(0),
+                                                right: data::graph::StringLocalId(0),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(15),
+                                                shape: data::type_::ValueShapeId(19),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(true)),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(15),
+                                                shape: data::type_::ValueShapeId(19),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Value(false)),
                                         }),
@@ -3081,7 +4360,7 @@ pub fn stopped() -> Bool {
                                                             },
                                                         },
                                                     ]),
-                                                    site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1202, 1235)),
+                                                    site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1543, 1576)),
                                                 },
                                             }),
                                         }),
@@ -3108,7 +4387,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1258, 1273)),
+                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1599, 1614)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3141,7 +4420,7 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1283, 1294)),
+                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1624, 1635)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3157,13 +4436,13 @@ pub fn stopped() -> Bool {
                                                         type_id: data::type_::ExternalTypeId(0),
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1276, 1295)),
+                                                site: data::source::HostCallSite::from_static("function_views", "invalid_input", data::source::SourceSpan::new(1617, 1636)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
-                                                shape: data::type_::ValueShapeId(15),
+                                                shape: data::type_::ValueShapeId(19),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::EqualInt {
                                                 left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
@@ -3199,7 +4478,7 @@ pub fn stopped() -> Bool {
                                                             return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(4))),
                                                         },
                                                         shape: data::type_::FunctionShape {
-                                                            shape_id: data::type_::ValueShapeId(18),
+                                                            shape_id: data::type_::ValueShapeId(21),
                                                             type_: data::type_::FunctionType {
                                                                 arguments: data::Storage::Static(&[
                                                                     data::type_::ValueType::External(data::type_::ExternalTypeId(0)),
@@ -3229,7 +4508,7 @@ pub fn stopped() -> Bool {
                                                         },
                                                     ]),
                                                 },
-                                                site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1465, 1480)),
+                                                site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1806, 1821)),
                                             }),
                                         },
                                     ]),
@@ -3247,7 +4526,7 @@ pub fn stopped() -> Bool {
                                                             return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                                                         },
                                                         shape: data::type_::FunctionShape {
-                                                            shape_id: data::type_::ValueShapeId(20),
+                                                            shape_id: data::type_::ValueShapeId(23),
                                                             type_: data::type_::FunctionType {
                                                                 arguments: data::Storage::Static(&[
                                                                     data::type_::ValueType::Int,
@@ -3257,7 +4536,7 @@ pub fn stopped() -> Bool {
                                                         },
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(20),
+                                                shape: data::type_::ValueShapeId(23),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
                                                 type_: data::type_::FunctionType {
@@ -3285,7 +4564,7 @@ pub fn stopped() -> Bool {
                                                             return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(4))),
                                                         },
                                                         shape: data::type_::FunctionShape {
-                                                            shape_id: data::type_::ValueShapeId(18),
+                                                            shape_id: data::type_::ValueShapeId(21),
                                                             type_: data::type_::FunctionType {
                                                                 arguments: data::Storage::Static(&[
                                                                     data::type_::ValueType::External(data::type_::ExternalTypeId(0)),
@@ -3295,7 +4574,7 @@ pub fn stopped() -> Bool {
                                                         },
                                                     },
                                                 }),
-                                                shape: data::type_::ValueShapeId(18),
+                                                shape: data::type_::ValueShapeId(21),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
                                                 type_: data::type_::FunctionType {
@@ -3316,7 +4595,7 @@ pub fn stopped() -> Bool {
                                                                 return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(4))),
                                                             },
                                                             shape: data::type_::FunctionShape {
-                                                                shape_id: data::type_::ValueShapeId(18),
+                                                                shape_id: data::type_::ValueShapeId(21),
                                                                 type_: data::type_::FunctionType {
                                                                     arguments: data::Storage::Static(&[
                                                                         data::type_::ValueType::External(data::type_::ExternalTypeId(0)),
@@ -3337,7 +4616,7 @@ pub fn stopped() -> Bool {
                                                                     return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                                                                 },
                                                                 shape: data::type_::FunctionShape {
-                                                                    shape_id: data::type_::ValueShapeId(20),
+                                                                    shape_id: data::type_::ValueShapeId(23),
                                                                     type_: data::type_::FunctionType {
                                                                         arguments: data::Storage::Static(&[
                                                                             data::type_::ValueType::Int,
@@ -3348,7 +4627,7 @@ pub fn stopped() -> Bool {
                                                             },
                                                         }),
                                                     ]),
-                                                    site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1370, 1454)),
+                                                    site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1711, 1795)),
                                                 },
                                             }),
                                         }),
@@ -3380,7 +4659,7 @@ pub fn stopped() -> Bool {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1470, 1479)),
+                                                site: data::source::HostCallSite::from_static("function_views", "stopped", data::source::SourceSpan::new(1811, 1820)),
                                             }),
                                         }),
                                     ]),
@@ -3488,8 +4767,20 @@ pub fn stopped() -> Bool {
                         })),
                     ]),
                     float_function_functions: data::Storage::Static(&[]),
-                    string_function_functions: data::Storage::Static(&[]),
-                    bit_array_function_functions: data::Storage::Static(&[]),
+                    string_function_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+                            index: 18,
+                            return_: data::graph::StringFunctionLocalId(0),
+                            body: ::core::marker::PhantomData,
+                        })),
+                    ]),
+                    bit_array_function_functions: data::Storage::Static(&[
+                        data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
+                            index: 16,
+                            return_: data::graph::BitArrayFunctionLocalId(0),
+                            body: ::core::marker::PhantomData,
+                        })),
+                    ]),
                     utf_codepoint_function_functions: data::Storage::Static(&[]),
                     custom_function_functions: data::Storage::Static(&[]),
                     external_function_functions: data::Storage::Static(&[
@@ -3576,7 +4867,7 @@ pub fn stopped() -> Bool {
                     generic_function_functions: data::Storage::Static(&[]),
                     never_function_functions: data::Storage::Static(&[
                         data::function::ValueFunctionEntry::Host(data::host::HostedFunctionTarget::Value(data::host::HostFunctionId {
-                            index: 16,
+                            index: 21,
                             return_: data::graph::NeverFunctionLocal {
                                 id: data::graph::NeverFunctionLocalId(0),
                                 type_: data::type_::GenericFunctionType {
@@ -3587,7 +4878,7 @@ pub fn stopped() -> Bool {
                                         return_: data::Storage::Static(&data::type_::ValueType::Custom(data::type_::CustomTypeId(4))),
                                     },
                                     shape: data::type_::FunctionShape {
-                                        shape_id: data::type_::ValueShapeId(18),
+                                        shape_id: data::type_::ValueShapeId(21),
                                         type_: data::type_::FunctionType {
                                             arguments: data::Storage::Static(&[
                                                 data::type_::ValueType::External(data::type_::ExternalTypeId(0)),
@@ -3680,6 +4971,12 @@ pub fn stopped() -> Bool {
                     Bool0Point15 {  },
                     Bool0Point16 {  },
                     Bool0Point17 {  },
+                    Bool0Point18 {  },
+                    Bool0Point19 {  },
+                    Bool0Point20 {  },
+                    Bool0Point21 {  },
+                    Bool0Point22 {  },
+                    Bool0Point23 {  },
                     Bool1Point0 {  },
                     Bool1Point1 { int_function0: IntCallable },
                     IntFunction1Point0 { int0: i128 },
@@ -3692,7 +4989,7 @@ pub fn stopped() -> Bool {
                 impl IntReturn {
                     fn site(&self) -> data::source::HostCallSite {
                         match *self {
-                            Self::Int3Call0 { .. } => data::source::HostCallSite::from_static("function_views", "<anonymous:3>", data::source::SourceSpan::new(1222, 1228)),
+                            Self::Int3Call0 { .. } => data::source::HostCallSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1563, 1569)),
                         }
                     }
                     fn small(self, result: i128) -> FunctionState {
@@ -3722,7 +5019,7 @@ pub fn stopped() -> Bool {
                                     custom_lists: 0,
                                     int_functions: 0,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -3945,7 +5242,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int2 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
@@ -3971,7 +5268,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point1 { int0, int1 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
@@ -3984,7 +5281,7 @@ pub fn stopped() -> Bool {
                         FunctionState::Int3Point0 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0 }); }
                             *budget -= 1;
-                            FunctionStep::IntBridge { function: data::function::IntFunctionId(7), site: data::source::HostCallSite::from_static("function_views", "<anonymous:3>", data::source::SourceSpan::new(1222, 1228)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int3Call0 { int0 } }
+                            FunctionStep::IntBridge { function: data::function::IntFunctionId(7), site: data::source::HostCallSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1563, 1569)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int3Call0 { int0 } }
                         },
                         FunctionState::Int3Point1 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0, int1 }); }
@@ -4002,7 +5299,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point2 { int0, int1, int2 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
@@ -4028,7 +5325,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point1 { int0, int1, int2 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int2, exit: data::graph::BlockGraphExitId(0) }
@@ -4054,7 +5351,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool0Point1 { int0 })
                         },
                         FunctionState::Bool0Point1 { int0 } => {
@@ -4081,7 +5378,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                         },
                         FunctionState::Bool0Point3 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point3 {  }); }
@@ -4158,7 +5455,37 @@ pub fn stopped() -> Bool {
                         FunctionState::Bool0Point17 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point17 {  }); }
                             *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point18 {  })
+                        },
+                        FunctionState::Bool0Point18 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point18 {  }); }
+                            *budget -= 1;
                             FunctionStep::Next(FunctionState::Bool0Point16 {  })
+                        },
+                        FunctionState::Bool0Point19 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point19 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point20 {  })
+                        },
+                        FunctionState::Bool0Point20 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point20 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point18 {  })
+                        },
+                        FunctionState::Bool0Point21 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point21 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point22 {  })
+                        },
+                        FunctionState::Bool0Point22 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point22 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point20 {  })
+                        },
+                        FunctionState::Bool0Point23 {  } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point23 {  }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Bool0Point22 {  })
                         },
                         FunctionState::Bool1Point0 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point0 {  }); }
@@ -4184,7 +5511,7 @@ pub fn stopped() -> Bool {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                         },
                         FunctionState::IntFunction1Point0 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction1Point0 { int0 }); }
@@ -4277,6 +5604,12 @@ pub fn stopped() -> Bool {
                         15 => FunctionState::Bool0Point15 {  },
                         16 => FunctionState::Bool0Point16 {  },
                         17 => FunctionState::Bool0Point17 {  },
+                        18 => FunctionState::Bool0Point18 {  },
+                        19 => FunctionState::Bool0Point19 {  },
+                        20 => FunctionState::Bool0Point20 {  },
+                        21 => FunctionState::Bool0Point21 {  },
+                        22 => FunctionState::Bool0Point22 {  },
+                        23 => FunctionState::Bool0Point23 {  },
                         _ => return None,
                     };
                     Some(active)
@@ -4322,6 +5655,8 @@ pub fn stopped() -> Bool {
                     int_lists: data::Storage::Static(&[
                     ]),
                     callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                    native_loops: data::Storage::Static(&[
+                    ]),
                     function_calls: data::Storage::Static(&[
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),
@@ -4499,7 +5834,7 @@ pub fn stopped() -> Bool {
                                         output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(7))),
                                         args: data::Storage::Static(&[]),
-                                        site: data::source::HostCallSite::from_static("function_views", "<anonymous:3>", data::source::SourceSpan::new(1222, 1228)),
+                                        site: data::source::HostCallSite::from_static("function_views", "<anonymous:4>", data::source::SourceSpan::new(1563, 1569)),
                                     },
                                 ]),
                                 creations: data::Storage::Static(&[]),
@@ -4615,58 +5950,6 @@ pub fn stopped() -> Bool {
                                         bool_functions: 0,
                                     },
                                     data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(7),
-                                        instruction: 0,
-                                        ints: 0,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(7),
-                                        instruction: 1,
-                                        ints: 0,
-                                        bools: 1,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(8),
-                                        instruction: 0,
-                                        ints: 0,
-                                        bools: 1,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(9),
-                                        instruction: 0,
-                                        ints: 0,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
                                         block: data::graph::BlockId(10),
                                         instruction: 0,
                                         ints: 0,
@@ -4696,7 +5979,7 @@ pub fn stopped() -> Bool {
                                         block: data::graph::BlockId(11),
                                         instruction: 0,
                                         ints: 0,
-                                        bools: 0,
+                                        bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 0,
                                         strings: 0,
@@ -4723,6 +6006,19 @@ pub fn stopped() -> Bool {
                                         instruction: 0,
                                         ints: 0,
                                         bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(13),
+                                        instruction: 1,
+                                        ints: 0,
+                                        bools: 1,
                                         bit_arrays: 0,
                                         int_lists: 0,
                                         strings: 0,
@@ -4809,6 +6105,123 @@ pub fn stopped() -> Bool {
                                         int_functions: 0,
                                         bool_functions: 0,
                                     },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(20),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(21),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(22),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(23),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(24),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(25),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(26),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(27),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(28),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
                                 ]),
                                 locals: data::Storage::Static(&[
                                     data::Storage::Static(&[]),
@@ -4839,6 +6252,12 @@ pub fn stopped() -> Bool {
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                     ]),
+                                    data::Storage::Static(&[]),
+                                    data::Storage::Static(&[]),
+                                    data::Storage::Static(&[]),
+                                    data::Storage::Static(&[]),
+                                    data::Storage::Static(&[]),
+                                    data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
                                     data::Storage::Static(&[]),
@@ -5094,16 +6513,12 @@ pub fn stopped() -> Bool {
                     0..2,
                     2..10,
                     0..0,
+                    10..13,
+                    13..14,
                     0..0,
-                    0..0,
-                    0..0,
-                    10..12,
-                    12..21,
-                    21..24,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
+                    14..16,
+                    16..25,
+                    25..28,
                     0..0,
                     0..0,
                     0..0,
@@ -5116,33 +6531,37 @@ pub fn stopped() -> Bool {
                     0..0,
                     0..0,
                     0..0,
-                    24..26,
                     0..0,
                     0..0,
                     0..0,
                     0..0,
-                    0..0,
-                    26..30,
-                    0..0,
-                    0..0,
-                    0..0,
+                    28..30,
                     0..0,
                     30..31,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
-                    0..0,
                     31..32,
+                    0..0,
+                    0..0,
+                    32..36,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    36..37,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    0..0,
+                    37..38,
                 ],
                 functions: data::Storage::Static(&[
                     data::function::FunctionContract {
@@ -5150,7 +6569,7 @@ pub fn stopped() -> Bool {
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
-                        return_: data::type_::ValueShapeId(19),
+                        return_: data::type_::ValueShapeId(22),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -5158,7 +6577,7 @@ pub fn stopped() -> Bool {
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
-                        return_: data::type_::ValueShapeId(17),
+                        return_: data::type_::ValueShapeId(20),
                         captures: data::Storage::Static(&[
                             data::graph::ParamSlot {
                                 local: data::graph::ParamLocal::NeverFunction(data::graph::NeverFunctionLocal {
@@ -5171,7 +6590,7 @@ pub fn stopped() -> Bool {
                                             return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                                         },
                                         shape: data::type_::FunctionShape {
-                                            shape_id: data::type_::ValueShapeId(20),
+                                            shape_id: data::type_::ValueShapeId(23),
                                             type_: data::type_::FunctionType {
                                                 arguments: data::Storage::Static(&[
                                                     data::type_::ValueType::Int,
@@ -5181,7 +6600,7 @@ pub fn stopped() -> Bool {
                                         },
                                     },
                                 }),
-                                shape: data::type_::ValueShapeId(20),
+                                shape: data::type_::ValueShapeId(23),
                             },
                         ]),
                     },
@@ -5279,13 +6698,76 @@ pub fn stopped() -> Bool {
                     data::function::FunctionContract {
                         parameters: 9..10,
                         parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(15),
+                        ]),
+                        return_: data::type_::ValueShapeId(16),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 10..11,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(16),
+                        ]),
+                        return_: data::type_::ValueShapeId(16),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(1)),
+                                shape: data::type_::ValueShapeId(16),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 11..12,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(16),
+                        ]),
+                        return_: data::type_::ValueShapeId(16),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::BitArrayFunction {
+                                    local: data::graph::BitArrayFunctionLocalId(0),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::BitArray,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                    },
+                                },
+                                shape: data::type_::ValueShapeId(18),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 12..13,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(15),
+                        ]),
+                        return_: data::type_::ValueShapeId(15),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::StringFunction {
+                                    local: data::graph::StringFunctionLocalId(0),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::String,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                                    },
+                                },
+                                shape: data::type_::ValueShapeId(17),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 13..14,
+                        parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(8),
                         ]),
                         return_: data::type_::ValueShapeId(9),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 10..11,
+                        parameters: 14..15,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(12),
                         ]),
@@ -5293,7 +6775,7 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 11..12,
+                        parameters: 15..16,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
@@ -5301,7 +6783,7 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 12..13,
+                        parameters: 16..17,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(16),
                         ]),
@@ -5309,7 +6791,7 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 13..14,
+                        parameters: 17..18,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5330,7 +6812,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 14..15,
+                        parameters: 18..19,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5351,7 +6833,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 15..16,
+                        parameters: 19..20,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5372,7 +6854,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 16..17,
+                        parameters: 20..21,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5412,7 +6894,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 17..18,
+                        parameters: 21..22,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5433,7 +6915,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 18..19,
+                        parameters: 22..23,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5473,7 +6955,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 19..20,
+                        parameters: 23..24,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
@@ -5481,25 +6963,25 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 20..20,
+                        parameters: 24..24,
                         parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(15),
+                        return_: data::type_::ValueShapeId(19),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 20..20,
+                        parameters: 24..24,
                         parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(15),
+                        return_: data::type_::ValueShapeId(19),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 20..20,
+                        parameters: 24..24,
                         parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(15),
+                        return_: data::type_::ValueShapeId(19),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 20..21,
+                        parameters: 24..25,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(3),
                         ]),
@@ -5507,7 +6989,7 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 21..22,
+                        parameters: 25..26,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
@@ -5515,7 +6997,23 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 22..23,
+                        parameters: 26..27,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(18),
+                        ]),
+                        return_: data::type_::ValueShapeId(17),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 27..28,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(17),
+                        ]),
+                        return_: data::type_::ValueShapeId(18),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 28..29,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(2),
                         ]),
@@ -5523,7 +7021,7 @@ pub fn stopped() -> Bool {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 23..24,
+                        parameters: 29..30,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5563,7 +7061,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 24..25,
+                        parameters: 30..31,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5584,7 +7082,7 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 25..26,
+                        parameters: 31..32,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -5611,15 +7109,15 @@ pub fn stopped() -> Bool {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 26..27,
+                        parameters: 32..33,
                         parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(20),
+                            data::type_::ValueShapeId(23),
                         ]),
-                        return_: data::type_::ValueShapeId(18),
+                        return_: data::type_::ValueShapeId(21),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 27..28,
+                        parameters: 33..34,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(13),
                         ]),
@@ -5646,6 +7144,10 @@ pub fn stopped() -> Bool {
                         id: data::graph::ExternalLocalId(0),
                         type_id: data::type_::ExternalTypeId(0),
                     }),
+                    data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                    data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                    data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                     data::graph::ParamLocal::Custom(data::graph::CustomLocal {
                         id: data::graph::CustomLocalId(0),
                         shape: data::type_::CustomValueShape {
@@ -5703,6 +7205,24 @@ pub fn stopped() -> Bool {
                         },
                     }),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                    data::graph::ParamLocal::BitArrayFunction {
+                        local: data::graph::BitArrayFunctionLocalId(0),
+                        type_: data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::BitArray,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                        },
+                    },
+                    data::graph::ParamLocal::StringFunction {
+                        local: data::graph::StringFunctionLocalId(0),
+                        type_: data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::String,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::String),
+                        },
+                    },
                     data::graph::ParamLocal::IntFunction {
                         local: data::graph::IntFunctionLocalId(0),
                         type_: data::type_::FunctionType {
@@ -5734,7 +7254,7 @@ pub fn stopped() -> Bool {
                                 return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                             },
                             shape: data::type_::FunctionShape {
-                                shape_id: data::type_::ValueShapeId(20),
+                                shape_id: data::type_::ValueShapeId(23),
                                 type_: data::type_::FunctionType {
                                     arguments: data::Storage::Static(&[
                                         data::type_::ValueType::Int,
@@ -6148,21 +7668,34 @@ pub fn stopped() -> Bool {
                         ]),
                         return_: data::type_::ValueShapeId(3),
                     },
-                    data::type_::ValueShapeDescriptor::Bool,
+                    data::type_::ValueShapeDescriptor::BitArray,
                     data::type_::ValueShapeDescriptor::String,
+                    data::type_::ValueShapeDescriptor::Function {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueShapeId(16),
+                        ]),
+                        return_: data::type_::ValueShapeId(16),
+                    },
+                    data::type_::ValueShapeDescriptor::Function {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueShapeId(15),
+                        ]),
+                        return_: data::type_::ValueShapeId(15),
+                    },
+                    data::type_::ValueShapeDescriptor::Bool,
                     data::type_::ValueShapeDescriptor::Custom(data::type_::CustomValueShapeId(6)),
                     data::type_::ValueShapeDescriptor::Function {
                         arguments: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
-                        return_: data::type_::ValueShapeId(17),
+                        return_: data::type_::ValueShapeId(20),
                     },
                     data::type_::ValueShapeDescriptor::Parameter(data::type_::parameter_id(0)),
                     data::type_::ValueShapeDescriptor::Function {
                         arguments: data::Storage::Static(&[
                             data::type_::ValueShapeId(1),
                         ]),
-                        return_: data::type_::ValueShapeId(19),
+                        return_: data::type_::ValueShapeId(22),
                     },
                 ]),
                 shape_types: data::Storage::Static(&[
@@ -6211,8 +7744,21 @@ pub fn stopped() -> Bool {
                             return_: data::Storage::Static(&data::type_::ValueType::External(data::type_::ExternalTypeId(0))),
                         })),
                     }),
-                    data::type_::ValueType::Bool,
+                    data::type_::ValueType::BitArray,
                     data::type_::ValueType::String,
+                    data::type_::ValueType::Function(data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueType::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                    }),
+                    data::type_::ValueType::Function(data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueType::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                    }),
+                    data::type_::ValueType::Bool,
                     data::type_::ValueType::Custom(data::type_::CustomTypeId(4)),
                     data::type_::ValueType::Function(data::type_::FunctionType {
                         arguments: data::Storage::Static(&[
@@ -10144,6 +11690,833 @@ pub fn stopped() -> Bool {
             site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::BitArray,
+                ]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::String,
+                    shape: data::type_::ValueShapeId(16),
+                },
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::BitArray,
+                    shape: data::type_::ValueShapeId(15),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[
+                    data::host::HostCallParameter::Value(data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0))),
+                ]),
+                captures: data::Storage::Static(&[]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[
+                        (data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            arguments: data::Storage::Static(&[]),
+                        }), data::type_::ExternalTypeId(0)),
+                    ]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[
+                        data::host::NativeConversionId(0),
+                        data::host::NativeConversionId(1),
+                    ]),
+                    nodes: data::Storage::Static(&[
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::String,
+                            kind: data::host::NativeConversionKind::String,
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("application"),
+                                module: data::Text::Static("function_views"),
+                                name: data::Text::Static("Erased"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                            kind: data::host::NativeConversionKind::External {
+                                rule: 0,
+                            },
+                        },
+                    ]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[
+                    data::type_::ValueType::BitArray,
+                ]),
+                return_: data::Storage::Static(&data::type_::ValueType::String),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 2,
+                parameters: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[
+                    data::host::RegistrationParameter::Value(0),
+                ]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(0),
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                    },
+                ]),
+                native_rules: Some(data::Storage::Static(&[
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ])),
+                native_sources: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+            }),
+            native_view: None,
+        },
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
+            callable_entry: None,
+            package: data::Text::Static("application"),
+            site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                    }),
+                ]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::BitArray,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                })),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                    }),
+                    shape: data::type_::ValueShapeId(18),
+                },
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                    }),
+                    shape: data::type_::ValueShapeId(17),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[
+                    data::host::HostCallParameter::Value(data::graph::ParamLocal::StringFunction {
+                        local: data::graph::StringFunctionLocalId(0),
+                        type_: data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::String,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::String),
+                        },
+                    }),
+                ]),
+                captures: data::Storage::Static(&[]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[
+                        (data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            arguments: data::Storage::Static(&[]),
+                        }), data::type_::ExternalTypeId(0)),
+                    ]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[
+                        data::host::NativeConversionId(0),
+                        data::host::NativeConversionId(1),
+                    ]),
+                    nodes: data::Storage::Static(&[
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::TypeMetadata::BitArray,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                            }),
+                            kind: data::host::NativeConversionKind::Function(data::Storage::Static(&[
+                                data::host::NativeFunctionView {
+                                    source: data::type_::FunctionMetadata {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::TypeMetadata::String,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                                    },
+                                    target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::BitArray(data::function::BitArrayFunctionId(0))),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::BitArray,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                    },
+                                    captures: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::StringFunction {
+                                                local: data::graph::StringFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::String,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(17),
+                                        },
+                                    ]),
+                                    host: 17,
+                                    host_value: true,
+                                },
+                            ])),
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("application"),
+                                module: data::Text::Static("function_views"),
+                                name: data::Text::Static("Erased"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                            kind: data::host::NativeConversionKind::External {
+                                rule: 0,
+                            },
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::String,
+                            kind: data::host::NativeConversionKind::String,
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::BitArray,
+                            kind: data::host::NativeConversionKind::BitArray,
+                        },
+                    ]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[
+                    data::type_::ValueType::Function(data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueType::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                    }),
+                ]),
+                return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueType::BitArray,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                })),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 2,
+                parameters: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[
+                    data::host::RegistrationParameter::Value(0),
+                ]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(0),
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                    },
+                ]),
+                native_rules: Some(data::Storage::Static(&[
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ])),
+                native_sources: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+            }),
+            native_view: None,
+        },
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
+            callable_entry: Some(data::host::HostCallableEntry {
+                family: data::function::FunctionTableFamily::BitArray,
+                index: 0,
+            }),
+            package: data::Text::Static("application"),
+            site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::BitArray,
+                ]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                    }),
+                    shape: data::type_::ValueShapeId(18),
+                },
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                    }),
+                    shape: data::type_::ValueShapeId(17),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[
+                    data::host::HostCallParameter::Value(data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0))),
+                ]),
+                captures: data::Storage::Static(&[
+                    data::graph::ParamSlot {
+                        local: data::graph::ParamLocal::StringFunction {
+                            local: data::graph::StringFunctionLocalId(0),
+                            type_: data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::ValueType::String,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::ValueType::String),
+                            },
+                        },
+                        shape: data::type_::ValueShapeId(17),
+                    },
+                ]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[]),
+                    nodes: data::Storage::Static(&[]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[
+                    data::type_::ValueType::BitArray,
+                ]),
+                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 2,
+                parameters: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[
+                    data::host::RegistrationParameter::Value(0),
+                ]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(0),
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                    },
+                ]),
+                native_rules: Some(data::Storage::Static(&[
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ])),
+                native_sources: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+            }),
+            native_view: Some(data::host::HostNativeView {
+                parent: 16,
+                source: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::String,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                },
+                parent_value: true,
+                arguments: data::Storage::Static(&[
+                    data::host::NativeConversionId(2),
+                ]),
+                return_: data::host::NativeConversionId(3),
+            }),
+        },
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
+            callable_entry: None,
+            package: data::Text::Static("application"),
+            site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                    }),
+                ]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::String,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                })),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                    }),
+                    shape: data::type_::ValueShapeId(17),
+                },
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                    }),
+                    shape: data::type_::ValueShapeId(18),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[
+                    data::host::HostCallParameter::Value(data::graph::ParamLocal::BitArrayFunction {
+                        local: data::graph::BitArrayFunctionLocalId(0),
+                        type_: data::type_::FunctionType {
+                            arguments: data::Storage::Static(&[
+                                data::type_::ValueType::BitArray,
+                            ]),
+                            return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                        },
+                    }),
+                ]),
+                captures: data::Storage::Static(&[]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[
+                        (data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            arguments: data::Storage::Static(&[]),
+                        }), data::type_::ExternalTypeId(0)),
+                    ]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[
+                        data::host::NativeConversionId(0),
+                        data::host::NativeConversionId(1),
+                    ]),
+                    nodes: data::Storage::Static(&[
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::TypeMetadata::String,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                            }),
+                            kind: data::host::NativeConversionKind::Function(data::Storage::Static(&[
+                                data::host::NativeFunctionView {
+                                    source: data::type_::FunctionMetadata {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::TypeMetadata::BitArray,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                                    },
+                                    target: data::function::ProfiledRuntimeFunctionId::Core(data::function::ProfiledCoreRuntimeFunctionId::String(data::function::StringFunctionId(2))),
+                                    type_: data::type_::FunctionType {
+                                        arguments: data::Storage::Static(&[
+                                            data::type_::ValueType::String,
+                                        ]),
+                                        return_: data::Storage::Static(&data::type_::ValueType::String),
+                                    },
+                                    captures: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::BitArrayFunction {
+                                                local: data::graph::BitArrayFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::BitArray,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                                                },
+                                            },
+                                            shape: data::type_::ValueShapeId(18),
+                                        },
+                                    ]),
+                                    host: 19,
+                                    host_value: true,
+                                },
+                            ])),
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
+                                package: data::Text::Static("application"),
+                                module: data::Text::Static("function_views"),
+                                name: data::Text::Static("Erased"),
+                                arguments: data::Storage::Static(&[]),
+                            }),
+                            kind: data::host::NativeConversionKind::External {
+                                rule: 0,
+                            },
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::BitArray,
+                            kind: data::host::NativeConversionKind::BitArray,
+                        },
+                        data::host::NativeConversion {
+                            type_: data::type_::TypeMetadata::String,
+                            kind: data::host::NativeConversionKind::String,
+                        },
+                    ]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[
+                    data::type_::ValueType::Function(data::type_::FunctionType {
+                        arguments: data::Storage::Static(&[
+                            data::type_::ValueType::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                    }),
+                ]),
+                return_: data::Storage::Static(&data::type_::ValueType::Function(data::type_::FunctionType {
+                    arguments: data::Storage::Static(&[
+                        data::type_::ValueType::String,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::ValueType::String),
+                })),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 2,
+                parameters: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[
+                    data::host::RegistrationParameter::Value(0),
+                ]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(0),
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                    },
+                ]),
+                native_rules: Some(data::Storage::Static(&[
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ])),
+                native_sources: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+            }),
+            native_view: None,
+        },
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
+            callable_entry: Some(data::host::HostCallableEntry {
+                family: data::function::FunctionTableFamily::String,
+                index: 2,
+            }),
+            package: data::Text::Static("application"),
+            site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[
+                    data::type_::TypeMetadata::String,
+                ]),
+                return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+            },
+            type_arguments: data::Storage::Static(&[
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::String,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::String),
+                    }),
+                    shape: data::type_::ValueShapeId(17),
+                },
+                data::host::HostTypeArgument {
+                    type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
+                        arguments: data::Storage::Static(&[
+                            data::type_::TypeMetadata::BitArray,
+                        ]),
+                        return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                    }),
+                    shape: data::type_::ValueShapeId(18),
+                },
+            ]),
+            parameters: data::host::HostedFunctionParameters {
+                call: data::Storage::Static(&[
+                    data::host::HostCallParameter::Value(data::graph::ParamLocal::String(data::graph::StringLocalId(0))),
+                ]),
+                captures: data::Storage::Static(&[
+                    data::graph::ParamSlot {
+                        local: data::graph::ParamLocal::BitArrayFunction {
+                            local: data::graph::BitArrayFunctionLocalId(0),
+                            type_: data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::ValueType::BitArray,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::ValueType::BitArray),
+                            },
+                        },
+                        shape: data::type_::ValueShapeId(18),
+                    },
+                ]),
+            },
+            constructions: data::host::HostConstructionTypes {
+                lists: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                customs: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                externals: data::host::ConstructionIndex {
+                    entries: data::Storage::Static(&[]),
+                },
+                natives: data::host::NativeConversions {
+                    roots: data::Storage::Static(&[]),
+                    nodes: data::Storage::Static(&[]),
+                },
+                callables: data::Storage::Static(&[]),
+            },
+            type_: data::type_::FunctionType {
+                arguments: data::Storage::Static(&[
+                    data::type_::ValueType::String,
+                ]),
+                return_: data::Storage::Static(&data::type_::ValueType::String),
+            },
+            registration: data::Storage::Static(&data::host::RegistrationContract {
+                parameter_count: 2,
+                parameters: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+                captures: data::Storage::Static(&[]),
+                callable: false,
+                callable_constructions: data::Storage::Static(&[]),
+                return_: data::host::RegistrationType::Parameter(0),
+                layout: data::Storage::Static(&[
+                    data::host::RegistrationParameter::Value(0),
+                ]),
+                custom_schemas: data::Storage::Static(&[]),
+                external_schemas: data::Storage::Static(&[]),
+                constructions: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(0),
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ]),
+                construction_customs: data::Storage::Static(&[]),
+                construction_externals: data::Storage::Static(&[
+                    data::host::ExternalSchema {
+                        package: data::Text::Static("application"),
+                        module: data::Text::Static("function_views"),
+                        name: data::Text::Static("Erased"),
+                        parameter_count: 0,
+                    },
+                ]),
+                native_rules: Some(data::Storage::Static(&[
+                    data::host::RegistrationType::External {
+                        schema: data::host::ExternalSchema {
+                            package: data::Text::Static("application"),
+                            module: data::Text::Static("function_views"),
+                            name: data::Text::Static("Erased"),
+                            parameter_count: 0,
+                        },
+                        arguments: data::Storage::Static(&[]),
+                    },
+                ])),
+                native_sources: data::Storage::Static(&[
+                    data::host::RegistrationType::Parameter(1),
+                ]),
+            }),
+            native_view: Some(data::host::HostNativeView {
+                parent: 18,
+                source: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::BitArray,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::BitArray),
+                },
+                parent_value: true,
+                arguments: data::Storage::Static(&[
+                    data::host::NativeConversionId(2),
+                ]),
+                return_: data::host::NativeConversionId(3),
+            }),
+        },
+        data::host::HostedFunctionMetadata {
+            completion: data::host::HostFunctionCompletion::Value,
+            callable_entry: None,
+            package: data::Text::Static("application"),
+            site: data::source::HostCallSite::from_static("function_views", "coerce", data::source::SourceSpan::new(206, 225)),
+            signature: data::type_::FunctionMetadata {
+                arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::String,
                 ]),
                 return_: data::Storage::Static(&data::type_::TypeMetadata::External(data::type_::NominalTypeMetadata {
@@ -10319,7 +12692,7 @@ pub fn stopped() -> Bool {
                             arguments: data::Storage::Static(&[]),
                         })),
                     }),
-                    shape: data::type_::ValueShapeId(18),
+                    shape: data::type_::ValueShapeId(21),
                 },
                 data::host::HostTypeArgument {
                     type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
@@ -10328,7 +12701,7 @@ pub fn stopped() -> Bool {
                         ]),
                         return_: data::Storage::Static(&data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0))),
                     }),
-                    shape: data::type_::ValueShapeId(20),
+                    shape: data::type_::ValueShapeId(23),
                 },
             ]),
             parameters: data::host::HostedFunctionParameters {
@@ -10343,7 +12716,7 @@ pub fn stopped() -> Bool {
                                 return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                             },
                             shape: data::type_::FunctionShape {
-                                shape_id: data::type_::ValueShapeId(20),
+                                shape_id: data::type_::ValueShapeId(23),
                                 type_: data::type_::FunctionType {
                                     arguments: data::Storage::Static(&[
                                         data::type_::ValueType::Int,
@@ -10423,7 +12796,7 @@ pub fn stopped() -> Bool {
                                                         return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                                                     },
                                                     shape: data::type_::FunctionShape {
-                                                        shape_id: data::type_::ValueShapeId(20),
+                                                        shape_id: data::type_::ValueShapeId(23),
                                                         type_: data::type_::FunctionType {
                                                             arguments: data::Storage::Static(&[
                                                                 data::type_::ValueType::Int,
@@ -10433,7 +12806,7 @@ pub fn stopped() -> Bool {
                                                     },
                                                 },
                                             }),
-                                            shape: data::type_::ValueShapeId(20),
+                                            shape: data::type_::ValueShapeId(23),
                                         },
                                     ]),
                                     host: 0,
@@ -10906,7 +13279,7 @@ pub fn stopped() -> Bool {
                             arguments: data::Storage::Static(&[]),
                         })),
                     }),
-                    shape: data::type_::ValueShapeId(18),
+                    shape: data::type_::ValueShapeId(21),
                 },
                 data::host::HostTypeArgument {
                     type_: data::type_::TypeMetadata::Function(data::type_::FunctionMetadata {
@@ -10915,7 +13288,7 @@ pub fn stopped() -> Bool {
                         ]),
                         return_: data::Storage::Static(&data::type_::TypeMetadata::Parameter(data::type_::parameter_id(0))),
                     }),
-                    shape: data::type_::ValueShapeId(20),
+                    shape: data::type_::ValueShapeId(23),
                 },
             ]),
             parameters: data::host::HostedFunctionParameters {
@@ -10937,7 +13310,7 @@ pub fn stopped() -> Bool {
                                     return_: data::Storage::Static(&data::type_::ValueType::Parameter(data::type_::parameter_id(0))),
                                 },
                                 shape: data::type_::FunctionShape {
-                                    shape_id: data::type_::ValueShapeId(20),
+                                    shape_id: data::type_::ValueShapeId(23),
                                     type_: data::type_::FunctionType {
                                         arguments: data::Storage::Static(&[
                                             data::type_::ValueType::Int,
@@ -10947,7 +13320,7 @@ pub fn stopped() -> Bool {
                                 },
                             },
                         }),
-                        shape: data::type_::ValueShapeId(20),
+                        shape: data::type_::ValueShapeId(23),
                     },
                 ]),
             },
@@ -11024,7 +13397,7 @@ pub fn stopped() -> Bool {
                 ]),
             }),
             native_view: Some(data::host::HostNativeView {
-                parent: 16,
+                parent: 21,
                 source: data::type_::FunctionMetadata {
                     arguments: data::Storage::Static(&[
                         data::type_::TypeMetadata::Int,

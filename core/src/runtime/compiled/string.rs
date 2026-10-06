@@ -30,12 +30,12 @@ enum StringOrigin {
 }
 
 impl StringValues {
-    pub fn text(&self, value: StringRange) -> &str {
-        let text = match value.origin {
-            StringOrigin::Input(index) => self.inputs[index].as_str(),
-            StringOrigin::Literal(text) => text,
+    pub fn bytes(&self, value: StringRange) -> &[u8] {
+        let bytes = match value.origin {
+            StringOrigin::Input(index) => self.inputs[index].as_bytes(),
+            StringOrigin::Literal(text) => text.as_bytes(),
         };
-        &text[value.start..value.end]
+        &bytes[value.start..value.end]
     }
 
     pub(in crate::runtime) fn load_strings(&mut self, strings: &mut Vec<StringValue>) {
@@ -78,7 +78,7 @@ impl StringValues {
                         self.inputs[index].slice(range)
                     }
                 }
-                StringOrigin::Literal(text) => StringValue::from(&text[range]),
+                StringOrigin::Literal(text) => StringValue::from(text).into_slice(range),
             });
         }
         // Capacity is reusable, but abandoned input owners never survive a run.
@@ -96,7 +96,7 @@ impl StringRange {
         }
     }
 
-    /// Canonical DropPrefix follows the successful UTF-8 prefix condition.
+    /// Canonical DropPrefix follows the successful byte prefix condition.
     pub fn drop_prefix(self, bytes: usize) -> Self {
         Self {
             start: self.start + bytes,
@@ -120,8 +120,11 @@ mod tests {
         assert!(inputs.is_empty());
         assert_eq!(values.inputs.as_ptr(), pointer);
         assert_eq!(values.inputs.capacity(), capacity);
-        assert_eq!(values.text(values.strings[0]), "");
-        assert_eq!(values.text(values.strings[1]), "unused".repeat(32));
+        assert_eq!(values.bytes(values.strings[0]), "".as_bytes());
+        assert_eq!(
+            values.bytes(values.strings[1]),
+            "unused".repeat(32).as_bytes()
+        );
         values.strings.clear();
         values.restore_strings(&mut inputs);
         assert!(inputs.is_empty());
@@ -134,7 +137,7 @@ mod tests {
     fn ranges_keep_distinct_inputs_literals_aliases_and_utf8_without_cloning_owners() {
         let original = StringValue::from("hidden:가나다abcdefghijklmnopqrstuvwxyz:end");
         let visible = original.slice(7..original.len() - 4);
-        let pointer = visible.as_str().as_ptr();
+        let pointer = visible.as_ptr();
         let mut inputs = vec![visible, StringValue::from("other:".repeat(10))];
         let mut values = StringValues::default();
         values.load_strings(&mut inputs);
@@ -143,10 +146,16 @@ mod tests {
         let suffix = whole.drop_prefix("가나다".len());
         let other = values.strings[1].drop_prefix(6);
         let literal = StringRange::literal("\n\"가나").drop_prefix(2);
-        assert_eq!(values.text(whole), "가나다abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(values.text(suffix), "abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(values.text(other), "other:".repeat(9));
-        assert_eq!(values.text(literal), "가나");
+        assert_eq!(
+            values.bytes(whole),
+            "가나다abcdefghijklmnopqrstuvwxyz".as_bytes()
+        );
+        assert_eq!(
+            values.bytes(suffix),
+            "abcdefghijklmnopqrstuvwxyz".as_bytes()
+        );
+        assert_eq!(values.bytes(other), "other:".repeat(9).as_bytes());
+        assert_eq!(values.bytes(literal), "가나".as_bytes());
         values.strings = vec![
             suffix,
             whole,
@@ -157,7 +166,10 @@ mod tests {
         ];
         values.restore_strings(&mut inputs);
         assert_eq!(
-            inputs.iter().map(StringValue::as_str).collect::<Vec<_>>(),
+            inputs
+                .iter()
+                .map(|value| value.as_str().unwrap())
+                .collect::<Vec<_>>(),
             [
                 "abcdefghijklmnopqrstuvwxyz",
                 "가나다abcdefghijklmnopqrstuvwxyz",
@@ -167,14 +179,14 @@ mod tests {
                 "",
             ]
         );
-        assert_eq!(inputs[0].as_str().as_ptr(), pointer.wrapping_add(9));
-        assert_eq!(inputs[1].as_str().as_ptr(), pointer);
-        assert_eq!(inputs[2].as_str().as_ptr(), inputs[0].as_str().as_ptr());
+        assert_eq!(inputs[0].as_ptr(), pointer.wrapping_add(9));
+        assert_eq!(inputs[1].as_ptr(), pointer);
+        assert_eq!(inputs[2].as_ptr(), inputs[0].as_ptr());
         assert!(values.inputs.is_empty());
         assert!(values.strings.is_empty());
         assert!(values.uses.is_empty());
         drop(original);
-        assert_eq!(inputs[0].as_str(), "abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(inputs[0].as_str().unwrap(), "abcdefghijklmnopqrstuvwxyz");
     }
 
     #[test]
@@ -184,7 +196,7 @@ mod tests {
         values.load_strings(&mut inputs);
         let mut suffix = values.strings[0];
         for _ in 0..19_999 {
-            assert!(values.text(suffix).starts_with("한"));
+            assert!(values.bytes(suffix).starts_with("한".as_bytes()));
             suffix = suffix.drop_prefix(3);
         }
         assert_eq!(values.inputs.len(), 2);
@@ -198,5 +210,37 @@ mod tests {
         assert!(inputs.is_empty());
         assert!(values.inputs.is_empty());
         assert!(values.uses.is_empty());
+    }
+    #[test]
+    fn raw_ranges_restore_aliases_last_owners_and_partial_literal_codepoints() {
+        let raw = StringValue::from_bytes(["λ".as_bytes(), &[0xff; 64]].concat());
+        let pointer = raw.as_ptr();
+        let mut inputs = vec![raw];
+        let mut values = StringValues::default();
+        values.load_strings(&mut inputs);
+        let original = values.strings[0];
+        let suffix = original.drop_prefix(2);
+        assert_eq!(values.bytes(suffix), &[0xff; 64]);
+        values.strings = vec![
+            original,
+            suffix,
+            suffix,
+            StringRange::literal("é").drop_prefix(1),
+        ];
+        values.restore_strings(&mut inputs);
+        assert_eq!(inputs[0].as_ptr(), pointer);
+        assert_eq!(inputs[1].as_ptr(), pointer.wrapping_add(2));
+        assert_eq!(inputs[2].as_ptr(), inputs[1].as_ptr());
+        assert_eq!(inputs[3].as_bytes(), &[0xa9]);
+        assert!(inputs[3].as_str().is_err());
+        let suffix = inputs.remove(2);
+        drop(inputs);
+        assert_eq!(suffix.as_bytes(), &[0xff; 64]);
+        let mut inputs = vec![suffix];
+        values.load_strings(&mut inputs);
+        values.strings[0] = values.strings[0].drop_prefix(1);
+        values.restore_strings(&mut inputs);
+        assert_eq!(inputs[0].as_ptr(), pointer.wrapping_add(3));
+        assert_eq!(inputs[0].as_bytes(), &[0xff; 63]);
     }
 }

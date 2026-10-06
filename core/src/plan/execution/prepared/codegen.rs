@@ -11,9 +11,12 @@ use self::shape::{
     KernelKind, NumericComparison, NumericInteger, NumericOperation,
 };
 use crate::plan::execution::compiled::{CallTarget, CompiledCheckpoint, CompiledLoopFunction};
+use crate::plan::execution::compiled::{NativeLoopContract, NativeLoopTarget};
 use crate::plan::execution::function::{
-    BoolFunctionId, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionGraphProfile,
-    ExecutionProfile, FunctionBodyOwner, FunctionExit, FunctionTables, IntFunctionId,
+    BitArrayFunctionId, BoolFunctionId, ExecutionFunctionBody, ExecutionFunctionEntry,
+    ExecutionFunctionRef, ExecutionGraphProfile, ExecutionProfile, FloatFunctionId,
+    FunctionBodyOwner, FunctionExit, FunctionTables, IntFunctionId, NilFunctionId,
+    StringFunctionId, UtfCodepointFunctionId,
 };
 use crate::plan::execution::graph::{
     ArithmeticNode, ArithmeticOperand, BlockGraphExitId, BlockId, BoolLocalId, IntLocalId,
@@ -82,6 +85,79 @@ impl<'program, Profile: ExecutionProfile> CompiledCodegen<'program, Profile> {
 impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
     fn emit(&self, output: &mut Rust) {
         let calls = calls::CallCodegen::new(self.functions);
+        let native_loops = self
+            .functions
+            .value_returns
+            .int_functions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                native_loop(NativeLoopTarget::Int(IntFunctionId(index)), entry)
+            })
+            .chain(
+                self.functions
+                    .value_returns
+                    .float_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(NativeLoopTarget::Float(FloatFunctionId(index)), entry)
+                    }),
+            )
+            .chain(
+                self.functions
+                    .value_returns
+                    .string_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(NativeLoopTarget::String(StringFunctionId(index)), entry)
+                    }),
+            )
+            .chain(
+                self.functions
+                    .value_returns
+                    .bit_array_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(NativeLoopTarget::BitArray(BitArrayFunctionId(index)), entry)
+                    }),
+            )
+            .chain(
+                self.functions
+                    .value_returns
+                    .utf_codepoint_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(
+                            NativeLoopTarget::UtfCodepoint(UtfCodepointFunctionId(index)),
+                            entry,
+                        )
+                    }),
+            )
+            .chain(
+                self.functions
+                    .value_returns
+                    .bool_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(NativeLoopTarget::Bool(BoolFunctionId(index)), entry)
+                    }),
+            )
+            .chain(
+                self.functions
+                    .value_returns
+                    .nil_functions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, entry)| {
+                        native_loop(NativeLoopTarget::Nil(NilFunctionId(index)), entry)
+                    }),
+            )
+            .collect::<Vec<_>>();
         let ints = self
             .functions
             .value_returns
@@ -89,7 +165,11 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             .iter()
             .enumerate()
             .filter_map(|(index, function)| {
-                if calls.is_root(CallTarget::Int(IntFunctionId(index))) {
+                if calls.is_root(CallTarget::Int(IntFunctionId(index)))
+                    || native_loops
+                        .iter()
+                        .any(|(target, _)| *target == NativeLoopTarget::Int(IntFunctionId(index)))
+                {
                     return None;
                 }
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
@@ -116,7 +196,11 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             .iter()
             .enumerate()
             .filter_map(|(index, function)| {
-                if calls.is_root(CallTarget::Bool(BoolFunctionId(index))) {
+                if calls.is_root(CallTarget::Bool(BoolFunctionId(index)))
+                    || native_loops
+                        .iter()
+                        .any(|(target, _)| *target == NativeLoopTarget::Bool(BoolFunctionId(index)))
+                {
                     return None;
                 }
                 let ExecutionFunctionRef::Graph(function) = function.as_ref() else {
@@ -180,6 +264,7 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
             })
             .collect::<Vec<_>>();
         if ints.is_empty()
+            && native_loops.is_empty()
             && bools.is_empty()
             && customs.is_empty()
             && int_lists.is_empty()
@@ -394,11 +479,39 @@ impl<Profile: ExecutionProfile> Emit for CompiledCodegen<'_, Profile> {
         } else {
             source.push_str("callbacks: data::compiled::CompiledCallbacks::interpreted(),\n");
         }
+        source.open("native_loops: data::Storage::Static(&[\n");
+        for (target, contract) in &native_loops {
+            source.open("data::compiled::CompiledFunction {\n");
+            source.push_str(&format!("function: {},\n", Rust::expression(target)));
+            source.open("implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {\n");
+            source.push_str(&format!("function: {},\n", Rust::expression(target)));
+            source.push_str("entry: 0,\n");
+            source.push_str(&format!("contract: {},\n", Rust::expression(contract)));
+            source.push_str(&format!(
+                "checkpoints: data::Storage::Static(&[{}]),\n",
+                Rust::expression(&contract.checkpoint())
+            ));
+            source.push_str("run: data::compiled::native_loop::run,\n");
+            source.close("})),\n");
+            source.close("},\n");
+        }
+        source.close("]),\n");
         calls.write_targets(&mut source);
         source.close("}\n");
         source.close("}");
         output.code(source.as_str());
     }
+}
+
+fn native_loop<Body: ExecutionFunctionBody>(
+    target: NativeLoopTarget,
+    entry: &impl ExecutionFunctionEntry<Body>,
+) -> Option<(NativeLoopTarget, NativeLoopContract)> {
+    let ExecutionFunctionRef::Graph(entry) = entry.as_ref() else {
+        return None;
+    };
+    NativeLoopContract::inspect(entry.body().function_body().block_graph())
+        .map(|contract| (target, contract))
 }
 
 /// Compare source argument types, excluding the callee's separate capture
@@ -1120,7 +1233,7 @@ values.strings.extend_from_slice(&[{strings}]);
                 clauses,
                 fallback,
             } => {
-                let subject = format!("values.text(b{}_s{})", point.block.0, subject.0);
+                let subject = format!("values.bytes(b{}_s{})", point.block.0, subject.0);
                 for (literal, edge) in clauses.iter() {
                     let condition = string::literal_condition(&subject, literal.as_str());
                     source.open(&format!("if {condition} {{\n"));
@@ -1701,7 +1814,7 @@ mod tests {
                     value: StringLocalId(2),
                     prefix: "λ\"",
                 }),
-                "values.text(b3_s2).starts_with(\"λ\\\"\")",
+                "values.bytes(b3_s2).starts_with(\"λ\\\"\".as_bytes())",
             ),
             (
                 CompiledTest::String(StringTest::Equal {
@@ -1709,7 +1822,7 @@ mod tests {
                     right: StringLocalId(5),
                     negate: false,
                 }),
-                "values.text(b3_s2) == values.text(b3_s5)",
+                "values.bytes(b3_s2) == values.bytes(b3_s5)",
             ),
             (
                 CompiledTest::BoolEqual {
@@ -3015,6 +3128,8 @@ let (b1_i0, b1_v0,) = {branch};
         int_lists: data::Storage::Static(&[
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        native_loops: data::Storage::Static(&[
+        ]),
         function_calls: data::Storage::Static(&[
         ]),
     }
@@ -3299,6 +3414,8 @@ let (b1_i0, b1_v0,) = {branch};
         int_lists: data::Storage::Static(&[
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        native_loops: data::Storage::Static(&[
+        ]),
         function_calls: data::Storage::Static(&[
         ]),
     }
@@ -3451,7 +3568,7 @@ pub fn main() { choose(True) }
         );
     }
     #[test]
-    fn connected_targets_keep_native_entries_and_non_leaf_callbacks_canonical() {
+    fn native_loops_keep_connected_targets_and_non_leaf_callbacks_canonical() {
         use crate::host::HostProviderModule;
         use crate::plan::execution::function::{ExecutionFunctionEntry, ExecutionFunctionRef};
         let source = r#"
@@ -3460,6 +3577,13 @@ type Item { Item(Int) }
 fn native_int(value: Int) -> Int
 @external(erlang, "native", "invert")
 fn native_bool(value: Bool) -> Bool
+fn repeat(counter: Int, producer: fn() -> Int) {
+  let returned = native_int(producer())
+  case counter { 1 -> returned _ -> repeat(counter - 1, producer) }
+}
+fn sum(counter: Int, total: Int) {
+  case counter { 0 -> total _ -> sum(counter - 1, total + counter) }
+}
 fn fold(items: List(Item), total: Int, step: fn(Int, Item) -> Int) {
   case items { [] -> total [head, ..tail] -> fold(tail, step(total, head), step) }
 }
@@ -3468,6 +3592,16 @@ fn any(items: List(Item), flag: Bool, step: fn(Bool, Item) -> Bool) {
 }
 fn add(total: Int, item: Item) { let Item(value) = item total + value }
 fn include(flag: Bool, item: Item) { let Item(value) = item flag || value > 0 }
+fn count(items: List(Item), total: Int, check: fn(Int, Item) -> Bool) {
+  case items {
+    [] -> total
+    [head, ..tail] -> {
+      let increment = case check(total, head) { True -> 1 False -> 0 }
+      count(tail, total + increment, check)
+    }
+  }
+}
+fn positive(total: Int, item: Item) { let Item(value) = item total + value > 0 }
 fn relay_int(total: Int, item: Item) { add(total, item) }
 fn relay_bool(flag: Bool, item: Item) { include(flag, item) }
 fn effectful(flag: Bool, item: Item) { echo item include(flag, item) || False }
@@ -3475,9 +3609,12 @@ fn effectful_int(total: Int, item: Item) { echo item total + 1 }
 pub fn main() {
   let unused = any([], False, effectful)
   let unused_int = fold([], 0, effectful_int)
+  let direct = count([Item(7)], 0, positive) == 1
   let total = fold([Item(2), Item(3)], 0, relay_int)
-  case any([Item(7)], False, relay_bool) && native_bool(False) {
-    True -> total + native_int(0)
+  let repeated = repeat(1, fn() { 0 })
+  let summed = sum(2, 0)
+  case direct && any([Item(7)], False, relay_bool) && native_bool(False) {
+    True -> total + repeated + summed - 3
     False -> 0
   }
 }
@@ -3518,6 +3655,9 @@ pub fn main() {
             &program.common.custom_types,
         ));
         assert!(emitted.contains("CustomLoopImplementation"));
+        assert!(emitted.contains("fn callback_bool_"));
+        assert!(emitted.contains("NativeLoopImplementation"));
+        assert!(emitted.contains("enum CompiledResume"));
         for (index, function) in program
             .functions
             .value_returns
@@ -3574,10 +3714,40 @@ pub fn main() {
             &prepared.program.functions,
             &prepared.program.common.custom_types,
         ));
-        assert_eq!(
-            emitted.split("\n    fn ").next().unwrap(),
-            "{\n\n    enum CompiledResume {\n        Exit(data::compiled::CompiledProgress),\n    }\n"
-        );
+        let hosted_source = r#"
+fn choose(left: Int, right: Int, flag: Bool) {
+  case flag { True -> left False -> right }
+}
+pub fn main() { choose(7, 9, True) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    hosted_source,
+                )],
+            )],
+            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let hosted_emitted = Rust::expression(&CompiledCodegen::new(
+            &hosted.execution.program.functions,
+            &hosted.execution.program.common.custom_types,
+        ));
+        for emitted in [emitted, hosted_emitted] {
+            assert_eq!(
+                emitted.split("\n    fn ").next().unwrap(),
+                "{\n\n    enum CompiledResume {\n        Exit(data::compiled::CompiledProgress),\n    }\n"
+            );
+        }
         let shape = CompiledShape::inspect(
             prepared.program.functions.value_returns.int_functions[0].body(),
         )
@@ -3736,12 +3906,25 @@ pub fn main() {
             &plan.program.functions,
             &plan.program.common.custom_types,
         ));
-        assert_eq!(
-            emitted
-                .rsplit("\n    data::compiled::CompiledFunctions ")
-                .next()
-                .unwrap(),
-            r#"{
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let hosted_emitted = Rust::expression(&CompiledCodegen::new(
+            &hosted.execution.program.functions,
+            &hosted.execution.program.common.custom_types,
+        ));
+        let expected = r#"{
         ints: data::Storage::Static(&[
             data::compiled::CompiledFunction {
                 function: data::function::IntFunctionId(1),
@@ -3926,11 +4109,21 @@ pub fn main() {
             },
         ]),
         callbacks: data::compiled::CompiledCallbacks::interpreted(),
+        native_loops: data::Storage::Static(&[
+        ]),
         function_calls: data::Storage::Static(&[
         ]),
     }
-}"#
-        );
+}"#;
+        for emitted in [emitted, hosted_emitted] {
+            assert_eq!(
+                emitted
+                    .rsplit("\n    data::compiled::CompiledFunctions ")
+                    .next()
+                    .unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]

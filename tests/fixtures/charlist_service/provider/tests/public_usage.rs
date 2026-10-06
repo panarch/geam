@@ -4,7 +4,8 @@ extern crate geam as geam_core;
 #[path = "../../../../support/execution_host.rs"]
 mod execution_fixture;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
+use geam::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder, StringValue};
 use geam::gleam_erlang::{
     Component as ErlangComponent, Configuration, ErlangExecution, GleamErlangHostProfile,
     Stores as ErlangStores,
@@ -18,9 +19,9 @@ use geam::host::{
     HostProviderComponentRegistration, HostProviderModule, HostProviderSet, HostTypeParameter,
     HostValue,
 };
-use geam::{HostedExecution, compile_typed_host_project, plan_host_program};
+use geam::{ExecutionError, HostedExecution, compile_typed_host_project, plan_host_program};
 use geam_charlist_service_fixture::Component;
-use std::{fs, process::Command};
+use std::{fs, process::Command, sync::Once};
 
 struct Profile;
 
@@ -83,21 +84,29 @@ impl GleamErlangHostProfile for Profile {
     }
 }
 
+fn project_root() -> Utf8PathBuf {
+    static ACQUIRE: Once = Once::new();
+    let project = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../project");
+    ACQUIRE.call_once(|| {
+        let manifest = fs::read(project.join("manifest.toml")).unwrap();
+        let acquisition = Command::new("gleam")
+            .args(["deps", "download"])
+            .current_dir(&project)
+            .output()
+            .unwrap();
+        assert!(
+            acquisition.status.success(),
+            "{}",
+            String::from_utf8_lossy(&acquisition.stderr)
+        );
+        assert_eq!(fs::read(project.join("manifest.toml")).unwrap(), manifest);
+    });
+    project
+}
+
 #[test]
 fn original_charlist_source_reads_independently_constructed_values() {
-    let project = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../project");
-    let manifest = fs::read(project.join("manifest.toml")).unwrap();
-    let acquisition = Command::new("gleam")
-        .args(["deps", "download"])
-        .current_dir(&project)
-        .output()
-        .unwrap();
-    assert!(
-        acquisition.status.success(),
-        "{}",
-        String::from_utf8_lossy(&acquisition.stderr)
-    );
-    assert_eq!(fs::read(project.join("manifest.toml")).unwrap(), manifest);
+    let project = project_root();
     let mut providers = geam::gleam_stdlib::host_providers::<Profile>().unwrap();
     providers.extend(geam::gleam_erlang::host_providers::<Profile>().unwrap());
     providers
@@ -148,6 +157,79 @@ fn original_charlist_source_reads_independently_constructed_values() {
 [#(charlist.from_string(\"x-empty\"), []), \
 #(charlist.from_string(\"x-unicode\"), [0, 65, 233, 128578])]))"
         );
+    }
+    assert!(echo.is_empty());
+}
+
+#[test]
+fn checked_text_failure_belongs_to_the_independent_charlist_consumer() {
+    let mut providers = geam::gleam_stdlib::host_providers::<Profile>().unwrap();
+    providers.extend(geam::gleam_erlang::host_providers::<Profile>().unwrap());
+    providers
+        .extend(<Component as HostProviderComponentRegistration<Profile>>::providers().unwrap());
+    providers.push(
+        HostProviderModule::new("charlist_service_fixture", "native_observer")
+            .unwrap()
+            .with_scoped_function::<Component, (HostTypeParameter<0>, HostTypeParameter<1>), (), _>(
+                "assert_equal",
+                assert_native_equal,
+            )
+            .unwrap(),
+    );
+    let typed = compile_typed_host_project(
+        project_root(),
+        "charlist_service_fixture",
+        HostProviderSet::from_providers(providers).unwrap(),
+    )
+    .unwrap();
+    let resources = typed.package_resources().clone();
+    let (bindings, round_trip) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(StringValue,), StringValue>::new(
+            "text_round_trip",
+        ))
+        .unwrap();
+    let mut module = bindings.seal().unwrap();
+    let mut state = State {
+        stdlib: GleamStdlibRunState::from_seed([0; 32]),
+        erlang: Configuration { resources },
+        provider: (),
+    };
+    let host = execution_fixture::TestHost::default();
+    let mut echo = Vec::new();
+    for _ in 0..2 {
+        host.block_on(
+            module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                for (bytes, message) in [
+                    (
+                        b"a\xff".as_slice(),
+                        "invalid utf-8 sequence of 1 bytes from index 1",
+                    ),
+                    (
+                        b"a\xc3".as_slice(),
+                        "incomplete utf-8 byte sequence from index 1",
+                    ),
+                ] {
+                    let error = scope
+                        .call(&round_trip, (StringValue::from_bytes(bytes.to_vec()),))
+                        .await
+                        .unwrap_err()
+                        .into_materialized();
+                    let CallError::Execution(ExecutionError::Host(error)) = error else {
+                        panic!("invalid text should fail at the charlist provider")
+                    };
+                    assert_eq!(error.package(), "charlist_service_fixture");
+                    assert_eq!(error.module(), "charlist_service_fixture");
+                    assert_eq!(error.function(), "from_text");
+                    assert_eq!(error.failure().message(), message);
+                }
+                let text = scope.call(&round_trip, ("\0Aé🙂".into(),)).await.unwrap();
+                assert_eq!(text.as_str(), Ok("\0Aé🙂"));
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
     }
     assert!(echo.is_empty());
 }

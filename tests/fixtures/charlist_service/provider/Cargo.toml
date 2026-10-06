@@ -9,6 +9,7 @@ geam = { path = "../../../..", default-features = false, features = ["provider",
 
 [dev-dependencies]
 camino = "1"
+geam = { path = "../../../..", default-features = false, features = ["embedding"] }
 
 [workspace]
 resolver = "3"

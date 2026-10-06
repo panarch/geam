@@ -3,9 +3,10 @@ use geam_core::StringValue;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::mem;
+use std::sync::Arc;
 
 pub struct StringTree {
-    root: std::sync::Arc<StringTreeNode>,
+    root: Arc<StringTreeNode>,
 }
 
 struct StringTreeNode {
@@ -15,7 +16,7 @@ struct StringTreeNode {
 
 enum StringTreeNodeKind {
     Text(StringValue),
-    Sequence(Box<[std::sync::Arc<StringTreeNode>]>),
+    Sequence(Box<[Arc<StringTreeNode>]>),
 }
 
 impl Clone for StringTree {
@@ -29,7 +30,7 @@ impl Clone for StringTree {
 impl StringTree {
     pub fn text(text: StringValue) -> Self {
         Self {
-            root: std::sync::Arc::new(StringTreeNode {
+            root: Arc::new(StringTreeNode {
                 byte_len: text.len(),
                 kind: StringTreeNodeKind::Text(text),
             }),
@@ -43,7 +44,7 @@ impl StringTree {
             .collect::<Box<[_]>>();
         let byte_len = children.iter().map(|child| child.byte_len).sum();
         Self {
-            root: std::sync::Arc::new(StringTreeNode {
+            root: Arc::new(StringTreeNode {
                 byte_len,
                 kind: StringTreeNodeKind::Sequence(children),
             }),
@@ -59,17 +60,33 @@ impl StringTree {
     }
 
     pub fn flatten(&self) -> StringValue {
-        let mut output = String::with_capacity(self.byte_len());
+        let mut output = EcoString::with_capacity(self.byte_len());
+        let mut raw: Option<Vec<u8>> = None;
         let mut pending = vec![self.root.as_ref()];
         while let Some(node) = pending.pop() {
             match &node.kind {
-                StringTreeNodeKind::Text(text) => output.push_str(text),
+                StringTreeNodeKind::Text(text) => match &mut raw {
+                    Some(bytes) => bytes.extend_from_slice(text.as_bytes()),
+                    None => match text.as_str() {
+                        Ok(text) => output.push_str(text),
+                        Err(_) => {
+                            let mut bytes = Vec::with_capacity(self.byte_len());
+                            bytes.extend_from_slice(output.as_bytes());
+                            output = EcoString::new();
+                            bytes.extend_from_slice(text.as_bytes());
+                            raw = Some(bytes);
+                        }
+                    },
+                },
                 StringTreeNodeKind::Sequence(children) => {
                     pending.extend(children.iter().rev().map(AsRef::as_ref));
                 }
             }
         }
-        output.into()
+        match raw {
+            Some(bytes) => StringValue::from_bytes(bytes),
+            None => output.into(),
+        }
     }
 
     pub(super) fn append_bytes(&self, output: &mut Vec<u8>) {
@@ -322,5 +339,32 @@ mod tests {
         .expect("transfer tree worker");
         assert!(root.upgrade().is_none());
         assert!(prefix_weak.upgrade().is_none());
+    }
+    #[test]
+    fn flatten_and_byte_export_preserve_split_codepoints_and_raw_leaf_lifetimes() {
+        use geam_core::StringValue;
+        let parent = StringValue::from("éabcdefghijklmnopqrstuvwxyz");
+        let prefix = StringTree::text(parent.slice(0..1));
+        let suffix = StringTree::text(parent.slice(1..parent.len()));
+        let tree = StringTree::sequence([prefix, suffix]);
+        drop(parent);
+        assert_eq!(tree.flatten().as_str(), Ok("éabcdefghijklmnopqrstuvwxyz"));
+        let raw = StringTree::sequence([
+            StringTree::text("head".into()),
+            tree.clone(),
+            StringTree::text(StringValue::from_bytes(vec![0xff, 0])),
+            StringTree::text("tail".into()),
+        ]);
+        let mut expected = "headéabcdefghijklmnopqrstuvwxyz".as_bytes().to_vec();
+        expected.extend_from_slice(&[0xff, 0]);
+        expected.extend_from_slice(b"tail");
+        assert_eq!(raw.flatten().as_bytes(), expected);
+        let mut output = vec![42];
+        raw.append_bytes(&mut output);
+        assert_eq!(&output[1..], expected);
+        let text = StringTree::text("é".into());
+        let byte_text = StringTree::text(StringValue::from_bytes("é".as_bytes().to_vec()));
+        assert!(text.structurally_equal(&byte_text));
+        assert_eq!(text.structural_hash(), byte_text.structural_hash());
     }
 }

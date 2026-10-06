@@ -73,7 +73,7 @@ where
     );
     assert_eq!(
         call.inspect::<ProbeValue<Schema>>(first).as_str(),
-        expected.as_str()
+        expected.as_str().unwrap()
     );
     let first = Storage::<Schema>::native_view(
         &call.external_payload::<Probe<Schema>, geam::host::HostTypeListEnd>(first),

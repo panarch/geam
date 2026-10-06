@@ -245,9 +245,16 @@ pub mod compiled {
         CompiledCallbacks, CompiledCheckpoint, CompiledFunction, CompiledFunctions,
         CompiledImplementation, CompiledLoopCall, CompiledLoopFunction, CreationContract,
         CustomLoopImplementation, FunctionCallsImplementation, IntListImplementation,
+        NativeLoopContract, NativeLoopImplementation, NativeLoopProducer, NativeLoopTarget,
         NumericImplementation, ReturnContract, StringImplementation, TailContract,
     };
     pub use crate::runtime::compiled::CompiledProgress;
+
+    pub mod native_loop {
+        pub use crate::runtime::compiled::native_loop::{
+            NativeLoopCursor, NativeLoopKernel, NativeLoopOps, NativeLoopProgress, run,
+        };
+    }
 
     pub mod calls {
         pub use crate::runtime::compiled::calls::{

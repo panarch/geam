@@ -85,7 +85,10 @@ mod tests {
             &(BigInt::from(i64::MAX) + 1)
         );
         assert_eq!(environment.values.bools, [true]);
-        assert_eq!(environment.values.strings[0].as_str(), "caller value");
+        assert_eq!(
+            environment.values.strings[0].as_str().unwrap(),
+            "caller value"
+        );
         let addresses = environment
             .values
             .int_lists

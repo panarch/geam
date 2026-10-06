@@ -159,7 +159,10 @@ mod selection {
         fn select(&self, values: NativeValues<'_>, candidate: &NativeValue) -> Option<Message> {
             self.visits.set(self.visits.get() + 1);
             let message = Message::read(candidate)?;
-            if !matches!(message.tag.as_str(), "tcp" | "closed" | "passive" | "error") {
+            if !matches!(
+                message.tag.as_str(),
+                Ok("tcp" | "closed" | "passive" | "error")
+            ) {
                 return None;
             }
             values

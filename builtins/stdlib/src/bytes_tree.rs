@@ -2,18 +2,21 @@ use crate::GleamStdlibProviderProfile;
 use crate::string_tree::{self, StringTree, StringTreePayload};
 use geam_core::BitArrayValue;
 use geam_core::host::{
-    HostCall, HostCustom, HostCustomConstructorAt, HostCustomConstructorDefinition,
-    HostCustomConstructorList, HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
-    HostCustomFieldListEnd, HostCustomIndex0, HostCustomIndexNext, HostCustomSchema,
-    HostCustomType, HostListType, HostProfile, HostProvider, HostProviderModule,
-    HostRegistrationError, HostType,
+    HostCall, HostCallCompletion, HostCallError, HostCustom, HostCustomConstructorAt,
+    HostCustomConstructorDefinition, HostCustomConstructorList, HostCustomConstructorListEnd,
+    HostCustomField, HostCustomFieldList, HostCustomFieldListEnd, HostCustomIndex0,
+    HostCustomIndexNext, HostCustomSchema, HostCustomType, HostListType, HostProfile, HostProvider,
+    HostProviderModule, HostRegistrationError, HostType,
 };
 use geam_core::provider::{
-    List, ProviderConstructions, ProviderExternalCodec, ProviderExternalPayloadAccess,
-    ProviderInputValue, ProviderListContext, ProviderListInputCodec, ProviderListInputValue,
-    ProviderListItemDecoder, ProviderListItemValue, ProviderNoConstructions, ProviderOwnedExternal,
+    List, MissingListContext, ProviderConstruction, ProviderConstructions, ProviderExternalCodec,
+    ProviderExternalPayloadAccess, ProviderInputValue, ProviderListContext, ProviderListInputCodec,
+    ProviderListInputValue, ProviderListItemDecoder, ProviderListItemValue,
+    ProviderNoConstructions, ProviderOutputValue, ProviderOwnedExternal, ProviderRootOutputValue,
     ProviderStaticValueForms, ProviderTypedListItemDecoder, ProviderValue, ProviderValueForms,
 };
+use geam_core::provider_support::bit_array_pad_to_bytes;
+use std::convert::Infallible;
 
 /// A retained, read-only input for the original `gleam/bytes_tree.BytesTree`.
 ///
@@ -21,8 +24,94 @@ use geam_core::provider::{
 /// payloads remain retained until explicitly read; receiving it does not flatten
 /// the tree. It owns its input handles and may cross a native suspension point.
 /// It is an input adapter, not a constructor or output adapter for BytesTree.
+/// Returning the input adapter does not grant output construction:
+///
+/// ```compile_fail
+/// #[geam_macros::module(
+///     path = "binary_sink",
+///     crate_path = geam_core,
+///     profile = geam_stdlib::GleamStdlibHostProfile,
+///     component = geam_stdlib::Component<Profile::Io>,
+/// )]
+/// mod native {
+///     use geam_stdlib::service;
+///
+///     #[geam_macros::function]
+///     fn invalid(tree: service::BytesTreeInput) -> service::BytesTreeInput {
+///         tree
+///     }
+/// }
+/// # let _ = native::__geam_module::<geam_stdlib::GleamStdlibProfile>();
+/// ```
 pub struct BytesTreeInput {
     node: Node,
+}
+
+/// An owned binary leaf returned as the original `gleam/bytes_tree.BytesTree`.
+///
+/// Return this adapter from an ordinary provider function, directly or inside
+/// tuples, Results, and Lists. Compose the standard-library component in the
+/// host profile; the standard library owns the opaque schema and construction.
+/// This is an output adapter, not a tree builder or an input adapter.
+///
+/// ```
+/// #[geam_macros::module(
+///     path = "binary_source",
+///     crate_path = geam_core,
+///     profile = geam_stdlib::GleamStdlibHostProfile,
+///     component = geam_stdlib::Component<Profile::Io>,
+/// )]
+/// mod native {
+///     use geam_core::BitArrayValue;
+///     use geam_stdlib::service;
+///
+///     #[geam_macros::function]
+///     fn make(bytes: BitArrayValue) -> service::BytesTreeOutput {
+///         service::BytesTreeOutput::from_bit_array(bytes)
+///     }
+/// }
+/// # let _ = native::__geam_module::<geam_stdlib::GleamStdlibProfile>();
+/// ```
+///
+/// Receiving a tree uses [`BytesTreeInput`], rather than this output adapter:
+///
+/// ```compile_fail
+/// #[geam_macros::module(
+///     path = "binary_source",
+///     crate_path = geam_core,
+///     profile = geam_stdlib::GleamStdlibHostProfile,
+///     component = geam_stdlib::Component<Profile::Io>,
+/// )]
+/// mod native {
+///     use geam_stdlib::service;
+///
+///     #[geam_macros::function]
+///     fn invalid(tree: service::BytesTreeOutput) -> service::BytesTreeOutput {
+///         tree
+///     }
+/// }
+/// # let _ = native::__geam_module::<geam_stdlib::GleamStdlibProfile>();
+/// ```
+pub struct BytesTreeOutput {
+    bytes: BitArrayValue,
+}
+
+impl BytesTreeOutput {
+    /// Moves an owned BitArray into a binary leaf without copying its payload.
+    ///
+    /// Like Gleam's `bytes_tree.from_bit_array`, construction pads a partial
+    /// final byte with zero bits. Aligned inputs move unchanged; padding shares
+    /// the canonical byte storage and extends only the logical bit length.
+    /// Byte-range views keep their selected range. The returned tree retains
+    /// its immutable storage independently of the call and its input aliases.
+    pub fn from_bit_array(bytes: BitArrayValue) -> Self {
+        let bytes = if bytes.bit_len().is_multiple_of(8) {
+            bytes
+        } else {
+            bit_array_pad_to_bytes(&bytes)
+        };
+        Self { bytes }
+    }
 }
 
 enum Node {
@@ -166,6 +255,55 @@ type TextConstructor = HostCustomConstructorAt<Host, HostCustomIndexNext<HostCus
 type ManyConstructor =
     HostCustomConstructorAt<Host, HostCustomIndexNext<HostCustomIndexNext<HostCustomIndex0>>, Many>;
 
+impl ProviderValue for BytesTreeOutput {
+    type Host = Host;
+    type OutputRequirements = ProviderConstruction<Host>;
+    type RootRequirements = ProviderNoConstructions;
+}
+
+impl ProviderValueForms for BytesTreeOutput {
+    type InvocationRequirements = ();
+    type Runtime<Profile: HostProfile> = ProviderStaticValueForms<Self>;
+    type Output = Self;
+    type ImmediateInput = Self;
+    type ImmediateListInput = Self;
+    type OwnedInput = Self;
+    type OwnedListInput = Self;
+    type ImmediateListDecoder = MissingListContext;
+    type OwnedListDecoder = MissingListContext;
+}
+
+impl<Profile, Provider, Return> ProviderOutputValue<Profile, Provider, Return> for BytesTreeOutput
+where
+    Profile: GleamStdlibProviderProfile,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    type Error = Infallible;
+
+    fn into_host<'call>(
+        self,
+        call: &mut HostCall<'call, Profile, Provider, Return>,
+        constructions: &ProviderConstructions<'call, Self::OutputRequirements>,
+    ) -> Result<HostCustom<'call, Host>, Self::Error> {
+        Ok(call.construct_custom::<BytesConstructor>(constructions.token(), (self.bytes, ())))
+    }
+}
+
+impl<Profile, Provider> ProviderRootOutputValue<Profile, Provider> for BytesTreeOutput
+where
+    Profile: GleamStdlibProviderProfile,
+    Provider: HostProvider<Profile>,
+{
+    fn complete<'call>(
+        self,
+        call: HostCall<'call, Profile, Provider, Host>,
+        _: &ProviderConstructions<'call, Self::RootRequirements>,
+    ) -> Result<HostCallCompletion<'call, Host>, HostCallError> {
+        Ok(call.return_custom::<BytesConstructor>((self.bytes, ())))
+    }
+}
+
 impl ProviderValue for BytesTreeInput {
     type Host = Host;
     type OutputRequirements = ProviderNoConstructions;
@@ -276,14 +414,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{BytesTreeInput, Leaf, Node, host_provider};
+    use super::{BytesTreeInput, BytesTreeOutput, Leaf, Node, host_provider};
     use crate::string_tree::{STRING_TREE_DECLARATIONS, host_provider as string_provider};
     use crate::{
         GleamStdlibProfile, GleamStdlibRunState, HostProviderSet, HostedExecution, ModuleSource,
         PackageSource, compile_typed_host_program, plan_host_program,
     };
-    use geam_core::BitArrayValue;
+    use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use geam_core::frontend::HostedTypedProgram;
+    use geam_core::plan::{CustomType, FunctionType, ValueType};
+    use geam_core::{BitArrayValue, StringValue};
     use geam_core::{CustomTypeName, HostProviderLinkReason, PlanError};
 
     const DECLARATIONS: &str = r#"
@@ -305,6 +445,7 @@ pub fn many(children: List(BytesTree)) { Many(children) }
         component = crate::Component<Profile::Io>,
     )]
     mod native {
+        use super::{Leaf, Node};
         use crate::service;
         use geam_core::BitArrayValue;
 
@@ -322,6 +463,43 @@ pub fn many(children: List(BytesTree)) { Many(children) }
                 index += 1;
             }
             bytes
+        }
+
+        #[geam_macros::function]
+        fn make(bytes: BitArrayValue) -> service::BytesTreeOutput {
+            service::BytesTreeOutput::from_bit_array(bytes)
+        }
+
+        #[geam_macros::function]
+        fn pair(bytes: BitArrayValue) -> (service::BytesTreeOutput, BitArrayValue) {
+            (
+                service::BytesTreeOutput::from_bit_array(bytes.clone()),
+                bytes,
+            )
+        }
+
+        #[geam_macros::function]
+        fn binary_field(tree: service::BytesTreeInput) -> Result<BitArrayValue, ()> {
+            match tree.node {
+                Node::Leaf(Leaf::Bytes(bytes)) => Ok(bytes),
+                _ => Err(()),
+            }
+        }
+    }
+
+    #[geam_macros::module(
+        path = "bytes_tree_output_contract",
+        crate_path = geam_core,
+        profile = crate::GleamStdlibHostProfile,
+        component = crate::Component<Profile::Io>,
+    )]
+    mod output_contract {
+        use crate::service;
+        use geam_core::BitArrayValue;
+
+        #[geam_macros::function]
+        fn make(bytes: BitArrayValue) -> service::BytesTreeOutput {
+            service::BytesTreeOutput::from_bit_array(bytes)
         }
     }
 
@@ -367,6 +545,12 @@ import gleam/string_tree
 fn read(tree: {read_argument}) -> BitArray
 @external(erlang, "native", "read_list")
 fn read_list(trees: List({read_argument})) -> List(BitArray)
+@external(erlang, "native", "make")
+fn make(bytes: BitArray) -> bytes_tree.BytesTree
+@external(erlang, "native", "pair")
+fn pair(bytes: BitArray) -> #(bytes_tree.BytesTree, BitArray)
+@external(erlang, "native", "binary_field")
+fn binary_field(tree: bytes_tree.BytesTree) -> Result(BitArray, Nil)
 {source}
 "#
                         ),
@@ -376,6 +560,97 @@ fn read_list(trees: List({read_argument})) -> List(BitArray)
             HostProviderSet::from_providers(providers).unwrap(),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn owned_output_pads_partial_bits_without_copying_its_input_storage() {
+        let bytes = BitArrayValue::try_from_parts(vec![255], 3).unwrap();
+        let alias = bytes.clone();
+        let output = BytesTreeOutput::from_bit_array(bytes);
+        assert_eq!(output.bytes.bytes().as_ptr(), alias.bytes().as_ptr());
+        drop(alias);
+        assert_eq!(output.bytes.bytes(), [224]);
+        assert_eq!(output.bytes.bit_len(), 8);
+    }
+
+    #[test]
+    fn root_and_nested_codecs_preserve_storage_and_the_padded_or_selected_range() {
+        for (source, expected, input_bit_len, output_bit_len) in [
+            (
+                r#"pub fn main() {
+  let bits = <<5:size(3)>>
+  let assert Ok(leaf) = binary_field(make(bits))
+  #(bits, leaf)
+}"#,
+                &[160][..],
+                3,
+                8,
+            ),
+            (
+                r#"pub fn main() {
+  let assert <<_:bytes-size(1), bits:bytes-size(2), _:bytes>> = <<42, 255, 0, 99>>
+  let pair = pair(bits)
+  let assert Ok(leaf) = binary_field(pair.0)
+  #(pair.1, leaf)
+}"#,
+                &[255, 0][..],
+                16,
+                16,
+            ),
+        ] {
+            let typed = program(source, DECLARATIONS, true, "bytes_tree.BytesTree");
+            let (bindings, function) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(), (BitArrayValue, BitArrayValue)>::new("main"))
+                .unwrap();
+            let mut module = bindings.seal().unwrap();
+            let mut state = GleamStdlibRunState::from_seed([0; 32]);
+            let host = crate::execution_fixture::TestHost::default();
+            let mut echo = Vec::new();
+            let (original, leaf) = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&function, ()).await
+                    }),
+                )
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .unwrap();
+            assert_eq!(leaf.bytes().as_ptr(), original.bytes().as_ptr());
+            assert_eq!(original.bit_len(), input_bit_len);
+            drop(module);
+            drop(state);
+            drop(original);
+            assert_eq!(leaf.bytes(), expected);
+            assert_eq!(leaf.bit_len(), output_bit_len);
+            assert!(echo.is_empty());
+        }
+    }
+
+    #[test]
+    fn constructed_leaves_have_the_original_nominal_schema_and_reject_non_binary_fields() {
+        let mut execution = execution(
+            r#"
+pub fn main() {
+  let leaf = make(<<5:size(3)>>)
+  #(leaf, read(leaf), binary_field(bytes_tree.text(string_tree.from_string("x"))), binary_field(bytes_tree.many([])))
+}
+"#,
+        );
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        let result = host
+            .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(
+            result.inspect().to_string(),
+            "#(Bytes(<<160>>), <<160>>, Error(Nil), Error(Nil))"
+        );
+        assert!(echo.is_empty());
     }
 
     #[test]
@@ -415,6 +690,57 @@ pub fn main() {
                 "[<<0, 255, 128, 237, 149, 156, 0, 101, 204, 129, 240, 159, 153, 130, 1, 2>>, <<>>], [])",
             )
         );
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn raw_string_tree_leaves_reach_bytes_tree_without_text_validation() {
+        let typed = program(
+            r#"
+pub fn main(value: String) {
+  let text = string_tree.concat([
+    string_tree.from_string("λ"),
+    string_tree.from_string(value),
+  ])
+  let tree = bytes_tree.many([
+    bytes_tree.text(text),
+    bytes_tree.many([bytes_tree.text(string_tree.from_string(value))]),
+  ])
+  #(read(tree), read(tree))
+}
+"#,
+            DECLARATIONS,
+            true,
+            "bytes_tree.BytesTree",
+        );
+        let (bindings, function) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<
+                (StringValue,),
+                (BitArrayValue, BitArrayValue),
+            >::new("main"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        for _ in 0..2 {
+            let input = StringValue::from_bytes(vec![255, 0, 195]);
+            let (first, second) = host
+                .block_on(
+                    module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                        scope.call(&function, (input,)).await
+                    }),
+                )
+                .unwrap()
+                .try_into_value()
+                .unwrap()
+                .unwrap();
+            assert_eq!(first.bytes(), [206, 187, 255, 0, 195, 255, 0, 195]);
+            assert_eq!(second.bytes(), first.bytes());
+            drop(first);
+            assert_eq!(second.bytes(), [206, 187, 255, 0, 195, 255, 0, 195]);
+        }
         assert!(echo.is_empty());
     }
 
@@ -517,6 +843,137 @@ pub fn main() {
                 }),
             }),
         );
+    }
+
+    #[test]
+    fn producer_grant_allows_an_output_only_provider_to_construct_the_original_leaf() {
+        let typed = output_program(
+            "pub fn main() { make(<<255>>) }",
+            true,
+            "bytes_tree.BytesTree",
+        );
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let mut state = GleamStdlibRunState::from_seed([0; 32]);
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        let result = host
+            .block_on(execution.run_main(&host, &mut state, &mut echo))
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert_eq!(result.inspect().to_string(), "Bytes(<<255>>)");
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn opaque_output_requires_its_original_producer_grant() {
+        let typed = output_program(
+            "pub fn main() { make(<<255>>) }",
+            false,
+            "bytes_tree.BytesTree",
+        );
+        assert_eq!(
+            plan_host_program(typed).err(),
+            Some(PlanError::HostProviderLink {
+                package: "gleam_stdlib".into(),
+                module: "bytes_tree_output_contract".into(),
+                function: "make".into(),
+                reason: Box::new(HostProviderLinkReason::MissingSharedCustomType {
+                    custom_type: CustomTypeName::new(
+                        "gleam_stdlib".into(),
+                        "gleam/bytes_tree".into(),
+                        "BytesTree".into(),
+                    ),
+                }),
+            }),
+        );
+    }
+
+    fn output_program(
+        source: &str,
+        shared: bool,
+        make_return: &str,
+    ) -> HostedTypedProgram<GleamStdlibProfile> {
+        let mut providers = vec![
+            string_provider::<GleamStdlibProfile>().unwrap(),
+            output_contract::__geam_module::<GleamStdlibProfile>().unwrap(),
+        ];
+        if shared {
+            providers.push(host_provider::<GleamStdlibProfile>().unwrap());
+        }
+        compile_typed_host_program(
+            "gleam_stdlib",
+            "bytes_tree_output_contract",
+            [PackageSource::new(
+                "gleam_stdlib",
+                Vec::<&str>::new(),
+                [
+                    ModuleSource::new(
+                        "gleam/string_tree",
+                        "string_tree.gleam",
+                        STRING_TREE_DECLARATIONS,
+                    ),
+                    ModuleSource::new(
+                        "gleam/bytes_tree",
+                        "bytes_tree.gleam",
+                        format!("{DECLARATIONS}\npub type OtherTree {{ OtherTree(BytesTree) }}"),
+                    ),
+                    ModuleSource::new(
+                        "bytes_tree_output_contract",
+                        "output.gleam",
+                        format!(
+                            r#"
+import gleam/bytes_tree
+@external(erlang, "native", "make")
+fn make(bytes: BitArray) -> {make_return}
+{source}
+"#
+                        ),
+                    ),
+                ],
+            )],
+            HostProviderSet::from_providers(providers).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn output_linkage_rejects_scalar_substitution_and_a_different_nominal_type() {
+        for (return_type, expected_return) in [
+            ("BitArray", ValueType::BitArray),
+            (
+                "bytes_tree.OtherTree",
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new(
+                        "gleam_stdlib".into(),
+                        "gleam/bytes_tree".into(),
+                        "OtherTree".into(),
+                    ),
+                    Vec::new(),
+                )),
+            ),
+        ] {
+            let typed = output_program("pub fn main() { make(<<255>>) }", true, return_type);
+            let expected_type = FunctionType::new(vec![ValueType::BitArray], expected_return);
+            let actual_type = FunctionType::new(
+                vec![ValueType::BitArray],
+                ValueType::Custom(CustomType::new(
+                    CustomTypeName::new(
+                        "gleam_stdlib".into(),
+                        "gleam/bytes_tree".into(),
+                        "BytesTree".into(),
+                    ),
+                    Vec::new(),
+                )),
+            );
+            assert_eq!(
+                plan_host_program(typed).err().unwrap().to_string(),
+                format!(
+                    "host provider gleam_stdlib::bytes_tree_output_contract.make: function scheme mismatch: expected TypeScheme {{ parameters: [] }} {expected_type:?}, got TypeScheme {{ parameters: [] }} {actual_type:?}"
+                )
+            );
+        }
     }
 
     #[test]

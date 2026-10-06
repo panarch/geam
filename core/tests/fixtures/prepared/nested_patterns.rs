@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 20,
+    format: 24,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -16596,6 +16596,8 @@ data::ModuleArtifact {
                     },
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                 ]),
             }

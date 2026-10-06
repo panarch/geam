@@ -4,7 +4,7 @@ use geam_core::StringValue;
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, ToPrimitive};
 pub(super) fn parse(source: StringValue) -> Result<f64, ()> {
-    parse_literal(&source).ok_or(())
+    parse_literal(source.as_str().map_err(|_| ())?).ok_or(())
 }
 
 pub(super) fn to_string(value: f64) -> StringValue {
@@ -241,5 +241,12 @@ pub fn main() {
 
             assert_eq!(error.to_string(), expected);
         }
+    }
+    #[test]
+    fn raw_float_parse_rejects_non_text_without_changing_the_result_contract() {
+        assert_eq!(
+            super::parse(geam_core::StringValue::from_bytes(vec![b'1', 0xff])),
+            Err(())
+        );
     }
 }

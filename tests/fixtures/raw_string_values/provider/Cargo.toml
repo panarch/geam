@@ -1,0 +1,22 @@
+[package]
+name = "geam-raw-string-values-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 1
+gleam-package = "raw_string_values_fixture"
+gleam-version = ">= 0.1.0 and < 0.2.0"
+
+[dependencies]
+geam = { version = "=0.2.3", path = "../../../..", default-features = false, features = ["provider"] }
+sha1 = "0.10"
+base64 = "0.22"
+
+[dev-dependencies]
+geam = { version = "=0.2.3", path = "../../../..", default-features = false, features = ["embedding", "gleam-stdlib", "tokio"] }
+tokio = { version = "1", features = ["rt"] }
+
+[workspace]
+resolver = "3"

@@ -32,7 +32,7 @@ impl SharedOutput {
         }
     }
 
-    fn write(&self, stream: OutputStream, text: &str) {
+    fn write(&self, stream: OutputStream, text: &[u8]) {
         if self.failure.get().is_some() {
             return;
         }
@@ -58,13 +58,13 @@ enum OutputStream {
 }
 
 trait Streams: Send + Sync {
-    fn write(&self, stream: OutputStream, text: &str) -> io::Result<()>;
+    fn write(&self, stream: OutputStream, text: &[u8]) -> io::Result<()>;
 }
 
 struct SystemStreams;
 
 impl Streams for SystemStreams {
-    fn write(&self, stream: OutputStream, text: &str) -> io::Result<()> {
+    fn write(&self, stream: OutputStream, text: &[u8]) -> io::Result<()> {
         match stream {
             OutputStream::Stdout => write_flushed(&mut io::stdout().lock(), text),
             OutputStream::Stderr => write_flushed(&mut io::stderr().lock(), text),
@@ -72,8 +72,8 @@ impl Streams for SystemStreams {
     }
 }
 
-fn write_flushed(writer: &mut impl Write, text: &str) -> io::Result<()> {
-    writer.write_all(text.as_bytes())?;
+fn write_flushed(writer: &mut impl Write, text: &[u8]) -> io::Result<()> {
+    writer.write_all(text)?;
     writer.flush()
 }
 
@@ -87,7 +87,7 @@ impl IoSink for CliIoSink {
             IoStream::Stdout => OutputStream::Stdout,
             IoStream::Stderr => OutputStream::Stderr,
         };
-        self.output.write(stream, output.text().as_str());
+        self.output.write(stream, output.text().as_bytes());
     }
 }
 
@@ -99,13 +99,14 @@ impl geam_core::EchoSink for CliEchoSink {
     fn emit(&mut self, output: geam_core::EchoOutput) {
         let mut text = output.to_string();
         text.push('\n');
-        self.output.write(OutputStream::Stderr, &text);
+        self.output.write(OutputStream::Stderr, text.as_bytes());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{OutputStream, SharedOutput, Streams, SystemStreams, write_flushed};
+    use geam_core::StringValue;
     use geam_core::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use geam_core::{EchoSink, HostProviderSet, ModuleSource, PackageSource};
     use geam_stdlib::{GleamStdlibProfile, GleamStdlibRunState, IoSink};
@@ -113,10 +114,10 @@ mod tests {
     use std::sync::{Arc, Mutex, OnceLock};
 
     #[derive(Default)]
-    struct RecordedStreams(Mutex<Vec<(OutputStream, String)>>);
+    struct RecordedStreams(Mutex<Vec<(OutputStream, Vec<u8>)>>);
 
     impl Streams for RecordedStreams {
-        fn write(&self, stream: OutputStream, text: &str) -> io::Result<()> {
+        fn write(&self, stream: OutputStream, text: &[u8]) -> io::Result<()> {
             self.0.lock().unwrap().push((stream, text.to_owned()));
             Ok(())
         }
@@ -130,6 +131,11 @@ pub fn main() {
   io.print("message")
   io.print_error("problem")
   echo 42
+  Nil
+}
+pub fn raw(value: String) {
+  io.println(value)
+  io.println_error(value)
   Nil
 }
 "#
@@ -172,9 +178,12 @@ pub fn println_error(value: String) -> Nil
             .unwrap(),
         )
         .unwrap();
-        let (builder, entry) = HostedModuleBuilder::new(program)
+        let (mut builder, entry) = HostedModuleBuilder::new(program)
             .unwrap()
             .function(FunctionDeclaration::<(), ()>::new("main"))
+            .unwrap();
+        let raw = builder
+            .function(FunctionDeclaration::<(StringValue,), ()>::new("raw"))
             .unwrap();
         let mut module = builder.seal().unwrap();
         let mut state = GleamStdlibRunState::from_seed([0; 32]);
@@ -186,7 +195,10 @@ pub fn println_error(value: String) -> Nil
         runtime
             .block_on(
                 module.with_execution(&host, &mut state, &mut echo, async |scope| {
-                    scope.call(&entry, ()).await
+                    scope.call(&entry, ()).await.unwrap();
+                    scope
+                        .call(&raw, (StringValue::from_bytes(vec![0, 0x80, 0xff, 0xc3]),))
+                        .await
                 }),
             )
             .unwrap()
@@ -207,9 +219,11 @@ pub fn println_error(value: String) -> Nil
         assert_eq!(
             *streams.0.lock().unwrap(),
             [
-                (OutputStream::Stdout, "message".into()),
-                (OutputStream::Stderr, "problem".into()),
-                (OutputStream::Stderr, "src/main.gleam:5\n42\n".into()),
+                (OutputStream::Stdout, b"message".to_vec()),
+                (OutputStream::Stderr, b"problem".to_vec()),
+                (OutputStream::Stdout, vec![0, 0x80, 0xff, 0xc3, b'\n']),
+                (OutputStream::Stderr, vec![0, 0x80, 0xff, 0xc3, b'\n']),
+                (OutputStream::Stderr, b"src/main.gleam:5\n42\n".to_vec()),
             ]
         );
         output.finish().unwrap();
@@ -218,7 +232,7 @@ pub fn println_error(value: String) -> Nil
     struct ClosedStreams(std::sync::atomic::AtomicUsize);
 
     impl Streams for ClosedStreams {
-        fn write(&self, _stream: OutputStream, _text: &str) -> io::Result<()> {
+        fn write(&self, _stream: OutputStream, _text: &[u8]) -> io::Result<()> {
             self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed stream"))
         }
@@ -231,9 +245,9 @@ pub fn println_error(value: String) -> Nil
             streams: streams.clone(),
             failure: Arc::new(OnceLock::new()),
         };
-        output.write(OutputStream::Stdout, "first");
+        output.write(OutputStream::Stdout, b"first");
         let first = output.finish().unwrap_err();
-        output.clone().write(OutputStream::Stderr, "second");
+        output.clone().write(OutputStream::Stderr, b"second");
         let second = output.finish().unwrap_err();
         assert!(Arc::ptr_eq(&first, &second));
         assert_eq!(first.kind(), io::ErrorKind::BrokenPipe);
@@ -294,7 +308,7 @@ pub fn println_error(value: String) -> Nil
         }
         struct WriterStreams(Mutex<Writer>);
         impl Streams for WriterStreams {
-            fn write(&self, _: OutputStream, text: &str) -> io::Result<()> {
+            fn write(&self, _: OutputStream, text: &[u8]) -> io::Result<()> {
                 write_flushed(&mut *self.0.lock().unwrap(), text)
             }
         }
@@ -398,7 +412,7 @@ pub fn main() { echo "before" exit() echo "after" Nil }
                 flushes: 0,
             };
             assert_eq!(
-                write_flushed(&mut writer, "text")
+                write_flushed(&mut writer, b"text")
                     .err()
                     .map(|error| error.to_string())
                     .as_deref(),
@@ -407,8 +421,8 @@ pub fn main() { echo "before" exit() echo "after" Nil }
             assert_eq!(writer.bytes, bytes.as_bytes());
             assert_eq!(writer.flushes, flushes);
         }
-        SystemStreams.write(OutputStream::Stdout, "").unwrap();
-        SystemStreams.write(OutputStream::Stderr, "").unwrap();
+        SystemStreams.write(OutputStream::Stdout, b"").unwrap();
+        SystemStreams.write(OutputStream::Stderr, b"").unwrap();
         let output = SharedOutput::new();
         output.finish().unwrap();
     }

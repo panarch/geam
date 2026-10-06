@@ -96,7 +96,7 @@ mod tests {
                 .tuple_item(2)
                 .string()
                 .as_ref(),
-            "unread integer views"
+            b"unread integer views"
         );
         assert!(stored.integer_reads().get().is_none());
         let first = BorrowedValue::from_stored(&stored)

@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 20,
+    format: 24,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -265,7 +265,7 @@ data::ModuleArtifact {
                     return data::compiled::CompiledProgress::Yield(1);
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let (b1_i0,) = (b0_i1,);
                     if *budget == 0 {
 
@@ -343,7 +343,7 @@ data::ModuleArtifact {
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(1));
                 }
                 *budget -= 1;
-                if values.text(b0_s0).starts_with("λ") {
+                if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                     let (b1_i0,) = (b0_i1,);
 
                     values.ints.clear();
@@ -535,6 +535,8 @@ data::ModuleArtifact {
                 int_lists: data::Storage::Static(&[
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                 ]),
             }

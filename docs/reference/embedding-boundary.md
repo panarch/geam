@@ -359,18 +359,27 @@ a one-element Gleam Tuple, while `()` is Gleam Nil. A function has zero through
 seven source arguments passed as one Rust argument tuple; this arity is separate
 from any Tuple-valued source argument.
 
-`StringValue` owns immutable text independently of a call or loaded module.
-Construct it with `"text".into()` and borrow its visible UTF-8 with `as_str()`.
-Clones and larger substrings share storage. A retained substring may keep its
-whole original buffer alive; use `detached()` when independent storage is
-needed. `into_ecostring()` returns flat text, copying only when the visible
-string is a range of its backing buffer. Empty and inline-sized slices do not
-retain the original allocation.
+`StringValue` owns immutable bytes independently of a call or loaded module.
+Construct known text with `"text".into()` or arbitrary bytes with
+`StringValue::from_bytes(Vec<u8>)`. `as_bytes()` always borrows the exact visible
+bytes; `as_str()` returns `Result<&str, Utf8Error>`. Byte slicing can split a
+UTF-8 character without losing its bytes. Typed arguments, returns, nested
+values and retained calls all preserve those bytes.
+
+Normal text keeps EcoString's inline/shared storage. Clones and larger ranges
+share storage; a range can retain a much larger original allocation. Empty and
+small ranges release that parent, and `detached()` copies visible bytes into
+independent storage. Raw construction moves its Vec into a shared owner without
+a payload copy; repeated checked text access on raw backing repeats validation.
+`into_ecostring()` is a checked owned text conversion. See the
+[provider byte/text contract](provider-boundary.md) for bounds, hashing and
+migration from implicit `str` access.
 
 When updating from the previous `EcoString` mapping, regenerate bindings with
 `geam embedding sync` and change handwritten source-value signatures to
 `StringValue`. Existing `.into()` inputs continue to work. Function names,
-configuration and diagnostic text still use `EcoString`.
+configuration metadata and `ExternalPayload::inspect` remain UTF-8 text.
+Source echo and panic messages retain their original `StringValue` bytes.
 
 All compound types recurse, including `List(List(String))` and Lists inside
 Tuple, Result, or Option. Only the prelude Result and `gleam/option.Option` from

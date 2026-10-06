@@ -280,7 +280,7 @@ fn builtins_and_retained_values_survive_pending_and_repeated_native_callbacks() 
             .stdlib
             .io_outputs()
             .iter()
-            .map(|output| (output.stream(), output.text().as_str()))
+            .map(|output| (output.stream(), output.text().as_str().unwrap()))
             .collect::<Vec<_>>(),
         [
             (IoStream::Stdout, "created\n"),

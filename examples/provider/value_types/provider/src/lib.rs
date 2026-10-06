@@ -12,7 +12,7 @@ mod scalars {
 
     #[geam::function]
     fn join(left: StringValue, right: StringValue) -> StringValue {
-        format!("{left}:{right}").into()
+        left.concat(&StringValue::from(":")).concat(&right)
     }
 
     #[geam::function]
@@ -178,14 +178,16 @@ mod customs {
     fn describe(job: JobInput) -> StringValue {
         match job {
             JobInput::Pending => "pending".into(),
-            JobInput::Named(label) => format!("named:{label}").into(),
-            JobInput::Scheduled { label, attempt } => format!("scheduled:{label}:{attempt}").into(),
+            JobInput::Named(label) => StringValue::from("named:").concat(&label),
+            JobInput::Scheduled { label, attempt } => StringValue::from("scheduled:")
+                .concat(&label)
+                .concat(&format!(":{attempt}").into()),
             JobInput::Prioritized(PriorityInput::Low) => "priority:low".into(),
             JobInput::Prioritized(PriorityInput::Normal) => "priority:normal".into(),
             JobInput::Prioritized(PriorityInput::High) => "priority:high".into(),
             JobInput::Tags(tags) => {
                 let first = tags.get(0).unwrap_or_else(|| "empty".into());
-                format!("tags:{}:{first}", tags.len()).into()
+                StringValue::from(format!("tags:{}:", tags.len())).concat(&first)
             }
         }
     }
@@ -217,9 +219,11 @@ mod results {
             Err(ParseError::Empty)
         } else {
             value
-                .parse::<i64>()
+                .as_str()
+                .ok()
+                .and_then(|text| text.parse::<i64>().ok())
                 .map(BigInt::from)
-                .map_err(|_| ParseError::Invalid(value))
+                .ok_or(ParseError::Invalid(value))
         }
     }
 
@@ -228,7 +232,7 @@ mod results {
         match value {
             Ok(value) => format!("ok:{value}").into(),
             Err(ParseErrorInput::Empty) => "error:empty".into(),
-            Err(ParseErrorInput::Invalid(value)) => format!("error:{value}").into(),
+            Err(ParseErrorInput::Invalid(value)) => StringValue::from("error:").concat(&value),
         }
     }
 
@@ -241,7 +245,11 @@ mod results {
     fn describe_option(value: Option<(StringValue, BigInt)>) -> StringValue {
         value.map_or_else(
             || "none".into(),
-            |(label, value)| format!("some:{label}:{value}").into(),
+            |(label, value)| {
+                StringValue::from("some:")
+                    .concat(&label)
+                    .concat(&format!(":{value}").into())
+            },
         )
     }
 

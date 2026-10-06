@@ -4,7 +4,7 @@ use super::super::codegen::CompiledShape;
 use super::super::codegen::shape::KernelKind;
 use crate::plan::execution::compiled::{
     CompiledCallback, CompiledCallbackBodies, CompiledCallbackBody, CompiledFunction,
-    CompiledFunctions, CompiledImplementation,
+    CompiledFunctions, CompiledImplementation, NativeLoopContract, NativeLoopTarget,
 };
 use crate::plan::execution::function::{
     ExecutionFunctionBody, ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionProfile,
@@ -21,6 +21,7 @@ pub(super) struct CompiledError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Family {
+    NativeLoop,
     Int,
     Bool,
     Custom,
@@ -59,6 +60,7 @@ pub(super) fn admit<'data, Profile: ExecutionProfile>(
     custom_types: &CustomTypeTable,
 ) -> Result<CompiledCallbackBodies<'data, Profile>, CompiledError> {
     calls::all(compiled, functions)?;
+    native_loops(&compiled.native_loops, functions)?;
     targets(
         &compiled.ints,
         Family::Int,
@@ -219,6 +221,79 @@ fn callbacks<
     Ok(bodies)
 }
 
+fn native_loops<Profile: ExecutionProfile>(
+    targets: &[CompiledFunction<NativeLoopTarget>],
+    functions: &FunctionTables<Profile>,
+) -> Result<(), CompiledError> {
+    let mut previous = None;
+    for target in targets {
+        let key = target.function.key();
+        let error = |reason| CompiledError {
+            family: Family::NativeLoop,
+            function: key.1,
+            reason,
+        };
+        if previous.is_some_and(|previous| previous >= key) {
+            return Err(error(Reason::UnorderedTarget));
+        }
+        previous = Some(key);
+        let CompiledImplementation::NativeLoop(native) = &target.implementation else {
+            return Err(error(Reason::Kernel));
+        };
+        if native.function != target.function {
+            return Err(error(Reason::TargetIdentity));
+        }
+        let expected = match target.function {
+            NativeLoopTarget::Int(id) => {
+                native_loop_shape(functions.value_returns.int_functions.get(id.0))
+            }
+            NativeLoopTarget::Float(id) => {
+                native_loop_shape(functions.value_returns.float_functions.get(id.0))
+            }
+            NativeLoopTarget::String(id) => {
+                native_loop_shape(functions.value_returns.string_functions.get(id.0))
+            }
+            NativeLoopTarget::BitArray(id) => {
+                native_loop_shape(functions.value_returns.bit_array_functions.get(id.0))
+            }
+            NativeLoopTarget::UtfCodepoint(id) => {
+                native_loop_shape(functions.value_returns.utf_codepoint_functions.get(id.0))
+            }
+            NativeLoopTarget::Bool(id) => {
+                native_loop_shape(functions.value_returns.bool_functions.get(id.0))
+            }
+            NativeLoopTarget::Nil(id) => {
+                native_loop_shape(functions.value_returns.nil_functions.get(id.0))
+            }
+        }
+        .map_err(error)?;
+        if native.contract != expected {
+            return Err(error(Reason::Calls));
+        }
+        if native.entry != 0 {
+            return Err(error(Reason::Entry));
+        }
+        if native.checkpoints.len() != 1 {
+            return Err(error(Reason::CheckpointCount));
+        }
+        if native.checkpoints[0] != expected.checkpoint() {
+            return Err(error(Reason::Checkpoint(0)));
+        }
+    }
+    Ok(())
+}
+
+fn native_loop_shape<Body: ExecutionFunctionBody>(
+    entry: Option<&impl ExecutionFunctionEntry<Body>>,
+) -> Result<NativeLoopContract, Reason> {
+    let entry = entry.ok_or(Reason::MissingFunction)?;
+    let ExecutionFunctionRef::Graph(entry) = entry.as_ref() else {
+        return Err(Reason::HostFunction);
+    };
+    NativeLoopContract::inspect(entry.body().function_body().block_graph())
+        .ok_or(Reason::UnsupportedGraph)
+}
+
 fn targets<'function, Id, Body: ExecutionFunctionBody + 'function, HostTarget: 'function>(
     targets: &[CompiledFunction<Id>],
     family: Family,
@@ -287,7 +362,9 @@ fn value_shape<'body, Body: ExecutionFunctionBody>(
             return CompiledShape::inspect_bits(body.function_body())
                 .ok_or(Reason::UnsupportedGraph);
         }
-        CompiledImplementation::FunctionCalls(_) => return Err(Reason::Kernel),
+        CompiledImplementation::FunctionCalls(_) | CompiledImplementation::NativeLoop(_) => {
+            return Err(Reason::Kernel);
+        }
     };
     let shape = CompiledShape::inspect(body.function_body()).ok_or(Reason::UnsupportedGraph)?;
     if shape.kind == expected {
@@ -314,13 +391,15 @@ mod tests {
     use super::super::tests::{graph_body, owned_mut};
     use super::{CompiledError, Family, Reason, admit};
     use super::{CompiledShape, KernelKind};
+    use crate::plan::execution::Table;
     use crate::plan::execution::compiled::{
         BitArrayImplementation, CompiledCallback, CompiledCallbacks, CompiledFunction,
         CompiledFunctions, CompiledImplementation, CustomLoopImplementation, IntListImplementation,
         NumericImplementation, StringImplementation,
     };
     use crate::plan::execution::function::{
-        ExecutionIntFunctionBody, IntFunctionId, ValueFunctionEntry,
+        ExecutionFunctionEntry, ExecutionFunctionRef, ExecutionIntFunctionBody, IntFunctionId,
+        ValueFunctionEntry,
     };
     use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ParamLocal};
     use crate::plan::execution::host::{
@@ -348,6 +427,265 @@ mod tests {
     fn source_plan(source: &str) -> crate::ExecutionPlan {
         let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
         crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap())
+    }
+
+    #[test]
+    fn native_loop_metadata_must_match_the_original_graph_target_exit_and_checkpoint() {
+        use crate::plan::execution::compiled::{
+            NativeLoopContract, NativeLoopImplementation, NativeLoopTarget,
+        };
+        use crate::plan::execution::graph::BlockGraphExitId;
+        use crate::runtime::compiled::native_loop::run;
+        let providers = HostProviderSet::<crate::StatelessHostProfile>::from_providers([
+            crate::HostProviderModule::new("example", "example")
+                .unwrap()
+                .with_function::<(num_bigint::BigInt,), num_bigint::BigInt, _>(
+                    "observe",
+                    std::convert::identity,
+                )
+                .unwrap(),
+        ])
+        .unwrap();
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    r#"
+@external(erlang, "native", "observe")
+fn observe(value: Int) -> Int
+fn cycle(counter: Int, producer: fn() -> Int) {
+  let returned = observe(producer())
+  case counter { 1 -> returned _ -> cycle(counter - 1, producer) }
+}
+pub fn main() { cycle(3, fn() { 7 }) }
+"#,
+                )],
+            )],
+            providers,
+        )
+        .unwrap();
+        let execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let functions = &execution.execution.program.functions;
+        let targets = functions
+            .value_returns
+            .int_functions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let ExecutionFunctionRef::Graph(entry) = entry.as_ref() else {
+                    return None;
+                };
+                NativeLoopContract::inspect(entry.body().block_graph())
+                    .map(|contract| (IntFunctionId(index), contract))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(targets.len(), 1);
+        let (function, contract) = &targets[0];
+        for (change, expected) in [
+            (0, Ok(())),
+            (1, Err(Reason::TargetIdentity)),
+            (2, Err(Reason::Calls)),
+            (3, Err(Reason::Entry)),
+            (4, Err(Reason::CheckpointCount)),
+            (5, Err(Reason::Checkpoint(0))),
+        ] {
+            let mut actual = contract.clone();
+            if change == 2 {
+                actual.exit = BlockGraphExitId(usize::MAX);
+            }
+            let mut points = vec![contract.checkpoint()];
+            if change == 4 {
+                points.clear();
+            }
+            if change == 5 {
+                points[0].int_functions = 0;
+            }
+            let compiled = CompiledFunctions {
+                ints: Table::Static(&[]),
+                native_loops: vec![CompiledFunction {
+                    function: NativeLoopTarget::Int(*function),
+                    implementation: CompiledImplementation::NativeLoop(
+                        Box::new(NativeLoopImplementation {
+                            function: NativeLoopTarget::Int(IntFunctionId(if change == 1 {
+                                usize::MAX
+                            } else {
+                                function.0
+                            })),
+                            entry: usize::from(change == 3),
+                            checkpoints: points.into(),
+                            contract: actual,
+                            run,
+                        })
+                        .into(),
+                    ),
+                }]
+                .into(),
+                ..CompiledFunctions::interpreted()
+            };
+            if change == 0 {
+                assert_eq!(compiled.native_loops[0].implementation.entry(), 0);
+                assert_eq!(
+                    compiled.native_loops[0].implementation.checkpoints(),
+                    [contract.checkpoint()]
+                );
+            }
+            assert_eq!(
+                all(
+                    &compiled,
+                    functions,
+                    &execution.execution.program.common.custom_types
+                ),
+                expected.map_err(|reason| CompiledError {
+                    family: Family::NativeLoop,
+                    function: function.0,
+                    reason
+                })
+            );
+        }
+        // Rows are external artifact input. Reject their bad references at
+        // admission instead of turning them into runtime fallback paths.
+        use crate::plan::execution::function::{
+            BitArrayFunctionId, BoolFunctionId, FloatFunctionId, NilFunctionId, StringFunctionId,
+            UtfCodepointFunctionId,
+        };
+        let host = functions
+            .value_returns
+            .int_functions
+            .iter()
+            .position(|entry| matches!(entry.as_ref(), ExecutionFunctionRef::Host(_)))
+            .unwrap();
+        // The source root is an ordinary Int graph, not the recognized cycle.
+        let ordinary = 0;
+        for (function, reason) in [
+            (
+                NativeLoopTarget::Int(IntFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::Float(FloatFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::String(StringFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::BitArray(BitArrayFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::UtfCodepoint(UtfCodepointFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::Bool(BoolFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::Nil(NilFunctionId(usize::MAX)),
+                Reason::MissingFunction,
+            ),
+            (
+                NativeLoopTarget::Int(IntFunctionId(host)),
+                Reason::HostFunction,
+            ),
+            (
+                NativeLoopTarget::Int(IntFunctionId(ordinary)),
+                Reason::UnsupportedGraph,
+            ),
+        ] {
+            let compiled = CompiledFunctions {
+                native_loops: vec![CompiledFunction {
+                    function,
+                    implementation: CompiledImplementation::NativeLoop(
+                        Box::new(NativeLoopImplementation {
+                            function,
+                            entry: 0,
+                            checkpoints: vec![contract.checkpoint()].into(),
+                            contract: contract.clone(),
+                            run,
+                        })
+                        .into(),
+                    ),
+                }]
+                .into(),
+                ..CompiledFunctions::interpreted()
+            };
+            assert_eq!(
+                all(
+                    &compiled,
+                    functions,
+                    &execution.execution.program.common.custom_types
+                ),
+                Err(CompiledError {
+                    family: Family::NativeLoop,
+                    function: function.key().1,
+                    reason,
+                })
+            );
+        }
+        let compiled = CompiledFunctions {
+            native_loops: (0..2)
+                .map(|_| CompiledFunction {
+                    function: NativeLoopTarget::Int(*function),
+                    implementation: CompiledImplementation::NativeLoop(
+                        Box::new(NativeLoopImplementation {
+                            function: NativeLoopTarget::Int(*function),
+                            entry: 0,
+                            checkpoints: vec![contract.checkpoint()].into(),
+                            contract: contract.clone(),
+                            run,
+                        })
+                        .into(),
+                    ),
+                })
+                .collect::<Vec<_>>()
+                .into(),
+            ..CompiledFunctions::interpreted()
+        };
+        assert_eq!(
+            all(
+                &compiled,
+                functions,
+                &execution.execution.program.common.custom_types
+            ),
+            Err(CompiledError {
+                family: Family::NativeLoop,
+                function: function.0,
+                reason: Reason::UnorderedTarget,
+            })
+        );
+        let compiled = CompiledFunctions {
+            native_loops: vec![CompiledFunction {
+                function: NativeLoopTarget::Int(*function),
+                implementation: CompiledImplementation::Numeric(NumericImplementation {
+                    entry: 0,
+                    checkpoints: Table::Static(&[]),
+                    run: metadata_numeric,
+                }),
+            }]
+            .into(),
+            ..CompiledFunctions::interpreted()
+        };
+        assert_eq!(
+            all(
+                &compiled,
+                functions,
+                &execution.execution.program.common.custom_types
+            ),
+            Err(CompiledError {
+                family: Family::NativeLoop,
+                function: function.0,
+                reason: Reason::Kernel,
+            })
+        );
     }
 
     #[test]
@@ -493,6 +831,7 @@ pub fn main() { walk("λλ", 3) }
                 entries.push(make());
             }
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: vec![].into(),
                 ints: vec![].into(),
                 bools: vec![].into(),
@@ -548,6 +887,7 @@ pub fn main() { scan(<<1, 2>>, 0) }
         };
 
         let mut compiled = CompiledFunctions {
+            native_loops: Table::Static(&[]),
             function_calls: vec![].into(),
             ints: vec![].into(),
             bools: vec![].into(),
@@ -630,6 +970,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
             })
             .unwrap();
         let mut compiled = CompiledFunctions {
+            native_loops: Table::Static(&[]),
             function_calls: vec![].into(),
             customs: vec![].into(),
             int_lists: vec![].into(),
@@ -736,6 +1077,7 @@ pub fn main() { scalar(scan(<<1, 2>>, 0)) }
                 entries.push(make_target());
             }
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: vec![].into(),
                 customs: vec![].into(),
                 int_lists: vec![].into(),
@@ -816,6 +1158,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
                 })
             };
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: vec![].into(),
                 customs: vec![].into(),
                 int_lists: vec![].into(),
@@ -868,6 +1211,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
         );
         let shape = CompiledShape::inspect(plan.bool_function(BoolFunctionId(1)).body()).unwrap();
         let mut compiled = CompiledFunctions {
+            native_loops: Table::Static(&[]),
             function_calls: vec![].into(),
             customs: vec![].into(),
             int_lists: vec![].into(),
@@ -937,6 +1281,7 @@ pub fn main() { #(head([1]), same([1], [1])) }
         assert_eq!(
             all(
                 &CompiledFunctions {
+                    native_loops: Table::Static(&[]),
                     function_calls: vec![].into(),
                     customs: vec![].into(),
                     int_lists: vec![].into(),

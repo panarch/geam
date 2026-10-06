@@ -149,7 +149,8 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
 
     fn service(&mut self, cx: &mut Context<'_>) {
         // Bound each service turn, including while the Rust body waits.
-        for _ in 0..self.budget.get() {
+        let mut remaining = self.budget.get();
+        while remaining > 0 {
             let finished = self.units.finish_next(cx);
             let progress = self
                 .units
@@ -174,7 +175,10 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                 self.tasks.push(self.host.spawn(worker));
             }
             if let Some(request) = request {
-                self.dispatch(request);
+                let charged = self.dispatch(request, remaining);
+                remaining = remaining.saturating_sub(charged);
+            } else {
+                remaining -= 1;
             }
             if self.closed {
                 return;
@@ -186,9 +190,10 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
         cx.waker().wake_by_ref();
     }
 
-    fn dispatch(&mut self, request: Request<Profile>) {
+    fn dispatch(&mut self, request: Request<Profile>, available: usize) -> usize {
         match request {
             Request::Service(request) => {
+                let allowance = request.allowance(available);
                 let context = self.work.execution().with_unit(request.unit().cloned());
                 let delivery = {
                     let captures = context.services().captures().clone();
@@ -205,7 +210,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                         self.lists.clone(),
                         captures,
                     );
-                    request.service(&self.plan, &mut runtime)
+                    request.service(&self.plan, &mut runtime, allowance)
                 };
                 if self.work.exit_status().is_some() {
                     self.close();
@@ -213,10 +218,11 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                 if let Some(delivery) = delivery {
                     delivery.deliver();
                 }
+                allowance
             }
             Request::Callback(request) => {
                 let (context, root) = match request.unit() {
-                    Some(unit) if !unit.is_active() => return,
+                    Some(unit) if !unit.is_active() => return 1,
                     Some(unit) => (self.work.execution().with_unit(Some(unit.clone())), None),
                     None => {
                         let (context, root) = self.begin(UnitOwner::new(self.units.completion()));
@@ -226,6 +232,7 @@ impl<'host, Profile: HostProfile> Domain<'host, Profile> {
                 let worker =
                     request.into_worker(Arc::clone(&self.plan), context, self.budget, root);
                 self.tasks.push(self.host.spawn(worker));
+                1
             }
         }
     }
@@ -421,6 +428,182 @@ mod tests {
     use std::task::{Context, Poll, Waker};
     use std::time::Instant;
 
+    #[test]
+    fn native_loop_requests_resume_in_the_domain_and_leave_computed_producers_canonical() {
+        use crate::execution_fixture::TestHost;
+        use crate::plan::execution::compiled::CompiledImplementation;
+        use crate::plan::execution::compiled::{
+            NativeLoopContract, NativeLoopImplementation, NativeLoopTarget,
+        };
+        use crate::plan::execution::function::TupleFunctionId;
+        use crate::plan::execution::function::{
+            ExecutionFunctionEntry, ExecutionFunctionRef, IntFunctionId,
+        };
+        use crate::plan::execution::graph::IntLocalId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::RuntimeListStorage;
+        use crate::runtime::compiled::native_loop;
+        use crate::runtime::execution::Domain;
+        use crate::runtime::graph::{
+            GraphExecution as Execution, GraphProgress as Progress, GraphStorage as Storage,
+        };
+        use crate::runtime::state::RuntimeState;
+        use crate::{
+            HostCall, HostCallCompletion, HostCallError, HostProvider, HostProviderModule,
+            HostProviderSet, StatelessHostProfile,
+        };
+        use num_bigint::BigInt;
+        use std::num::NonZeroUsize;
+
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        fn observe<'call>(
+            mut call: HostCall<'call, StatelessHostProfile, Provider, BigInt>,
+            value: BigInt,
+        ) -> Result<HostCallCompletion<'call, BigInt>, HostCallError> {
+            let _ = call.state();
+            Ok(call.return_value(value + 1))
+        }
+        let source = r#"
+@external(erlang, "native", "observe")
+fn observe(value: Int) -> Int
+fn cycle(counter: Int, producer: fn() -> Int) -> Int {
+  let result = observe(producer())
+  case counter { 1 -> result _ -> cycle(counter - 1, producer) }
+}
+fn captured(value: Int) { fn() { value } }
+fn computed(value: Int) { fn() { value + 1 } }
+pub fn main() { #(cycle, captured(7), computed(7)) }
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [crate::PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [crate::ModuleSource::new(
+                    "example",
+                    "src/example.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::from_providers([HostProviderModule::new("example", "example")
+                .unwrap()
+                .with_scoped_retained_function::<Provider, BigInt, BigInt, _, _>(
+                    "observe",
+                    observe,
+                    |value: BigInt| Ok(value + 1),
+                )
+                .unwrap()])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut hosted =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let (plan, stores, captures) = hosted.parts_mut();
+        // The source has three Int graph bodies and one native Int entry.
+        let graphs = (0..4)
+            .filter_map(
+                |index| match plan.int_function(IntFunctionId(index)).as_ref() {
+                    ExecutionFunctionRef::Graph(entry) => {
+                        Some((IntFunctionId(index), entry.body()))
+                    }
+                    ExecutionFunctionRef::Host(_) => None,
+                },
+            )
+            .collect::<Vec<_>>();
+        assert_eq!(graphs.len(), 3);
+        let (id, body) = graphs[0];
+        let contract = NativeLoopContract::inspect(body.block_graph()).unwrap();
+        assert_eq!(contract.site.function(), "cycle");
+        let finished = contract.exit;
+        let implementation = CompiledImplementation::NativeLoop(
+            Box::new(NativeLoopImplementation {
+                function: NativeLoopTarget::Int(id),
+                entry: 0,
+                checkpoints: vec![contract.checkpoint()].into(),
+                contract,
+                run: native_loop::run,
+            })
+            .into(),
+        );
+        let host = TestHost::default();
+        let mut run_state = ();
+        let mut echo = Vec::new();
+        let domain = Domain::new(
+            Arc::clone(plan),
+            &host,
+            &mut run_state,
+            stores,
+            &mut echo,
+            captures.clone(),
+            Domain::<StatelessHostProfile>::DEFAULT_BUDGET,
+        );
+        let context = domain.context();
+        host.block_on(domain.drive(async {
+            let values = context
+                .call(
+                    TupleFunctionId(0),
+                    HostCallOrigin::Entry,
+                    RetainedValues::empty(),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(values.len(), 3);
+            for (producer, expected, native) in [
+                (values[1].clone(), BigInt::from(8), true),
+                (values[2].clone(), BigInt::from(9), false),
+            ] {
+                let mut worker_echo = Vec::new();
+                let mut state = RuntimeState::with_host_storage(
+                    &mut worker_echo,
+                    (),
+                    RuntimeListStorage::default(),
+                    context.captures().clone(),
+                );
+                let mut inputs = RetainedValues::empty();
+                inputs.push_int(3.into());
+                inputs.push_evaluated(producer);
+                let mut execution =
+                    Execution::new(body.block_graph().as_view(), inputs, Some(&implementation));
+                let mut storage = Storage::new();
+                let mut requests = 0;
+                let result = loop {
+                    match execution
+                        .advance(&**plan, &mut state, &mut storage, &mut 0)
+                        .unwrap()
+                    {
+                        Progress::Continue(next) => execution = next,
+                        Progress::Host(invocation) => {
+                            requests += 1;
+                            execution = invocation
+                                .submit(context.execution.services(), NonZeroUsize::new(1).unwrap())
+                                .await
+                                .unwrap()
+                                .unwrap();
+                        }
+                        Progress::Complete(completed) => {
+                            assert_eq!(completed.exit(), finished);
+                            break completed.into_value(&IntLocalId(0)).into_bigint();
+                        }
+                    }
+                };
+                assert_eq!(result, expected);
+                assert_eq!(requests, if native { 22 } else { 3 });
+                assert!(worker_echo.is_empty());
+            }
+        }))
+        .unwrap();
+        assert!(echo.is_empty());
+    }
+
     struct Profile;
     impl HostProfile for Profile {
         type RunState = Cell<usize>;
@@ -595,6 +778,50 @@ mod tests {
         fn emit(&mut self, output: EchoOutput) {
             let index: usize = output.value().inspect().to_string().parse().unwrap();
             self.0[index].fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn bounded_native_loop_requests_leave_other_requests_for_the_next_service_turn() {
+        let (plan, _) = program("pub fn main() { Nil }", LibraryValueType::Nil);
+        for budget in [1, 2, 7, 1024] {
+            let host = ManualHost::default();
+            let mut state = Cell::new(7);
+            let mut stores = Cell::new(());
+            let mut echo = Vec::new();
+            let mut domain = Domain::new(
+                Arc::clone(&plan),
+                &host,
+                &mut state,
+                &mut stores,
+                &mut echo,
+                Default::default(),
+                NonZeroUsize::new(budget).unwrap(),
+            );
+            let context = domain.context().execution;
+            let mut bounded = Box::pin(context.services().submit_bounded(
+                usize::MAX,
+                |_, state, granted| {
+                    assert_eq!(state.host_state().get(), 7);
+                    state.host_state().set(8);
+                    granted
+                },
+            ));
+            let mut ordinary = Box::pin(context.with_state(|state| {
+                assert_eq!(state.get(), 8);
+                state.set(9);
+                42
+            }));
+            let mut cx = Context::from_waker(Waker::noop());
+            assert_eq!(bounded.as_mut().poll(&mut cx), Poll::Pending);
+            assert_eq!(ordinary.as_mut().poll(&mut cx), Poll::Pending);
+            domain.service(&mut cx);
+            assert_eq!(bounded.as_mut().poll(&mut cx), Poll::Ready(Ok(budget)));
+            assert_eq!(ordinary.as_mut().poll(&mut cx), Poll::Pending);
+            domain.service(&mut cx);
+            assert_eq!(ordinary.as_mut().poll(&mut cx), Poll::Ready(Ok(42)));
+            drop(domain);
+            assert_eq!(state.get(), 9);
         }
     }
 
@@ -1757,7 +1984,7 @@ pub fn source_failure() {
                                 continue;
                             }
                         }
-                        domain.dispatch(request);
+                        domain.dispatch(request, domain.budget.get());
                     }
                     domain.finish_units(cx);
                     Poll::Pending
@@ -2116,7 +2343,7 @@ mod source_work {
                 Some(receiver)
             };
             if let Some(mut receiver) = receiver {
-                driver.dispatch(request);
+                driver.dispatch(request, driver.budget.get());
                 assert_eq!(receiver.as_mut().poll(&mut cx), Poll::Ready(Ok(1)));
                 let mut reentrant = wake
                     .requests
@@ -2127,7 +2354,7 @@ mod source_work {
                 driver.service(&mut Context::from_waker(Waker::noop()));
                 assert_eq!(reentrant.as_mut().poll(&mut cx), Poll::Ready(Ok(2)));
             } else {
-                driver.dispatch(request);
+                driver.dispatch(request, driver.budget.get());
                 assert!(wake.requests.lock().unwrap().is_empty());
             }
         }
@@ -2829,7 +3056,7 @@ pub fn make() {{
                             if index == discarded {
                                 drop(request);
                             } else {
-                                driver.dispatch(request);
+                                driver.dispatch(request, driver.budget.get());
                             }
                             assert!(
                                 executor
@@ -3005,7 +3232,7 @@ pub fn make() {{ echo 7 #({expression}, future.ready(7)) }}
                         );
                         break;
                     }
-                    driver.dispatch(request);
+                    driver.dispatch(request, driver.budget.get());
                     assert!(
                         executor
                             .poll(std::pin::pin!(std::future::pending::<()>()).as_mut())
@@ -4064,7 +4291,7 @@ pub fn observe_ready() { #(observe_native(future.ready(43))) }
                 let mut observer = std::pin::pin!(work.observe());
                 assert!(observer.as_mut().poll(&mut cx).is_pending());
                 let request = driver.work.next(&mut cx).expect("decode the input");
-                driver.dispatch(request);
+                driver.dispatch(request, driver.budget.get());
                 assert!(observer.as_mut().poll(&mut cx).is_pending());
                 drop(driver.work.next(&mut cx).expect("encode the completion"));
                 assert_eq!(
@@ -4548,7 +4775,7 @@ mod work_requests {
         assert_eq!(execution.state.get(), 2);
         let request = execution.work.next(&mut cx).expect("state request");
         let wakes_before_delivery = wake.0.load(Ordering::SeqCst);
-        execution.dispatch(request);
+        execution.dispatch(request, execution.budget.get());
         assert_eq!(state_request.as_mut().poll(&mut cx), Poll::Ready(Ok(2)));
         assert_eq!(execution.state.get(), 3);
         assert!(wake.0.load(Ordering::SeqCst) > wakes_before_delivery);
@@ -4822,7 +5049,7 @@ pub fn make() { #(fn(value: Int) {
                     .work
                     .next(&mut cx)
                     .expect("next conversion boundary");
-                execution.dispatch(request);
+                execution.dispatch(request, execution.budget.get());
                 assert!(
                     executor
                         .poll(std::pin::pin!(std::future::pending::<()>()).as_mut())
@@ -4903,7 +5130,7 @@ pub fn make() { #(fn(value: Int) {
                     .work
                     .next(&mut cx)
                     .expect("completion decoder request");
-                execution.dispatch(request);
+                execution.dispatch(request, execution.budget.get());
                 drop(execution);
             }
             assert_eq!(
@@ -4951,7 +5178,7 @@ pub fn make() { #(fn(value: Int) {
             } else {
                 Some(request)
             };
-            execution.dispatch(operation);
+            execution.dispatch(operation, execution.budget.get());
             if let Some(mut receiver) = receiver {
                 assert_eq!(receiver.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
             }
@@ -4992,7 +5219,7 @@ pub fn make() { #(fn(value: Int) {
             } else {
                 Some(request)
             };
-            execution.dispatch(operation);
+            execution.dispatch(operation, execution.budget.get());
             if let Some(mut receiver) = receiver {
                 assert_eq!(receiver.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
             }
@@ -5156,7 +5383,7 @@ pub fn make() { #(fn(value: Int) {
         assert!(request.as_mut().poll(&mut cx).is_pending());
         let request_to_service = execution.work.next(&mut cx).expect("claimed request");
         drop(request);
-        execution.dispatch(request_to_service);
+        execution.dispatch(request_to_service, execution.budget.get());
         executor
             .block_on(execution.drive(std::future::ready(())))
             .expect("cancelled callback cleanup")

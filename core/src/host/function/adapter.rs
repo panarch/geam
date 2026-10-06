@@ -1,10 +1,14 @@
 use super::HostFunctionSchemaRegistration;
 use super::argument::{HostArgument, HostParameterLayout, HostScopedArgument};
-use super::return_::{HostFunctionImplementation, HostReturn, OwnedHostFunctionImplementation};
+use super::return_::{
+    HostFunctionImplementation, HostRetainedCallback, HostReturn, HostScopedCallback,
+    OwnedHostFunctionImplementation,
+};
 use crate::host::{
     HostAbiType, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure,
     HostNativeViewFactory, HostProfile, HostProvider, HostTypeSequence, HostValueFunction,
 };
+use std::sync::Arc;
 
 pub trait HostFunctionAdapter<Arguments, Return>: Send + Sync + 'static {
     fn register<Profile: HostProfile>(self) -> HostFunctionRegistration<Profile>;
@@ -20,7 +24,7 @@ where
     Profile: HostProfile,
     Provider: HostProvider<Profile>,
 {
-    fn register(self) -> ScopedHostFunctionRegistration<Profile>;
+    fn register(self) -> ScopedValueHostFunctionRegistration<Profile>;
 }
 
 pub trait ScopedConstructingHostFunctionAdapter<Profile, Provider, Arguments, Return, Constructions>:
@@ -315,9 +319,33 @@ pub struct HostFunctionRegistration<Profile: HostProfile> {
     pub(super) implementation: OwnedHostFunctionImplementation<Profile>,
 }
 
+pub struct ScopedValueHostFunctionRegistration<Profile: HostProfile> {
+    schema: HostFunctionSchemaRegistration,
+    implementation: Arc<HostScopedCallback<Profile>>,
+}
+
 pub struct ScopedHostFunctionRegistration<Profile: HostProfile> {
     pub(super) schema: HostFunctionSchemaRegistration,
     pub(super) implementation: HostFunctionImplementation<Profile>,
+}
+
+impl<Profile: HostProfile> ScopedValueHostFunctionRegistration<Profile> {
+    pub(super) fn into_immediate(self) -> ScopedHostFunctionRegistration<Profile> {
+        ScopedHostFunctionRegistration {
+            schema: self.schema,
+            implementation: HostFunctionImplementation::scoped_callback(self.implementation),
+        }
+    }
+
+    pub(super) fn into_retained(
+        self,
+        retained: Arc<HostRetainedCallback>,
+    ) -> ScopedHostFunctionRegistration<Profile> {
+        ScopedHostFunctionRegistration {
+            schema: self.schema,
+            implementation: HostFunctionImplementation::retained(self.implementation, retained),
+        }
+    }
 }
 
 impl<Profile: HostProfile> HostFunctionRegistration<Profile> {
@@ -458,11 +486,11 @@ macro_rules! host_function {
                 + 'static,
             Return: HostAbiType,
         {
-            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedValueHostFunctionRegistration<Profile> {
                 let (schema, ()) = <() as HostSignature<Return>>::signature();
-                ScopedHostFunctionRegistration {
+                ScopedValueHostFunctionRegistration {
                     schema,
-                    implementation: HostFunctionImplementation::scoped(move |runtime| {
+                    implementation: Arc::new(move |runtime| {
                         self(HostCall::new(runtime)).map(|completion| completion.token)
                     }),
                 }
@@ -594,9 +622,9 @@ macro_rules! host_function {
             Return: HostAbiType,
             $($argument: HostScopedArgument,)*
         {
-            fn register(self) -> ScopedHostFunctionRegistration<Profile> {
+            fn register(self) -> ScopedValueHostFunctionRegistration<Profile> {
                 let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
-                let implementation = HostFunctionImplementation::scoped(move |runtime| {
+                let implementation: Arc<HostScopedCallback<Profile>> = Arc::new(move |runtime| {
                     let call = HostCall::new(runtime);
                     $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
                     self(
@@ -605,7 +633,7 @@ macro_rules! host_function {
                     )
                     .map(|completion| completion.token)
                 });
-                ScopedHostFunctionRegistration {
+                ScopedValueHostFunctionRegistration {
                     schema,
                     implementation,
                 }
@@ -1066,6 +1094,7 @@ mod tests {
         ];
 
         for (arity, registration) in registrations.into_iter().enumerate() {
+            let registration = registration.into_immediate();
             assert_eq!(
                 registration.schema.parameters.as_ref(),
                 vec![HostTypeDescriptor::Nil; arity],

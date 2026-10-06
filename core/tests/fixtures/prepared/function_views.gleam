@@ -42,12 +42,19 @@ pub fn run() -> Bool {
   let assert Branch([Leaf(leaf)]) = tree
   let nested: fn(Erased) -> fn(Erased) -> Erased =
     coerce(fn(a: Int) { fn(b: Int) { a + b } })
+  let raw: String = coerce(<<255, 0, 195>>)
+  let append = fn(a: String) { a <> raw }
+  let byte_view: fn(BitArray) -> BitArray = coerce(append)
+  let restored_bytes: fn(String) -> String = coerce(byte_view)
   output(view(input(40))) == 42
   && restored == original
   && restored(40) == 42
   && output(callback(input(41))) == 42
   && output(leaf(input(41))) == 42
   && output(nested(input(20))(input(22))) == 42
+  && byte_view(<<255, 0, 195>>) == <<255, 0, 195, 255, 0, 195>>
+  && restored_bytes == append
+  && restored_bytes(raw) == raw <> raw
 }
 
 pub fn invalid_input() -> Bool {

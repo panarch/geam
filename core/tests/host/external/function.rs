@@ -237,7 +237,7 @@ pub fn main() {
     assert_eq!(error.failure().message(), "external function stopped");
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("before stop"),
     );
 }
@@ -681,7 +681,7 @@ pub fn main() {
 
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("external function"),
     );
     assert_eq!(echoes[0].value().inspect().to_string(), "//fn(a) { ... }");
@@ -737,7 +737,7 @@ pub fn main() -> fn(Int) -> Int {
     assert_eq!(returned.inspect().to_string(), "//fn(a) { ... }");
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("core function"),
     );
 }
@@ -916,7 +916,7 @@ pub fn main() {
     assert_eq!(returned, Value::Tuple(vec![Value::Bool(true); 14]));
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("symbolic external function"),
     );
     assert_eq!(echoes[0].value().inspect().to_string(), "//fn(a) { ... }");

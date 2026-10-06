@@ -1,4 +1,4 @@
-use super::{binary_path, checked, command};
+use super::{binary_path, checked, command, copy_source};
 use std::fs;
 use std::path::Path;
 
@@ -171,24 +171,5 @@ fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_c
         let output = checked(command(&standalone, &deploy).env("PATH", ""));
         assert_eq!(output.stdout, expected);
         assert!(output.stderr.is_empty());
-    }
-}
-
-fn copy_source(source: &Path, destination: &Path) {
-    fs::create_dir_all(destination).unwrap();
-    for entry in fs::read_dir(source).unwrap() {
-        let entry = entry.unwrap();
-        if matches!(
-            entry.file_name().to_str(),
-            Some("target" | "build" | ".cargo")
-        ) {
-            continue;
-        }
-        let destination = destination.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_source(&entry.path(), &destination);
-        } else {
-            fs::copy(entry.path(), destination).unwrap();
-        }
     }
 }

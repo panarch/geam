@@ -77,6 +77,6 @@ mod tests {
             &(BigInt::from(i64::MIN) - 1)
         );
         assert_eq!(environment.values.bools, [true, false]);
-        assert_eq!(environment.values.strings[0].as_str(), "retained");
+        assert_eq!(environment.values.strings[0].as_str().unwrap(), "retained");
     }
 }

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 20,
+        format: 24,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2561,6 +2561,8 @@ pub fn running() -> List(Int) {
                         },
                     ]),
                     callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                    native_loops: data::Storage::Static(&[
+                    ]),
                     function_calls: data::Storage::Static(&[
                     ]),
                 }

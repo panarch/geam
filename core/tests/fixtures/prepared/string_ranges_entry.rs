@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 20,
+    format: 24,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -669,7 +669,7 @@ pub fn bits_with_boolean_guard(
                         return data::compiled::CompiledProgress::Yield(0);
                     }
                     *budget -= 1;
-                    if values.text(b0_s0).starts_with("λ") {
+                    if values.bytes(b0_s0).starts_with("λ".as_bytes()) {
                         let (b1_i0, b1_s0,) = (b0_i0, b0_s0,);
                         if *budget == 0 {
 
@@ -751,7 +751,7 @@ pub fn bits_with_boolean_guard(
                             return data::compiled::CompiledProgress::Yield(5);
                         }
                         *budget -= 1;
-                        if values.text(b2_s0) == values.text(b2_s1) {
+                        if values.bytes(b2_s0) == values.bytes(b2_s1) {
                             let (b3_i0,) = (b2_i0,);
                             if *budget == 0 {
 
@@ -960,7 +960,7 @@ pub fn bits_with_boolean_guard(
                     return CompiledResume::Exit(data::compiled::CompiledProgress::Yield(5));
                 }
                 *budget -= 1;
-                if values.text(b2_s0) == values.text(b2_s1) {
+                if values.bytes(b2_s0) == values.bytes(b2_s1) {
                     let (b3_i0,) = (b2_i0,);
 
                     values.ints.clear();
@@ -1252,6 +1252,8 @@ pub fn bits_with_boolean_guard(
                 int_lists: data::Storage::Static(&[
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                 ]),
             }

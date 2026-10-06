@@ -2,11 +2,12 @@ mod adapter;
 mod argument;
 mod return_;
 
-use crate::host::{HostProfile, HostProvider};
+use crate::host::{HostCallError, HostProfile, HostProvider, HostRetainedType, RetainedAbi};
 use crate::plan::{FunctionType, TypeScheme};
 use ecow::EcoString;
 use std::collections::BTreeSet;
 use std::fmt;
+use std::sync::Arc;
 
 pub(super) use adapter::{
     HostCallableAdapter, HostCallableSignature, HostSignature, ResumableHostCallableAdapter,
@@ -24,7 +25,7 @@ pub(crate) use argument::{
 pub(crate) use return_::HostNeverFunction;
 pub(crate) use return_::{
     HostCallReturn, HostFunctionBinding, HostFunctionImplementation, HostNativeViewFactory,
-    HostValueFunction, NativeViewBinding, NativeViewImplementation,
+    HostRetainedCallback, HostValueFunction, NativeViewBinding, NativeViewImplementation,
 };
 #[cfg(test)]
 pub(crate) use return_::{
@@ -595,7 +596,36 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
             Arguments,
             Return,
         >>::register(function);
-        Self::from_registration(name, registration)
+        Self::from_registration(name, registration.into_immediate())
+    }
+
+    pub(crate) fn new_scoped_retained<Provider, Argument, Return, Function, Retained>(
+        name: EcoString,
+        function: Function,
+        retained: Retained,
+    ) -> Result<Self, crate::HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Argument: HostRetainedType,
+        Return: HostRetainedType,
+        Function: ScopedHostFunction<Profile, Provider, (Argument,), Return>,
+        Retained: Fn(Argument::Retained) -> Result<Return::Retained, HostCallError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let retained: Arc<HostRetainedCallback> = Arc::new(move |input| {
+            let argument = <Argument as RetainedAbi<Argument::Retained>>::read(input);
+            retained(argument)
+                .map(|value| <Return as RetainedAbi<Return::Retained>>::store(value, input))
+        });
+        let registration = <Function as adapter::ScopedHostFunctionAdapter<
+            Profile,
+            Provider,
+            (Argument,),
+            Return,
+        >>::register(function);
+        Self::from_registration(name, registration.into_retained(retained))
     }
 
     pub(crate) fn new_scoped_with_constructions<
@@ -770,14 +800,15 @@ mod tests {
     use super::{HostFunctionDefinition, HostFunctionSchema, RegisteredHostConstructions};
     use crate::BitArrayValue;
     use crate::StringValue;
+    use crate::host::HostTypeDescriptor;
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{
         HostCall, HostCallCompletion, HostCallError, HostConstructions,
         HostCustomConstructorSchema, HostCustomFieldSchema, HostCustomTypeSchema,
         HostExternalTypeSchema, HostListType, HostProvider, HostRegistrationError, HostSchemaType,
-        HostScopedValue, HostType, HostTypeDescriptor, HostTypeIndex0, HostTypeList,
-        HostTypeListEnd, HostTypeParameter, HostValueFamily, expect_value_implementation,
+        HostScopedValue, HostType, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+        HostTypeParameter, HostValueFamily, expect_value_implementation,
     };
     use crate::plan::ValueType;
     use num_bigint::BigInt;

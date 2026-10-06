@@ -1,11 +1,11 @@
 use crate::schema::{Atom, AtomSchema};
 use crate::{Component, GleamErlangHostProfile};
-use geam_core::StringValue;
 use geam_core::host::{
     HostCall, HostCallCompletion, HostCallError, HostConstructions, HostExternal,
     HostProviderModule, HostRegistrationError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
 };
 use geam_core::provider::advanced::NativeValue;
+use geam_core::{HostFailure, StringValue};
 use geam_stdlib::provider_support::{Dynamic, DynamicSchema, GleamError, GleamOk, GleamResult};
 
 pub(crate) fn host_provider<Profile: GleamErlangHostProfile>()
@@ -24,7 +24,10 @@ fn create<'call, Profile: GleamErlangHostProfile>(
     mut call: HostCall<'call, Profile, Component<Profile>, Atom>,
     name: StringValue,
 ) -> Result<HostCallCompletion<'call, Atom>, HostCallError> {
-    let name = Profile::erlang_execution(call.execution_state()).intern(name.into_ecostring())?;
+    let text = name
+        .into_ecostring()
+        .map_err(|error| HostFailure::new(error.to_string()))?;
+    let name = Profile::erlang_execution(call.execution_state()).intern(text)?;
     let value = call.create_external(NativeValue::symbol(name));
     Ok(call.return_value(value))
 }
@@ -34,7 +37,11 @@ fn get<'call, Profile: GleamErlangHostProfile>(
     constructions: HostConstructions<'call, HostTypeList<Atom, HostTypeListEnd>>,
     name: StringValue,
 ) -> Result<HostCallCompletion<'call, GleamResult<Atom, ()>>, HostCallError> {
-    match Profile::erlang_execution(call.execution_state()).existing_atom(&name) {
+    match name
+        .as_str()
+        .ok()
+        .and_then(|name| Profile::erlang_execution(call.execution_state()).existing_atom(name))
+    {
         Some(name) => {
             let value = call.construct_external(
                 constructions.at::<HostTypeIndex0>(),

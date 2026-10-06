@@ -626,6 +626,7 @@ pub fn main() {
     equal_native(#(Empty), Empty),
     apply_native(<<"hello":utf8>>, fn(value: String) { value <> "!" }, "invalid"),
     apply_native(<<255>>, fn(value: String) { value <> "!" }, "invalid"),
+    apply_native(<<1:size(1)>>, fn(value: String) { value <> "!" }, "invalid"),
     apply_native(source, fn(value: Tree(String)) { value == expected }, False),
   )
 }
@@ -633,7 +634,7 @@ pub fn main() {
         );
         assert_eq!(
             value.inspect().to_string(),
-            "#(True, False, True, False, \"hello!\", \"invalid\", True)"
+            "#(True, False, True, False, \"hello!\", <<255, 33>>, \"invalid\", True)"
         );
     }
 
@@ -1088,7 +1089,7 @@ pub fn main() {
         mut call: HostCall<'call, NativeProfile, Converter, HostExternalType<NameSchema>>,
         value: StringValue,
     ) -> Result<HostCallCompletion<'call, HostExternalType<NameSchema>>, HostCallError> {
-        let value = call.create_external(NativeValue::symbol(value.into_ecostring()));
+        let value = call.create_external(NativeValue::symbol(value.into_ecostring().unwrap()));
         Ok(call.return_value(value))
     }
 
@@ -1935,7 +1936,7 @@ pub fn main() -> Bool {
             value: StringValue,
         ) -> Result<HostCallCompletion<'call, HostExternalType<OpaqueSchema>>, HostCallError>
         {
-            let value = call.create_external(NativeValue::symbol(value.into_ecostring()));
+            let value = call.create_external(NativeValue::symbol(value.into_ecostring().unwrap()));
             Ok(call.return_value(value))
         }
         let provider = HostProviderModule::new("application", "main").unwrap()
@@ -2004,22 +2005,22 @@ pub fn main() {
   let assert True = !equal_native("A", codepoint) as "non-integer codepoint"
   let assert True = equal_native(<<"one":utf8>>, "one") as "binary to string"
   let assert True = equal_native("one", <<"one":utf8>>) as "string to binary"
-  let assert True = !equal_native(<<255>>, "one") as "invalid UTF-8"
+  let assert True = !equal_native(<<255>>, "one") as "different string bytes"
   let assert True = equal_native(name("true"), True) as "true symbol"
   let assert True = equal_native(name("false"), False) as "false symbol"
   let assert True = !equal_native(name("alpha"), True) as "non-boolean symbol"
   let assert True = equal_native(name("nil"), Nil) as "nil symbol"
   let assert True = equal_native(#(<<"one":utf8>>), #("one")) as "tuple fields"
-  let assert True = !equal_native(#(<<255>>), #("one")) as "invalid tuple field"
+  let assert True = !equal_native(#(42), #("one")) as "incompatible tuple field"
   let assert True = equal_native([<<"one":utf8>>], ["one"]) as "list elements"
-  let assert True = !equal_native([<<255>>], ["one"]) as "invalid list element"
+  let assert True = !equal_native([42], ["one"]) as "incompatible list element"
   let assert True = equal_native(source, tree) as "recursive construction from rule schema"
   let assert True = equal_native(empty, target) as "nullary generic constructor"
   let assert True = !equal_native(#(), target) as "empty native tuple"
   let assert True = !equal_native(#(1, "one"), Packet("one")) as "non-symbol tag"
   let assert True = !equal_native(#(name("wrong"), "one"), Packet("one")) as "unknown tag"
   let assert True = !equal_native(#(name("packet"), "one", 2), Packet("one")) as "wrong arity"
-  let assert True = !equal_native(Packet(<<255>>), Packet("one")) as "invalid custom field"
+  let assert True = !equal_native(Packet(42), Packet("one")) as "incompatible custom field"
   let assert True = !equal_native(Unknown(<<"one":utf8>>), Unknown("one")) as "undeclared construction"
   let assert True = !equal_native(opaque_value("true"), True) as "opaque terminal"
   let assert True = equal_native(Alpha, name("alpha")) as "external construction"
@@ -2048,7 +2049,7 @@ pub fn main() {
             value: StringValue,
         ) -> Result<HostCallCompletion<'call, HostExternalType<OpaqueSchema>>, HostCallError>
         {
-            let value = call.create_external(NativeValue::symbol(value.into_ecostring()));
+            let value = call.create_external(NativeValue::symbol(value.into_ecostring().unwrap()));
             Ok(call.return_value(value))
         }
         let saved = Arc::new(Mutex::new(None::<NativeValue>));
@@ -2104,7 +2105,8 @@ pub fn main() {
   let assert False = can_view(Wrapped(<<"ok":utf8>>), Wrapped(""), True)
   let assert True = can_view(Packet(<<"ok":utf8>>), Packet("ok"), False)
   let assert True = can_view(Wrapped(<<"ok":utf8>>), Wrapped("ok"), False)
-  let assert False = can_view(Wrapped(<<255>>), Wrapped(""), False)
+  let assert True = can_view(Wrapped(<<255>>), Wrapped(""), False)
+  let assert False = can_view(Wrapped(<<1:size(1)>>), Wrapped(""), False)
   let assert False = can_view(opaque_value("opaque"), Wrapped(""), False)
   let assert False = can_view(empty, Wrapped(""), False)
   let assert False = can_view(42, Wrapped(""), False)
@@ -2432,7 +2434,7 @@ pub fn main() { restore_previous(name("key")) }
             mut call: HostCall<'call, NativeProfile, Converter, Opaque>,
             name: StringValue,
         ) -> Result<HostCallCompletion<'call, Opaque>, HostCallError> {
-            let value = call.create_external(NativeValue::symbol(name.into_ecostring()));
+            let value = call.create_external(NativeValue::symbol(name.into_ecostring().unwrap()));
             Ok(call.return_value(value))
         }
         fn check<'call>(

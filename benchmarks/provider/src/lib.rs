@@ -29,7 +29,10 @@ mod native {
 
     #[geam::function]
     fn environment(name: StringValue) -> Result<StringValue, StringValue> {
-        std::env::var(name.as_str())
+        let name = name
+            .as_str()
+            .map_err(|error| StringValue::from(error.to_string()))?;
+        std::env::var(name)
             .map(StringValue::from)
             .map_err(|error| error.to_string().into())
     }
@@ -176,6 +179,36 @@ pub fn main(present: String, absent: String) {
                 Ok(StringValue::from(std::env::var("PATH").unwrap())),
                 Err(StringValue::from("environment variable not found")),
                 true
+            )
+        );
+        let raw_names = executor
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    scope
+                        .call(
+                            &main,
+                            (
+                                StringValue::from_bytes(vec![255]),
+                                StringValue::from_bytes(vec![0xC3]),
+                            ),
+                        )
+                        .await
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            raw_names,
+            (
+                Err(StringValue::from(
+                    "invalid utf-8 sequence of 1 bytes from index 0"
+                )),
+                Err(StringValue::from(
+                    "incomplete utf-8 byte sequence from index 0"
+                )),
+                true,
             )
         );
         assert!(echo.is_empty());

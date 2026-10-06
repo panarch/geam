@@ -53,7 +53,7 @@ mod tests {
     use super::review;
     use crate::geam_bindings;
     use geam::HostProviderConfiguration;
-    use geam::embedding::{BigInt, HostedModuleBuilder};
+    use geam::embedding::{BigInt, HostedModuleBuilder, StringValue};
     use geam::gleam_stdlib::{GleamStdlibRunState, IoStream};
     use std::io::ErrorKind;
 
@@ -93,10 +93,7 @@ mod tests {
                     .await
                     .expect("mixed receipt review");
                     assert_eq!(mixed.rows.len(), 4);
-                    let row = |value: Result<
-                        (&geam::embedding::StringValue, &BigInt),
-                        &geam::embedding::StringValue,
-                    >| {
+                    let row = |value: Result<(&StringValue, &BigInt), &StringValue>| {
                         value
                             .map(|(code, quantity)| (code.clone(), quantity.clone()))
                             .map_err(Clone::clone)
@@ -197,7 +194,7 @@ First valid item: none
         assert_eq!(
             outputs
                 .iter()
-                .map(|output| (output.stream(), output.text().as_str()))
+                .map(|output| (output.stream(), output.text().as_str().unwrap()))
                 .collect::<Vec<_>>(),
             [(IoStream::Stdout, "validating inventory\n"); 3]
         );

@@ -84,7 +84,7 @@ pub mod __macro_support {
     };
     pub use geam_core::__macro_support::{
         HostCustomConstructorBranch, HostCustomConstructorLeaf, HostCustomIndexHere,
-        HostCustomIndexLeft, HostCustomIndexRight,
+        HostCustomIndexLeft, HostCustomIndexRight, HostRetainedType, HostRetainedValue,
     };
     pub use geam_core::__macro_support::{
         ProviderConstructionBranch, ProviderConstructionIndexHere, ProviderConstructionIndexLeft,

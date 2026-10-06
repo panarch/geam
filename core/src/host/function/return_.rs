@@ -12,6 +12,7 @@ use crate::host::{
     HostScopedValue, HostValueToken,
 };
 use crate::plan::execution::host::HostNativeView;
+use crate::runtime::StoredRuntimeValue;
 use crate::runtime::execution::Continuation;
 use std::sync::Arc;
 
@@ -90,7 +91,16 @@ enum HostValueFunctionKind<Profile: HostProfile> {
     Bool(HostBoolFunction<Profile>),
     Nil(HostNilFunction<Profile>),
     Scoped(Arc<HostScopedCallback<Profile>>),
+    Retained(Arc<RetainedCallbacks<Profile>>),
     Continuing(Arc<HostContinuingCallback<Profile>>),
+}
+
+pub(crate) type HostRetainedCallback =
+    dyn Fn(&StoredRuntimeValue) -> Result<StoredRuntimeValue, HostCallError> + Send + Sync;
+
+struct RetainedCallbacks<Profile: HostProfile> {
+    scoped: Arc<HostScopedCallback<Profile>>,
+    retained: Arc<HostRetainedCallback>,
 }
 
 pub(crate) enum HostCallReturn {
@@ -123,7 +133,7 @@ pub(crate) enum OwnedHostFunctionImplementation<Profile: HostProfile> {
     Nil(OwnedHostCallback<Profile, ()>),
 }
 
-type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
+pub(super) type HostScopedCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
     + Send
     + Sync;
 
@@ -237,6 +247,9 @@ impl<Profile: HostProfile> Clone for HostValueFunction<Profile> {
                 HostValueFunctionKind::Scoped(function) => {
                     HostValueFunctionKind::Scoped(Arc::clone(function))
                 }
+                HostValueFunctionKind::Retained(function) => {
+                    HostValueFunctionKind::Retained(Arc::clone(function))
+                }
                 HostValueFunctionKind::Continuing(function) => {
                     HostValueFunctionKind::Continuing(Arc::clone(function))
                 }
@@ -272,7 +285,13 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
         + Sync
         + 'static,
     ) -> Self {
-        Self::Value(HostValueFunction::scoped(function))
+        Self::scoped_callback(Arc::new(function))
+    }
+
+    pub(super) fn scoped_callback(scoped: Arc<HostScopedCallback<Profile>>) -> Self {
+        Self::Value(HostValueFunction {
+            kind: HostValueFunctionKind::Scoped(scoped),
+        })
     }
 
     pub(super) fn scoped_never(
@@ -284,6 +303,15 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
         + 'static,
     ) -> Self {
         Self::Never(HostNeverFunction::scoped(function))
+    }
+
+    pub(super) fn retained(
+        scoped: Arc<HostScopedCallback<Profile>>,
+        retained: Arc<HostRetainedCallback>,
+    ) -> Self {
+        Self::Value(HostValueFunction {
+            kind: HostValueFunctionKind::Retained(Arc::new(RetainedCallbacks { scoped, retained })),
+        })
     }
 }
 
@@ -316,6 +344,13 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
     ) -> Self {
         Self {
             kind: HostValueFunctionKind::Continuing(Arc::new(function)),
+        }
+    }
+
+    pub(crate) fn retained(&self) -> Option<Arc<HostRetainedCallback>> {
+        match &self.kind {
+            HostValueFunctionKind::Retained(callbacks) => Some(Arc::clone(&callbacks.retained)),
+            _ => None,
         }
     }
 
@@ -391,6 +426,9 @@ impl<Profile: HostProfile> HostValueFunction<Profile> {
             HostValueFunctionKind::Scoped(function) => {
                 return function(runtime).map(HostCallReturn::Immediate);
             }
+            HostValueFunctionKind::Retained(function) => {
+                return (function.scoped)(runtime).map(HostCallReturn::Immediate);
+            }
             HostValueFunctionKind::Continuing(function) => {
                 return function(runtime).map(HostCallReturn::Continuing);
             }
@@ -432,20 +470,113 @@ mod tests {
     use std::convert::Infallible;
 
     #[test]
-    fn value_return_dispatch_preserves_typed_callback_failure() {
-        let implementation = <bool as HostReturn>::implementation::<TestHostProfile>(|_, _| {
-            Err(HostFailure::new("bool unavailable"))
-        })
-        .into_immediate();
-        let implementation = expect_value_implementation(&implementation);
-        let mut state = TestRunState::default();
-        let mut runtime =
-            TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+    fn retained_registration_clones_both_entries_and_preserves_their_result_and_failure() {
+        use crate::host::{HostScopedValue, HostValueFamily};
+        use crate::runtime::BorrowedValue;
+        use std::sync::Arc;
 
-        assert_eq!(
-            crate::host::expect_immediate_call(implementation, &mut runtime),
-            Err(HostCallError::from(HostFailure::new("bool unavailable"))),
-        );
+        let input = super::StoredRuntimeValue::test_int(42.into());
+        for fails in [false, true] {
+            let implementation = super::HostFunctionImplementation::<TestHostProfile>::retained(
+                Arc::new(move |runtime| {
+                    if fails {
+                        Err(HostCallError::from(HostFailure::new(
+                            "retained unavailable",
+                        )))
+                    } else {
+                        Ok(runtime.complete(HostScopedValue::Int(42.into())))
+                    }
+                }),
+                Arc::new(move |input| {
+                    if fails {
+                        Err(HostCallError::from(HostFailure::new(
+                            "retained unavailable",
+                        )))
+                    } else {
+                        Ok(input.clone_retained())
+                    }
+                }),
+            );
+            let original = expect_value_implementation(&implementation);
+            let cloned = original.clone();
+            let original_entry = original.retained().unwrap();
+            let cloned_entry = cloned.retained().unwrap();
+            assert!(Arc::ptr_eq(&original_entry, &cloned_entry));
+            assert_eq!(
+                cloned_entry(&input).map(|returned| BorrowedValue::from_stored(&returned)
+                    .int()
+                    .bigint()
+                    .into_owned()),
+                if fails {
+                    Err(HostCallError::from(HostFailure::new(
+                        "retained unavailable",
+                    )))
+                } else {
+                    Ok(42.into())
+                }
+            );
+            let mut state = TestRunState::default();
+            let mut runtime =
+                TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+            assert_eq!(
+                super::expect_immediate_call(&cloned, &mut runtime).map(|token| token.family),
+                if fails {
+                    Err(HostCallError::from(HostFailure::new(
+                        "retained unavailable",
+                    )))
+                } else {
+                    Ok(HostValueFamily::Int)
+                }
+            );
+            let expected = if fails {
+                None
+            } else {
+                Some(HostScopedValue::Int(42.into()))
+            };
+            assert_eq!(runtime.completed(), expected.as_ref());
+        }
+    }
+
+    #[test]
+    fn value_return_dispatch_preserves_typed_callback_failure() {
+        use crate::{BitArrayValue, StringValue};
+        use num_bigint::BigInt;
+
+        let implementations = [
+            <BigInt as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <f64 as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <StringValue as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <BitArrayValue as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <char as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <bool as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+            <() as HostReturn>::implementation::<TestHostProfile>(|_, _| {
+                Err(HostFailure::new("value unavailable"))
+            }),
+        ];
+        for implementation in implementations {
+            let implementation = implementation.into_immediate();
+            let cloned = expect_value_implementation(&implementation).clone();
+            let mut state = TestRunState::default();
+            let mut runtime =
+                TestHostCallRuntime::new(&mut state, CallArguments::new(Vec::new(), Vec::new()));
+            assert_eq!(
+                super::expect_immediate_call(&cloned, &mut runtime),
+                Err(HostCallError::from(HostFailure::new("value unavailable"))),
+            );
+            assert_eq!(runtime.completed(), None);
+        }
     }
 
     #[test]

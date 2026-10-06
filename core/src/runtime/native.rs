@@ -256,7 +256,8 @@ impl NativeValue {
         })
     }
 
-    /// Reads a byte-aligned UTF-8 binary, preserving a source string's storage.
+    /// Reads any byte-aligned binary, preserving a source string's storage.
+    /// Text validation is separate through [`crate::StringValue::as_str`].
     pub fn as_string(&self) -> Option<crate::StringValue> {
         self.with_node(|node| match node {
             Node::Binary(value) => value.string(),
@@ -691,7 +692,7 @@ fn binary_string(bits: &BitSlice<u8, Msb0>) -> Option<crate::StringValue> {
                 .fold(0u8, |value, bit| (value << 1) | u8::from(bit))
         })
         .collect::<Vec<_>>();
-    std::str::from_utf8(&bytes).ok().map(Into::into)
+    Some(crate::StringValue::from_bytes(bytes))
 }
 
 fn inspect_node(node: Node<'_>, context: &HostExternalInspection<'_>) -> EcoString {
@@ -840,7 +841,10 @@ mod tests {
         HostExternalEquality, HostExternalHashing, HostExternalInspection, RetainedValueEquality,
         RetainedValueHashing, RetainedValueInspection,
     };
+    use crate::plan::execution::runtime::RuntimeExecutionPlan;
     use crate::runtime::RetainedValueRef;
+    use crate::runtime::{EvaluatedValue, StoredRuntimeValue};
+    use crate::{StringValue, ValueType};
     use ecow::EcoString;
 
     fn opaque_equal(left: &RetainedValueRef, right: &RetainedValueRef) -> bool {
@@ -917,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn native_binary_preserves_bits_and_checks_utf8_without_changing_source_storage() {
+    fn native_binary_preserves_raw_bytes_without_changing_source_storage() {
         let values = source(
             r#"
 pub fn main() {
@@ -943,12 +947,20 @@ pub fn main() {
         assert_eq!(string.inspect(&inspection), binary.inspect(&inspection));
         assert_eq!(string.inspect(&inspection), "\"hello\"");
         assert_eq!(string.kind(), NativeKind::Binary);
-        assert_eq!(binary.as_string().as_deref(), Some("hello"));
+        assert_eq!(
+            binary
+                .as_string()
+                .as_ref()
+                .map(|value| value.as_str().unwrap()),
+            Some("hello")
+        );
         assert_eq!(binary.as_bit_array().unwrap().bytes(), b"hello");
-        assert!(invalid.as_string().is_none());
+        assert_eq!(invalid.as_string().unwrap().as_bytes(), &[255]);
+        assert!(invalid.as_string().unwrap().as_str().is_err());
         assert!(partial.as_string().is_none());
         assert_eq!(partial.as_bit_array().unwrap().bit_len(), 1);
         assert_eq!(partial.as_bit_array().unwrap().bytes(), &[0x80]);
+        assert_eq!(partial.inspect(&inspection), "<<1:size(1)>>");
         assert!(!invalid.source_equal(&equality, &partial));
         assert_eq!(invalid.inspect(&inspection), "<<255>>");
         assert!(binary.as_symbol().is_none());
@@ -977,6 +989,46 @@ pub fn main() {
         assert!(true_value.source_equal(&context, &NativeValue::symbol("true")));
         assert!(false_value.source_equal(&context, &NativeValue::symbol("false")));
         assert!(!true_value.source_equal(&context, &false_value));
+    }
+
+    #[test]
+    fn raw_string_native_views_equal_and_hash_like_binary_without_changing_exact_source_type() {
+        let plan = crate::runtime::plan_src("pub fn main() { \"\" }");
+        let text = StringValue::from_bytes(vec![255, 0, 195]);
+        let alias = text.clone();
+        let native = NativeValue::from_stored(StoredRuntimeValue::new(
+            EvaluatedValue::String(text),
+            plan.value_metadata(),
+        ));
+        let binary = source("pub fn main() { <<255, 0, 195>> }");
+        let equality = RetainedValueEquality::new(&opaque_equal);
+        let hashing = RetainedValueHashing::new(&opaque_hash);
+        let inspection = RetainedValueInspection::new(&opaque_inspection);
+        let equality = HostExternalEquality(&equality);
+        let hashing = HostExternalHashing(&hashing);
+        let inspection = HostExternalInspection(&inspection);
+        assert!(native.source_equal(&equality, &binary));
+        assert!(binary.source_equal(&equality, &native));
+        assert_eq!(native.source_hash(&hashing), binary.source_hash(&hashing));
+        assert_eq!(native.inspect(&inspection), "<<255, 0, 195>>");
+        assert_eq!(native.inspect(&inspection), binary.inspect(&inspection));
+        let restored = native.as_string().unwrap();
+        assert_eq!(restored.as_ptr(), alias.as_ptr());
+        assert_eq!(native.as_bit_array().unwrap().bytes(), [255, 0, 195]);
+        assert_eq!(native.bit_len(), Some(24));
+        assert_eq!(
+            native.find_source(|value| Some(value.type_().clone())),
+            Some(ValueType::String)
+        );
+        assert_eq!(
+            binary.find_source(|value| Some(value.type_().clone())),
+            Some(ValueType::BitArray)
+        );
+        drop(native);
+        drop(plan);
+        drop(alias);
+        assert_eq!(restored.as_bytes(), [255, 0, 195]);
+        assert!(restored.as_str().is_err());
     }
 
     #[test]
@@ -1047,7 +1099,12 @@ pub fn main() {
         );
         assert_eq!(integer.index(1).unwrap().as_int(), Some(42.into()));
         assert_eq!(
-            string.index(1).unwrap().as_string().as_deref(),
+            string
+                .index(1)
+                .unwrap()
+                .as_string()
+                .as_ref()
+                .map(|value| value.as_str().unwrap()),
             Some("text")
         );
         assert_eq!(empty.as_symbol().as_deref(), Some("empty"));

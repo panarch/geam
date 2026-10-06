@@ -27,7 +27,7 @@ mod provider {
     use super::{BigInt, StoredStringTree, StringValue, function};
     use crate::GleamStdlibProviderProfile;
     use geam_core::host::{HostCall, HostProvider, HostType};
-    use geam_core::provider::{ExternalPayload, ProviderExternalPayloadAccess};
+    use geam_core::provider::{ExternalPayload, HostResult, ProviderExternalPayloadAccess};
 
     #[geam_macros::external(name = "StringTree", manual)]
     pub struct StringTreePayload {
@@ -122,18 +122,18 @@ mod provider {
     }
 
     #[geam_macros::function]
-    fn lowercase(tree: &StringTreePayload) -> StringTreePayload {
-        function::lowercase(tree)
+    fn lowercase(tree: &StringTreePayload) -> HostResult<StringTreePayload> {
+        function::lowercase(tree).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn uppercase(tree: &StringTreePayload) -> StringTreePayload {
-        function::uppercase(tree)
+    fn uppercase(tree: &StringTreePayload) -> HostResult<StringTreePayload> {
+        function::uppercase(tree).map_err(Into::into)
     }
 
     #[geam_macros::function]
-    fn do_to_graphemes(string: StringValue) -> Vec<StringValue> {
-        function::do_to_graphemes(string)
+    fn do_to_graphemes(string: StringValue) -> HostResult<Vec<StringValue>> {
+        function::do_to_graphemes(string).map_err(Into::into)
     }
 
     #[geam_macros::function]

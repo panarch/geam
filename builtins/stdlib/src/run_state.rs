@@ -144,7 +144,7 @@ mod tests {
             state
                 .io_outputs()
                 .iter()
-                .map(|output| (output.stream(), output.text().as_str()))
+                .map(|output| (output.stream(), output.text().as_str().unwrap()))
                 .collect::<Vec<_>>(),
             [(IoStream::Stdout, "first"), (IoStream::Stderr, "second")],
         );

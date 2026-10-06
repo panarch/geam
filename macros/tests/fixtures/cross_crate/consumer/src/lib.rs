@@ -86,7 +86,7 @@ mod main {
         match value {
             values::StatusInput::Ready => "ready".into(),
             values::StatusInput::Count(value) => format!("count:{value}").into(),
-            values::StatusInput::Tagged(value) => format!("tagged:{}", value.0).into(),
+            values::StatusInput::Tagged(value) => StringValue::from("tagged:").concat(&value.0),
         }
     }
 
@@ -113,12 +113,12 @@ mod main {
     #[geam_macros::function]
     fn envelope_text(value: EnvelopeInput) -> StringValue {
         match value {
-            EnvelopeInput::One(value) => format!("one:{}", status_text(value)).into(),
+            EnvelopeInput::One(value) => StringValue::from("one:").concat(&status_text(value)),
             EnvelopeInput::Many(values) => {
                 let second = values.get(1).map_or_else(|| "missing".into(), status_text);
-                format!("many:{}:{second}", values.len()).into()
+                StringValue::from(format!("many:{}:", values.len())).concat(&second)
             }
-            EnvelopeInput::Token(value) => format!("token:{}", value.0).into(),
+            EnvelopeInput::Token(value) => StringValue::from("token:").concat(&value.0),
         }
     }
 
@@ -134,7 +134,7 @@ mod main {
             values::StatusInput::Ready => "ready".into(),
             values::StatusInput::Count(value) => format!("count:{value}").into(),
             values::StatusInput::Tagged(value) => {
-                format!("tagged:{}", value.with(|token| token.0.clone())).into()
+                StringValue::from("tagged:").concat(&value.with(|token| token.0.clone()))
             }
         }
     }

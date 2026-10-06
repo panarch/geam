@@ -1998,21 +1998,21 @@ pub fn main() { choose(True, False) }
                     value: StringLocalId(2),
                     prefix: "λ".into(),
                 },
-                "values.text(b3_s2).starts_with(\"λ\")",
+                "values.bytes(b3_s2).starts_with(\"λ\".as_bytes())",
             ),
             (
                 BoolTest::Equal {
                     left: ParamLocal::String(StringLocalId(2)),
                     right: ParamLocal::String(StringLocalId(5)),
                 },
-                "values.text(b3_s2) == values.text(b3_s5)",
+                "values.bytes(b3_s2) == values.bytes(b3_s5)",
             ),
             (
                 BoolTest::NotEqual {
                     left: ParamLocal::String(StringLocalId(2)),
                     right: ParamLocal::String(StringLocalId(5)),
                 },
-                "values.text(b3_s2) != values.text(b3_s5)",
+                "values.bytes(b3_s2) != values.bytes(b3_s5)",
             ),
         ] {
             let inspected = CompiledTest::inspect(&test, KernelKind::String).unwrap();

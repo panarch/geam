@@ -99,7 +99,7 @@ fn executes_every_scalar_family_through_direct_tail_and_function_value_calls() {
         .with_function("float", |value: f64| value + 0.5)
         .expect("host function should be valid")
         .with_function("string", |value: StringValue| -> StringValue {
-            value.to_uppercase().into()
+            value.as_str().unwrap().to_uppercase().into()
         })
         .expect("host function should be valid")
         .with_function("bit_array", |value: BitArrayValue| value)

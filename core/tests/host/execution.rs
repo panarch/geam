@@ -92,7 +92,7 @@ pub fn main() {
     assert_eq!(
         first_echoes
             .iter()
-            .map(|output| output.message().map(|message| message.as_str()))
+            .map(|output| output.message().map(|message| message.as_str().unwrap()))
             .collect::<Vec<_>>(),
         [Some("left"), Some("right")],
     );
@@ -105,7 +105,7 @@ pub fn main() {
     assert_eq!(
         second_echoes
             .iter()
-            .map(|output| output.message().map(|message| message.as_str()))
+            .map(|output| output.message().map(|message| message.as_str().unwrap()))
             .collect::<Vec<_>>(),
         [Some("left"), Some("right")],
     );

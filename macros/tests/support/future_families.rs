@@ -222,7 +222,7 @@ mod native {
 
     #[geam_macros::function]
     async fn arity_three(a: StringValue, b: StringValue, c: StringValue) -> StringValue {
-        format!("{a}{b}{c}").into()
+        a.concat(&b).concat(&c)
     }
 
     #[geam_macros::function]

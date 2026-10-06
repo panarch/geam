@@ -88,8 +88,11 @@ impl<'data, Graph: ExecutionGraphProfile> Instructions<'_, 'data, Graph> {
                     .span(site.module(), site.span())
                     .map_err(InstructionError::Source)?;
             }
-            BitArraySegment::String { value, encoding: _ } => {
+            BitArraySegment::String { value, site, .. } => {
                 read(value, locals)?;
+                self.sources
+                    .span(site.module(), site.span())
+                    .map_err(InstructionError::Source)?;
             }
             BitArraySegment::UtfCodepoint { value, encoding: _ } => {
                 read(value, locals)?;
@@ -314,6 +317,7 @@ pub fn main() {
             BitArraySegment::String {
                 value: StringLocalId(0),
                 encoding: StringEncoding::Utf8,
+                site: site.clone(),
             },
             BitArraySegment::UtfCodepoint {
                 value: UtfCodepointLocalId(0),
@@ -380,6 +384,26 @@ pub fn main() {
             Err(InstructionError::OutputType)
         );
         let bad_site = PanicSite::new("missing".into(), "main".into(), SourceSpan::new(0, 1));
+        for source in [site.clone(), bad_site.clone()] {
+            let expected = if source.module() == "missing" {
+                Err(InstructionError::Source(SourceError::MissingModule(
+                    "missing".into(),
+                )))
+            } else {
+                Ok(())
+            };
+            assert_eq!(
+                context.bit_segment(
+                    &BitArraySegment::String {
+                        value: StringLocalId(0),
+                        encoding: StringEncoding::Utf16(Endianness::Big),
+                        site: source,
+                    },
+                    &locals
+                ),
+                expected
+            );
+        }
         for source in [site, bad_site] {
             for unit in [0, 1] {
                 for value in [IntLocalId(0), IntLocalId(99)] {

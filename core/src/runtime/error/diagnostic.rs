@@ -77,6 +77,9 @@ impl<Subject: PanicSubject> Diagnostic for Panic<Subject> {
                 } => format!(
                     "sized bits segment requested {requested} bits, but the value contains {available} bits"
                 ),
+                BitArraySegmentPanicReason::InvalidStringEncoding { error } => {
+                    format!("UTF-16 and UTF-32 string segments require valid UTF-8: {error}")
+                }
                 BitArraySegmentPanicReason::SizeOutOfRange { bit_size } => {
                     format!("BitArray segment size {bit_size} exceeds the supported host range")
                 }
@@ -289,9 +292,12 @@ mod tests {
         CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, HostCallSite,
         PanicSite, SourceContext, SourceSpan, ValueType,
     };
-    use crate::runtime::{BitArrayValue, ExternalValue, FunctionValue, ListValue, Value};
     use crate::runtime::{
-        ExecutionError, HostError, InvariantError, Panic, PanicDetails, PanicKind, PanicMessage,
+        BitArraySegmentPanicReason, ExecutionError, HostError, InvariantError, Panic, PanicDetails,
+        PanicKind, PanicMessage,
+    };
+    use crate::runtime::{
+        BitArrayValue, ExternalValue, FunctionValue, ListValue, StringValue, Value,
     };
     use miette::Diagnostic;
 
@@ -433,6 +439,32 @@ mod tests {
     }
 
     #[test]
+    fn invalid_string_encoding_help_reports_the_exact_visible_utf8_failure() {
+        for (bytes, expected) in [
+            (
+                vec![b'a', 255],
+                "UTF-16 and UTF-32 string segments require valid UTF-8: invalid utf-8 sequence of 1 bytes from index 1",
+            ),
+            (
+                vec![195],
+                "UTF-16 and UTF-32 string segments require valid UTF-8: incomplete utf-8 byte sequence from index 0",
+            ),
+        ] {
+            let error = StringValue::from_bytes(bytes).as_str().unwrap_err();
+            let panic: Panic = Panic::new(
+                PanicKind::BitArraySegment,
+                PanicMessage::Default,
+                PanicSite::new("encoding".into(), "encode".into(), SourceSpan::new(0, 10)),
+                None,
+                Some(PanicDetails::BitArraySegment {
+                    reason: BitArraySegmentPanicReason::InvalidStringEncoding { error },
+                }),
+            );
+            assert_eq!(panic.help().unwrap().to_string(), expected);
+        }
+    }
+
+    #[test]
     fn invariant_diagnostics_have_codes_without_source_labels_or_help() {
         for (invariant, expected_code) in [
             (
@@ -569,6 +601,10 @@ mod tests {
             (Value::Int(1.into()), "Int(1)"),
             (Value::Float(1.5), "Float(1.5)"),
             (Value::String("one".into()), "String(\"one\")"),
+            (
+                Value::String(StringValue::from_bytes(vec![255, 0])),
+                "String(<<255, 0>>)",
+            ),
             (
                 Value::BitArray(BitArrayValue::from_bytes(vec![0xa5])),
                 "BitArray(bytes=[165], bit_len=8)",

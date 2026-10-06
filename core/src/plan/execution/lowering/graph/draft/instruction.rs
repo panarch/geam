@@ -204,6 +204,8 @@ pub(in crate::plan::execution::lowering) enum DraftBitArraySegment {
     String {
         value: DraftString,
         encoding: StringEncoding,
+
+        site: crate::plan::PanicSite,
     },
     UtfCodepoint {
         value: DraftUtfCodepoint,

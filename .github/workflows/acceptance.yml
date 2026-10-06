@@ -431,6 +431,7 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/native_function_views/embedding/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
         run: cargo test --package geam --test prepared_embedding --locked
@@ -762,6 +763,7 @@ jobs:
             tests/fixtures/selective_receive_service/provider -> target
             tests/fixtures/application_exit/provider -> target
             tests/fixtures/native_function_views/provider -> target
+            tests/fixtures/raw_string_values/provider -> target
 
       - name: Fetch locked consumer dependencies
         run: |
@@ -771,6 +773,7 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/raw_string_values/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
         run: cargo test --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
@@ -808,6 +811,13 @@ jobs:
         run: |
           gleam format --check tests/fixtures/native_function_views/project/src
           gleam format --check tests/fixtures/native_function_views/embedding/gleam/src
+      - name: Verify raw String values through separate native calls
+        run: cargo test --manifest-path tests/fixtures/raw_string_values/provider/Cargo.toml --locked
+
+      - name: Verify raw String fixture source formatting
+        run: |
+          gleam format --check tests/fixtures/raw_string_values/project/src
+          gleam format --check tests/fixtures/raw_string_values/embedding/gleam/src
 
       - name: Verify public application exit requests
         run: cargo test --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked

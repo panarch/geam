@@ -567,7 +567,7 @@ pub fn main() {
     assert_eq!(error.site().function(), "fail_argument");
     assert_eq!(echoes.len(), 1);
     assert_eq!(
-        echoes[0].message().map(|message| message.as_str()),
+        echoes[0].message().map(|message| message.as_str().unwrap()),
         Some("function source"),
     );
     assert_eq!(echoes[0].value().inspect().to_string(), "//fn(a) { ... }");

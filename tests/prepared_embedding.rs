@@ -24,6 +24,9 @@ mod bit_array;
 #[path = "prepared_embedding/large_customs.rs"]
 mod large_customs;
 
+#[path = "prepared_embedding/raw_strings.rs"]
+mod raw_strings;
+
 #[path = "prepared_embedding/application_exit.rs"]
 mod application_exit;
 
@@ -73,12 +76,37 @@ fn prepares_packages_and_runs_without_the_original_gleam_project() {
             .contains("pub fn project(")
     );
 
-    fs::write(application.join("gleam/src/prepared_consumer.gleam"),
-        "import support\npub fn double(value: Int) -> Int { let calculate = support.double calculate(value) }\npub fn fail() -> Int { support.fail() }\n"
-    ).unwrap();
-    fs::write(application.join("gleam/src/support.gleam"),
-        "pub fn double(value: Int) -> Int { value * 2 }\n\npub fn fail() -> Int {\n  echo 7\n  panic as \"prepared failure\"\n}\n"
-    ).unwrap();
+    fs::write(
+        application.join("gleam/src/prepared_consumer.gleam"),
+        r#"import support
+pub fn double(value: Int) -> Int { let calculate = support.double calculate(value) }
+pub fn fail() -> Int { support.fail() }
+
+pub fn fold(values: List(Int), factor: Int, bias: Int) -> Int {
+  let transform = fn(value) { value * factor + bias }
+  support.fold(values, 0, fn(total, value) { total + transform(value) })
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        application.join("gleam/src/support.gleam"),
+        r#"pub fn double(value: Int) -> Int { value * 2 }
+
+pub fn fail() -> Int {
+  echo 7
+  panic as "prepared failure"
+}
+
+pub fn fold(values: List(Int), total: Int, apply: fn(Int, Int) -> Int) -> Int {
+  case values {
+    [] -> total
+    [head, ..tail] -> fold(tail, apply(total, head), apply)
+  }
+}
+"#,
+    )
+    .unwrap();
 
     for mode in ["both", "prepared"] {
         let path = application.join("Cargo.toml");
@@ -94,17 +122,28 @@ fn prepares_packages_and_runs_without_the_original_gleam_project() {
         );
         fs::write(&path, toml::to_string(&manifest).unwrap()).unwrap();
         let dynamic = if mode == "both" {
-            "let program = geam_bindings::project().compile()?;\n    let (bindings, functions) = geam_bindings::bind(geam::embedding::ModuleBuilder::from_program(program)?)?;\n    assert_eq!(bindings.seal().call(&functions.double, (21.into(),), &mut Vec::new())?, 42.into());\n"
+            r#"let program = geam_bindings::project().compile()?;
+    let (bindings, functions) = geam_bindings::bind(geam::embedding::ModuleBuilder::from_program(program)?)?;
+    let module = bindings.seal();
+    assert_eq!(module.call(&functions.double, (21.into(),), &mut Vec::new())?, 42.into());
+    let values = vec![BigInt::from(1), BigInt::from(2), BigInt::from(3)];
+    assert_eq!(module.call(&functions.fold, (values, 3.into(), 4.into()), &mut Vec::new())?, 30.into());
+"#
         } else {
             ""
         };
         fs::write(application.join("src/main.rs"), format!(r#"mod geam_bindings;
+use geam::embedding::BigInt;
 use miette::Diagnostic;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {{
     {dynamic}
     let (module, functions) = geam_bindings::load()?;
     let mut echo = Vec::new();
+    let values = vec![BigInt::from(1), BigInt::from(2), BigInt::from(3)];
+    assert_eq!(module.call(&functions.fold, (values, 3.into(), 4.into()), &mut echo)?, 30.into());
+    assert_eq!(module.call(&functions.fold, (Vec::<BigInt>::new(), 3.into(), 4.into()), &mut echo)?, 0.into());
+    assert!(echo.is_empty());
     if std::env::args_os().nth(1).is_some() {{
         let error = module.call(&functions.fail, (), &mut echo).unwrap_err();
         println!("{{error}}");
@@ -387,6 +426,25 @@ fn copy_directory(source: &Path, destination: &Path) {
         let destination = destination.join(entry.file_name());
         if entry.file_type().unwrap().is_dir() {
             copy_directory(&entry.path(), &destination);
+        } else {
+            fs::copy(entry.path(), destination).unwrap();
+        }
+    }
+}
+
+fn copy_source(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).unwrap();
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        if matches!(
+            entry.file_name().to_str(),
+            Some("target" | "build" | ".cargo")
+        ) {
+            continue;
+        }
+        let destination = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_source(&entry.path(), &destination);
         } else {
             fs::copy(entry.path(), destination).unwrap();
         }

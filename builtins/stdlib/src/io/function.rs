@@ -19,18 +19,14 @@ pub(super) fn println<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
-    let mut text = text.into_ecostring();
-    text.push('\n');
-    emit(io, IoStream::Stdout, text.into());
+    emit(io, IoStream::Stdout, text.concat(&"\n".into()));
 }
 
 pub(super) fn println_error<Io>(io: &mut Io, text: StringValue)
 where
     Io: IoSink,
 {
-    let mut text = text.into_ecostring();
-    text.push('\n');
-    emit(io, IoStream::Stderr, text.into());
+    emit(io, IoStream::Stderr, text.concat(&"\n".into()));
 }
 
 fn emit<Io>(io: &mut Io, stream: IoStream, text: StringValue)
@@ -107,7 +103,7 @@ pub fn main() {
             state
                 .io_outputs()
                 .iter()
-                .map(|output| (output.stream(), output.text().as_str()))
+                .map(|output| (output.stream(), output.text().as_str().unwrap()))
                 .collect::<Vec<_>>(),
             [
                 (IoStream::Stdout, "first"),

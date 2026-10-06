@@ -301,14 +301,17 @@ fn lower_segment(
                 })
             }
         }),
-        module::BitArraySegment::String { value, encoding } => {
-            super::string_expr(value, cursor, graph, context).map(|flow| {
-                flow.map(|value| DraftBitArraySegment::String {
-                    value,
-                    encoding: lower_string_encoding(*encoding),
-                })
+        module::BitArraySegment::String {
+            value,
+            encoding,
+            site,
+        } => super::string_expr(value, cursor, graph, context).map(|flow| {
+            flow.map(|value| DraftBitArraySegment::String {
+                value,
+                encoding: lower_string_encoding(*encoding),
+                site: site.clone(),
             })
-        }
+        }),
         module::BitArraySegment::UtfCodepoint { value, encoding } => {
             super::utf_codepoint_expr(value, cursor, graph, context).map(|flow| {
                 flow.map(|value| DraftBitArraySegment::UtfCodepoint {
