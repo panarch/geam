@@ -100,6 +100,7 @@ pub(super) fn all<Profile: ExecutionProfile>(
 mod tests {
     use super::super::admit;
     use super::{CompiledError, Family, Reason, all};
+    use crate::plan::execution::Table;
     use crate::plan::execution::compiled::{
         CallTarget, CompiledEntries, CompiledFunction, CompiledFunctions, CompiledImplementation,
         FunctionCallsImplementation, NumericImplementation,
@@ -107,10 +108,178 @@ mod tests {
     use crate::plan::execution::function::{
         BoolFunctionFunctionId, BoolFunctionId, IntFunctionFunctionId, IntFunctionId,
     };
-    use crate::plan::execution::graph::{BoolLocalId, IntLocalId, ParamLocal};
+    use crate::plan::execution::graph::{
+        BoolLocalId, FunctionCapture, IntListLocalId, IntLocalId, ListLocal, ParamLocal,
+    };
     use crate::plan::execution::prepared::codegen::calls::shape::CallProgram;
+    use crate::plan::execution::type_::{IntListTypeId, ListTypeId};
     use crate::runtime::compiled::tests::{metadata_calls, metadata_numeric};
     use crate::{HostProviderSet, ModuleSource, PackageSource, StatelessHostProfile};
+
+    #[test]
+    fn list_call_admission_rejects_wrong_typed_locals_captures_arguments_and_prefixes() {
+        let source = r#"
+fn identity(value: Int) { value }
+pub fn main() {
+  let values = [3]
+  let bias = 2
+  let calculate = fn(input) {
+    let value = identity(input)
+    case values { [first, ..] -> value + first + bias [] -> value + bias }
+  }
+  calculate(5)
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+        )
+        .unwrap();
+        let execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let functions = &execution.execution.program.functions;
+        let views = CallProgram::inspect(functions);
+        for (fault, reason) in [
+            ("unchanged", None),
+            ("list type", Some(Reason::CallLocals)),
+            ("list local", Some(Reason::CallLocals)),
+            ("list prefix", Some(Reason::Checkpoint(0))),
+            ("capture source", Some(Reason::CallCaptures)),
+            ("call argument", Some(Reason::CallMapping)),
+        ] {
+            let mut rows = views
+                .shapes()
+                .map(|(target, shape)| {
+                    (
+                        target,
+                        FunctionCallsImplementation {
+                            root: shape.root,
+                            entry: shape.entry(),
+                            checkpoints: shape.checkpoints.clone().into(),
+                            locals: shape
+                                .local_contracts()
+                                .into_iter()
+                                .map(Into::into)
+                                .collect(),
+                            calls: shape.call_contracts().into(),
+                            creations: shape.creation_contracts().into(),
+                            returns: shape.return_contracts().into(),
+                            tails: shape.tail_contracts().into(),
+                            start: metadata_calls,
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            let failed_target = match fault {
+                "list type" | "list local" => {
+                    let (target, body) = rows
+                        .iter_mut()
+                        .find(|(_, body)| {
+                            body.locals.iter().flatten().any(|local| {
+                                matches!(local, ParamLocal::List(ListLocal::Int { .. }))
+                            })
+                        })
+                        .expect("the source retains a typed integer List local");
+                    let mut locals = body
+                        .locals
+                        .iter()
+                        .map(|locals| locals.to_vec())
+                        .collect::<Vec<_>>();
+                    let (local, type_id) = locals
+                        .iter_mut()
+                        .flatten()
+                        .find_map(|local| match local {
+                            ParamLocal::List(ListLocal::Int { local, type_id }) => {
+                                Some((local, type_id))
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    if fault == "list type" {
+                        type_id.list_type.0 += 1;
+                    } else {
+                        local.0 += 1;
+                    }
+                    body.locals = locals.into_iter().map(Into::into).collect();
+                    Some(*target)
+                }
+                "list prefix" => {
+                    let (target, body) = &mut rows[0];
+                    let mut checkpoints = body.checkpoints.to_vec();
+                    checkpoints[0].int_lists += 1;
+                    body.checkpoints = checkpoints.into();
+                    Some(*target)
+                }
+                "capture source" => {
+                    let (target, body) = rows
+                        .iter_mut()
+                        .find(|(_, body)| !body.creations.is_empty())
+                        .expect("the source creates a callable capturing the List and bias");
+                    let mut creations = body.creations.to_vec();
+                    let creation = &mut creations[0];
+                    let mut captures = creation.captures.to_vec();
+                    let mut changed = 0;
+                    for capture in &mut captures {
+                        if let FunctionCapture::IntList { source, .. } = capture {
+                            source.0 += 1;
+                            changed += 1;
+                        }
+                    }
+                    assert_eq!(changed, 1, "only the List capture source changes");
+                    creation.captures = captures.into();
+                    body.creations = creations.into();
+                    Some(*target)
+                }
+                "call argument" => {
+                    let (target, body) = rows
+                        .iter_mut()
+                        .find(|(_, body)| !body.calls.is_empty())
+                        .expect("the source calls an integer function");
+                    let mut calls = body.calls.to_vec();
+                    calls[0].args = vec![ParamLocal::List(ListLocal::Int {
+                        local: IntListLocalId(0),
+                        type_id: IntListTypeId {
+                            list_type: ListTypeId(0),
+                        },
+                    })]
+                    .into();
+                    body.calls = calls.into();
+                    Some(*target)
+                }
+                _ => None,
+            };
+            let rows = rows
+                .into_iter()
+                .map(|(function, body)| CompiledFunction {
+                    function,
+                    implementation: CompiledImplementation::FunctionCalls(Box::new(body).into()),
+                })
+                .collect::<Vec<_>>();
+            let compiled = CompiledFunctions {
+                function_calls: rows.into(),
+                ..CompiledFunctions::interpreted()
+            };
+            let expected = reason
+                .map(|reason| {
+                    let target =
+                        failed_target.expect("the corruption must reach its intended contract");
+                    CompiledError {
+                        family: Family::Int,
+                        function: target.index(),
+                        reason,
+                    }
+                })
+                .map_or(Ok(()), Err);
+            assert_eq!(all(&compiled, functions), expected, "{fault}");
+        }
+    }
 
     #[test]
     fn exact_call_contract_admits_and_each_canonical_mapping_field_rejects_corruption() {
@@ -250,6 +419,7 @@ pub fn main() { let calculate = make(7) let predicate = make_predicate(4) case p
                 rows.insert(1, duplicate);
             }
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: rows.into(),
                 ..CompiledFunctions::interpreted()
             };
@@ -347,6 +517,7 @@ pub fn main() { let calculate = make(7) let predicate = make_predicate(4) case p
                 .collect::<Vec<_>>();
             assert!(!rows.is_empty());
             let compiled = CompiledFunctions {
+                native_loops: Table::Static(&[]),
                 function_calls: rows.into(),
                 ..CompiledFunctions::interpreted()
             };

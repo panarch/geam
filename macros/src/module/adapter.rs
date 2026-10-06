@@ -492,7 +492,7 @@ pub(super) fn generate_function_adapter(
             let wrapper_argument_names =
                 super::callable::invocation_names(function, &argument_names);
             let (capture_parameter, capture_setup) = &captures;
-            let wrapper_definition = quote! {
+            let mut wrapper_definition = quote! {
                 #[allow(clippy::too_many_arguments)]
                 fn #wrapper<'__geam_call, __GeamProfile, #(#wrapper_parameters,)*>(
                     call: #support::HostCall<
@@ -525,7 +525,29 @@ pub(super) fn generate_function_adapter(
                     #completion
                 }
             };
-            let registration: syn::Stmt = if let Some(schema) = &callable_schema {
+            let retained = retained_adapter(
+                declaration,
+                &function_path,
+                &host_arguments,
+                &return_type,
+                &wrapper_parameters,
+                &bounds,
+                support,
+            );
+            if let Some((definition, _)) = &retained {
+                wrapper_definition.extend(definition.clone());
+            }
+            let registration: syn::Stmt = if let Some((_, retained_wrapper)) = retained {
+                let argument = &host_arguments[0];
+                syn::parse_quote! {
+                    let provider = provider.with_scoped_retained_function::<
+                        __GeamProvider, #argument, #return_type, _, _,
+                    >(#name,
+                        #wrapper::<__GeamProfile, #(#wrapper_arguments,)*>,
+                        #retained_wrapper::<__GeamProfile, #(#wrapper_arguments,)*>,
+                    )?;
+                }
+            } else if let Some(schema) = &callable_schema {
                 syn::parse_quote! {
                     let provider = provider.with_callable::<__GeamProvider, #schema, (#(#host_arguments,)*), _>(#wrapper::<__GeamProfile, #(#wrapper_arguments,)*>)?;
                 }
@@ -566,6 +588,98 @@ pub(super) fn generate_function_adapter(
             }
         }
     }
+}
+
+// Classification uses the declared call contract and the same host types as
+// the scoped adapter. Rust body effects are intentionally not classified.
+fn retained_adapter(
+    declaration: &ProviderFunction,
+    function_path: &TokenStream,
+    host_arguments: &[TokenStream],
+    return_type: &TokenStream,
+    wrapper_parameters: &[TokenStream],
+    bounds: &[TokenStream],
+    support: &TokenStream,
+) -> Option<(TokenStream, syn::Ident)> {
+    use super::{
+        FunctionInputType, FunctionInputValueType, FunctionOutputLeafType, FunctionReturnType,
+        FunctionRootOutputValueType, GenericHostType,
+    };
+    let ProviderFunction::Immediate {
+        model: function,
+        call: CallAccess::None,
+    } = declaration
+    else {
+        return None;
+    };
+    if function.callable.is_some()
+        || !function.factories.is_empty()
+        || function.arguments.len() != 1
+    {
+        return None;
+    }
+    let host = &host_arguments[0];
+    let opaque = |host: &GenericHostType| {
+        matches!(
+            host,
+            GenericHostType::Parameter { .. } | GenericHostType::SourceParameter(_)
+        )
+    };
+    let (input, input_bound) = match &function.arguments[0] {
+        FunctionInputType::Generic(value) if opaque(&value.host) => (
+            quote!(#support::Value::from_retained(argument)),
+            quote!(#host: #support::HostRetainedType<Retained = #support::HostRetainedValue<#host>>),
+        ),
+        FunctionInputType::Value(value)
+            if matches!(value.as_ref(), FunctionInputValueType::Scalar(_)) =>
+        {
+            (
+                quote!(argument),
+                quote!(#host: #support::HostRetainedType<Retained = #host>),
+            )
+        }
+        _ => return None,
+    };
+    let (output, output_bound) = match &function.return_ {
+        FunctionReturnType::Generic(value) if opaque(&value.host) => (
+            quote!(returned.into_retained()),
+            quote!(#return_type: #support::HostRetainedType<Retained = #support::HostRetainedValue<#return_type>>),
+        ),
+        FunctionReturnType::Value(FunctionRootOutputValueType::Value(value))
+            if matches!(value.as_ref(), FunctionOutputLeafType::Scalar(_)) =>
+        {
+            (
+                quote!(returned),
+                quote!(#return_type: #support::HostRetainedType<Retained = #return_type>),
+            )
+        }
+        _ => return None,
+    };
+    let wrapper = format_ident!("__geam_retained_{}", function.ident);
+    let unwrap = function
+        .host_result
+        .then(|| quote!(let returned = returned?;));
+    Some((
+        quote! {
+            fn #wrapper<__GeamProfile, #(#wrapper_parameters,)*>(
+                argument: <#host as #support::HostRetainedType>::Retained,
+            ) -> ::core::result::Result<
+                <#return_type as #support::HostRetainedType>::Retained,
+                #support::HostCallError,
+            >
+            where
+                __GeamProfile: __GeamModuleProfile,
+                #(#bounds,)*
+                #input_bound,
+                #output_bound,
+            {
+                let returned = #function_path(#input);
+                #unwrap
+                ::core::result::Result::Ok(#output)
+            }
+        },
+        wrapper,
+    ))
 }
 
 fn function_path(

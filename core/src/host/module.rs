@@ -1,8 +1,9 @@
 use super::{
-    FallibleHostFunction, HostExternalBinding, HostExternalSchema, HostExternalTypeSchema,
-    HostFunction, HostFunctionDefinition, HostFunctionImplementation, HostFunctionSchema,
-    HostProfile, HostProvider, HostRegistrationError, ScopedConstructingHostFunction,
-    ScopedDivergingHostFunction, ScopedHostFunction, StatelessHostProfile,
+    FallibleHostFunction, HostCallError, HostExternalBinding, HostExternalSchema,
+    HostExternalTypeSchema, HostFunction, HostFunctionDefinition, HostFunctionImplementation,
+    HostFunctionSchema, HostProfile, HostProvider, HostRegistrationError, HostRetainedType,
+    ScopedConstructingHostFunction, ScopedDivergingHostFunction, ScopedHostFunction,
+    StatelessHostProfile,
 };
 use ecow::EcoString;
 use gleam_compiler_core::analyse::name::check_name_case;
@@ -424,6 +425,34 @@ impl<Profile: HostProfile> HostProviderModule<Profile> {
         self.functions
             .register(&self.identity.module, name.into(), |name| {
                 HostFunctionDefinition::new_scoped::<Provider, _, _, _>(name, function)
+            })
+            .map(|()| self)
+    }
+
+    /// Generated immediate adapters share the same sealed signature for both
+    /// entry methods. Ordinary low-level scoped registrations remain valid.
+    #[doc(hidden)]
+    pub fn with_scoped_retained_function<Provider, Argument, Return, Function, Retained>(
+        mut self,
+        name: impl Into<EcoString>,
+        function: Function,
+        retained: Retained,
+    ) -> Result<Self, HostRegistrationError>
+    where
+        Provider: HostProvider<Profile>,
+        Argument: HostRetainedType,
+        Return: HostRetainedType,
+        Function: ScopedHostFunction<Profile, Provider, (Argument,), Return>,
+        Retained: Fn(Argument::Retained) -> Result<Return::Retained, HostCallError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.functions
+            .register(&self.identity.module, name.into(), |name| {
+                HostFunctionDefinition::new_scoped_retained::<Provider, Argument, Return, _, _>(
+                    name, function, retained,
+                )
             })
             .map(|()| self)
     }

@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 20,
+    format: 23,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -693,7 +693,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1 }); }
                         *budget -= 1;
                         FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
@@ -719,7 +719,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::IntFunction0Point1 { int0, int1 })
                     },
                     FunctionState::IntFunction0Point1 { int0, int1 } => {
@@ -735,7 +735,7 @@ pub fn main() {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                     FunctionState::IntFunction0Point2 {  } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction0Point2 {  }); }
@@ -793,6 +793,8 @@ pub fn main() {
                 int_lists: data::Storage::Static(&[
                 ]),
                 callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                     data::compiled::CompiledFunction {
                         function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),

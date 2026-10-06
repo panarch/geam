@@ -56,6 +56,45 @@ pub(crate) trait RuntimeExecutionPlan: Sized {
         self.program().compiled_entries.int(id)
     }
 
+    fn native_loop_fallback(
+        &self,
+        id: super::compiled::NativeLoopTarget,
+    ) -> Option<&CompiledImplementation> {
+        use super::compiled::{CallTarget, NativeLoopTarget};
+        let target = match id {
+            NativeLoopTarget::Int(id) => CallTarget::Int(id),
+            NativeLoopTarget::Bool(id) => CallTarget::Bool(id),
+            _ => return None,
+        };
+        self.program().compiled.call_root(target)
+    }
+
+    fn compiled_float_function(&self, id: FloatFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.float(id)
+    }
+
+    fn compiled_string_function(&self, id: StringFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.string(id)
+    }
+
+    fn compiled_bit_array_function(
+        &self,
+        id: BitArrayFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.bit_array(id)
+    }
+
+    fn compiled_utf_codepoint_function(
+        &self,
+        id: UtfCodepointFunctionId,
+    ) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.utf_codepoint(id)
+    }
+
+    fn compiled_nil_function(&self, id: NilFunctionId) -> Option<&CompiledImplementation> {
+        self.program().compiled_entries.nil(id)
+    }
+
     fn compiled_callbacks(&self) -> &CompiledCallbacks {
         &self.program().compiled.callbacks
     }

@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 20,
+        format: 23,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -1044,7 +1044,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                     custom_lists: 0,
                                     int_functions: 1,
                                     bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
                         }
                     }
@@ -1243,7 +1243,7 @@ pub fn native_predicate(value: Int) -> Bool {
                             let callable = &int_function0;
                             let captures = callable.captures();
                             let target = callable.target();
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "calculate", data::source::SourceSpan::new(354, 367)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int0Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("library", "calculate", data::source::SourceSpan::new(354, 367)), arguments: CallArguments { values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int0Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int0Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int_function0, int1 }); }
@@ -1264,7 +1264,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::IntFunction1Point0 { int_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::IntFunction1Point0 { int_function0 }); }
@@ -1301,7 +1301,7 @@ pub fn native_predicate(value: Int) -> Bool {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
                 }
@@ -1377,6 +1377,8 @@ pub fn native_predicate(value: Int) -> Bool {
                     int_lists: data::Storage::Static(&[
                     ]),
                     callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                    native_loops: data::Storage::Static(&[
+                    ]),
                     function_calls: data::Storage::Static(&[
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),

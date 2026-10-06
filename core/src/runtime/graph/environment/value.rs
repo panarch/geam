@@ -313,6 +313,7 @@ mod tests {
     use crate::runtime::compiled::calls::{CallCapture, CallInteger, CallOps, CallOutput};
     use crate::runtime::compiled::numeric::NumericValues;
     use crate::runtime::integer::IntegerValue;
+    use crate::runtime::state::list::RuntimeListStorage;
     use crate::runtime::{CaptureStorage, EvaluatedValue};
 
     #[test]
@@ -551,7 +552,8 @@ pub fn main() {
 
         let captures = CaptureStorage::default();
         let mut numeric = NumericValues::default();
-        let ops = CallOps::new(&captures, &mut numeric);
+        let lists = RuntimeListStorage::default();
+        let ops = CallOps::new(&captures, &mut numeric, &lists);
         let integer_function = ops.int_closure(
             IntFunctionId(2),
             FunctionType::new(vec![ValueType::Int], ValueType::Int),

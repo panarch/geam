@@ -1,10 +1,12 @@
 pub(crate) mod calls;
 mod entries;
+pub(crate) mod native_loop;
 pub use calls::{
     CallContract, CallContractTarget, CallTarget, CreationContract, FunctionCallsImplementation,
     ReturnContract, TailContract,
 };
 pub(super) use entries::CompiledEntries;
+pub use native_loop::{NativeLoopContract, NativeLoopProducer, NativeLoopTarget};
 
 use super::prepared::rust::{Emit, Rust};
 use crate::plan::execution::function::{
@@ -32,6 +34,7 @@ pub struct CompiledFunctions {
     pub customs: Table<CompiledFunction<usize>>,
     pub int_lists: Table<CompiledFunction<IntListFunctionId>>,
     pub callbacks: CompiledCallbacks,
+    pub native_loops: Table<CompiledFunction<NativeLoopTarget>>,
     pub function_calls: Table<CompiledFunction<CallTarget>>,
 }
 
@@ -47,6 +50,7 @@ pub enum CompiledImplementation {
     CustomLoop(Node<CustomLoopImplementation>),
     String(StringImplementation),
     FunctionCalls(Node<FunctionCallsImplementation>),
+    NativeLoop(Node<NativeLoopImplementation>),
 }
 
 impl CompiledImplementation {
@@ -58,6 +62,7 @@ impl CompiledImplementation {
             Self::CustomLoop(value) => value.entry,
             Self::String(value) => value.entry,
             Self::FunctionCalls(value) => value.entry,
+            Self::NativeLoop(value) => value.entry,
         }
     }
 
@@ -69,8 +74,17 @@ impl CompiledImplementation {
             Self::CustomLoop(value) => &value.checkpoints,
             Self::String(value) => &value.checkpoints,
             Self::FunctionCalls(value) => &value.checkpoints,
+            Self::NativeLoop(value) => &value.checkpoints,
         }
     }
+}
+
+pub struct NativeLoopImplementation {
+    pub function: NativeLoopTarget,
+    pub entry: usize,
+    pub checkpoints: Table<CompiledCheckpoint>,
+    pub contract: NativeLoopContract,
+    pub run: crate::runtime::compiled::native_loop::NativeLoopKernel,
 }
 
 pub struct NumericImplementation {
@@ -186,6 +200,7 @@ impl CompiledFunctions {
             customs: Table::Static(&[]),
             int_lists: Table::Static(&[]),
             callbacks: CompiledCallbacks::interpreted(),
+            native_loops: Table::Static(&[]),
             function_calls: Table::Static(&[]),
         }
     }
@@ -197,21 +212,27 @@ impl CompiledFunctions {
             customs: Table::Static(&self.customs),
             int_lists: Table::Static(&self.int_lists),
             callbacks: self.callbacks.borrowed(),
+            native_loops: Table::Static(&self.native_loops),
             function_calls: Table::Static(&self.function_calls),
         }
     }
 
     pub(crate) fn int(&self, id: IntFunctionId) -> Option<&CompiledImplementation> {
-        if let Some(implementation) = self.call_root(CallTarget::Int(id)) {
-            return Some(implementation);
-        }
-        self.ints
+        let leaf = self
+            .ints
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
-            .map(|index| &self.ints[index].implementation)
+            .map(|index| &self.ints[index].implementation);
+        if let Some(native) = self.native_loop(NativeLoopTarget::Int(id)) {
+            return Some(native);
+        }
+        self.call_root(CallTarget::Int(id)).or(leaf)
     }
 
     pub(crate) fn bool(&self, id: BoolFunctionId) -> Option<&CompiledImplementation> {
+        if let Some(native) = self.native_loop(NativeLoopTarget::Bool(id)) {
+            return Some(native);
+        }
         if let Some(implementation) = self.call_root(CallTarget::Bool(id)) {
             return Some(implementation);
         }
@@ -219,6 +240,13 @@ impl CompiledFunctions {
             .binary_search_by_key(&id.0, |entry| entry.function.0)
             .ok()
             .map(|index| &self.bools[index].implementation)
+    }
+
+    pub(crate) fn native_loop(&self, target: NativeLoopTarget) -> Option<&CompiledImplementation> {
+        self.native_loops
+            .binary_search_by_key(&target.key(), |entry| entry.function.key())
+            .ok()
+            .map(|index| &self.native_loops[index].implementation)
     }
 
     pub(crate) fn custom(&self, id: CustomFunctionId) -> Option<&CompiledImplementation> {
@@ -355,6 +383,7 @@ mod tests {
     };
 
     static FUNCTIONS: CompiledFunctions = CompiledFunctions {
+        native_loops: Table::Static(&[]),
         function_calls: Table::Static(&[]),
         ints: Table::Static(&[CompiledFunction {
             function: IntFunctionId(2),

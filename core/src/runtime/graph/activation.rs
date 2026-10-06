@@ -1,7 +1,9 @@
+mod calls;
 mod custom_loop;
+mod native_loop;
 
 use self::custom_loop::CustomLoopExecution;
-mod calls;
+use self::native_loop::NativeLoopExecution;
 
 use super::RuntimeGraphState;
 use super::environment::{MatchResults, StoragePool};
@@ -65,6 +67,7 @@ pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
         point: usize,
     },
     CustomLoop(Box<CustomLoopExecution<'plan, Plan>>),
+    NativeLoop(Box<NativeLoopExecution<'plan, Plan>>),
     FunctionCalls {
         frame: Frame<'plan, Plan>,
         execution: Box<dyn CallExecution>,
@@ -217,6 +220,11 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
                 implementation,
                 point,
             } => match implementation {
+                CompiledImplementation::NativeLoop(native) => {
+                    return NativeLoopExecution::enter(
+                        frame, native, plan, state, storage, remaining,
+                    );
+                }
                 CompiledImplementation::CustomLoop(loop_) => CustomLoopExecution::enter(
                     frame, loop_, point, plan, state, storage, remaining,
                 )?,
@@ -291,6 +299,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
             },
             Activation::CustomLoop(execution) => {
                 execution.advance(plan, state, storage, remaining)?
+            }
+            Activation::NativeLoop(execution) => {
+                return execution.advance(plan, storage, remaining);
             }
             Activation::FunctionCalls { frame, execution } => {
                 calls::resume(frame, execution, plan, state, storage, remaining)?
@@ -1497,7 +1508,7 @@ mod tests {
                 assert_eq!(mapped.load(Ordering::SeqCst), 1);
                 assert!(echo.is_empty());
             }
-            let input = CallInputs::new(&[], &[], &[], &[]);
+            let input = CallInputs::new(&[], &[], &[], &[], &[]);
             assert!(
                 storage
                     .function_calls

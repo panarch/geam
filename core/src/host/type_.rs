@@ -4,6 +4,7 @@ mod external;
 mod function;
 mod list;
 mod parameter;
+pub(crate) mod retained;
 mod scalar;
 mod schema;
 mod sequence;
@@ -25,6 +26,8 @@ pub use custom::{
 pub use function::{HostFunctionType, HostFunctionValueType};
 pub use list::HostListType;
 pub use parameter::HostTypeParameter;
+#[doc(hidden)]
+pub use retained::{HostRetainedType, HostRetainedValue};
 pub use sequence::{
     HostTypeAt, HostTypeIndex0, HostTypeIndexNext, HostTypeList, HostTypeListEnd, HostTypeSequence,
 };

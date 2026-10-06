@@ -68,7 +68,7 @@ pub(super) fn resume<'plan, Plan: ExecutableRuntimePlan>(
 ) -> ExecutionResult<Activation<'plan, Plan>> {
     let mut budget = *remaining + 1;
     let progress = execution.advance(
-        &mut CallOps::new(state.captures(), &mut storage.numeric),
+        &mut CallOps::new(state.captures(), &mut storage.numeric, state.lists()),
         &mut budget,
     );
     *remaining = budget;
@@ -338,7 +338,7 @@ pub fn main() {
         assert!(!completion.restart(
             CallTarget::Int(IntFunctionId(0)),
             0,
-            CallInputs::new(&[], &[], &[], &[]),
+            CallInputs::new(&[], &[], &[], &[], &[]),
         ));
         assert_eq!(completion.retained_bytes(), 0);
         for interpreted in [false, true] {
@@ -444,7 +444,7 @@ pub fn main() {
                 assert!(!boundary.restart(
                     CallTarget::Int(IntFunctionId(0)),
                     0,
-                    CallInputs::new(&[], &[], &[], &[]),
+                    CallInputs::new(&[], &[], &[], &[], &[]),
                 ));
                 assert_eq!(boundary.retained_bytes(), 0);
                 let mut execution = Execution {

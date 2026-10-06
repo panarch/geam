@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 20,
+        format: 23,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -5517,8 +5517,11 @@ fn integer_comparisons() {
                     Next(usize),
                     Exit(data::compiled::CompiledProgress),
                 }
-                use data::compiled::calls::{BoolCallable, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                use data::compiled::calls::{BoolCallable, CallCapture, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                use data::compiled::int_list::IntList;
                 enum FunctionState {
+                    Int0Point0 { int_list0: IntList, int0: i128 },
+                    Int0Point1 { int_list0: IntList, int0: i128, int_function0: IntCallable },
                     Int1Point0 { int0: i128 },
                     Int1Point1 { int0: i128 },
                     Int1Point2 { int0: i128, int1: i128 },
@@ -5692,6 +5695,7 @@ fn integer_comparisons() {
                     fn restart(&mut self, target: data::compiled::CallTarget, point: usize, values: CallInputs<'_>) -> bool {
                         if self.active.is_some() { return false; }
                         let active = match target {
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(1)) => calls_int_1_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(3)) => calls_int_3_state(point, values),
                             data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)) => calls_bool_0_state(point, values),
@@ -5798,6 +5802,33 @@ fn integer_comparisons() {
                 }
                 fn function_step(active: FunctionState, ops: &mut CallOps<'_>, budget: &mut usize) -> FunctionStep {
                     match active {
+                        FunctionState::Int0Point0 { int_list0, int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point0 { int_list0, int0 }); }
+                            *budget -= 1;
+                            let int_function0 = ops.int_closure(data::function::IntFunctionId(5), data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[
+                                    data::type_::ValueType::Int,
+                                ]),
+                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                            }, vec![CallCapture::int_list(data::graph::IntListLocalId(0), int_list0.clone())]);
+                            FunctionStep::Next(FunctionState::Int0Point1 { int_list0, int0, int_function0 })
+                        },
+                        FunctionState::Int0Point1 { int_list0, int0, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int_list0, int0, int_function0 }); }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 1,
+                                ints: 1,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 1,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 1,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![int_list0], int_functions: vec![int_function0], bool_functions: vec![] } }
+                        },
                         FunctionState::Int1Point0 { int0 } => {
                             let values = ops.numeric();
                             let progress = numeric_int_1_entry((int0,), values, budget);
@@ -5855,7 +5886,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
@@ -5881,7 +5912,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool0Point1 { int0 })
                         },
                         FunctionState::Bool0Point1 { int0 } => {
@@ -5897,7 +5928,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool0Point2 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point2 {  }); }
@@ -5921,7 +5952,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                         },
                         FunctionState::Bool0Point4 {  } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)), point: data::compiled::CompiledCheckpoint {
@@ -5936,7 +5967,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool0Point5 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point5 {  }); }
@@ -5960,7 +5991,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 1,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                         },
                         FunctionState::Bool0Point7 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point7 {  }); }
@@ -5991,7 +6022,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point1 { int0 })
                         },
                         FunctionState::Bool1Point1 { int0 } => {
@@ -6010,7 +6041,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point2 { int0, int1 })
                         },
                         FunctionState::Bool1Point2 { int0, int1 } => {
@@ -6029,7 +6060,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point3 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point3 { int0, int1, int2 } => {
@@ -6045,7 +6076,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point4 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point4 { int0, int1 }); }
@@ -6063,7 +6094,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point5 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point5 { int0, int1, int2 } => {
@@ -6079,7 +6110,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point6 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point6 { int0, int1 }); }
@@ -6097,7 +6128,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point7 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point7 { int0, int1, int2 } => {
@@ -6113,7 +6144,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point8 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point8 { int0, int1 }); }
@@ -6131,7 +6162,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point9 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point9 { int0, int1, int2 } => {
@@ -6147,7 +6178,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point10 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point10 { int0, int1 }); }
@@ -6165,7 +6196,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point11 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point11 { int0, int1, int2 } => {
@@ -6181,7 +6212,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point12 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point12 { int0, int1 }); }
@@ -6199,7 +6230,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point13 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point13 { int0, int1, int2 } => {
@@ -6215,7 +6246,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point14 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point14 { int0, int1 }); }
@@ -6233,7 +6264,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point15 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point15 { int0, int1, int2 } => {
@@ -6249,7 +6280,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point16 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point16 { int0, int1 }); }
@@ -6267,7 +6298,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point17 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point17 { int0, int1, int2 } => {
@@ -6283,7 +6314,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point18 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point18 { int0, int1 }); }
@@ -6301,7 +6332,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                             FunctionStep::Next(FunctionState::Bool1Point19 { int0, int1, int2 })
                         },
                         FunctionState::Bool1Point19 { int0, int1, int2 } => {
@@ -6317,7 +6348,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point20 { int0, int1 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6332,7 +6363,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point21 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6347,7 +6378,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point22 {  } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6362,7 +6393,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point23 { int0, int1 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6377,7 +6408,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point24 { int0, int1 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6392,7 +6423,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point25 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point25 { int0, int1 }); }
@@ -6413,7 +6444,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point27 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point27 { int0, int1 }); }
@@ -6434,7 +6465,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point29 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point29 { int0, int1 }); }
@@ -6455,7 +6486,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point31 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point31 { int0, int1 }); }
@@ -6476,7 +6507,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point33 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point33 { int0, int1 }); }
@@ -6497,7 +6528,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point35 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point35 { int0, int1 }); }
@@ -6518,7 +6549,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point37 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point37 { int0, int1 }); }
@@ -6539,7 +6570,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point39 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point39 { int0, int1 }); }
@@ -6560,7 +6591,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point41 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6575,7 +6606,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point42 {  } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point42 {  }); }
@@ -6603,7 +6634,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point45 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6618,7 +6649,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point46 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6633,7 +6664,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point47 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6648,7 +6679,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point48 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6663,7 +6694,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point49 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6678,7 +6709,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point50 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6693,7 +6724,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point51 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6708,7 +6739,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point52 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6723,7 +6754,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point53 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6738,7 +6769,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point54 { bool0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6753,7 +6784,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point55 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6768,7 +6799,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point56 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6783,7 +6814,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point57 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6798,7 +6829,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point58 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6813,7 +6844,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point59 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6828,7 +6859,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point60 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6843,7 +6874,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point61 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6858,7 +6889,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point62 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6873,7 +6904,7 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                         FunctionState::Bool1Point63 { int0 } => {
                             FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point: data::compiled::CompiledCheckpoint {
@@ -6888,9 +6919,22 @@ fn integer_comparisons() {
                                 custom_lists: 0,
                                 int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                            }, values: CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                         },
                     }
+                }
+                fn calls_int_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int0Point0 { int_list0: values.int_list(0)?, int0: values.int(0)? },
+                        1 => FunctionState::Int0Point1 { int_list0: values.int_list(0)?, int0: values.int(0)?, int_function0: values.int_function(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_0_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(0)), point, values) { return Some(execution); }
+                    let active = calls_int_0_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
                 }
                 fn calls_int_1_numeric(progress: data::compiled::CompiledProgress, values: &data::compiled::numeric::NumericValues) -> FunctionStep {
                     const STATES: [fn(&data::compiled::numeric::NumericValues) -> FunctionState; 5] = [
@@ -6974,7 +7018,7 @@ fn integer_comparisons() {
                                     bool_functions: 0,
                                 },
                             ];
-                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_functions: Vec::new(), bool_functions: Vec::new() } }
+                            FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)), point: POINTS[point], values: CallValues { ints: values.ints.iter().copied().map(Into::into).collect(), bools: values.bools.clone(), int_lists: Vec::new(), int_functions: Vec::new(), bool_functions: Vec::new() } }
                         },
                         data::compiled::CompiledProgress::Complete(exit) => RETURNS[exit.0](exit, values),
                     }
@@ -7849,7 +7893,123 @@ fn integer_comparisons() {
                     int_lists: data::Storage::Static(&[
                     ]),
                     callbacks: data::compiled::CompiledCallbacks::interpreted(),
+                    native_loops: data::Storage::Static(&[
+                    ]),
                     function_calls: data::Storage::Static(&[
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: true,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 1,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 1,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                            local: data::graph::IntListLocalId(0),
+                                            type_id: data::type_::IntListTypeId {
+                                                list_type: data::type_::ListTypeId(0),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::List(data::graph::ListLocal::Int {
+                                            local: data::graph::IntListLocalId(0),
+                                            type_id: data::type_::IntListTypeId {
+                                                list_type: data::type_::ListTypeId(0),
+                                            },
+                                        }),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[
+                                                    data::type_::ValueType::Int,
+                                                ]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[
+                                    data::compiled::CreationContract {
+                                        point: 0,
+                                        output: data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[
+                                                    data::type_::ValueType::Int,
+                                                ]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(5)),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[
+                                                data::type_::ValueType::Int,
+                                            ]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                        reference: false,
+                                        captures: data::Storage::Static(&[
+                                            data::graph::FunctionCapture::IntList {
+                                                target: data::graph::IntListLocalId(0),
+                                                source: data::graph::IntListLocalId(0),
+                                            },
+                                        ]),
+                                    },
+                                ]),
+                                returns: data::Storage::Static(&[]),
+                                tails: data::Storage::Static(&[
+                                    data::compiled::TailContract {
+                                        point: 1,
+                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(2)),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[
+                                                        data::type_::ValueType::Int,
+                                                    ]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("main", "list_callback", data::source::SourceSpan::new(1614, 1638)),
+                                    },
+                                ]),
+                                start: calls_int_0_start,
+                            })),
+                        },
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(1)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {

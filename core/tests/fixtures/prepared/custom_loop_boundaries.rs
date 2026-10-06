@@ -1,5 +1,5 @@
 data::ModuleArtifact {
-    format: 20,
+    format: 23,
     program: data::ProgramTables {
         root: data::source::module_id(0),
         modules: data::Storage::Static(&[
@@ -2122,7 +2122,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 1,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_functions: vec![int_function0], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                     },
                     FunctionState::Int0Point4 { int0, bool0, int1 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point4 { int0, bool0, int1 }); }
@@ -2157,7 +2157,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
                         FunctionStep::Next(FunctionState::Bool0Point1 { int0, int1 })
                     },
                     FunctionState::Bool0Point1 { int0, int1 } => {
@@ -2173,7 +2173,7 @@ data::ModuleArtifact {
                             custom_lists: 0,
                             int_functions: 0,
                             bool_functions: 0,
-                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_functions: vec![], bool_functions: vec![] } }
+                        }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }
                     },
                 }
             }
@@ -3918,6 +3918,8 @@ data::ModuleArtifact {
                         },
                     ]),
                 },
+                native_loops: data::Storage::Static(&[
+                ]),
                 function_calls: data::Storage::Static(&[
                     data::compiled::CompiledFunction {
                         function: data::compiled::CallTarget::Int(data::function::IntFunctionId(0)),

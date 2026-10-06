@@ -11,6 +11,37 @@ use std::sync::Mutex;
 
 static CALLS: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/function_calls.rs");
 
+static BOOLEAN_CALLS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/boolean_calls.rs");
+
+#[test]
+fn generated_boolean_only_calls_compile_without_unused_step_variants_and_return_both_values() {
+    let source = include_str!("fixtures/prepared/boolean_calls.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(bool,), bool>::new("flip"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/boolean_calls.rs").trim()
+    );
+    assert!(!BOOLEAN_CALLS.program.compiled.function_calls.is_empty());
+    let mut bindings = BOOLEAN_CALLS.load().unwrap();
+    let compiled_flip = bindings
+        .function(FunctionDeclaration::<(bool,), bool>::new("flip"))
+        .unwrap();
+    let prepared = bindings.seal();
+    let mut echo = Vec::new();
+    for (input, expected) in [(false, true), (true, false)] {
+        assert_eq!(
+            prepared.call(&compiled_flip, (input,), &mut echo).unwrap(),
+            expected
+        );
+    }
+    assert!(echo.is_empty());
+}
+
 macro_rules! select_remaining {
     ($bindings:ident, $chain:expr) => {{
         let target = $bindings
