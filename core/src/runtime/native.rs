@@ -178,7 +178,7 @@ impl NativeValue {
 
     pub(crate) fn find_source<Output>(
         &self,
-        read: impl Fn(&StoredRuntimeValue) -> Option<Output>,
+        mut read: impl FnMut(&StoredRuntimeValue) -> Option<Output>,
     ) -> Option<Output> {
         let Representation::Stored(value) = &self.0 else {
             return None;
@@ -186,10 +186,13 @@ impl NativeValue {
         if let Some(result) = read(value) {
             return Some(result);
         }
-        let EvaluatedValue::External(external) = value.value() else {
-            return None;
-        };
-        external.lease().native_view()?.find_source(read)
+        match value.value() {
+            EvaluatedValue::External(external) => external.lease().native_view()?.find_source(read),
+            EvaluatedValue::Function(function) => {
+                Self::from_stored(function.native_source()?.clone_retained()).find_source(read)
+            }
+            _ => None,
+        }
     }
 
     /// Returns the structural kind after following declared external views.

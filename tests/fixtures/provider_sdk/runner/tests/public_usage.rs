@@ -83,7 +83,93 @@ pub fn keep_function(function: fn(item) -> String) -> fn(item) -> String
 @external(erlang, "provider_sdk", "function_is_callable")
 pub fn function_is_callable(function: fn(item) -> String) -> Bool
 
+@external(erlang, "gleam@function", "identity")
+pub fn view(value: a) -> b
+@external(erlang, "provider_sdk", "exact")
+pub fn exact(value: a) -> b
+@external(erlang, "provider_sdk", "same_native")
+pub fn same_native(left: a, right: b) -> Bool
+
 "#;
+
+#[test]
+fn public_native_views_keep_captured_identity_and_reject_missing_grants() {
+    let source = r#"
+import provider/sdk
+fn append(a: String) -> String { a <> "!" }
+pub type Handler(a, b) { Handler(fn(a) -> b) }
+pub fn main() -> Bool {
+  let suffix = "!"
+  let original = fn(a: String) { a <> suffix }
+  let adapted: fn(BitArray) -> BitArray = sdk.view(original)
+  let restored: fn(String) -> String = sdk.view(adapted)
+  let named: fn(BitArray) -> BitArray = sdk.view(append)
+  let Handler(callback): Handler(BitArray, BitArray) = sdk.view(Handler(append))
+  let result: String = sdk.view(adapted(<<"answer">>))
+  let nested: String = sdk.view(callback(<<"nested">>))
+  let retained: fn(String) -> String = sdk.exact(original)
+  let wrapper = fn(a: BitArray) { adapted(a) }
+  result == "answer!" && nested == "nested!" && restored("answer") == "answer!"
+    && retained("answer") == "answer!" && restored == original
+    && sdk.same_native(original, adapted) && sdk.same_native(original, restored)
+    && sdk.same_native(append, named) && !sdk.same_native(adapted, wrapper)
+}
+"#;
+    for (body, expected) in [
+        (source, true),
+        (
+            r#"import provider/sdk
+pub fn main() -> Bool {
+  let rejected: fn(BitArray) -> BitArray = sdk.exact(fn(a: String) { a <> "!" })
+  let _: String = sdk.view(rejected(<<"input">>))
+  True
+}
+"#,
+            false,
+        ),
+    ] {
+        let modules =
+            <Component as HostProviderComponentRegistration<Profile>>::providers().unwrap();
+        let typed = compile_typed_host_program(
+            "provider_sdk_example",
+            "main",
+            [PackageSource::new(
+                "provider_sdk_example",
+                Vec::<&str>::new(),
+                [
+                    ModuleSource::new("provider/sdk", "src/provider/sdk.gleam", PROVIDER_SOURCE),
+                    ModuleSource::new("main", "src/main.gleam", body),
+                ],
+            )],
+            HostProviderSet::from_providers(modules).unwrap(),
+        )
+        .unwrap();
+        let mut execution =
+            HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+        let configuration = HostProviderConfiguration::new(BTreeMap::from([(
+            EcoString::from("prefix"),
+            EcoString::from("sdk:").into(),
+        )]));
+        let mut state = RunState {
+            provider: Component::initialize(&configuration).unwrap(),
+        };
+        let mut echo = Vec::new();
+        let host = execution_fixture::TestHost::default();
+        for _ in 0..2 {
+            let result = host.block_on(execution.run_main(&host, &mut state, &mut echo));
+            if expected {
+                assert_eq!(result.unwrap().try_into_value().unwrap(), Value::Bool(true));
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("incompatible retained view")
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn independent_path_provider_public_usage() {

@@ -85,7 +85,7 @@ impl<Profile: HostProfile> HostedModuleBindings<Profile> {
         Return: EmbeddingValue,
         Captures: CaptureTypes,
     {
-        bind::<Schema, Args, Return, Captures, _, _>(&mut self.inner)
+        bind::<Schema, Args, Return, Captures, _, _, _>(&mut self.inner)
     }
 }
 
@@ -112,7 +112,7 @@ impl HostPreparationBindings {
         Return: EmbeddingValue,
         Captures: CaptureTypes,
     {
-        bind::<Schema, Args, Return, Captures, (), ()>(&mut self.inner).map(|_| ())
+        bind::<Schema, Args, Return, Captures, (), (), ()>(&mut self.inner).map(|_| ())
     }
 }
 
@@ -165,8 +165,10 @@ impl<Profile: HostProfile> PreparedHostedModuleBindings<Profile> {
     }
 }
 
-fn bind<Schema, Args, Return, Captures, Value, Never>(
-    bindings: &mut Bindings<ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never>>>,
+fn bind<Schema, Args, Return, Captures, Value, Never, Views>(
+    bindings: &mut Bindings<
+        ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never, Views>>,
+    >,
 ) -> Result<NativeCallable<Args, Return, Captures>, BindingError>
 where
     Schema: HostCallableSchema,
@@ -190,8 +192,8 @@ where
         })
 }
 
-fn bind_signature<Value, Never>(
-    plan: &mut ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never>>,
+fn bind_signature<Value, Never, Views>(
+    plan: &mut ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never, Views>>,
     declaration: RegisteredCallableConstruction,
     signature: crate::plan::LibraryNativeSignature,
     standard: Vec<crate::plan::StandardVariant>,

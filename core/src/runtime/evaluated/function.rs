@@ -1,3 +1,5 @@
+use crate::runtime::StoredRuntimeValue;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::EvaluatedCapture;
@@ -19,6 +21,59 @@ pub(crate) struct EvaluatedFunction<Id> {
     runtime_id: Id,
     captures: Captures,
     type_: FunctionType,
+    native_source: Option<Arc<NativeFunctionSource>>,
+}
+
+pub(in crate::runtime) struct NativeFunctionSource {
+    value: StoredRuntimeValue,
+}
+
+impl std::fmt::Debug for NativeFunctionSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("NativeFunctionSource")
+            .field(self.value.type_())
+            .finish()
+    }
+}
+
+impl PartialEq for NativeFunctionSource {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+pub(in crate::runtime) enum FunctionCreation {
+    Fresh,
+    RetainedView {
+        identity: EvaluatedFunctionIdentity,
+        source: Arc<NativeFunctionSource>,
+    },
+}
+
+impl FunctionCreation {
+    pub(in crate::runtime) fn instantiate<Id: Clone>(
+        &self,
+        runtime_id: Id,
+        captures: Captures,
+        type_: FunctionType,
+    ) -> EvaluatedFunction<Id> {
+        let (identity, native_source) = match self {
+            Self::Fresh => (
+                EvaluatedFunctionIdentity::Instance(FunctionInstance(
+                    NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
+                )),
+                None,
+            ),
+            Self::RetainedView { identity, source } => (identity.clone(), Some(Arc::clone(source))),
+        };
+        EvaluatedFunction {
+            identity,
+            runtime_id,
+            captures,
+            type_,
+            native_source,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -57,13 +112,13 @@ pub(in crate::runtime) enum ListFunctionReturnFamily {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum EvaluatedFunctionIdentity {
+pub(in crate::runtime) enum EvaluatedFunctionIdentity {
     Reference(FunctionReferenceIdentity),
     Instance(FunctionInstance),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct FunctionInstance(pub(super) u64);
+pub(in crate::runtime) struct FunctionInstance(pub(super) u64);
 
 pub(in crate::runtime) trait FunctionReferenceId {
     fn reference_identity(&self) -> FunctionReferenceIdentity;
@@ -438,24 +493,31 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
             runtime_id,
             captures,
             type_,
+            native_source: None,
         }
     }
 }
 
 impl<Id: Clone> EvaluatedFunction<Id> {
+    pub(super) fn retained_parts(
+        &self,
+    ) -> (
+        &EvaluatedFunctionIdentity,
+        Option<&StoredRuntimeValue>,
+        &Captures,
+    ) {
+        (
+            &self.identity,
+            self.native_source.as_ref().map(|source| &source.value),
+            &self.captures,
+        )
+    }
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
-        Self {
-            identity: EvaluatedFunctionIdentity::Instance(FunctionInstance(
-                NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
-            )),
-            runtime_id,
-            captures,
-            type_,
-        }
+        FunctionCreation::Fresh.instantiate(runtime_id, captures, type_)
     }
 
     pub(in crate::runtime) fn runtime_id(&self) -> Id {
@@ -488,6 +550,7 @@ impl<Id: Clone> EvaluatedFunction<Id> {
             runtime_id: map(self.runtime_id),
             captures: self.captures,
             type_: self.type_,
+            native_source: self.native_source,
         }
     }
 }
@@ -556,13 +619,6 @@ impl EvaluatedFunctionFunction {
             Self::External(value) => Self::External(value.with_type(type_)),
         }
     }
-
-    pub(super) fn identity(&self) -> &EvaluatedFunctionIdentity {
-        match self {
-            Self::Core(value) => &value.identity,
-            Self::External(value) => &value.identity,
-        }
-    }
 }
 
 macro_rules! evaluated_function_value_from {
@@ -591,6 +647,21 @@ evaluated_function_value_from!(EvaluatedListFunction, List);
 evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 
 impl EvaluatedFunctionValue {
+    pub(in crate::runtime) fn creation_view(
+        &self,
+        source: &StoredRuntimeValue,
+    ) -> FunctionCreation {
+        FunctionCreation::RetainedView {
+            identity: super::EvaluatedFunctionRef::from(self).identity().clone(),
+            source: Arc::new(NativeFunctionSource {
+                value: source.clone_retained(),
+            }),
+        }
+    }
+
+    pub(in crate::runtime) fn native_source(&self) -> Option<&StoredRuntimeValue> {
+        super::EvaluatedFunctionRef::from(self).native_source()
+    }
     pub(in crate::runtime) fn closure(
         target: crate::plan::execution::function::RuntimeFunctionId,
         captures: Captures,
@@ -1143,5 +1214,52 @@ pub fn main() {
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
         ));
+    }
+    #[test]
+    fn retained_provenance_keeps_source_identity_and_debug_without_exposing_payload() {
+        use super::{FunctionCreation, NativeFunctionSource};
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::StoredRuntimeValue;
+        use std::sync::Arc;
+
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { #(fn(value: Int) { value }, fn(value: Int) { value + 1 }) }",
+        );
+        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function =
+            EvaluatedIntFunction::reference(IntFunctionId(0), Default::default(), type_.clone());
+        let stored = StoredRuntimeValue::new(
+            EvaluatedValue::Function(function.clone().into()),
+            plan.value_metadata(),
+        );
+        let source = Arc::new(NativeFunctionSource {
+            value: stored.clone_retained(),
+        });
+        assert_eq!(
+            format!("{source:?}"),
+            "NativeFunctionSource(Function(FunctionType { arguments: [Int], return_: Int }))"
+        );
+        assert_eq!(source, Arc::clone(&source));
+        let distinct = Arc::new(NativeFunctionSource {
+            value: stored.clone_retained(),
+        });
+        assert_ne!(source, distinct);
+        let creation = FunctionCreation::RetainedView {
+            identity: function.identity.clone(),
+            source: Arc::clone(&source),
+        };
+        let view = creation.instantiate(IntFunctionId(1), Default::default(), type_);
+        assert_eq!(view.identity, function.identity);
+        assert_eq!(view.runtime_id(), IntFunctionId(1));
+        assert_eq!(view.native_source.as_ref().unwrap(), &source);
+        assert_eq!(view.clone().native_source.as_ref().unwrap(), &source);
+        assert_eq!(
+            view.clone()
+                .map_runtime_id(|_| IntFunctionId(0))
+                .native_source
+                .as_ref()
+                .unwrap(),
+            &source
+        );
     }
 }

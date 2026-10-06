@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 19,
+        format: 20,
         program: data::ProgramTables {
             root: data::source::module_id(1),
             modules: data::Storage::Static(&[
@@ -843,7 +843,9 @@ pub fn native_predicate(value: Int) -> Bool {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -970,7 +972,9 @@ pub fn native_predicate(value: Int) -> Bool {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
     ]),
     never_functions: data::Storage::Static(&[]),

@@ -685,6 +685,30 @@ An exact retained target passes through; constructing another source view uses
 the registered conversion. External rules receive only their typed construction
 capability. Duplicate or overlapping specialized rules fail before execution.
 
+Function values can also have a checked view with another signature. Register
+`NativeRules::retained_views::<Sources>()` to permit this conversion. The source
+descriptors are bound to the registration's type parameters. The finite
+structural closure of Sources and the declared targets includes functions
+inside tuples, lists, and custom fields. Custom views preserve the nominal
+type and constructor, and convert its fields using that type's declaration.
+This permission does not grant arbitrary custom construction.
+
+Function views require the same arity. Calling the view converts its inputs
+from the target signature to the source signature, invokes the original
+function with its captures, and converts the result back. A bad input fails
+before the source runs; a bad result fails after it runs once. A view preserves
+the source function's native equality and hash. Converting back to an earlier
+exact signature restores that retained function, including its original codec.
+A newly composed Gleam function still has its own identity. Symbolic native
+closures do not gain invocation capability from this registration.
+
+For the standard-library Dynamic type, compose
+`geam::gleam_stdlib::service::with_native_dynamic(rules)` with the retained view
+grant. This helper registers Dynamic construction using the producer's schema
+and store. The profile must include the standard-library component; consumers
+do not define a second Dynamic binding or storage. Default rules do not enable
+function views or Dynamic construction.
+
 `NativeCall::owned_function_value` preserves the original source function for
 native equality, hashing, and inspection. An invocable value uses the existing
 registered input conversion and typed invocation. A symbolic value can still

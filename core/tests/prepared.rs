@@ -4316,7 +4316,7 @@ fn incompatible_format_never_produces_a_prepared_binding_owner() {
     let error = incompatible.load().err().unwrap();
     assert_eq!(
         error.to_string(),
-        "prepared format 6 is incompatible with format 19; regenerate the prepared program"
+        "prepared format 6 is incompatible with format 20; regenerate the prepared program"
     );
 }
 
@@ -4937,6 +4937,220 @@ fn plain_data_matches_preparation_output() {
 
 #[path = "fixtures/prepared/native_provider.rs"]
 mod native_provider;
+
+#[path = "fixtures/prepared/function_view_provider.rs"]
+mod function_view_provider;
+
+static FUNCTION_VIEWS: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+
+#[test]
+fn native_function_view_data_matches_preparation_output() {
+    assert_eq!(
+        function_view_provider::prepare().emit_rust(),
+        include_str!("fixtures/prepared/function_views.rs").trim()
+    );
+    FUNCTION_VIEWS
+        .load(function_view_provider::hosts())
+        .unwrap();
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn native_function_views_load_and_call_the_original_captures_from_emitted_data() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut bindings = FUNCTION_VIEWS
+        .load(function_view_provider::hosts())
+        .unwrap();
+    let run = bindings
+        .function(FunctionDeclaration::<(), bool>::new("run"))
+        .unwrap();
+    let invalid = bindings
+        .function(FunctionDeclaration::<(), bool>::new("invalid_input"))
+        .unwrap();
+    let stopped = bindings
+        .function(FunctionDeclaration::<(), bool>::new("stopped"))
+        .unwrap();
+    let mut module = bindings.seal();
+    let mut state = Vec::new();
+    let mut echo = Vec::new();
+    for _ in 0..2 {
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut state, &mut echo, async |scope| {
+                    let error = scope.call(&invalid, ()).await.unwrap_err();
+                    assert!(
+                        error
+                            .to_string()
+                            .contains("input does not match its source signature")
+                    );
+                    assert!(scope.call(&run, ()).await.unwrap());
+                    let error = scope.call(&stopped, ()).await.unwrap_err();
+                    assert!(error.to_string().contains("view source stopped"));
+                    assert!(scope.call(&run, ()).await.unwrap());
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+    }
+    assert_eq!(
+        state,
+        vec![StringValue::from("source"), StringValue::from("source")]
+    );
+    assert!(echo.is_empty());
+}
+
+#[test]
+fn native_function_view_metadata_rejects_changed_parent_source_edges_and_captures() {
+    #[derive(Debug, Clone, Copy)]
+    enum Change {
+        Parent,
+        SourceArity,
+        ArgumentEdge,
+        ResultEdge,
+        Captures,
+        TypeArguments,
+    }
+    for change in [
+        Change::Parent,
+        Change::SourceArity,
+        Change::ArgumentEdge,
+        Change::ResultEdge,
+        Change::Captures,
+        Change::TypeArguments,
+    ] {
+        const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+        let mut artifact = BASE;
+        let mut functions = artifact.value_functions.to_vec();
+        let view_index = functions
+            .iter()
+            .position(|metadata| metadata.native_view.is_some())
+            .unwrap();
+        let parent_index = functions[view_index].native_view.as_ref().unwrap().parent;
+        let metadata = &mut functions[view_index];
+        let view = metadata.native_view.as_mut().unwrap();
+        let (index, reason) = match change {
+            Change::Parent => {
+                view.parent = usize::MAX;
+                (view_index, "Native")
+            }
+            Change::SourceArity => {
+                view.source.arguments = Vec::new().into();
+                (view_index, "Signature")
+            }
+            Change::ArgumentEdge => {
+                view.arguments = vec![data::host::NativeConversionId(usize::MAX)].into();
+                (parent_index, "Native")
+            }
+            Change::ResultEdge => {
+                view.return_ = data::host::NativeConversionId(usize::MAX);
+                (parent_index, "Native")
+            }
+            Change::Captures => {
+                metadata.parameters.captures = Vec::new().into();
+                (view_index, "Captures")
+            }
+            Change::TypeArguments => {
+                metadata.type_arguments = Vec::new().into();
+                (parent_index, "Native")
+            }
+        };
+        artifact.value_functions = functions.into();
+        let error = Box::leak(Box::new(artifact))
+            .load(function_view_provider::hosts())
+            .err()
+            .unwrap();
+        let expected = if matches!(change, Change::Parent) {
+            format!(
+                "prepared provider registration mismatch: Contract {{ value: true, index: {index}, reason: {reason} }}; regenerate with the matching providers"
+            )
+        } else {
+            format!(
+                "invalid prepared program: Hosts(Contract {{ value: true, index: {index}, reason: {reason} }}); regenerate the prepared program"
+            )
+        };
+        assert_eq!(error.to_string(), expected, "{change:?}");
+    }
+}
+
+#[test]
+fn native_function_view_metadata_rejects_changed_conversion_candidates_and_custom_tags() {
+    #[derive(Debug, Clone, Copy)]
+    enum Change {
+        Source,
+        HostIndex,
+        HostTable,
+        Capture,
+        CustomTag,
+    }
+    for change in [
+        Change::Source,
+        Change::HostIndex,
+        Change::HostTable,
+        Change::Capture,
+        Change::CustomTag,
+    ] {
+        const BASE: data::HostedModuleArtifact = include!("fixtures/prepared/function_views.rs");
+        let mut artifact = BASE;
+        let mut functions = artifact.value_functions.to_vec();
+        let parent_index = functions
+            .iter()
+            .position(|metadata| {
+                metadata.constructions.natives.nodes.iter().any(|node| {
+                    matches!(&node.kind, data::host::NativeConversionKind::CustomView(_))
+                })
+            })
+            .unwrap();
+        let mut nodes = functions[parent_index].constructions.natives.nodes.to_vec();
+        if matches!(change, Change::CustomTag) {
+            let node = nodes
+                .iter_mut()
+                .find(|node| matches!(&node.kind, data::host::NativeConversionKind::CustomView(_)))
+                .unwrap();
+            let data::host::NativeConversionKind::CustomView(candidates) = &mut node.kind else {
+                unreachable!()
+            };
+            let mut views = candidates.to_vec();
+            let mut constructors = views[0].constructors.to_vec();
+            constructors[0].tag = "wrong_tag".into();
+            views[0].constructors = constructors.into();
+            *candidates = views.into();
+        } else {
+            let node = nodes
+                .iter_mut()
+                .find(|node| matches!(&node.kind, data::host::NativeConversionKind::Function(_)))
+                .unwrap();
+            let data::host::NativeConversionKind::Function(candidates) = &mut node.kind else {
+                unreachable!()
+            };
+            let mut views = candidates.to_vec();
+            match change {
+                Change::Source => views[0].source.arguments = Vec::new().into(),
+                Change::HostIndex => views[0].host = usize::MAX,
+                Change::HostTable => views[0].host_value = !views[0].host_value,
+                Change::Capture => views[0].captures = Vec::new().into(),
+                Change::CustomTag => unreachable!(),
+            }
+            *candidates = views.into();
+        }
+        functions[parent_index].constructions.natives.nodes = nodes.into();
+        artifact.value_functions = functions.into();
+        let error = Box::leak(Box::new(artifact))
+            .load(function_view_provider::hosts())
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid prepared program: Hosts(Contract {{ value: true, index: {parent_index}, reason: Native }}); regenerate the prepared program"
+            ),
+            "{change:?}"
+        );
+    }
+}
 
 static NATIVE: data::HostedModuleArtifact = include!("fixtures/prepared/native.rs");
 

@@ -1,5 +1,5 @@
 data::HostedEntryArtifact {
-    format: 19,
+    format: 20,
     program: data::ProgramTables {
         root: data::source::module_id(3),
         modules: data::Storage::Static(&[
@@ -1308,7 +1308,9 @@ pub fn main() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -1516,7 +1518,9 @@ pub fn main() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
     ]),
     never_functions: data::Storage::Static(&[]),

@@ -128,7 +128,9 @@ impl<Implementation> ProfiledHostedLibraryModulePlan<Implementation> {
     }
 }
 
-impl<Value, Never> ProfiledHostedLibraryModulePlan<crate::host::HostFunctionBinding<Value, Never>> {
+impl<Value, Never, Views>
+    ProfiledHostedLibraryModulePlan<crate::host::HostFunctionBinding<Value, Never, Views>>
+{
     pub(crate) fn callable(
         &mut self,
         declaration: crate::host::RegisteredCallableConstruction,

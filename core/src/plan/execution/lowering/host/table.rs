@@ -17,26 +17,26 @@ use std::sync::Arc;
 
 type HostedLoweredExecution = LoweredExecution<HostedExecutionProfile>;
 
-pub(super) struct HostFunctionRegistry<Value, Never> {
-    functions: HashMap<FunctionTemplateId, RegisteredHostFunction<Value, Never>>,
+pub(super) struct HostFunctionRegistry<Value, Never, Views> {
+    functions: HashMap<FunctionTemplateId, RegisteredHostFunction<Value, Never, Views>>,
 }
 
-struct RegisteredHostFunction<Value, Never> {
+struct RegisteredHostFunction<Value, Never, Views> {
     constructions: RegisteredHostConstructions,
-    implementation: Arc<HostFunctionBinding<Value, Never>>,
+    implementation: Arc<HostFunctionBinding<Value, Never, Views>>,
 }
 
-pub(super) struct HostFunctionLowering<'registry, Value, Never> {
-    registered: &'registry HostFunctionRegistry<Value, Never>,
+pub(super) struct HostFunctionLowering<'registry, Value, Never, Views> {
+    registered: &'registry HostFunctionRegistry<Value, Never, Views>,
     value_functions: Vec<HostedFunction<Value>>,
     never_functions: Vec<HostedFunction<Never>>,
     additional: function::ProfiledFunctionEntries<HostedExecutionProfile>,
 }
 
-impl<Value: Clone, Never: Clone> HostFunctionRegistry<Value, Never> {
+impl<Value: Clone, Never: Clone, Views> HostFunctionRegistry<Value, Never, Views> {
     pub(super) fn new(
         implementation_bindings: Vec<
-            ProfiledHostImplementationBinding<HostFunctionBinding<Value, Never>>,
+            ProfiledHostImplementationBinding<HostFunctionBinding<Value, Never, Views>>,
         >,
     ) -> Self {
         Self {
@@ -56,7 +56,7 @@ impl<Value: Clone, Never: Clone> HostFunctionRegistry<Value, Never> {
         }
     }
 
-    pub(super) fn lowering(&self) -> HostFunctionLowering<'_, Value, Never> {
+    pub(super) fn lowering(&self) -> HostFunctionLowering<'_, Value, Never, Views> {
         HostFunctionLowering {
             registered: self,
             value_functions: Vec::new(),
@@ -119,7 +119,9 @@ impl<Value: Clone, Never: Clone> HostFunctionRegistry<Value, Never> {
     }
 }
 
-impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, Never> {
+impl<Value: Clone, Never: Clone + From<Value>, Views: crate::host::NativeViewImplementation<Value>>
+    HostFunctionLowering<'_, Value, Never, Views>
+{
     pub(super) fn lower_specialized(
         &mut self,
         template: &HostFunctionTemplate,
@@ -148,18 +150,35 @@ impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, N
         let registered = &self.registered.functions[&template.id()];
         let implementation = Arc::clone(&registered.implementation);
         let return_ = context.representations.inhabitation(shape.return_());
-        let constructions =
-            sealing::seal_host_types(template, &registered.constructions, key, context)?;
-
         let completion = match (implementation.as_ref(), &return_) {
-            (HostFunctionBinding::Value(_), ValueInhabitation::Inhabited(_)) => {
-                HostFunctionCompletion::Value
-            }
-            (HostFunctionBinding::Value(_), ValueInhabitation::Uninhabited(_)) => {
-                HostFunctionCompletion::Uninhabited
-            }
+            (
+                HostFunctionBinding::Value(_) | HostFunctionBinding::NativeValue(_, _),
+                ValueInhabitation::Inhabited(_),
+            ) => HostFunctionCompletion::Value,
+            (
+                HostFunctionBinding::Value(_) | HostFunctionBinding::NativeValue(_, _),
+                ValueInhabitation::Uninhabited(_),
+            ) => HostFunctionCompletion::Uninhabited,
             (HostFunctionBinding::Never(_), _) => HostFunctionCompletion::Never,
         };
+        let parent_value = completion == HostFunctionCompletion::Value;
+        let parent = if parent_value {
+            self.value_functions.len()
+        } else {
+            self.never_functions.len()
+        };
+        let constructions = sealing::seal_host_types(
+            template,
+            &registered.constructions,
+            key,
+            context,
+            super::native::NativeViewPosition {
+                parent,
+                parent_value,
+                first_value: self.value_functions.len() + usize::from(parent_value),
+                first_never: self.never_functions.len() + usize::from(!parent_value),
+            },
+        )?;
         sealing::seal_callbacks(
             template,
             key,
@@ -179,6 +198,7 @@ impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, N
             parameters,
             constructions,
             type_: context.lower_concrete_function_type(&shape),
+            native_view: None,
             registration: Box::new(RegistrationContract::from_template(
                 template,
                 &registered.constructions,
@@ -186,7 +206,11 @@ impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, N
             .into(),
         };
         match (implementation.as_ref(), return_) {
-            (HostFunctionBinding::Value(implementation), ValueInhabitation::Inhabited(return_)) => {
+            (
+                HostFunctionBinding::Value(implementation)
+                | HostFunctionBinding::NativeValue(implementation, _),
+                ValueInhabitation::Inhabited(return_),
+            ) => {
                 let host_index = self.value_functions.len();
                 self.value_functions
                     .push(HostedFunction::new(metadata, implementation.clone()));
@@ -201,7 +225,8 @@ impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, N
             }
             (implementation, return_) => {
                 let implementation = match implementation {
-                    HostFunctionBinding::Value(value) => Never::from(value.clone()),
+                    HostFunctionBinding::Value(value)
+                    | HostFunctionBinding::NativeValue(value, _) => Never::from(value.clone()),
                     HostFunctionBinding::Never(never) => never.clone(),
                 };
                 let host_index = self.never_functions.len();
@@ -225,7 +250,89 @@ impl<Value: Clone, Never: Clone + From<Value>> HostFunctionLowering<'_, Value, N
                 }
             }
         }
+        if let HostFunctionBinding::NativeValue(_, factory) = implementation.as_ref() {
+            self.lower_native_views(key, factory, context);
+        }
         Ok(())
+    }
+
+    fn lower_native_views(
+        &mut self,
+        key: &SpecializationKey,
+        factory: &Views,
+        context: &mut LoweringContext,
+    ) {
+        for draft in std::mem::take(&mut context.native_views) {
+            let parent = if draft.operation.parent_value {
+                self.value_functions[draft.operation.parent].metadata_handle()
+            } else {
+                self.never_functions[draft.operation.parent].metadata_handle()
+            };
+            let implementation = factory.native_view(crate::host::NativeViewBinding {
+                codec: crate::host::HostCodecScope::new(Arc::clone(parent)),
+                view: draft.operation.clone(),
+            });
+            let return_ = context.representations.inhabitation(draft.shape.return_());
+            let metadata = HostedFunctionMetadata {
+                completion: if matches!(return_, ValueInhabitation::Inhabited(_)) {
+                    HostFunctionCompletion::Value
+                } else {
+                    HostFunctionCompletion::Uninhabited
+                },
+                callable_entry: Some(HostCallableEntry {
+                    family: draft.family,
+                    index: draft.index,
+                }),
+                package: parent.package.clone(),
+                site: parent.site.clone(),
+                signature: FunctionMetadata::from_public(&draft.shape.to_module_shape().type_()),
+                type_arguments: parent.type_arguments.clone(),
+                parameters: draft.parameters,
+                constructions: crate::plan::execution::host::HostConstructionTypes::new(
+                    HashMap::new(),
+                    HashMap::new(),
+                    HashMap::new(),
+                ),
+                type_: context.lower_concrete_function_type(&draft.shape),
+                registration: parent.registration.clone(),
+                native_view: Some(draft.operation),
+            };
+            match return_ {
+                ValueInhabitation::Inhabited(return_) => {
+                    let host_index = self.value_functions.len();
+                    self.value_functions
+                        .push(HostedFunction::new(metadata, implementation));
+                    return_::lower_host_return(
+                        draft.index,
+                        key,
+                        return_,
+                        return_::HostTargetIndex::Value(host_index),
+                        &mut self.additional,
+                        context,
+                    );
+                }
+                ValueInhabitation::Uninhabited(_) => {
+                    let host_index = self.never_functions.len();
+                    self.never_functions
+                        .push(HostedFunction::new(metadata, Never::from(implementation)));
+                    return_::lower_uninhabited_never_return(
+                        draft.index,
+                        key,
+                        return_::HostNeverTargetIndex(host_index),
+                        &mut self.additional,
+                    );
+                }
+            }
+            context
+                .native_view_shapes
+                .push(super::native::NativeViewShape {
+                    family: draft.family,
+                    index: draft.index,
+                    parameters: draft.parameter_shapes,
+                    return_: draft.shape.return_().clone(),
+                    captures: draft.captures,
+                });
+        }
     }
 
     pub(super) fn finish(

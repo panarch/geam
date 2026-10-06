@@ -7,8 +7,8 @@ pub(super) use self::invoke::{host_call_error, invoke_never, invoke_value};
 
 use self::scoped::ScopedValues;
 pub(crate) use self::scoped::{
-    RetainedFunctionValue, StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,
+    RetainedFunctionValue, StoredRuntimeFunction, StoredRuntimeList, StoredRuntimeListCustomFields,
+    StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,
 };
 use crate::host::{
     HostCustomToken, HostExternalToken, HostFunctionToken, HostListToken, HostTupleToken,

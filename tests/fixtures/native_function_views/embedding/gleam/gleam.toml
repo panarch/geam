@@ -1,0 +1,5 @@
+name = "native_function_views_embedding"
+version = "0.1.0"
+
+[dependencies]
+native_function_views_fixture = { path = "../../project" }

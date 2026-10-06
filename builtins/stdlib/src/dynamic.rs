@@ -7,6 +7,7 @@ pub use function::provider::DynamicPayload;
 pub use function::provider::{
     __GeamExternalSchema0 as DynamicSchema, __GeamExternalStorage0 as DynamicExternalStorage,
 };
+pub use function::with_native_dynamic;
 
 use super::GleamStdlibProviderProfile;
 use crate::{HostExternalType, HostProviderModule, HostRegistrationError};

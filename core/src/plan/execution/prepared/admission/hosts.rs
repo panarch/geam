@@ -1,6 +1,7 @@
 mod callable;
 mod contract;
 mod link;
+mod view;
 
 use super::catalog::Function;
 use super::functions::Hosts;

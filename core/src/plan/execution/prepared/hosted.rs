@@ -23,9 +23,13 @@ pub struct HostedModuleArtifact {
 }
 
 impl PreparedHostedModule {
-    pub(crate) fn new<Value: Clone, Never: Clone + From<Value>>(
+    pub(crate) fn new<
+        Value: Clone,
+        Never: Clone + From<Value>,
+        Views: crate::host::NativeViewImplementation<Value>,
+    >(
         plan: crate::plan::ProfiledHostedLibraryModulePlan<
-            crate::host::HostFunctionBinding<Value, Never>,
+            crate::host::HostFunctionBinding<Value, Never, Views>,
         >,
         first: crate::plan::LibraryEntry,
         remaining: Vec<crate::plan::LibraryEntry>,

@@ -82,6 +82,11 @@ pub(crate) trait HostCallRuntime<Profile: HostProfile>: HostTokenRuntime {
         constructor: crate::plan::execution::type_::CustomConstructorId,
         fields: Box<[HostScopedValue]>,
     ) -> HostValueToken;
+    fn build_native_function_view(
+        &mut self,
+        view: &crate::plan::execution::host::NativeFunctionView,
+        source: crate::runtime::StoredRuntimeFunction<'_>,
+    ) -> Option<HostValueToken>;
     fn build_custom(
         &mut self,
         type_: &crate::host::HostTypeDescriptor,

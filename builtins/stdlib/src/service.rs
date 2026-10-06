@@ -6,3 +6,4 @@
 
 pub use crate::bytes_tree::BytesTreeInput;
 pub use crate::dict::dict_from_entries;
+pub use crate::dynamic::with_native_dynamic;

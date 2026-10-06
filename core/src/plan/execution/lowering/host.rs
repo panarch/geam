@@ -28,6 +28,7 @@ use crate::plan::{
     LibraryEntry, LibraryNativeCallable, ModuleId, ProfiledHostedLibraryModulePlan,
     ProfiledHostedLibraryModulePlanParts,
 };
+pub(super) use native::{NativeViewDraft, NativeViewShape};
 use std::collections::HashSet;
 use std::sync::Arc;
 use table::HostFunctionRegistry;
@@ -64,8 +65,12 @@ type LoweredHostedLibrary<Value, Never> = (
     Table<LibraryNativeConstruction>,
 );
 
-pub(in crate::plan::execution) fn lower_hosted_library<Value: Clone, Never: Clone + From<Value>>(
-    module_plan: ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never>>,
+pub(in crate::plan::execution) fn lower_hosted_library<
+    Value: Clone,
+    Never: Clone + From<Value>,
+    Views: crate::host::NativeViewImplementation<Value>,
+>(
+    module_plan: ProfiledHostedLibraryModulePlan<HostFunctionBinding<Value, Never, Views>>,
     first: LibraryEntry,
     remaining: Vec<LibraryEntry>,
 ) -> Result<LoweredHostedLibrary<Value, Never>, HostSpecializationError> {
@@ -168,15 +173,16 @@ type LoweredHostedEntries<Entries, Value, Never> = (
     <Entries as HostedEntries>::Output,
 );
 
-fn lower_hosted_entries<Entries, Value, Never>(
+fn lower_hosted_entries<Entries, Value, Never, Views>(
     input: HostedLoweringInput,
     entries: Entries,
-    implementations: HostFunctionRegistry<Value, Never>,
+    implementations: HostFunctionRegistry<Value, Never, Views>,
 ) -> Result<LoweredHostedEntries<Entries, Value, Never>, HostSpecializationError>
 where
     Entries: HostedEntries,
     Value: Clone,
     Never: Clone + From<Value>,
+    Views: crate::host::NativeViewImplementation<Value>,
 {
     let HostedLoweringInput { root, modules } = input;
     let mut module_contexts = Vec::with_capacity(modules.len());

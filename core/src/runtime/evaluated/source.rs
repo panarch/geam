@@ -1,10 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use super::function::{
-    EvaluatedCustomFunction, EvaluatedFunction, EvaluatedFunctionIdentity, EvaluatedFunctionValue,
-    EvaluatedFunctionValueKind,
-};
+use super::function::{EvaluatedFunctionIdentity, EvaluatedFunctionValue};
 use super::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValue, EvaluatedValueRef};
 
 pub(in crate::runtime) fn values_equal(
@@ -150,73 +147,7 @@ fn hash_value(
 }
 
 fn hash_function(value: &EvaluatedFunctionValue, hasher: &mut DefaultHasher) {
-    match value.kind() {
-        EvaluatedFunctionValueKind::Generic(value) => {
-            0u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Never(value) => {
-            1u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Int(value) => {
-            2u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Float(value) => {
-            3u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::String(value) => {
-            4u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::BitArray(value) => {
-            5u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::UtfCodepoint(value) => {
-            6u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Custom(value) => {
-            7u8.hash(hasher);
-            match value {
-                EvaluatedCustomFunction::Function(value) => {
-                    0u8.hash(hasher);
-                    hash_function_identity(&value.identity, hasher);
-                }
-                EvaluatedCustomFunction::Constructor(value) => {
-                    1u8.hash(hasher);
-                    hash_function_identity(&value.identity, hasher);
-                }
-            }
-        }
-        EvaluatedFunctionValueKind::External(value) => {
-            8u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Bool(value) => {
-            9u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Nil(value) => {
-            10u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Tuple(value) => {
-            11u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::List(value) => {
-            12u8.hash(hasher);
-            hash_function_identity(&value.identity, hasher);
-        }
-        EvaluatedFunctionValueKind::Function(value) => {
-            13u8.hash(hasher);
-            hash_function_identity(value.identity(), hasher);
-        }
-    }
+    hash_function_identity(EvaluatedFunctionRef::from(value).identity(), hasher);
 }
 
 fn hash_function_identity(value: &EvaluatedFunctionIdentity, hasher: &mut DefaultHasher) {
@@ -250,95 +181,7 @@ fn lists_equal(
 }
 
 fn functions_equal(left: &EvaluatedFunctionRef<'_>, right: &EvaluatedFunctionRef<'_>) -> bool {
-    match (left, right) {
-        (EvaluatedFunctionRef::Generic(left), EvaluatedFunctionRef::Generic(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Never(left), EvaluatedFunctionRef::Never(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Int(left), EvaluatedFunctionRef::Int(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Float(left), EvaluatedFunctionRef::Float(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::String(left), EvaluatedFunctionRef::String(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::BitArray(left), EvaluatedFunctionRef::BitArray(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::UtfCodepoint(left), EvaluatedFunctionRef::UtfCodepoint(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Custom(left), EvaluatedFunctionRef::Custom(right)) => {
-            custom_function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::External(left), EvaluatedFunctionRef::External(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Bool(left), EvaluatedFunctionRef::Bool(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Nil(left), EvaluatedFunctionRef::Nil(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::Tuple(left), EvaluatedFunctionRef::Tuple(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::List(left), EvaluatedFunctionRef::List(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::ExternalList(left), EvaluatedFunctionRef::ExternalList(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::List(left), EvaluatedFunctionRef::ExternalList(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::ExternalList(left), EvaluatedFunctionRef::List(right)) => {
-            function_values_equal(left, right)
-        }
-        (EvaluatedFunctionRef::CoreFunction(left), EvaluatedFunctionRef::CoreFunction(right)) => {
-            function_values_equal(left, right)
-        }
-        (
-            EvaluatedFunctionRef::ExternalFunction(left),
-            EvaluatedFunctionRef::ExternalFunction(right),
-        ) => function_values_equal(left, right),
-        (
-            EvaluatedFunctionRef::CoreFunction(left),
-            EvaluatedFunctionRef::ExternalFunction(right),
-        ) => function_values_equal(left, right),
-        (
-            EvaluatedFunctionRef::ExternalFunction(left),
-            EvaluatedFunctionRef::CoreFunction(right),
-        ) => function_values_equal(left, right),
-        _ => false,
-    }
-}
-
-fn function_values_equal<LeftId, RightId>(
-    left: &EvaluatedFunction<LeftId>,
-    right: &EvaluatedFunction<RightId>,
-) -> bool {
-    left.identity == right.identity
-}
-
-fn custom_function_values_equal(
-    left: &EvaluatedCustomFunction,
-    right: &EvaluatedCustomFunction,
-) -> bool {
-    match (left, right) {
-        (EvaluatedCustomFunction::Function(left), EvaluatedCustomFunction::Function(right)) => {
-            function_values_equal(left, right)
-        }
-        (
-            EvaluatedCustomFunction::Constructor(left),
-            EvaluatedCustomFunction::Constructor(right),
-        ) => function_values_equal(left, right),
-        _ => false,
-    }
+    left.identity() == right.identity()
 }
 
 #[cfg(test)]

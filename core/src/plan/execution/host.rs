@@ -14,8 +14,8 @@ pub(crate) use function::{
     HostedFunctionTarget, HostedNeverFunction, HostedValueFunction,
 };
 pub(crate) use native::{
-    NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
-    NativeConversions,
+    HostNativeView, NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
+    NativeConversions, NativeCustomView, NativeFunctionView,
 };
 pub(in crate::plan::execution) use registration::{CallableRegistration, RegistrationContract};
 pub(crate) use table::{HostBindingTables, HostFunctionTables};

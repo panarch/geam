@@ -402,7 +402,7 @@ impl<Profile: HostProfile> EntryContext<Profile> {
 mod tests {
     mod factory;
 
-    use super::Domain;
+    use super::{Domain, Request};
     use crate::execution::{ExecutionHost, HostTask, TaskExit, Worker};
     use crate::host::{HostProfile, HostProviderSet};
     use crate::plan::execution::{HostedProgram, LibraryFunctionEntries};
@@ -1567,6 +1567,246 @@ pub fn main() { #(fn() { echo 41 count(2_000, 0) - 1958 }) }
             .unwrap();
         assert_eq!(state.get(), 7);
         assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn native_view_continuations_preserve_failures_and_cancellation_at_each_codec_boundary() {
+        use crate::execution::UnitOwner;
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::host::{
+            HostCallCompletion, HostCallError, HostProvider, HostProviderModule, HostTypeIndex0,
+            HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        };
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        struct Views;
+        impl HostProvider<Profile> for Views {
+            type State = Cell<usize>;
+            fn project(state: &mut Cell<usize>) -> &mut Cell<usize> {
+                state
+            }
+        }
+        let provider = HostProviderModule::new("application", "library")
+            .unwrap()
+            .with_native_function::<Views, (Input,), Output, One<Output>, _>(
+                "coerce",
+                NativeRules::default().retained_views::<One<Input>>(),
+                |mut call: NativeCall<'_, Profile, Views, Output, One<Output>>,
+                 value: HostValue<'_, Input>| {
+                    assert_eq!(call.call().state().get(), 0);
+                    let source = call.source::<Input>(value);
+                    let value = call.convert::<HostTypeIndex0>(&source).unwrap();
+                    Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(value))
+                },
+            )
+            .unwrap();
+        let source = r#"
+@external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
+pub fn main() {
+  let view: fn(String) -> BitArray = coerce(fn(input: BitArray) {
+    let assert <<42>> = input
+    echo 42
+    "*"
+  })
+  view("*")
+}
+pub fn invalid_input() {
+  let view: fn(String) -> BitArray = coerce(fn(_input: Int) {
+    echo 42
+    "*"
+  })
+  view("*")
+}
+pub fn invalid_result() {
+  let view: fn(String) -> BitArray = coerce(fn(input: BitArray) {
+    let assert <<42>> = input
+    echo 42
+    42
+  })
+  view("*")
+}
+pub fn source_failure() {
+  let view: fn(String) -> BitArray = coerce(fn(input: BitArray) -> String {
+    let assert <<42>> = input
+    echo 42
+    panic as "source rejected"
+  })
+  view("*")
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "library",
+            [crate::PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new(
+                    "library",
+                    "src/library.gleam",
+                    source,
+                )],
+            )],
+            HostProviderSet::from_providers([provider]).unwrap(),
+        )
+        .unwrap();
+        let library = crate::planner::plan_host_library_program(typed).unwrap();
+        let entry = |name: &str| {
+            let function = library
+                .functions()
+                .iter()
+                .find(|function| function.name() == name)
+                .unwrap();
+            LibraryEntry::new(
+                function.signature().id(),
+                LibraryValueType::BitArray,
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+        let first = entry("main");
+        let remaining = ["invalid_input", "invalid_result", "source_failure"]
+            .map(entry)
+            .to_vec();
+        let (plan, functions, _) =
+            HostedProgram::from_library_plan(library, first, remaining).unwrap();
+        let plan = Arc::new(plan);
+        // Run the ordinary source entry through its real execution unit. The
+        // Coerce and the view each start through a host service before the input
+        // codec, source Echo, result codec and final host-result restoration.
+        for (entry, failure) in functions.bit_arrays.iter().zip([
+            None,
+            Some("input does not match its source signature"),
+            Some("result does not match its target signature"),
+            Some("source rejected"),
+        ]) {
+            let boundaries = if failure.is_some() {
+                &[(None, None)][..]
+            } else {
+                &[
+                    (Some(2usize), None),
+                    (Some(3), None),
+                    (Some(4), None),
+                    (None, Some(2)),
+                    (None, Some(3)),
+                    (None, Some(4)),
+                    (None, None),
+                ][..]
+            };
+            for &(cancel_at, close_at) in boundaries {
+                let host = ManualHost::default();
+                let mut state = Cell::new(0);
+                let mut stores = Cell::new(());
+                let mut echo = Vec::new();
+                let mut domain = Domain::new(
+                    Arc::clone(&plan),
+                    &host,
+                    &mut state,
+                    &mut stores,
+                    &mut echo,
+                    Default::default(),
+                    Domain::<Profile>::DEFAULT_BUDGET,
+                );
+                let (execution, root) = domain.begin(UnitOwner::new(domain.units.completion()));
+                let unit = execution.unit().unwrap().clone();
+                let mut completion = Box::pin(
+                    crate::runtime::function::Execution::new(
+                        *entry.function(),
+                        HostCallOrigin::Entry,
+                        RetainedValues::empty(),
+                    )
+                    .drive(
+                        plan.as_ref(),
+                        execution.services(),
+                        Domain::<Profile>::DEFAULT_BUDGET,
+                    ),
+                );
+                let mut services = 0usize;
+                let mut closed_request = false;
+                let result = host.finish(poll_fn(|cx| {
+                    if let Poll::Ready(result) = completion.as_mut().poll(cx) {
+                        return Poll::Ready(result);
+                    }
+                    while let Some(request) = domain.work.next(cx) {
+                        let parent_service = match &request {
+                            Request::Service(service) => {
+                                service.unit().is_some_and(|owner| owner.id() == unit.id())
+                            }
+                            Request::Callback(_) => {
+                                // Close the source reply before its first effect,
+                                // while the enclosing execution unit stays active.
+                                if close_at == Some(3) && services == 3 {
+                                    assert!(!closed_request);
+                                    closed_request = true;
+                                    drop(request);
+                                    continue;
+                                }
+                                false
+                            }
+                        };
+                        if parent_service {
+                            if cancel_at == Some(services) {
+                                assert!(unit.cancel());
+                            }
+                            let close = close_at == Some(services);
+                            services += 1;
+                            if close {
+                                assert!(!closed_request);
+                                closed_request = true;
+                                drop(request);
+                                continue;
+                            }
+                        }
+                        domain.dispatch(request);
+                    }
+                    domain.finish_units(cx);
+                    Poll::Pending
+                }));
+                assert_eq!(
+                    result.as_ref().err(),
+                    cancel_at.or(close_at).as_ref().map(|_| &Cancelled)
+                );
+                if let Some(message) = failure {
+                    let error = result.unwrap().unwrap_err();
+                    assert!(error.to_string().contains(message), "{error}");
+                } else if cancel_at.or(close_at).is_none() {
+                    assert_eq!(
+                        result.unwrap().unwrap().value(),
+                        crate::BitArrayValue::from_bytes(vec![42])
+                    );
+                }
+                if failure.is_none() {
+                    assert_eq!(
+                        services,
+                        cancel_at.map_or_else(
+                            || close_at.map_or(6, |index| if index == 3 { 3 } else { index + 1 }),
+                            |index| index + 1,
+                        )
+                    );
+                }
+                assert_eq!(closed_request, close_at.is_some());
+                if closed_request {
+                    assert!(unit.is_active());
+                }
+                drop(root);
+                host.finish(domain.drive(std::future::ready(())))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap();
+                assert_eq!(
+                    echo.iter()
+                        .map(|output| output.value().inspect().to_string())
+                        .collect::<Vec<_>>(),
+                    if matches!(cancel_at.or(close_at), Some(2 | 3))
+                        || failure == Some("input does not match its source signature")
+                    {
+                        Vec::<String>::new()
+                    } else {
+                        vec!["42".to_owned()]
+                    }
+                );
+            }
+        }
     }
 
     fn set_state(state: &mut Cell<usize>) {

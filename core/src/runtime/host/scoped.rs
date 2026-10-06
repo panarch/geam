@@ -2,6 +2,7 @@ use crate::host::{
     HostCustomToken, HostExternalToken, HostFunctionToken, HostFunctionValueToken, HostListToken,
     HostScopedValue, HostStoredValueFamily, HostTupleToken, HostValueFamily, HostValueToken,
 };
+use crate::plan::FunctionType;
 use crate::plan::execution::type_::ListStorageTypeId;
 use crate::runtime::borrowed::SharedIntegerReads;
 use crate::runtime::evaluated::{
@@ -65,6 +66,20 @@ struct StoredValue {
     value: EvaluatedValue,
     type_: crate::plan::ValueType,
     metadata: crate::plan::execution::runtime::OwnedRuntimeValueMetadata,
+}
+
+/// Borrowed invocable function storage selected at the native conversion boundary.
+/// The source, invocable value, and cached source signature cannot diverge.
+pub(crate) struct StoredRuntimeFunction<'value> {
+    pub(in crate::runtime) source: &'value StoredRuntimeValue,
+    pub(in crate::runtime) function: &'value EvaluatedFunctionValue,
+    signature: &'value FunctionType,
+}
+
+impl StoredRuntimeFunction<'_> {
+    pub(crate) fn signature(&self) -> &FunctionType {
+        self.signature
+    }
 }
 
 pub(crate) struct StoredRuntimeList {
@@ -135,6 +150,21 @@ impl StoredRuntimeValue {
 
     pub(in crate::runtime) fn value(&self) -> &EvaluatedValue {
         &self.retained.value
+    }
+
+    pub(crate) fn invocable_function(&self) -> Option<StoredRuntimeFunction<'_>> {
+        match (self.value(), self.type_()) {
+            (EvaluatedValue::Function(function), crate::plan::ValueType::Function(signature))
+                if !matches!(function.kind(), EvaluatedFunctionValueKind::Generic(_)) =>
+            {
+                Some(StoredRuntimeFunction {
+                    source: self,
+                    function,
+                    signature,
+                })
+            }
+            _ => None,
+        }
     }
 
     pub(crate) fn type_(&self) -> &crate::plan::ValueType {

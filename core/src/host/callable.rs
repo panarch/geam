@@ -125,7 +125,7 @@ pub(crate) struct RegisteredHostCallable {
     pub(crate) function: super::RegisteredHostFunction,
 }
 
-impl<Value, Never> RegisteredCallableSet<super::HostFunctionBinding<Value, Never>> {
+impl<Value, Never, Views> RegisteredCallableSet<super::HostFunctionBinding<Value, Never, Views>> {
     pub(super) fn into_declarations(
         self,
     ) -> RegisteredCallableSet<super::HostFunctionBinding<(), ()>> {

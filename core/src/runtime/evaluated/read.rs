@@ -1,5 +1,6 @@
 mod list;
 
+use super::function::EvaluatedFunctionIdentity;
 use crate::StringValue;
 use crate::plan::execution::function::RuntimeListFunctionId;
 use crate::runtime::evaluated::{
@@ -13,6 +14,7 @@ use crate::runtime::evaluated::{
 };
 use crate::runtime::integer::IntegerValue;
 use crate::runtime::state::list::ParameterListValueId;
+use crate::runtime::{StoredRuntimeValue, captures::Captures};
 pub(in crate::runtime) use list::EvaluatedListRef;
 
 // Read-only operations borrow the owner; retained results acquire an owned value.
@@ -49,6 +51,50 @@ pub(in crate::runtime) enum EvaluatedFunctionRef<'value> {
     ExternalList(&'value EvaluatedExternalListFunction),
     CoreFunction(&'value EvaluatedCoreFunctionFunction),
     ExternalFunction(&'value EvaluatedExternalFunctionFunction),
+}
+
+impl<'value> EvaluatedFunctionRef<'value> {
+    fn retained_parts(
+        &self,
+    ) -> (
+        &'value EvaluatedFunctionIdentity,
+        Option<&'value StoredRuntimeValue>,
+        &'value Captures,
+    ) {
+        match self {
+            Self::Generic(value) => value.retained_parts(),
+            Self::Never(value) => value.retained_parts(),
+            Self::Int(value) => value.retained_parts(),
+            Self::Float(value) => value.retained_parts(),
+            Self::String(value) => value.retained_parts(),
+            Self::BitArray(value) => value.retained_parts(),
+            Self::UtfCodepoint(value) => value.retained_parts(),
+            Self::External(value) => value.retained_parts(),
+            Self::Bool(value) => value.retained_parts(),
+            Self::Nil(value) => value.retained_parts(),
+            Self::Tuple(value) => value.retained_parts(),
+            Self::List(value) => value.retained_parts(),
+            Self::ExternalList(value) => value.retained_parts(),
+            Self::CoreFunction(value) => value.retained_parts(),
+            Self::ExternalFunction(value) => value.retained_parts(),
+            Self::Custom(value) => match value {
+                EvaluatedCustomFunction::Function(value) => value.retained_parts(),
+                EvaluatedCustomFunction::Constructor(value) => value.retained_parts(),
+            },
+        }
+    }
+
+    pub(in crate::runtime) fn identity(&self) -> &'value EvaluatedFunctionIdentity {
+        self.retained_parts().0
+    }
+
+    pub(in crate::runtime) fn native_source(&self) -> Option<&'value StoredRuntimeValue> {
+        self.retained_parts().1
+    }
+
+    pub(in crate::runtime) fn capture_frame(&self) -> &'value Captures {
+        self.retained_parts().2
+    }
 }
 
 impl EvaluatedValueRef<'_> {

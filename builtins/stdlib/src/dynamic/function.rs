@@ -6,6 +6,7 @@ use crate::{
 };
 use ecow::EcoString;
 use geam_core::StringValue;
+use geam_core::host::native::NativeRules;
 use geam_core::provider::advanced::{
     Equality, Hashing, Inspection, NativeValue, RetainedExternalPayload,
 };
@@ -178,6 +179,27 @@ where
     call.construct_external_with_binding::<provider::__GeamProvider, DynamicSchema, HostTypeListEnd>(
         construction, provider::DynamicPayload::stored(value),
     )
+}
+
+/// Registers the standard library's Dynamic construction for a native call.
+///
+/// The caller must compose the standard-library component in its profile.
+/// This grants Dynamic construction only to this registration; retained
+/// function or custom views still require their own explicit source grant.
+pub fn with_native_dynamic<Profile, Provider, Return>(
+    rules: NativeRules<Profile, Provider, Return>,
+) -> NativeRules<Profile, Provider, Return>
+where
+    Profile: crate::GleamStdlibProviderProfile,
+    Profile::RunState: Send,
+    Provider: HostProvider<Profile>,
+    Return: HostType,
+{
+    rules.external::<DynamicSchema, HostTypeListEnd>(|call, construction, value| {
+        Some(call.construct_external_with_binding::<provider::__GeamProvider, DynamicSchema, HostTypeListEnd>(
+            construction, provider::DynamicPayload::from_native(value),
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -545,6 +567,100 @@ pub fn cast(value: value) -> Dynamic
         let projected = <HashProvider as HostProvider<GleamStdlibProfile>>::project(&mut state);
 
         assert!(std::ptr::eq(projected, &state));
+    }
+
+    #[test]
+    fn native_dynamic_rule_uses_the_producer_store_for_function_views_and_checked_decode() {
+        use geam_core::host::native::{NativeCall, NativeRules};
+        use geam_core::{
+            HostTypeIndex0, HostTypeList, HostTypeListEnd, HostTypeParameter, HostValue,
+        };
+        type Output = HostTypeParameter<0>;
+        type Input = HostTypeParameter<1>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        fn coerce<'call>(
+            mut call: NativeCall<'call, GleamStdlibProfile, DynamicProvider, Output, One<Output>>,
+            value: HostValue<'call, Input>,
+        ) -> Result<HostCallCompletion<'call, Output>, HostCallError> {
+            let value = call.source::<Input>(value);
+            let converted = call
+                .convert::<HostTypeIndex0>(&value)
+                .ok_or_else(|| crate::HostFailure::new("conversion refused"))?;
+            Ok(call.finish(converted))
+        }
+        for enabled in [true, false] {
+            let rules = if enabled {
+                super::with_native_dynamic(NativeRules::default().retained_views::<One<Input>>())
+            } else {
+                NativeRules::default()
+            };
+            let provider = host_provider::<GleamStdlibProfile>()
+                .unwrap()
+                .with_native_function::<DynamicProvider, (Input,), Output, One<Output>, _>(
+                    "coerce", rules, coerce,
+                )
+                .unwrap();
+            let source = format!(
+                r#"{DYNAMIC_DECLARATIONS}
+@external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
+pub type Handler(a, b) {{ Handler(fn(a) -> b) }}
+pub fn main() -> Bool {{
+  let bias = 2
+  let original = fn(a: Int) {{ a + bias }}
+  let view: fn(Dynamic) -> Dynamic = coerce(original)
+  let restored: fn(Int) -> Int = coerce(view)
+  let Handler(callback): Handler(Dynamic, Dynamic) = coerce(Handler(original))
+  let answer: Int = coerce(view(int(40)))
+  let nested: Int = coerce(callback(int(40)))
+  answer == 42 && nested == 42 && restored == original && restored(40) == 42
+}}
+"#
+            );
+            let typed = compile_typed_host_program(
+                "gleam_stdlib",
+                "gleam/dynamic",
+                [PackageSource::new(
+                    "gleam_stdlib",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "gleam/dynamic",
+                        "src/gleam/dynamic.gleam",
+                        source,
+                    )],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let mut execution =
+                HostedExecution::try_from_module_plan(plan_host_program(typed).unwrap()).unwrap();
+            let result = crate::execution_fixture::run(
+                &mut execution,
+                &mut GleamStdlibRunState::from_seed([0; 32]),
+                &mut Vec::new(),
+            );
+            if enabled {
+                assert_eq!(result.unwrap(), Value::Bool(true));
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("conversion refused")
+                );
+            }
+        }
+        let rules = super::with_native_dynamic(super::with_native_dynamic(NativeRules::default()));
+        let error = host_provider::<GleamStdlibProfile>()
+            .unwrap()
+            .with_native_function::<DynamicProvider, (Input,), Output, One<Output>, _>(
+                "coerce", rules, coerce,
+            )
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            "host function coerce registers native conversion for External(ExternalType { name: ExternalTypeName { package: \"gleam_stdlib\", module: \"gleam/dynamic\", name: \"Dynamic\" }, arguments: [] }) more than once"
+        );
     }
 
     #[test]

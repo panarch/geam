@@ -19,6 +19,8 @@ use provider_sdk_example_domain::Catalog;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+mod native_views;
+
 pub struct Component;
 
 #[derive(Default)]
@@ -152,6 +154,7 @@ where
             .and_then(|provider| provider.with_resumable_native_function::<Provider, (), Output, OutputTarget, _>("native_value", NativeRules::default(), native_value::<Profile>))
             .and_then(|provider| provider.with_scoped_function::<Provider, (GeneralFunction,), GeneralFunction, _>("keep_function", keep_function::<Profile>))
             .and_then(|provider| provider.with_scoped_function::<Provider, (GeneralFunction,), bool, _>("function_is_callable", function_is_callable::<Profile>))
+            .and_then(native_views::register::<Profile>)
             .map(|provider| vec![provider])
     }
 }

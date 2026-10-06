@@ -184,6 +184,8 @@ struct LoweringContext {
     pending: VecDeque<SpecializationKey>,
     substitution: SpecializedTypeSubstitution,
     current_specialization: SpecializationKey,
+    native_views: Vec<host::NativeViewDraft>,
+    native_view_shapes: Vec<host::NativeViewShape>,
 }
 
 struct StoredTargetLocal {
@@ -222,6 +224,8 @@ impl LoweringContext {
             pending: VecDeque::new(),
             substitution: SpecializedTypeSubstitution::empty(),
             current_specialization,
+            native_views: Vec::new(),
+            native_view_shapes: Vec::new(),
         }
     }
 
@@ -590,6 +594,15 @@ impl LoweringContext {
                 )
             })
             .collect::<Vec<_>>();
+        specializations.extend(self.native_view_shapes.iter().map(|view| {
+            (
+                view.family,
+                view.index,
+                view.parameters.clone(),
+                view.return_.clone(),
+                view.captures.to_vec(),
+            )
+        }));
         specializations.sort_by_key(|(family, index, _, _, _)| (*family, *index));
         let entries = specializations
             .into_iter()

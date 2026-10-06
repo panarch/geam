@@ -21,6 +21,7 @@ on:
           - bytes_tree_service
           - selective_receive_service
           - application_exit
+          - native_function_views
           - all
       diagnostics:
         description: Upload detailed coverage reports
@@ -476,7 +477,8 @@ jobs:
             "dict_service",
             "bytes_tree_service",
             "selective_receive_service",
-            "application_exit"
+            "application_exit",
+            "native_function_views"
           ]'), inputs.target) }}
     runs-on: ubuntu-latest
     strategy:
@@ -493,7 +495,8 @@ jobs:
               "dict_service",
               "bytes_tree_service",
               "selective_receive_service",
-              "application_exit"
+              "application_exit",
+              "native_function_views"
             ]'
           ) }}
     env:
@@ -505,7 +508,8 @@ jobs:
           "dict_service": "tests/fixtures/dict_service/provider",
           "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
           "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
-          "application_exit": "tests/fixtures/application_exit/provider"
+          "application_exit": "tests/fixtures/application_exit/provider",
+          "native_function_views": "tests/fixtures/native_function_views/provider"
         }')[matrix.consumer] }}
 
     steps:
