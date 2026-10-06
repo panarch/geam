@@ -767,6 +767,7 @@ jobs:
 
       - name: Fetch locked consumer dependencies
         run: |
+          cargo fetch --locked
           cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
