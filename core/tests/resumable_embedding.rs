@@ -319,9 +319,26 @@ fn nested_failure<'call>(
     Err(HostFailure::new("inner stopped").into())
 }
 
+fn coerce<'call>(
+    mut call: NativeCall<
+        'call,
+        GenericProfile,
+        GenericProfile,
+        Output,
+        HostTypeList<Output, HostTypeListEnd>,
+    >,
+    input: <HostTypeParameter<1> as geam_core::HostType>::Value<'call>,
+) -> Result<HostCallCompletion<'call, Output>, HostCallError> {
+    let source = call.source::<HostTypeParameter<1>>(input);
+    let target = call
+        .convert::<HostTypeIndex0>(&source)
+        .ok_or_else(|| HostFailure::new("view refused"))?;
+    Ok(call.finish(target))
+}
+
 fn generic_program(source: &str) -> HostedTypedProgram<GenericProfile> {
     let source = format!(
-        "@external(erlang, \"native\", \"wait\")\nfn wait() -> Nil\n@external(erlang, \"native\", \"fail\")\nfn fail() -> Nil\n{source}"
+        "@external(erlang, \"native\", \"wait\")\nfn wait() -> Nil\n@external(erlang, \"native\", \"fail\")\nfn fail() -> Nil\n@external(erlang, \"gleam@function\", \"identity\")\nfn coerce(value: a) -> b\n{source}"
     );
     let provider = HostProviderModule::new("application", "library")
         .unwrap()
@@ -333,6 +350,10 @@ fn generic_program(source: &str) -> HostedTypedProgram<GenericProfile> {
         .with_resumable_function::<GenericProfile, (), (), HostTypeListEnd, _>("wait", generic_wait)
         .unwrap()
         .with_scoped_function::<GenericProfile, (), (), _>("fail", nested_failure)
+        .unwrap()
+        .with_native_function::<GenericProfile, (HostTypeParameter<1>,), Output, HostTypeList<Output, HostTypeListEnd>, _>(
+            "coerce", NativeRules::default().retained_views::<HostTypeList<HostTypeParameter<1>, HostTypeListEnd>>(), coerce,
+        )
         .unwrap();
     compile_typed_host_program(
         "application",
@@ -448,11 +469,13 @@ fn around(cleanup: fn(Nil) -> b, body: fn(Nil) -> a) -> a
 pub fn run(waiting: Bool) {
   case waiting {
     True -> {
-      let _ = around(fn(_) { echo "cleanup" }, fn(_) {
+      let original: fn(BitArray) -> BitArray = fn(_) {
         echo "body"
         wait()
         panic as "body stopped"
-      })
+      }
+      let view: fn(String) -> String = coerce(original)
+      let _ = around(fn(_) { echo "cleanup" }, fn(_) { view("input") })
       0
     }
     False -> 42

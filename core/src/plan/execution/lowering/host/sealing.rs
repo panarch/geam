@@ -41,6 +41,7 @@ pub(super) fn seal_host_types(
     constructions: &crate::host::RegisteredHostConstructions,
     key: &SpecializationKey,
     context: &mut LoweringContext,
+    position: super::native::NativeViewPosition,
 ) -> Result<HostConstructionTypes, HostSpecializationError> {
     let schemas = template
         .custom_schemas()
@@ -76,11 +77,12 @@ pub(super) fn seal_host_types(
     };
     let natives = super::native::seal(
         template,
-        constructions.types(),
+        constructions,
         rules,
         key,
         context,
         customs,
+        position,
     )?;
     Ok(types.with_natives(natives))
 }

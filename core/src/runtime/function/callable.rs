@@ -1,16 +1,17 @@
 use crate::plan::execution::function::RuntimeFunctionId;
 use crate::plan::execution::type_::FunctionType;
-use crate::runtime::ExecutableRuntimePlan;
-use crate::runtime::captures::Captures;
+use crate::runtime::captures::{CaptureStorage, Captures};
 use crate::runtime::error::HostCallOrigin;
+use crate::runtime::evaluated::FunctionCreation;
 use crate::runtime::evaluated::{
-    EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCustomFunction,
+    EvaluatedBitArrayFunction, EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCustomFunction,
     EvaluatedCustomValue, EvaluatedExternalFunction, EvaluatedFloatFunction,
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedIntFunction, EvaluatedListFunction,
     EvaluatedNeverFunction, EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
     EvaluatedUtfCodepointFunction, EvaluatedValue,
 };
 use crate::runtime::graph::RetainedValues;
+use crate::runtime::{ExecutableRuntimePlan, StoredRuntimeFunction};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::runtime) enum InvocableFunctionValue {
@@ -35,34 +36,55 @@ impl InvocableFunctionValue {
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
+        // Fresh closures use a new capture frame, even when a captured value is a view.
+        Self::create(target, captures, type_, FunctionCreation::Fresh)
+    }
+
+    pub(in crate::runtime) fn retained_view(
+        target: RuntimeFunctionId,
+        storage: &CaptureStorage,
+        values: Vec<EvaluatedCapture>,
+        type_: FunctionType,
+        source: StoredRuntimeFunction<'_>,
+    ) -> Self {
+        let captures = storage.capture_native_view(values, source.source);
+        let creation = source.function.creation_view();
+        Self::create(target, captures, type_, creation)
+    }
+
+    fn create(
+        target: RuntimeFunctionId,
+        captures: Captures,
+        type_: FunctionType,
+        creation: FunctionCreation,
+    ) -> Self {
         use crate::plan::execution::function::{
             CoreRuntimeFunctionId as C, RuntimeFunctionFunctionTarget as F, RuntimeFunctionId as R,
         };
-        use crate::runtime::evaluated::EvaluatedFunction;
         match target {
-            R::External(id) => Self::External(EvaluatedFunction::closure(id, captures, type_)),
+            R::External(id) => Self::External(creation.instantiate(id, captures, type_)),
             R::Core(id) => match id {
-                C::Never(id) => Self::Never(EvaluatedFunction::closure(id, captures, type_)),
-                C::Int(id) => Self::Int(EvaluatedFunction::closure(id, captures, type_)),
-                C::Float(id) => Self::Float(EvaluatedFunction::closure(id, captures, type_)),
-                C::String(id) => Self::String(EvaluatedFunction::closure(id, captures, type_)),
-                C::BitArray(id) => Self::BitArray(EvaluatedFunction::closure(id, captures, type_)),
+                C::Never(id) => Self::Never(creation.instantiate(id, captures, type_)),
+                C::Int(id) => Self::Int(creation.instantiate(id, captures, type_)),
+                C::Float(id) => Self::Float(creation.instantiate(id, captures, type_)),
+                C::String(id) => Self::String(creation.instantiate(id, captures, type_)),
+                C::BitArray(id) => Self::BitArray(creation.instantiate(id, captures, type_)),
                 C::UtfCodepoint(id) => {
-                    Self::UtfCodepoint(EvaluatedFunction::closure(id, captures, type_))
+                    Self::UtfCodepoint(creation.instantiate(id, captures, type_))
                 }
-                C::Bool(id) => Self::Bool(EvaluatedFunction::closure(id, captures, type_)),
-                C::Nil(id) => Self::Nil(EvaluatedFunction::closure(id, captures, type_)),
-                C::List(id) => Self::List(EvaluatedFunction::closure(id, captures, type_)),
+                C::Bool(id) => Self::Bool(creation.instantiate(id, captures, type_)),
+                C::Nil(id) => Self::Nil(creation.instantiate(id, captures, type_)),
+                C::List(id) => Self::List(creation.instantiate(id, captures, type_)),
                 C::Custom(id) => Self::Custom(EvaluatedCustomFunction::Function(
-                    EvaluatedFunction::closure(id, captures, type_),
+                    creation.instantiate(id, captures, type_),
                 )),
-                C::Tuple { id, .. } => Self::Tuple(EvaluatedFunction::closure(id, captures, type_)),
+                C::Tuple { id, .. } => Self::Tuple(creation.instantiate(id, captures, type_)),
                 C::Function { id, .. } => Self::Function(match id {
-                    F::Core(id) => EvaluatedFunctionFunction::Core(EvaluatedFunction::closure(
-                        id, captures, type_,
-                    )),
+                    F::Core(id) => {
+                        EvaluatedFunctionFunction::Core(creation.instantiate(id, captures, type_))
+                    }
                     F::External(id) => EvaluatedFunctionFunction::External(
-                        EvaluatedFunction::closure(id, captures, type_),
+                        creation.instantiate(id, captures, type_),
                     ),
                 }),
             },
@@ -207,7 +229,7 @@ pub(in crate::runtime) fn prepare_callable<'plan, Plan: ExecutableRuntimePlan>(
 
 pub(in crate::runtime) fn callable_inputs(
     arguments: Box<[EvaluatedValue]>,
-    captures: &crate::runtime::captures::Captures,
+    captures: &Captures,
 ) -> RetainedValues {
     let mut inputs = RetainedValues::empty();
     for value in arguments {
@@ -223,7 +245,8 @@ mod tests {
     use crate::embedding::{FunctionDeclaration, HostedModuleBuilder};
     use crate::execution_fixture::TestHost;
     use crate::host::{
-        HostComponentProfile, HostFutureStore, HostProfile, HostProviderSet, HostWorkProfile,
+        HostComponentProfile, HostFutureStore, HostProfile, HostProviderModule, HostProviderSet,
+        HostWorkProfile,
     };
     use crate::work_fixture::{WorkComponent, WorkType};
     use crate::{ModuleSource, PackageSource};
@@ -316,6 +339,98 @@ mod tests {
         fn component_state(state: &mut ()) -> &mut () {
             state
         }
+    }
+
+    #[test]
+    fn retained_function_view_returns_deferred_work_without_observing_it() {
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::{
+            HostCallCompletion, HostCallError, HostTypeIndex0, HostTypeList, HostTypeListEnd,
+            HostTypeParameter, HostValue,
+        };
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        let effects = Arc::new(AtomicUsize::new(0));
+        let callback_effects = Arc::clone(&effects);
+        let provider = HostProviderModule::new("application", "library")
+            .unwrap()
+            .with_native_function::<WorkComponent, (Input,), Output, One<Output>, _>(
+                "coerce",
+                NativeRules::default().retained_views::<One<Input>>(),
+                |mut call: NativeCall<'_, Profile, WorkComponent, Output, One<Output>>,
+                 input: HostValue<'_, Input>| {
+                    let source = call.source::<Input>(input);
+                    let view = call
+                        .convert::<HostTypeIndex0>(&source)
+                        .expect("the fixture grants this signature view");
+                    Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(view))
+                },
+            )
+            .unwrap()
+            .with_function::<(), BigInt, _>("mark", move || {
+                callback_effects.fetch_add(1, Ordering::SeqCst);
+                BigInt::from(42)
+            })
+            .unwrap();
+        let mut providers = WorkComponent::providers::<Profile>().unwrap();
+        providers.push(provider);
+        let source = r#"
+import fixture/work as future
+@external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
+@external(erlang, "fixture", "mark") fn mark() -> Int
+pub fn run() {
+  let view: fn(BitArray) -> future.Work(Int) = coerce(fn(a: String) {
+    let assert "*" = a
+    future.map(future.ready(42), fn(value) { mark() })
+  })
+  view(<<42>>)
+}
+"#;
+        let typed = crate::compile_typed_host_program(
+            "application",
+            "library",
+            [
+                PackageSource::new(
+                    "work_fixture",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new(
+                        "fixture/work",
+                        "fixture/work.gleam",
+                        WorkComponent::SOURCE,
+                    )],
+                ),
+                PackageSource::new(
+                    "application",
+                    ["work_fixture"],
+                    [ModuleSource::new("library", "library.gleam", source)],
+                ),
+            ],
+            HostProviderSet::from_providers(providers).unwrap(),
+        )
+        .unwrap();
+        let (bindings, run) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), WorkType<BigInt>>::new("run"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = TestHost::default();
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                let work = scope.call(&run, ()).await.unwrap();
+                assert_eq!(effects.load(Ordering::SeqCst), 0);
+                let completed = scope.observe(&work).await.unwrap();
+                assert_eq!(completed.read(Clone::clone), BigInt::from(42));
+                assert_eq!(effects.load(Ordering::SeqCst), 1);
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        assert!(echo.is_empty());
     }
 
     #[test]

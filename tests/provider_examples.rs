@@ -10,6 +10,30 @@ mod workspace_dependencies;
 #[path = "provider_examples/otp_service.rs"]
 mod otp_service;
 
+#[path = "support/native_function_views_fixture.rs"]
+mod native_function_views_fixture;
+
+#[test]
+fn original_dynamic_source_runs_with_the_independent_native_view_provider() {
+    let directory = tempdir().unwrap();
+    let project = native_function_views_fixture::copy(directory.path());
+    let added = geam_at(&project, ["provider", "add", "--path", "../provider"]);
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+    for _ in 0..2 {
+        let run = geam_at(&project, ["run"]);
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(run.stdout, b"native function views: 42\n");
+    }
+}
+
 #[test]
 fn runs_the_process_service_provider_on_the_builtin_mailbox() {
     let fixture = provider_example("process_service");

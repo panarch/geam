@@ -87,10 +87,11 @@ pub(crate) use function::{
     HostBitArrayArgumentSlot, HostBoolArgumentSlot, HostCallArguments, HostCustomArgumentSlot,
     HostExternalArgumentSlot, HostFloatArgumentSlot, HostFunctionArgumentSlot, HostFunctionBinding,
     HostFunctionDefinition, HostFunctionImplementation, HostIntArgumentSlot, HostListArgumentSlot,
-    HostNeverFunction, HostNilArgumentSlot, HostParameter, HostRetainedCallback,
-    HostStringArgumentSlot, HostTupleArgumentSlot, HostUtfCodepointArgumentSlot,
-    HostValueArgumentSlot, HostValueFunction,
+    HostNativeViewFactory, HostNeverFunction, HostNilArgumentSlot, HostParameter,
+    HostRetainedCallback, HostStringArgumentSlot, HostTupleArgumentSlot,
+    HostUtfCodepointArgumentSlot, HostValueArgumentSlot, HostValueFunction,
 };
+pub(crate) use function::{NativeViewBinding, NativeViewImplementation};
 #[cfg(test)]
 pub(crate) use function::{
     expect_immediate_call, expect_never_implementation, expect_value_implementation,

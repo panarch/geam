@@ -1,6 +1,6 @@
 data::HostedModuleArtifact {
     module: data::ModuleArtifact {
-        format: 23,
+        format: 24,
         program: data::ProgramTables {
             root: data::source::module_id(0),
             modules: data::Storage::Static(&[
@@ -2142,7 +2142,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -2241,7 +2243,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -2413,7 +2417,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -2516,7 +2522,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -2604,7 +2612,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
         data::host::HostedFunctionMetadata {
             completion: data::host::HostFunctionCompletion::Value,
@@ -2713,7 +2723,9 @@ pub fn compound() {
                 construction_customs: data::Storage::Static(&[]),
                 construction_externals: data::Storage::Static(&[]),
                 native_rules: None,
+                native_sources: data::Storage::Static(&[]),
             }),
+            native_view: None,
         },
     ]),
     never_functions: data::Storage::Static(&[]),

@@ -1,0 +1,27 @@
+[package]
+name = "geam-native-function-views-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.geam.provider]
+schema = 2
+gleam-package = "native_function_views_fixture"
+gleam-version = ">= 0.1.0 and < 0.1.1"
+component = "plain"
+execution-service = false
+requires-services = []
+
+[dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["provider", "gleam-stdlib"] }
+
+[dev-dependencies]
+geam = { version = "=0.2.3", default-features = false, features = ["embedding", "tokio"] }
+tokio = { version = "1", features = ["rt"] }
+camino = "1"
+
+[patch.crates-io]
+geam = { path = "../../../.." }
+
+[workspace]
+resolver = "3"

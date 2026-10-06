@@ -1,13 +1,18 @@
-use super::{PreparedHostCall, ScopedValues, StoredRuntimeList, StoredRuntimeValue};
+use super::{
+    PreparedHostCall, ScopedValues, StoredRuntimeFunction, StoredRuntimeList, StoredRuntimeValue,
+};
 use crate::host::{
     HostCallArguments, HostCallRuntime, HostCodecScope, HostCustomArgumentSlot, HostCustomToken,
     HostExternalArgumentSlot, HostExternalToken, HostFunctionArgumentSlot, HostFunctionToken,
     HostFunctionValueToken, HostListArgumentSlot, HostListToken, HostProfile, HostScopedValue,
     HostTokenRuntime, HostTupleArgumentSlot, HostTupleToken, HostValueArgumentSlot, HostValueToken,
 };
-use crate::plan::execution::host::{HostedFunction, HostedFunctionMetadata};
+use crate::plan::execution::host::{HostedFunction, HostedFunctionMetadata, NativeFunctionView};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
-use crate::runtime::evaluated::{EvaluatedCustomValue, EvaluatedExternalValue};
+use crate::runtime::evaluated::{
+    EvaluatedCustomValue, EvaluatedExternalValue, EvaluatedFunctionRef, EvaluatedValue,
+};
+use crate::runtime::function::InvocableFunctionValue;
 use crate::runtime::graph::{BlockEnvironment, RetainedValues};
 use crate::runtime::state::RuntimeStateFor;
 use ecow::EcoString;
@@ -455,6 +460,33 @@ where
             .scoped
             .push(crate::runtime::evaluated::EvaluatedValue::Function(value));
         self.scoped.function_token(token)
+    }
+
+    fn build_native_function_view(
+        &mut self,
+        view: &NativeFunctionView,
+        source: StoredRuntimeFunction<'_>,
+    ) -> Option<HostValueToken> {
+        let frame = EvaluatedFunctionRef::from(source.function).capture_frame();
+        if frame
+            .domain()
+            .is_some_and(|domain| domain != self.state.captures().domain())
+        {
+            return None;
+        }
+        let mut values = RetainedValues::empty();
+        values.push_evaluated(source.source.value().clone());
+        let function = InvocableFunctionValue::retained_view(
+            view.target.clone(),
+            self.state.captures(),
+            values.into_captures(&view.captures),
+            view.type_.clone(),
+            source,
+        );
+        Some(
+            self.scoped
+                .push(EvaluatedValue::Function(function.into_evaluated())),
+        )
     }
 
     fn build_tuple(&mut self, values: Box<[HostScopedValue]>) -> HostValueToken {

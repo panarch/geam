@@ -1,11 +1,9 @@
 use super::{TypeError, Types};
-use crate::plan::execution::storage::Node;
 use crate::plan::execution::type_::custom::{
     CustomDefinition, FieldRefinement, definition::RESULT,
 };
-use crate::plan::execution::type_::{
-    CustomTypeDescriptor, FunctionMetadata, NominalTypeMetadata, TypeMetadata,
-};
+use crate::plan::execution::type_::metadata::substitute;
+use crate::plan::execution::type_::{CustomTypeDescriptor, NominalTypeMetadata, TypeMetadata};
 
 impl<'data> Types<'data> {
     pub(in crate::plan::execution::prepared::admission) fn definition_of(
@@ -131,58 +129,6 @@ impl<'data> Types<'data> {
     }
 }
 
-fn substitute(template: &TypeMetadata, arguments: &[TypeMetadata]) -> TypeMetadata {
-    match template {
-        TypeMetadata::Parameter(id) => arguments[id.0].clone(),
-        TypeMetadata::Tuple(items) => TypeMetadata::Tuple(
-            items
-                .iter()
-                .map(|item| substitute(item, arguments))
-                .collect(),
-        ),
-        TypeMetadata::List(item) => {
-            TypeMetadata::List(Node::Owned(Box::new(substitute(item, arguments))))
-        }
-        TypeMetadata::Function(function) => TypeMetadata::Function(FunctionMetadata {
-            arguments: function
-                .arguments
-                .iter()
-                .map(|item| substitute(item, arguments))
-                .collect(),
-            return_: Node::Owned(Box::new(substitute(&function.return_, arguments))),
-        }),
-        TypeMetadata::Custom(nominal) => {
-            TypeMetadata::Custom(nominal_substitution(nominal, arguments))
-        }
-        TypeMetadata::External(nominal) => {
-            TypeMetadata::External(nominal_substitution(nominal, arguments))
-        }
-        TypeMetadata::Int
-        | TypeMetadata::Float
-        | TypeMetadata::String
-        | TypeMetadata::BitArray
-        | TypeMetadata::UtfCodepoint
-        | TypeMetadata::Bool
-        | TypeMetadata::Nil => template.clone(),
-    }
-}
-
-fn nominal_substitution(
-    nominal: &NominalTypeMetadata,
-    arguments: &[TypeMetadata],
-) -> NominalTypeMetadata {
-    NominalTypeMetadata {
-        package: nominal.package.clone(),
-        module: nominal.module.clone(),
-        name: nominal.name.clone(),
-        arguments: nominal
-            .arguments
-            .iter()
-            .map(|item| substitute(item, arguments))
-            .collect(),
-    }
-}
-
 fn refinement(rule: &FieldRefinement, template: &TypeMetadata) -> bool {
     match (rule, template) {
         (FieldRefinement::Argument(index), TypeMetadata::Parameter(id)) => *index == id.0,
@@ -226,7 +172,8 @@ fn refinement(rule: &FieldRefinement, template: &TypeMetadata) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CustomDefinition, Node, TypeError, TypeMetadata, Types};
+    use super::{CustomDefinition, TypeError, TypeMetadata, Types};
+    use crate::plan::execution::storage::Node;
     use crate::plan::execution::storage::Table;
     use crate::plan::execution::type_::custom::{ConstructorDefinition, FieldDefinition};
 

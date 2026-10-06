@@ -68,6 +68,7 @@ pub(super) fn admit<Profile: HostProfile>(
     hosts: &NativeFunctions<'_, Profile>,
     context: &Instructions<'_, '_, HostedExecutionGraph>,
 ) -> Result<(), NativeError> {
+    super::view::admit(hosts, context)?;
     let metadata = hosts
         .values
         .iter()
@@ -92,6 +93,9 @@ pub(super) fn admit<Profile: HostProfile>(
         }
     }
     for (value, index, metadata, registration) in metadata {
+        if metadata.native_view.is_some() {
+            continue;
+        }
         let registered = &hosts.registrations[registration].constructions;
         if metadata.constructions.callables.len() != registered.callables().len() {
             return Err(failure(value, index));

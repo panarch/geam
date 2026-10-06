@@ -21,7 +21,7 @@ pub(in crate::runtime) use function::{
     EvaluatedFunctionFunction, EvaluatedFunctionValue, EvaluatedFunctionValueKind,
     EvaluatedGenericFunction, EvaluatedIntFunction, EvaluatedListFunction, EvaluatedNeverFunction,
     EvaluatedNilFunction, EvaluatedStringFunction, EvaluatedTupleFunction,
-    EvaluatedUtfCodepointFunction, FunctionReferenceId,
+    EvaluatedUtfCodepointFunction, FunctionCreation, FunctionReferenceId,
 };
 pub(in crate::runtime) use read::{EvaluatedFunctionRef, EvaluatedListRef, EvaluatedValueRef};
 pub(in crate::runtime) use source::{value_refs_equal, value_source_hash, values_equal};

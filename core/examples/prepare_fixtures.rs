@@ -11,6 +11,8 @@ use std::path::Path;
 #[path = "../tests/fixtures/prepared/list_provider.rs"]
 mod list_provider;
 
+#[path = "../tests/fixtures/prepared/function_view_provider.rs"]
+mod function_view_provider;
 #[path = "../tests/fixtures/prepared/native_provider.rs"]
 mod native_provider;
 #[path = "../tests/support/work_fixture.rs"]
@@ -894,6 +896,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("bit_array_patterns.rs", bit_arrays.prepare().emit_rust()),
         ("bit_array_loops.rs", bit_loops.prepare().emit_rust()),
         ("native.rs", native.prepare()?.emit_rust()),
+        (
+            "function_views.rs",
+            function_view_provider::prepare().emit_rust(),
+        ),
         ("work.rs", work_provider::prepare().emit_rust()),
         (
             "entry.rs",

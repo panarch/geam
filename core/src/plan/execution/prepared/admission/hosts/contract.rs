@@ -1,6 +1,7 @@
 mod callback;
 mod construction;
 mod shape;
+mod view;
 
 use super::ContractError;
 use super::link::Registration;
@@ -20,6 +21,9 @@ pub(super) fn metadata(
     types: &Types<'_>,
     returns_value: bool,
 ) -> Result<(), ContractError> {
+    if let Some(view) = &metadata.native_view {
+        return view::metadata(metadata, view, types, returns_value);
+    }
     let schema = &registration.schema;
     if metadata.callable_entry.is_some() != schema.is_callable() {
         return Err(ContractError::Callable);
@@ -117,7 +121,11 @@ pub(super) fn call(
     if declaration.captures != metadata.parameters.captures.as_ref() {
         return Err(ContractError::Captures);
     }
-    shape::admit(metadata, registration, declaration, types)?;
+    if metadata.native_view.is_none() {
+        shape::admit(metadata, registration, declaration, types)?;
+    } else if declaration.parameters.len() != metadata.parameters.call.len() {
+        return Err(ContractError::Parameters);
+    }
     let slots = declaration
         .parameters
         .iter()

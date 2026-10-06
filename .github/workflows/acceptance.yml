@@ -430,6 +430,7 @@ jobs:
           cargo fetch --manifest-path examples/provider/process_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/otp_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/native_function_views/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
@@ -468,6 +469,9 @@ jobs:
 
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
+
+      - name: Fetch native function view provider dependencies
+        run: cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
 
       - name: Verify standalone build and source-free distribution
         run: cargo test --package geam --test standalone_build --locked -- --test-threads=1
@@ -758,15 +762,18 @@ jobs:
             tests/fixtures/bytes_tree_service/provider -> target
             tests/fixtures/selective_receive_service/provider -> target
             tests/fixtures/application_exit/provider -> target
+            tests/fixtures/native_function_views/provider -> target
             tests/fixtures/raw_string_values/provider -> target
 
       - name: Fetch locked consumer dependencies
         run: |
+          cargo fetch --locked
           cargo fetch --manifest-path tests/fixtures/charlist_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/dict_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/bytes_tree_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/application_exit/provider/Cargo.toml --locked
+          cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/raw_string_values/provider/Cargo.toml --locked
 
       - name: Verify producer-owned Charlist values through original source
@@ -795,6 +802,16 @@ jobs:
           gleam format --check tests/fixtures/selective_receive_service/project/src
           gleam format --check tests/fixtures/selective_receive_service/embedding/gleam/src
 
+      - name: Verify native function views through original Dynamic source
+        run: cargo test --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
+
+      - name: Verify native function views through the CLI
+        run: cargo test --package geam --test provider_examples --locked -- --exact original_dynamic_source_runs_with_the_independent_native_view_provider
+
+      - name: Verify native function view source formatting
+        run: |
+          gleam format --check tests/fixtures/native_function_views/project/src
+          gleam format --check tests/fixtures/native_function_views/embedding/gleam/src
       - name: Verify raw String values through separate native calls
         run: cargo test --manifest-path tests/fixtures/raw_string_values/provider/Cargo.toml --locked
 

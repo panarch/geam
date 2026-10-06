@@ -19,8 +19,8 @@ pub mod host {
         HostedFunctionMetadata, HostedFunctionParameters, HostedFunctionTarget,
     };
     pub use crate::plan::execution::host::native::{
-        NativeConstructor, NativeConversion, NativeConversionId, NativeConversionKind,
-        NativeConversions,
+        HostNativeView, NativeConstructor, NativeConversion, NativeConversionId,
+        NativeConversionKind, NativeConversions, NativeCustomView, NativeFunctionView,
     };
     pub use crate::plan::execution::host::registration::{
         CallableRegistration, ConstructorSchema, CustomSchema, ExternalSchema, FieldSchema,

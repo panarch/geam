@@ -138,6 +138,10 @@ impl TypeMetadata {
 }
 
 impl FunctionMetadata {
+    pub(crate) fn matches(&self, type_: &plan::FunctionType) -> bool {
+        compare_arguments(&self.arguments, type_.argument_types()).is_eq()
+            && self.return_.compare(type_.return_()).is_eq()
+    }
     pub(in crate::plan::execution) fn from_public(type_: &plan::FunctionType) -> Self {
         Self {
             arguments: type_
@@ -306,6 +310,61 @@ impl Emit for NominalTypeMetadata {
                 ("arguments", arguments),
             ],
         );
+    }
+}
+
+pub(in crate::plan::execution) fn substitute(
+    template: &TypeMetadata,
+    arguments: &[TypeMetadata],
+) -> TypeMetadata {
+    match template {
+        TypeMetadata::Parameter(id) => arguments[id.0].clone(),
+        TypeMetadata::Tuple(items) => TypeMetadata::Tuple(
+            items
+                .iter()
+                .map(|item| substitute(item, arguments))
+                .collect(),
+        ),
+        TypeMetadata::List(item) => {
+            TypeMetadata::List(Node::Owned(Box::new(substitute(item, arguments))))
+        }
+        TypeMetadata::Function(function) => TypeMetadata::Function(FunctionMetadata {
+            arguments: function
+                .arguments
+                .iter()
+                .map(|item| substitute(item, arguments))
+                .collect(),
+            return_: Node::Owned(Box::new(substitute(&function.return_, arguments))),
+        }),
+        TypeMetadata::Custom(nominal) => {
+            TypeMetadata::Custom(nominal_substitution(nominal, arguments))
+        }
+        TypeMetadata::External(nominal) => {
+            TypeMetadata::External(nominal_substitution(nominal, arguments))
+        }
+        TypeMetadata::Int
+        | TypeMetadata::Float
+        | TypeMetadata::String
+        | TypeMetadata::BitArray
+        | TypeMetadata::UtfCodepoint
+        | TypeMetadata::Bool
+        | TypeMetadata::Nil => template.clone(),
+    }
+}
+
+fn nominal_substitution(
+    nominal: &NominalTypeMetadata,
+    arguments: &[TypeMetadata],
+) -> NominalTypeMetadata {
+    NominalTypeMetadata {
+        package: nominal.package.clone(),
+        module: nominal.module.clone(),
+        name: nominal.name.clone(),
+        arguments: nominal
+            .arguments
+            .iter()
+            .map(|item| substitute(item, arguments))
+            .collect(),
     }
 }
 

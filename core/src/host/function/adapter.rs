@@ -6,7 +6,7 @@ use super::return_::{
 };
 use crate::host::{
     HostAbiType, HostCall, HostCallCompletion, HostCallError, HostConstructions, HostFailure,
-    HostProfile, HostProvider, HostTypeSequence,
+    HostNativeViewFactory, HostProfile, HostProvider, HostTypeSequence, HostValueFunction,
 };
 use std::sync::Arc;
 
@@ -375,29 +375,16 @@ macro_rules! native_function {
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
                 // Tie decoded arguments and completion to the same call lifetime.
-                fn callback<Profile, Provider, Return, Targets, Function, $($argument,)*>(function: Function) -> Function
-                where
-                    Profile: HostProfile,
-                    Provider: HostProvider<Profile>,
-                    Return: HostAbiType,
-                    Targets: HostTypeSequence,
-                    $($argument: HostScopedArgument,)*
-                    Function: for<'call> Fn(
-                        HostCall<'call, Profile, Provider, Return>,
-                        HostConstructions<'call, Targets>,
-                        $(<$argument as crate::host::HostType>::Value<'call>),*
-                    ) -> Result<HostCallCompletion<'call, Return>, HostCallError>,
-                {
-                    function
-                }
-                <_ as ScopedConstructingHostFunctionAdapter<
-                    Profile, Provider, ($($argument,)*), Return, Targets,
-                >>::register(callback::<Profile, Provider, Return, Targets, _, $($argument,)*>(move |call, _, $($slot),*| {
-                        (self.function)(
-                            crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)),
-                            $($slot),*
-                        )
-                    }))
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
+                let view = HostNativeViewFactory::new(Self::view_implementation(std::sync::Arc::clone(&self.rules)));
+                let implementation = HostValueFunction::scoped(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    (self.function)(crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)), $($slot,)*)
+                        .map(|completion| completion.token)
+                });
+                ScopedHostFunctionRegistration { schema, implementation: HostFunctionImplementation::NativeValue(implementation, view) }
+
             }
         }
 
@@ -416,29 +403,16 @@ macro_rules! native_function {
             ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError> + Send + Sync + 'static,
         {
             fn register(self) -> ScopedHostFunctionRegistration<Profile> {
-                fn callback<Profile, Provider, Return, Targets, Function, $($argument,)*>(function: Function) -> Function
-                where
-                    Profile: HostProfile,
-                    Provider: HostProvider<Profile>,
-                    Return: HostAbiType,
-                    Targets: HostTypeSequence,
-                    $($argument: HostScopedArgument,)*
-                    Function: for<'call> Fn(
-                        HostCall<'call, Profile, Provider, Return>,
-                        HostConstructions<'call, Targets>,
-                        $(<$argument as crate::host::HostType>::Value<'call>),*
-                    ) -> Result<crate::host::HostCallContinuation<'call, Return>, HostCallError>,
-                {
-                    function
-                }
-                <_ as ResumableHostFunctionAdapter<
-                    Profile, Provider, ($($argument,)*), Return, Targets,
-                >>::register(callback::<Profile, Provider, Return, Targets, _, $($argument,)*>(move |call, _, $($slot),*| {
-                    (self.function)(
-                        crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)),
-                        $($slot),*
-                    )
-                }))
+                let (schema, ($($slot,)*)) = <($($argument,)*) as HostSignature<Return>>::signature();
+                let view = HostNativeViewFactory::new(Self::view_implementation(std::sync::Arc::clone(&self.rules)));
+                let implementation = HostValueFunction::continuing(move |runtime| {
+                    let call = HostCall::new(runtime);
+                    $(let $slot = <$argument as HostScopedArgument>::read(&call, $slot);)*
+                    (self.function)(crate::host::native::NativeCall::new(call, std::sync::Arc::clone(&self.rules)), $($slot,)*)
+                        .map(|completion| completion.continuation)
+                });
+                ScopedHostFunctionRegistration { schema, implementation: HostFunctionImplementation::NativeValue(implementation, view) }
+
             }
         }
     };

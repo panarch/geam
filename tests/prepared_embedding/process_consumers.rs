@@ -32,6 +32,16 @@ fn selective_receive_runs_dynamic_and_relocated_prepared() {
     );
 }
 
+#[test]
+fn native_function_views_run_live_and_relocated_prepared() {
+    verify_consumer(
+        "tests/fixtures/native_function_views",
+        "native-function-views-embedding",
+        b"native function views: 42\n",
+        2,
+    );
+}
+
 fn verify_consumer(fixture: &str, executable: &str, expected: &[u8], embedding_calls: usize) {
     let directory = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(directory.path()).unwrap();

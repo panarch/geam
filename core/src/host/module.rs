@@ -72,7 +72,7 @@ pub(super) struct RegisteredFunctionSet<Implementation> {
     functions: Vec<super::function::RegisteredHostDefinition<Implementation>>,
 }
 
-impl<Value, Never> RegisteredFunctionSet<super::HostFunctionBinding<Value, Never>> {
+impl<Value, Never, Views> RegisteredFunctionSet<super::HostFunctionBinding<Value, Never, Views>> {
     fn into_declarations(self) -> RegisteredFunctionSet<super::HostFunctionBinding<(), ()>> {
         RegisteredFunctionSet {
             functions: self
@@ -1252,6 +1252,99 @@ pub fn main() { math.add(31, 11) }
         host.block_on(
             module.with_execution(&host, &mut (), &mut echo, async |scope| {
                 assert_eq!(scope.call(&main, ()).await.unwrap(), BigInt::from(42));
+            }),
+        )
+        .unwrap()
+        .try_into_value()
+        .unwrap();
+        assert!(echo.is_empty());
+    }
+
+    #[test]
+    fn native_view_declarations_preserve_preparation_and_bind_real_implementations() {
+        use crate::embedding::HostPreparation;
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::{HostTypeIndex0, HostTypeList, HostTypeListEnd, HostValue};
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        struct Views;
+        impl HostProvider<StatelessHostProfile> for Views {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        let providers = || {
+            HostProviderSet::from_providers([HostProviderModule::new("application", "main")
+                .unwrap()
+                .with_native_function::<Views, (Input,), Output, One<Output>, _>(
+                    "coerce",
+                    NativeRules::default().retained_views::<One<Input>>(),
+                    |mut call: NativeCall<'_, StatelessHostProfile, Views, Output, One<Output>>,
+                     value: HostValue<'_, Input>| {
+                        assert_eq!(call.call().state(), &mut ());
+                        let value = call.source::<Input>(value);
+                        let value = call.convert::<HostTypeIndex0>(&value).unwrap();
+                        Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(value))
+                    },
+                )
+                .unwrap()])
+            .unwrap()
+        };
+        let source = r#"
+@external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
+pub type Handler(a, b) { Handler(callback: fn(a) -> b) }
+pub fn main() {
+  let Handler(view): Handler(String, BitArray) = coerce(Handler(fn(input: BitArray) {
+    let assert <<42>> = input
+    "*"
+  }))
+  view("*") == <<42>>
+}
+"#;
+        let packages = || {
+            [PackageSource::new(
+                "application",
+                Vec::<&str>::new(),
+                [ModuleSource::new("main", "src/main.gleam", source)],
+            )]
+        };
+        let declared = crate::compile_declared_host_program(
+            "application",
+            "main",
+            packages(),
+            providers().into_declarations(),
+        )
+        .unwrap();
+        let prepared = HostPreparation::new(declared)
+            .unwrap()
+            .function(FunctionDeclaration::<(), bool>::new("main"))
+            .unwrap()
+            .prepare()
+            .unwrap();
+        let actual =
+            compile_typed_host_program("application", "main", packages(), providers()).unwrap();
+        let (bindings, _) = HostedModuleBuilder::new(actual)
+            .unwrap()
+            .function(FunctionDeclaration::<(), bool>::new("main"))
+            .unwrap();
+        assert_eq!(
+            prepared.emit_rust(),
+            bindings.prepare().unwrap().emit_rust()
+        );
+        let typed =
+            compile_typed_host_program("application", "main", packages(), providers()).unwrap();
+        let (bindings, main) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(), bool>::new("main"))
+            .unwrap();
+        let mut module = bindings.seal().unwrap();
+        let host = crate::execution_fixture::TestHost::default();
+        let mut echo = Vec::new();
+        host.block_on(
+            module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                assert!(scope.call(&main, ()).await.unwrap());
             }),
         )
         .unwrap()

@@ -112,6 +112,10 @@ pub(in crate::host) trait HostScopedArgument: HostAbiType {
 }
 
 impl HostValueArgumentSlot {
+    pub(in crate::host) fn new(index: usize) -> Self {
+        Self(index)
+    }
+
     pub(crate) fn index(self) -> usize {
         self.0
     }

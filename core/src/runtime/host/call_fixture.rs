@@ -272,6 +272,14 @@ impl HostCallRuntime<TestHostProfile> for TestHostCallRuntime<'_> {
         panic!("native construction requires a sealed hosted program")
     }
 
+    fn build_native_function_view(
+        &mut self,
+        _view: &crate::plan::execution::host::NativeFunctionView,
+        _source: crate::runtime::StoredRuntimeFunction<'_>,
+    ) -> Option<HostValueToken> {
+        panic!("native construction requires a sealed hosted program")
+    }
+
     fn build_tuple(&mut self, _values: Box<[HostScopedValue]>) -> HostValueToken {
         token(HostValueFamily::Tuple)
     }
@@ -749,6 +757,44 @@ mod tests {
         let mut state = TestRunState::default();
         let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
         runtime.build_function(0, Box::new([]));
+    }
+
+    #[test]
+    #[should_panic(expected = "native construction requires a sealed hosted program")]
+    fn fixture_rejects_native_views_without_a_sealed_permission() {
+        use crate::plan::execution::function::{
+            CoreRuntimeFunctionId, IntFunctionId, RuntimeFunctionId,
+        };
+        use crate::plan::execution::host::NativeFunctionView;
+        use crate::plan::execution::type_::{
+            FunctionMetadata, FunctionType, TypeMetadata, ValueType,
+        };
+        let mut state = TestRunState::default();
+        let mut runtime = TestHostCallRuntime::new(&mut state, RetainedValues::empty());
+        let view = NativeFunctionView {
+            source: FunctionMetadata {
+                arguments: vec![TypeMetadata::Int].into(),
+                return_: Box::new(TypeMetadata::Int).into(),
+            },
+            target: RuntimeFunctionId::Core(CoreRuntimeFunctionId::Int(IntFunctionId(0))),
+            type_: FunctionType {
+                arguments: vec![ValueType::Int].into(),
+                return_: Box::new(ValueType::Int).into(),
+            },
+            captures: Vec::new().into(),
+            host: 0,
+            host_value: true,
+        };
+        let function = crate::runtime::evaluated::EvaluatedFunctionValue::closure(
+            view.target.clone(),
+            crate::runtime::captures::Captures::default(),
+            view.type_.clone(),
+        );
+        let source = StoredRuntimeValue::new(
+            EvaluatedValue::Function(function),
+            runtime.execution.execution().value_metadata(),
+        );
+        runtime.build_native_function_view(&view, source.invocable_function().unwrap());
     }
 
     #[test]

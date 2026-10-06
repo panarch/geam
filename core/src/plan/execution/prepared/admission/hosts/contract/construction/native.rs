@@ -1,5 +1,6 @@
 use super::{ContractError, Registration, Types};
 use crate::plan::ValueType as Nominal;
+use crate::plan::execution::host::native::views::retained_types;
 use crate::plan::execution::host::{
     HostedFunctionMetadata, NativeConversion, NativeConversionId, NativeConversionKind,
 };
@@ -25,6 +26,33 @@ pub(super) fn admit(
         descriptor.resolve_sealed(&|index| arguments[index].clone())
     };
     let rules = rules.iter().map(resolve).collect::<Vec<_>>();
+    let roots = registration.constructions.native_sources();
+    let sources = if roots.is_empty() {
+        Vec::new()
+    } else {
+        let roots = roots
+            .iter()
+            .chain(registration.constructions.types())
+            .map(|descriptor| TypeMetadata::from_public(&resolve(descriptor)))
+            .collect::<Vec<_>>();
+        // Fresh descriptors resolved against already admitted type arguments
+        // are finite source types. Supplied conversion nodes are checked below.
+        retained_types(roots, |nominal| {
+            types
+                .customs
+                .definitions
+                .iter()
+                .chain([&crate::plan::execution::type_::custom::definition::RESULT])
+                .find(|definition| {
+                    definition.identity()
+                        == (
+                            nominal.package.as_str(),
+                            nominal.module.as_str(),
+                            nominal.name.as_str(),
+                        )
+                })
+        })
+    };
     let mut rule_types = HashSet::new();
     if rules.iter().any(|rule| !rule_types.insert(rule)) {
         return Err(ContractError::Native);
@@ -85,6 +113,38 @@ pub(super) fn admit(
                     }
                 }
             }
+            (TypeMetadata::Function(target), NativeConversionKind::Function(views)) => {
+                if views.is_empty() {
+                    return Err(ContractError::Native);
+                }
+                let mut unique = HashSet::new();
+                for view in views.iter() {
+                    types
+                        .metadata(&TypeMetadata::Function(view.source.clone()))
+                        .map_err(ContractError::Type)?;
+                    if view.source.arguments.len() != target.arguments.len()
+                        || &view.source == target
+                        || !unique.insert(view.source.clone())
+                        || !sources.contains(&TypeMetadata::Function(view.source.clone()))
+                        || !types.metadata_matches_value(
+                            &conversion.type_,
+                            &ValueType::Function(view.type_.clone()),
+                        )
+                    {
+                        return Err(ContractError::Native);
+                    }
+                    for expected in view
+                        .source
+                        .arguments
+                        .iter()
+                        .chain([target.return_.as_ref()])
+                    {
+                        if !conversions.nodes.iter().any(|node| &node.type_ == expected) {
+                            return Err(ContractError::Native);
+                        }
+                    }
+                }
+            }
             (
                 TypeMetadata::List(item),
                 NativeConversionKind::List {
@@ -98,6 +158,56 @@ pub(super) fn admit(
                     || &node(&conversions.nodes, *child)?.type_ != item.as_ref()
                 {
                     return Err(ContractError::Native);
+                }
+            }
+            (TypeMetadata::Custom(nominal), NativeConversionKind::CustomView(views)) => {
+                if views.is_empty() || !sources.contains(&conversion.type_) {
+                    return Err(ContractError::Native);
+                }
+                let mut unique = HashSet::new();
+                for view in views.iter() {
+                    types.metadata(&view.source).map_err(ContractError::Type)?;
+                    let TypeMetadata::Custom(source) = &view.source else {
+                        return Err(ContractError::Native);
+                    };
+                    if source == nominal
+                        || source.package != nominal.package
+                        || source.module != nominal.module
+                        || source.name != nominal.name
+                        || !unique.insert(source)
+                        || !sources.contains(&view.source)
+                    {
+                        return Err(ContractError::Native);
+                    }
+                    let target = types
+                        .customs
+                        .types
+                        .iter()
+                        .find(|custom| &custom.type_ == nominal)
+                        .ok_or(ContractError::Native)?;
+                    if view.constructors.len() != target.constructor_count {
+                        return Err(ContractError::Native);
+                    }
+                    for (constructor, declaration) in
+                        view.constructors.iter().zip(target.constructors.iter())
+                    {
+                        if constructor.constructor != declaration.id
+                            || constructor.tag != declaration.native_tag
+                            || constructor.fields.len() != declaration.fields.len()
+                        {
+                            return Err(ContractError::Native);
+                        }
+                        for (field, declaration) in
+                            constructor.fields.iter().zip(declaration.fields.iter())
+                        {
+                            if !types.metadata_matches_value(
+                                &node(&conversions.nodes, *field)?.type_,
+                                &declaration.type_,
+                            ) {
+                                return Err(ContractError::Native);
+                            }
+                        }
+                    }
                 }
             }
             (TypeMetadata::Custom(nominal), kind) => {
@@ -150,23 +260,44 @@ pub(super) fn admit(
         if !seen.insert(id.0) {
             continue;
         }
-        match &conversions.nodes[id.0].kind {
-            NativeConversionKind::Tuple(children) => pending.extend(children.iter().copied()),
-            NativeConversionKind::List { item, .. } => pending.push(*item),
-            NativeConversionKind::Custom(constructors) => {
+        // The first walk validated every node kind and edge. This walk only
+        // checks that the registered roots claim the complete conversion graph.
+        match (
+            &conversions.nodes[id.0].kind,
+            &conversions.nodes[id.0].type_,
+        ) {
+            (NativeConversionKind::Tuple(children), _) => pending.extend(children.iter().copied()),
+            (NativeConversionKind::List { item, .. }, _) => pending.push(*item),
+            (NativeConversionKind::Custom(constructors), _) => {
                 for constructor in constructors.iter() {
                     pending.extend(constructor.fields.iter().copied());
                 }
             }
-            NativeConversionKind::Exact
-            | NativeConversionKind::Int
-            | NativeConversionKind::Float
-            | NativeConversionKind::String
-            | NativeConversionKind::BitArray
-            | NativeConversionKind::UtfCodepoint
-            | NativeConversionKind::Bool
-            | NativeConversionKind::Nil
-            | NativeConversionKind::External { .. } => {}
+            (NativeConversionKind::Function(views), TypeMetadata::Function(target)) => {
+                for view in views.iter() {
+                    let needed = view
+                        .source
+                        .arguments
+                        .iter()
+                        .chain([target.return_.as_ref()])
+                        .collect::<HashSet<_>>();
+                    pending.extend(conversions.nodes.iter().enumerate().filter_map(
+                        |(index, node)| {
+                            needed
+                                .contains(&node.type_)
+                                .then_some(NativeConversionId(index))
+                        },
+                    ));
+                }
+            }
+            (NativeConversionKind::CustomView(views), _) => {
+                for view in views.iter() {
+                    for constructor in view.constructors.iter() {
+                        pending.extend(constructor.fields.iter().copied());
+                    }
+                }
+            }
+            _ => {}
         }
     }
     if seen.len() != conversions.nodes.len() {
@@ -659,6 +790,269 @@ pub fn main() {
         assert_eq!(
             crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap(),
             crate::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn retained_views_admit_only_granted_sources_and_declared_field_edges() {
+        use crate::host::HostTypeIndex0;
+        use crate::plan::execution::host::{NativeCustomView, NativeFunctionView};
+        use crate::plan::execution::prepared::admission::tests::owned_mut;
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        use crate::{
+            HostCustomConstructorDefinition, HostCustomConstructorList,
+            HostCustomConstructorListEnd, HostCustomField, HostCustomFieldList,
+            HostCustomFieldListEnd, HostCustomSchema, HostCustomType, HostCustomTypeArgument,
+        };
+        struct Ghost;
+        struct GhostConstructor;
+        struct GhostField;
+        impl HostCustomSchema for Ghost {
+            const PACKAGE: &'static str = "app";
+            const MODULE: &'static str = "main";
+            const NAME: &'static str = "Ghost";
+            const PARAMETER_COUNT: usize = 1;
+            type Constructors =
+                HostCustomConstructorList<GhostConstructor, HostCustomConstructorListEnd>;
+        }
+        impl HostCustomConstructorDefinition for GhostConstructor {
+            const NAME: &'static str = "Ghost";
+            type Fields = HostCustomFieldList<GhostField, HostCustomFieldListEnd>;
+        }
+        impl HostCustomField for GhostField {
+            const LABEL: Option<&'static str> = None;
+            type Type = HostCustomTypeArgument<HostTypeIndex0>;
+        }
+        type Grants = HostTypeList<
+            Input,
+            HostTypeList<
+                HostCustomType<Ghost, One<num_bigint::BigInt>>,
+                One<HostCustomType<Ghost, One<crate::BitArrayValue>>>,
+            >,
+        >;
+        let providers = || {
+            HostProviderSet::from_providers([HostProviderModule::new("app", "main")
+                .unwrap()
+                .with_native_function::<Provider, (Input,), Output, One<Output>, _>(
+                    "coerce",
+                    NativeRules::default().retained_views::<Grants>(),
+                    |mut call: NativeCall<
+                        '_,
+                        StatelessHostProfile,
+                        Provider,
+                        Output,
+                        One<Output>,
+                    >,
+                     input: HostValue<'_, Input>| {
+                        let source = call.source::<Input>(input);
+                        let converted = call.convert::<HostTypeIndex0>(&source).unwrap();
+                        Ok::<HostCallCompletion<'_, Output>, HostCallError>(call.finish(converted))
+                    },
+                )
+                .unwrap()])
+            .unwrap()
+        };
+        let source = r#"
+@external(erlang, "gleam@function", "identity") fn coerce(value: a) -> b
+pub type Handler(a) { Handler(callback: a) }
+pub type Ghost(a) { Ghost(a) }
+pub fn main() {
+  let #(first, Handler(second)): #(fn(String) -> BitArray, Handler(fn(String) -> BitArray)) =
+    coerce(#(fn(_input: BitArray) { "*" }, Handler(fn(_input: BitArray) { "*" })))
+  #(first("*"), second("*")) == #(<<42>>, <<42>>)
+}
+"#;
+        let (program, values, nevers) = lowered(source, providers());
+        let linked = NativeFunctions::new(&values, &nevers, providers()).unwrap();
+        let original = values
+            .iter()
+            .find(|metadata| metadata.native_view.is_none())
+            .unwrap();
+        let registration = &linked.registrations[linked
+            .values
+            .iter()
+            .find(|(metadata, _, _)| metadata.native_view.is_none())
+            .unwrap()
+            .2];
+        let common = &program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let arguments = original
+            .type_arguments
+            .iter()
+            .map(|argument| argument.type_.materialize())
+            .collect::<Vec<_>>();
+        let check = |conversions: NativeConversions| {
+            let mut metadata = original.clone();
+            metadata.constructions.natives = conversions;
+            admit(&metadata, registration, &arguments, &HashSet::new(), &types)
+        };
+        let conversions = &original.constructions.natives;
+        assert_eq!(check(conversions.clone()), Ok(()));
+        let (function_index, function_views) = conversions
+            .nodes
+            .iter()
+            .enumerate()
+            .find_map(|(index, node)| match &node.kind {
+                NativeConversionKind::Function(views) => Some((index, views.to_vec())),
+                _ => None,
+            })
+            .unwrap();
+        let (custom_index, custom_views) = conversions
+            .nodes
+            .iter()
+            .enumerate()
+            .find_map(|(index, node)| match &node.kind {
+                NativeConversionKind::CustomView(views) => Some((index, views.to_vec())),
+                _ => None,
+            })
+            .unwrap();
+        let mut changed = conversions.clone();
+        owned_mut(&mut changed.nodes)[function_index].kind =
+            NativeConversionKind::Function(Vec::new().into());
+        assert_eq!(check(changed), Err(ContractError::Native));
+        static RECURSIVE: TypeMetadata = TypeMetadata::List(Node::Static(&RECURSIVE));
+        let mut changed = conversions.clone();
+        let mut views = function_views.clone();
+        views[0].source.arguments = vec![RECURSIVE.clone()].into();
+        owned_mut(&mut changed.nodes)[function_index].kind =
+            NativeConversionKind::Function(views.into());
+        assert_eq!(
+            check(changed),
+            Err(ContractError::Type(TypeError::RecursiveMetadata))
+        );
+        let mut changed = conversions.clone();
+        let mut views = custom_views.clone();
+        use crate::plan::execution::type_::NominalTypeMetadata;
+        let mut retained_source = NominalTypeMetadata {
+            package: "app".into(),
+            module: "main".into(),
+            name: "Handler".into(),
+            arguments: vec![TypeMetadata::Function(function_views[0].source.clone())].into(),
+        };
+        assert_eq!(
+            views[0].source,
+            TypeMetadata::Custom(retained_source.clone())
+        );
+        retained_source.arguments = vec![RECURSIVE.clone()].into();
+        views[0].source = TypeMetadata::Custom(retained_source);
+        owned_mut(&mut changed.nodes)[custom_index].kind =
+            NativeConversionKind::CustomView(views.into());
+        assert_eq!(
+            check(changed),
+            Err(ContractError::Type(TypeError::RecursiveMetadata))
+        );
+        let bit_array = conversions
+            .nodes
+            .iter()
+            .position(|node| node.type_ == TypeMetadata::BitArray)
+            .unwrap();
+        let mut changed = conversions.clone();
+        owned_mut(&mut changed.nodes)[bit_array] = NativeConversion {
+            type_: TypeMetadata::Bool,
+            kind: NativeConversionKind::Bool,
+        };
+        assert_eq!(check(changed), Err(ContractError::Native));
+        type Mutation = fn(&mut Vec<NativeCustomView>, &TypeMetadata, NativeConversionId);
+        let wrong_field = NativeConversionId(bit_array);
+        let cases: [Mutation; 9] = [
+            |views, _, _| views.clear(),
+            |views, _, _| views[0].source = TypeMetadata::Int,
+            |views, target, _| views[0].source = target.clone(),
+            |views, _, _| views.push(views[0].clone()),
+            |views, _, _| views[0].source = TypeMetadata::Bool,
+            |views, _, _| views[0].constructors = Vec::new().into(),
+            |views, _, _| owned_mut(&mut views[0].constructors)[0].fields = Vec::new().into(),
+            |views, _, _| {
+                owned_mut(&mut owned_mut(&mut views[0].constructors)[0].fields)[0] =
+                    NativeConversionId(999)
+            },
+            |views, _, field| {
+                owned_mut(&mut owned_mut(&mut views[0].constructors)[0].fields)[0] = field
+            },
+        ];
+        for mutate in cases {
+            let mut changed = conversions.clone();
+            let mut views = custom_views.clone();
+            mutate(
+                &mut views,
+                &conversions.nodes[custom_index].type_,
+                wrong_field,
+            );
+            owned_mut(&mut changed.nodes)[custom_index].kind =
+                NativeConversionKind::CustomView(views.into());
+            assert_eq!(check(changed), Err(ContractError::Native));
+        }
+        // Function candidates also require a granted, distinct, same-arity source.
+        type FunctionMutation = fn(&mut Vec<NativeFunctionView>);
+        let cases: [FunctionMutation; 3] = [
+            |views| views[0].source.arguments = Vec::new().into(),
+            |views| views.push(views[0].clone()),
+            |views| views[0].source.return_ = Box::new(TypeMetadata::Bool).into(),
+        ];
+        for mutate in cases {
+            let mut changed = conversions.clone();
+            let mut views = function_views.clone();
+            mutate(&mut views);
+            owned_mut(&mut changed.nodes)[function_index].kind =
+                NativeConversionKind::Function(views.into());
+            assert_eq!(check(changed), Err(ContractError::Native));
+        }
+        // A source grant is not a physical runtime specialization. An unused
+        // declaration cannot be named by a supplied custom conversion node.
+        let ghost = |argument| {
+            TypeMetadata::Custom(NominalTypeMetadata {
+                package: "app".into(),
+                module: "main".into(),
+                name: "Ghost".into(),
+                arguments: vec![argument].into(),
+            })
+        };
+        assert!(
+            !types
+                .customs
+                .types
+                .iter()
+                .any(|custom| custom.type_.name.as_str() == "Ghost")
+        );
+        let mut changed = conversions.clone();
+        let mut nodes = changed.nodes.to_vec();
+        nodes.push(NativeConversion {
+            type_: ghost(TypeMetadata::Int),
+            kind: NativeConversionKind::CustomView(
+                vec![NativeCustomView {
+                    source: ghost(TypeMetadata::BitArray),
+                    constructors: Vec::new().into(),
+                }]
+                .into(),
+            ),
+        });
+        changed.nodes = nodes.into();
+        assert_eq!(check(changed), Err(ContractError::Native));
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            providers(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        assert_eq!(
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()),
+            Ok(crate::Value::Bool(true))
         );
     }
 

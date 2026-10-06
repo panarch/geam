@@ -409,6 +409,70 @@ pub fn main() {
         let result = crate::execution_fixture::run(&mut execution, &mut (), &mut echoes).unwrap();
         assert_eq!(result.inspect().to_string(), "True");
         assert!(echoes.is_empty());
+
+        // Unused construction permissions must still be executable. This native
+        // body returns a host failure, but cannot grant a Never capture.
+        const EMPTY: HostFunctionDeclaration<(), Thunk<T>, One<HostCreatedFunction<Constant<T>>>> =
+            HostFunctionDeclaration::new("empty");
+        fn empty<'call>(
+            _: HostCall<'call, StatelessHostProfile, Provider, Thunk<T>>,
+            _: HostConstructions<'call, One<HostCreatedFunction<Constant<T>>>>,
+        ) -> Result<HostCallCompletion<'call, Thunk<T>>, HostCallError> {
+            Err(HostFailure::new("capture input required").into())
+        }
+        for (type_, rejected) in [("Int", false), ("Never", true)] {
+            let source = format!(
+                "pub type Never\n@external(erlang, \"native\", \"empty\") fn empty() -> fn() -> a\npub fn main() {{ let _: fn() -> {type_} = empty() True }}"
+            );
+            let provider = HostProviderModule::new("application", "library")
+                .unwrap()
+                .with_declared_function::<Provider, _, _, _, _>(EMPTY, empty)
+                .unwrap()
+                .with_callable::<Provider, Constant<T>, (), _>(constant)
+                .unwrap();
+            let typed = crate::compile_typed_host_program(
+                "application",
+                "library",
+                [PackageSource::new(
+                    "application",
+                    Vec::<&str>::new(),
+                    [ModuleSource::new("library", "library.gleam", source)],
+                )],
+                HostProviderSet::from_providers([provider]).unwrap(),
+            )
+            .unwrap();
+            let execution = crate::HostedExecution::try_from_module_plan(
+                crate::plan_host_program(typed).unwrap(),
+            );
+            if rejected {
+                let error = execution.err().unwrap();
+                assert_eq!(error.function(), "empty");
+                assert_eq!(
+                    error.reason(),
+                    &crate::HostSpecializationErrorReason::UninhabitedCallableCapture {
+                        capture: crate::ValueType::Custom(crate::plan::CustomType::new(
+                            crate::plan::CustomTypeName::new(
+                                "application".into(),
+                                "library".into(),
+                                "Never".into()
+                            ),
+                            vec![]
+                        )),
+                    }
+                );
+            } else {
+                let error = crate::execution_fixture::run(
+                    &mut execution.unwrap(),
+                    &mut (),
+                    &mut Vec::new(),
+                )
+                .unwrap_err();
+                assert!(
+                    error.to_string().contains("capture input required"),
+                    "{error}"
+                );
+            }
+        }
     }
 
     #[test]

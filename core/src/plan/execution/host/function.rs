@@ -35,6 +35,7 @@ pub struct HostCallableEntry {
     pub index: usize,
 }
 
+#[derive(Clone)]
 pub struct HostedFunctionMetadata {
     pub completion: HostFunctionCompletion,
     pub callable_entry: Option<HostCallableEntry>,
@@ -46,6 +47,7 @@ pub struct HostedFunctionMetadata {
     pub constructions: HostConstructionTypes,
     pub type_: FunctionType,
     pub registration: Node<RegistrationContract>,
+    pub native_view: Option<super::HostNativeView>,
 }
 
 /// The declared completion and the executable result chosen at specialization.
@@ -68,6 +70,7 @@ impl HostFunctionCompletion {
     }
 }
 
+#[derive(Clone)]
 pub struct HostTypeArgument {
     pub type_: TypeMetadata,
     pub shape: ValueShapeId,
@@ -107,6 +110,7 @@ pub enum HostCallParameter {
     Function { local: ParamLocal, arity: usize },
 }
 
+#[derive(Clone)]
 pub struct HostedFunctionParameters {
     pub call: Table<HostCallParameter>,
     pub captures: Table<ParamSlot>,
@@ -331,6 +335,7 @@ impl HostedFunctionMetadata {
                 return_: Node::Static(&self.type_.return_),
             },
             registration: Node::Static(&self.registration),
+            native_view: self.native_view.clone(),
         }
     }
 
@@ -467,6 +472,7 @@ impl Emit for HostedFunctionMetadata {
             constructions,
             type_,
             registration,
+            native_view,
         } = self;
         output.structure(
             "host::HostedFunctionMetadata",
@@ -481,6 +487,7 @@ impl Emit for HostedFunctionMetadata {
                 ("constructions", constructions),
                 ("type_", type_),
                 ("registration", registration),
+                ("native_view", native_view),
             ],
         );
     }
@@ -732,6 +739,7 @@ data::host::HostCallableConstruction {
         use crate::plan::{HostCallSite, SourceSpan, Text};
 
         static METADATA: HostedFunctionMetadata = HostedFunctionMetadata {
+            native_view: None,
             completion: HostFunctionCompletion::Value,
             callable_entry: Some(HostCallableEntry {
                 family: FunctionTableFamily::Int,
@@ -785,6 +793,7 @@ data::host::HostCallableConstruction {
                 construction_customs: Table::Static(&[]),
                 construction_externals: Table::Static(&[]),
                 native_rules: None,
+                native_sources: Table::Static(&[]),
             }),
         };
         let expected = r#"
@@ -846,7 +855,9 @@ data::host::HostedFunctionMetadata {
         construction_customs: data::Storage::Static(&[]),
         construction_externals: data::Storage::Static(&[]),
         native_rules: None,
+        native_sources: data::Storage::Static(&[]),
     }),
+    native_view: None,
 }"#.trim_start_matches('\n');
         assert_eq!(Rust::expression(&METADATA), expected);
         assert_eq!(Rust::expression(&METADATA.borrowed()), expected);

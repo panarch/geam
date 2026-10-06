@@ -26,6 +26,7 @@ pub struct RegistrationContract {
     pub construction_customs: Table<CustomSchema>,
     pub construction_externals: Table<ExternalSchema>,
     pub native_rules: Option<Table<RegistrationType>>,
+    pub native_sources: Table<RegistrationType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +107,11 @@ impl RegistrationContract {
                     .map(RegistrationType::from_descriptor)
                     .collect()
             }),
+            native_sources: constructions
+                .native_sources()
+                .iter()
+                .map(RegistrationType::from_descriptor)
+                .collect(),
         }
     }
 
@@ -158,6 +164,11 @@ impl RegistrationContract {
                 &self.construction_externals,
                 constructions.external_schemas(),
                 ExternalSchema::matches,
+            )
+            && same(
+                &self.native_sources,
+                constructions.native_sources(),
+                RegistrationType::matches,
             )
             && match (&self.native_rules, constructions.native_rules()) {
                 (None, None) => true,
@@ -218,6 +229,7 @@ impl Emit for RegistrationContract {
             construction_customs,
             construction_externals,
             native_rules,
+            native_sources,
         } = self;
         output.structure(
             "host::RegistrationContract",
@@ -235,6 +247,7 @@ impl Emit for RegistrationContract {
                 ("construction_customs", construction_customs),
                 ("construction_externals", construction_externals),
                 ("native_rules", native_rules),
+                ("native_sources", native_sources),
             ],
         );
     }
@@ -298,6 +311,7 @@ mod tests {
             construction_customs: Table::Static(&[]),
             construction_externals: Table::Static(&[]),
             native_rules: None,
+            native_sources: Table::Static(&[]),
         };
         assert_eq!(
             Rust::expression(&contract),
@@ -322,6 +336,7 @@ data::host::RegistrationContract {
     construction_customs: data::Storage::Static(&[]),
     construction_externals: data::Storage::Static(&[]),
     native_rules: None,
+    native_sources: data::Storage::Static(&[]),
 }"#
             .trim_start_matches('\n')
         );

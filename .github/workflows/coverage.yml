@@ -21,6 +21,7 @@ on:
           - bytes_tree_service
           - selective_receive_service
           - application_exit
+          - native_function_views
           - raw_string_values
           - all
       diagnostics:
@@ -478,6 +479,7 @@ jobs:
             "bytes_tree_service",
             "selective_receive_service",
             "application_exit",
+            "native_function_views",
             "raw_string_values"
           ]'), inputs.target) }}
     runs-on: ubuntu-latest
@@ -496,6 +498,7 @@ jobs:
               "bytes_tree_service",
               "selective_receive_service",
               "application_exit",
+              "native_function_views",
               "raw_string_values"
             ]'
           ) }}
@@ -509,6 +512,7 @@ jobs:
           "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
           "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
           "application_exit": "tests/fixtures/application_exit/provider",
+          "native_function_views": "tests/fixtures/native_function_views/provider",
           "raw_string_values": "tests/fixtures/raw_string_values/provider"
         }')[matrix.consumer] }}
 

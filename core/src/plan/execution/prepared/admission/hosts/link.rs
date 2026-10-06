@@ -1,13 +1,15 @@
 use super::{NativeError, RegistrationError};
 use crate::host::{
-    HostFunctionImplementation, HostFunctionSchema, HostNeverFunction, HostProfile,
-    HostProviderSet, HostValueFunction, RegisteredHostConstructions,
+    HostCodecScope, HostFunctionImplementation, HostFunctionSchema, HostNativeViewFactory,
+    HostNeverFunction, HostProfile, HostProviderSet, HostValueFunction, NativeViewBinding,
+    NativeViewImplementation, RegisteredHostConstructions,
 };
 use crate::plan::execution::host::{
     HostFunctionCompletion, HostFunctionTables, HostedFunction, HostedFunctionMetadata,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub(in crate::plan::execution::prepared::admission) struct NativeFunctions<
     'data,
@@ -138,16 +140,58 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
             }
             Ok((*slot, implementations.implementation(*implementation)))
         };
+        let adapt = |metadata: &HostedFunctionMetadata,
+                     slot: usize,
+                     implementation: &HostValueFunction<Profile>,
+                     factory: Option<&HostNativeViewFactory<Profile>>,
+                     returns_value: bool,
+                     index: usize| {
+            if let Some(view) = &metadata.native_view {
+                let parent = if view.parent_value {
+                    value_functions.get(view.parent)
+                } else {
+                    never_functions.get(view.parent)
+                }
+                .ok_or(NativeError::Contract {
+                    value: returns_value,
+                    index,
+                    reason: super::ContractError::Native,
+                })?;
+                let (parent_slot, _) = find(parent)?;
+                if parent.native_view.is_some() || parent_slot != slot {
+                    return Err(NativeError::Contract {
+                        value: returns_value,
+                        index,
+                        reason: super::ContractError::Native,
+                    });
+                }
+                let factory = factory.ok_or(NativeError::Contract {
+                    value: returns_value,
+                    index,
+                    reason: super::ContractError::Native,
+                })?;
+                Ok(factory.native_view(NativeViewBinding {
+                    codec: HostCodecScope::new(Arc::new(parent.clone())),
+                    view: view.clone(),
+                }))
+            } else {
+                Ok(implementation.clone())
+            }
+        };
         let mut values = Vec::with_capacity(value_functions.len());
         for metadata in value_functions {
             let (slot, implementation) = find(metadata)?;
             if metadata.completion != HostFunctionCompletion::Value {
                 return Err(return_kind(metadata));
             }
-            let HostFunctionImplementation::Value(implementation) = implementation.as_ref() else {
-                return Err(return_kind(metadata));
+            let (implementation, factory) = match implementation.as_ref() {
+                HostFunctionImplementation::Value(value) => (value, None),
+                HostFunctionImplementation::NativeValue(value, factory) => (value, Some(factory)),
+                HostFunctionImplementation::Never(_) => return Err(return_kind(metadata)),
             };
-            values.push((metadata, implementation.clone(), slot));
+            let implementation =
+                adapt(metadata, slot, implementation, factory, true, values.len())?;
+            values.push((metadata, implementation, slot));
         }
         let mut nevers = Vec::with_capacity(never_functions.len());
         for metadata in never_functions {
@@ -160,7 +204,19 @@ impl<'data, Profile: HostProfile> NativeFunctions<'data, Profile> {
                 (
                     HostFunctionCompletion::Uninhabited,
                     HostFunctionImplementation::Value(implementation),
-                ) => implementation.clone().into(),
+                ) => adapt(metadata, slot, implementation, None, false, nevers.len())?.into(),
+                (
+                    HostFunctionCompletion::Uninhabited,
+                    HostFunctionImplementation::NativeValue(implementation, factory),
+                ) => adapt(
+                    metadata,
+                    slot,
+                    implementation,
+                    Some(factory),
+                    false,
+                    nevers.len(),
+                )?
+                .into(),
                 _ => return Err(return_kind(metadata)),
             };
             nevers.push((metadata, implementation, slot));
@@ -679,6 +735,182 @@ pub fn make() -> Key
         assert_eq!(
             echo.iter().map(ToString::to_string).collect::<Vec<_>>(),
             ["src/main.gleam:5\nKey(42)"]
+        );
+    }
+
+    #[test]
+    fn native_view_links_reject_unregistered_parents_and_ordinary_implementations() {
+        use crate::plan::execution::host::{
+            HostFunctionCompletion, HostNativeView, NativeConversionId,
+        };
+        use crate::plan::execution::prepared::admission::hosts::ContractError;
+        let providers = || {
+            HostProviderSet::<crate::StatelessHostProfile>::from_providers([
+                HostProviderModule::new("app", "main")
+                    .unwrap()
+                    .with_function("first", |value: BigInt| value)
+                    .unwrap()
+                    .with_function("second", |value: BigInt| value)
+                    .unwrap(),
+            ])
+            .unwrap()
+        };
+        let source = r#"
+@external(erlang, "native", "first") fn first(value: Int) -> Int
+@external(erlang, "native", "second") fn second(value: Int) -> Int
+pub fn main() { #(first(21), second(42)) }
+"#;
+        let (_, original, _) = super::super::tests::lowered(source, providers());
+        assert_eq!(
+            NativeFunctions::new(&original, &[], providers())
+                .unwrap()
+                .values
+                .len(),
+            2
+        );
+        let mut values = original.clone();
+        values[0].native_view = Some(HostNativeView {
+            parent: 0,
+            parent_value: true,
+            source: values[0].signature.clone(),
+            arguments: Vec::new().into(),
+            return_: NativeConversionId(0),
+        });
+        let fail = |values: &[_], nevers: &[_], value, index| {
+            assert_eq!(
+                NativeFunctions::new(values, nevers, providers()).err(),
+                Some(NativeError::Contract {
+                    value,
+                    index,
+                    reason: ContractError::Native
+                })
+            );
+        };
+        // A view may not nominate itself or an unrelated registration as parent.
+        fail(&values, &[], true, 0);
+        values[0].native_view.as_mut().unwrap().parent = 1;
+        fail(&values, &[], true, 0);
+        values[0].native_view.as_mut().unwrap().parent = 999;
+        fail(&values, &[], true, 0);
+        values[0].native_view.as_mut().unwrap().parent_value = false;
+        fail(&values, &[], true, 0);
+        // Matching an ordinary implementation never grants a native view factory.
+        let mut same = vec![original[0].clone(), original[0].clone()];
+        same[1].native_view = Some(HostNativeView {
+            parent: 0,
+            parent_value: true,
+            source: same[1].signature.clone(),
+            arguments: Vec::new().into(),
+            return_: NativeConversionId(0),
+        });
+        fail(&same, &[], true, 1);
+        for metadata in &mut same {
+            metadata.completion = HostFunctionCompletion::Uninhabited;
+        }
+        same[1].native_view.as_mut().unwrap().parent_value = false;
+        fail(&[], &same, false, 1);
+        // Parent registration errors retain the original external boundary.
+        same[0].native_view = Some(HostNativeView {
+            parent: 1,
+            parent_value: false,
+            source: same[0].signature.clone(),
+            arguments: Vec::new().into(),
+            return_: NativeConversionId(0),
+        });
+        same[1].site =
+            crate::plan::HostCallSite::new("main".into(), "missing".into(), same[1].site.span());
+        assert_eq!(
+            NativeFunctions::new(&[], &same, providers()).err(),
+            Some(NativeError::Registration {
+                package: "app".into(),
+                module: "main".into(),
+                function: "missing".into(),
+                reason: RegistrationError::Missing,
+            })
+        );
+    }
+
+    #[test]
+    fn native_view_factories_link_value_and_never_adapters_to_an_uninhabited_parent() {
+        use crate::host::native::{NativeCall, NativeRules};
+        use crate::{
+            HostCallCompletion, HostCallError, HostFunctionType, HostProvider, HostTypeList,
+            HostTypeListEnd, HostTypeParameter, HostValue, StatelessHostProfile,
+        };
+        type Input = HostTypeParameter<1>;
+        type Output = HostTypeParameter<0>;
+        type One<Type> = HostTypeList<Type, HostTypeListEnd>;
+        type Targets = HostTypeList<
+            Output,
+            HostTypeList<
+                HostFunctionType<One<crate::StringValue>, crate::BitArrayValue>,
+                One<HostFunctionType<One<crate::StringValue>, Output>>,
+            >,
+        >;
+        struct Provider;
+        impl HostProvider<StatelessHostProfile> for Provider {
+            type State = ();
+            fn project(state: &mut ()) -> &mut () {
+                state
+            }
+        }
+        let providers = || {
+            HostProviderSet::from_providers([HostProviderModule::new("app", "main")
+                .unwrap()
+                .with_native_function::<Provider, (Input,), Output, Targets, _>(
+                    "coerce",
+                    NativeRules::default().retained_views::<One<Input>>(),
+                    |mut call: NativeCall<'_, StatelessHostProfile, Provider, Output, Targets>,
+                     _input: HostValue<'_, Input>| {
+                        assert_eq!(call.call().state(), &mut ());
+                        Err::<HostCallCompletion<'_, Output>, HostCallError>(
+                            crate::HostFailure::new("uninhabited source stopped").into(),
+                        )
+                    },
+                )
+                .unwrap()])
+            .unwrap()
+        };
+        let source = r#"
+pub type Empty { Again(Empty) }
+@external(erlang, "native", "coerce") fn coerce(value: a) -> b
+pub fn main() -> Empty { coerce(fn(_input: BitArray) { "*" }) }
+"#;
+        let (_, values, nevers) = super::super::tests::lowered(source, providers());
+        assert_eq!((values.len(), nevers.len()), (2, 3));
+        let linked = NativeFunctions::new(&values, &nevers, providers()).unwrap();
+        assert_eq!((linked.values.len(), linked.nevers.len()), (2, 3));
+        assert!(!values[0].native_view.as_ref().unwrap().parent_value);
+        assert!(!nevers[1].native_view.as_ref().unwrap().parent_value);
+        let mut changed = nevers.clone();
+        changed[1].native_view.as_mut().unwrap().parent = 999;
+        assert_eq!(
+            NativeFunctions::new(&values, &changed, providers()).err(),
+            Some(NativeError::Contract {
+                value: false,
+                index: 1,
+                reason: super::super::ContractError::Native,
+            })
+        );
+        let typed = crate::compile_typed_host_program(
+            "app",
+            "main",
+            [crate::PackageSource::new(
+                "app",
+                Vec::<&str>::new(),
+                [crate::ModuleSource::new("main", "src/main.gleam", source)],
+            )],
+            providers(),
+        )
+        .unwrap();
+        let mut execution =
+            crate::HostedExecution::try_from_module_plan(crate::plan_host_program(typed).unwrap())
+                .unwrap();
+        let error =
+            crate::execution_fixture::run(&mut execution, &mut (), &mut Vec::new()).unwrap_err();
+        assert!(
+            error.to_string().contains("uninhabited source stopped"),
+            "{error}"
         );
     }
 

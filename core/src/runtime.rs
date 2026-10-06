@@ -54,8 +54,8 @@ pub(in crate::runtime) use evaluated::{
 pub(in crate::runtime) use evaluated::{EvaluatedFunctionValue, EvaluatedListCapture};
 pub(crate) use graph::RetainedValues;
 pub(crate) use host::{
-    RetainedFunctionValue, StoredRuntimeList, StoredRuntimeListCustomFields, StoredRuntimeListItem,
-    StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,
+    RetainedFunctionValue, StoredRuntimeFunction, StoredRuntimeList, StoredRuntimeListCustomFields,
+    StoredRuntimeListItem, StoredRuntimeListTupleItems, StoredRuntimeValue, ValueRetention,
 };
 pub use native::{NativeKind, NativeMap, NativeMapEntry, NativeValue, NativeValues};
 pub(crate) use value::{

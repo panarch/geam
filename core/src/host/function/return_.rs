@@ -8,10 +8,12 @@ mod string;
 mod utf_codepoint;
 
 use crate::host::{
-    HostCallArguments, HostCallError, HostCallRuntime, HostFailure, HostProfile, HostScopedValue,
-    HostValueToken,
+    HostCallArguments, HostCallError, HostCallRuntime, HostCodecScope, HostFailure, HostProfile,
+    HostScopedValue, HostValueToken,
 };
+use crate::plan::execution::host::HostNativeView;
 use crate::runtime::StoredRuntimeValue;
+use crate::runtime::execution::Continuation;
 use std::sync::Arc;
 
 use bit_array::HostBitArrayFunction;
@@ -26,17 +28,59 @@ use string::HostStringFunction;
 use utf_codepoint::HostUtfCodepointFunction;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HostFunctionBinding<Value, Never> {
+pub(crate) enum HostFunctionBinding<Value, Never, Views = ()> {
     Never(Never),
     Value(Value),
+    NativeValue(Value, Views),
 }
 
-pub(crate) type HostFunctionImplementation<Profile> =
-    HostFunctionBinding<HostValueFunction<Profile>, HostNeverFunction<Profile>>;
+pub(crate) type HostFunctionImplementation<Profile> = HostFunctionBinding<
+    HostValueFunction<Profile>,
+    HostNeverFunction<Profile>,
+    HostNativeViewFactory<Profile>,
+>;
 
 pub(crate) struct HostValueFunction<Profile: HostProfile> {
     kind: HostValueFunctionKind<Profile>,
 }
+
+#[derive(Clone)]
+pub(crate) struct NativeViewBinding {
+    pub(crate) codec: HostCodecScope,
+    pub(crate) view: HostNativeView,
+}
+
+pub(crate) trait NativeViewImplementation<Value> {
+    fn native_view(&self, binding: NativeViewBinding) -> Value;
+}
+
+impl NativeViewImplementation<()> for () {
+    fn native_view(&self, _binding: NativeViewBinding) {}
+}
+
+pub(crate) struct HostNativeViewFactory<Profile: HostProfile> {
+    callback: Arc<HostNativeViewCallback<Profile>>,
+}
+
+impl<Profile: HostProfile> HostNativeViewFactory<Profile> {
+    pub(in crate::host) fn new(
+        callback: impl Fn(
+            &mut dyn HostCallRuntime<Profile>,
+            &NativeViewBinding,
+        ) -> Result<Continuation, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            callback: Arc::new(callback),
+        }
+    }
+}
+
+type HostNativeViewCallback<Profile> = dyn Fn(&mut dyn HostCallRuntime<Profile>, &NativeViewBinding) -> Result<Continuation, HostCallError>
+    + Send
+    + Sync;
 
 enum HostValueFunctionKind<Profile: HostProfile> {
     Int(HostIntFunction<Profile>),
@@ -61,14 +105,11 @@ struct RetainedCallbacks<Profile: HostProfile> {
 
 pub(crate) enum HostCallReturn {
     Immediate(HostValueToken),
-    Continuing(crate::runtime::execution::Continuation),
+    Continuing(Continuation),
 }
 
-type HostContinuingCallback<Profile> = dyn Fn(
-        &mut dyn HostCallRuntime<Profile>,
-    ) -> Result<crate::runtime::execution::Continuation, HostCallError>
-    + Send
-    + Sync;
+type HostContinuingCallback<Profile> =
+    dyn Fn(&mut dyn HostCallRuntime<Profile>) -> Result<Continuation, HostCallError> + Send + Sync;
 
 pub(crate) type HostCallback<Profile, Return> = dyn Fn(
         &mut <Profile as HostProfile>::RunState,
@@ -221,10 +262,8 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
     pub(super) fn continuing_never(
         function: impl Fn(
             &mut dyn HostCallRuntime<Profile>,
-        ) -> Result<
-            crate::runtime::execution::Continuation<std::convert::Infallible>,
-            HostCallError,
-        > + Send
+        ) -> Result<Continuation<std::convert::Infallible>, HostCallError>
+        + Send
         + Sync
         + 'static,
     ) -> Self {
@@ -232,16 +271,12 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
     }
 
     pub(super) fn continuing(
-        function: impl Fn(
-            &mut dyn HostCallRuntime<Profile>,
-        ) -> Result<crate::runtime::execution::Continuation, HostCallError>
+        function: impl Fn(&mut dyn HostCallRuntime<Profile>) -> Result<Continuation, HostCallError>
         + Send
         + Sync
         + 'static,
     ) -> Self {
-        Self::Value(HostValueFunction {
-            kind: HostValueFunctionKind::Continuing(Arc::new(function)),
-        })
+        Self::Value(HostValueFunction::continuing(function))
     }
 
     pub(super) fn scoped(
@@ -280,7 +315,38 @@ impl<Profile: HostProfile> HostFunctionImplementation<Profile> {
     }
 }
 
+impl<Profile: HostProfile> NativeViewImplementation<HostValueFunction<Profile>>
+    for HostNativeViewFactory<Profile>
+{
+    fn native_view(&self, binding: NativeViewBinding) -> HostValueFunction<Profile> {
+        let callback = Arc::clone(&self.callback);
+        HostValueFunction::continuing(move |runtime| callback(runtime, &binding))
+    }
+}
+
 impl<Profile: HostProfile> HostValueFunction<Profile> {
+    pub(in crate::host) fn scoped(
+        function: impl Fn(&mut dyn HostCallRuntime<Profile>) -> Result<HostValueToken, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            kind: HostValueFunctionKind::Scoped(Arc::new(function)),
+        }
+    }
+
+    pub(in crate::host) fn continuing(
+        function: impl Fn(&mut dyn HostCallRuntime<Profile>) -> Result<Continuation, HostCallError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            kind: HostValueFunctionKind::Continuing(Arc::new(function)),
+        }
+    }
+
     pub(crate) fn retained(&self) -> Option<Arc<HostRetainedCallback>> {
         match &self.kind {
             HostValueFunctionKind::Retained(callbacks) => Some(Arc::clone(&callbacks.retained)),
@@ -400,6 +466,7 @@ mod tests {
     use crate::host::function::argument::CallArguments;
     use crate::host::test::{TestHostCallRuntime, TestHostProfile, TestRunState};
     use crate::host::{HostCallError, HostFailure, expect_value_implementation};
+    use crate::runtime::execution::Continuation;
     use std::convert::Infallible;
 
     #[test]
@@ -517,9 +584,9 @@ mod tests {
     fn immediate_fixture_rejects_a_resumable_implementation() {
         let implementation =
             super::HostFunctionImplementation::<TestHostProfile>::continuing(|_| {
-                Ok(crate::runtime::execution::Continuation::new(
-                    std::future::ready(Err(crate::runtime::work::Cancelled)),
-                ))
+                Ok(Continuation::new(std::future::ready(Err(
+                    crate::runtime::work::Cancelled,
+                ))))
             });
         let mut state = TestRunState::default();
         let mut runtime =

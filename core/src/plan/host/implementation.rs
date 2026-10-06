@@ -38,13 +38,14 @@ impl<Implementation> ProfiledHostImplementationBinding<Implementation> {
     }
 }
 
-impl<Value, Never>
-    ProfiledHostImplementationBinding<crate::host::HostFunctionBinding<Value, Never>>
+impl<Value, Never, Views>
+    ProfiledHostImplementationBinding<crate::host::HostFunctionBinding<Value, Never, Views>>
 {
     pub(crate) fn returns_value(&self) -> bool {
         matches!(
             &*self.implementation,
             crate::host::HostFunctionBinding::Value(_)
+                | crate::host::HostFunctionBinding::NativeValue(_, _)
         )
     }
 }

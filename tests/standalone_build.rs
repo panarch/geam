@@ -16,6 +16,54 @@ mod workspace_dependencies;
 #[path = "support/application_exit_fixture.rs"]
 mod application_exit_fixture;
 
+#[path = "support/native_function_views_fixture.rs"]
+mod native_function_views_fixture;
+
+#[test]
+fn native_function_views_survive_debug_and_release_source_free_relocation() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(directory.path()).unwrap();
+    let project = native_function_views_fixture::copy(&root);
+    checked(&mut geam(
+        &project,
+        &["provider", "add", "--path", "../provider"],
+    ));
+    let deployment = root.join("deployment");
+    fs::create_dir(&deployment).unwrap();
+    let mut binaries = Vec::new();
+    for release in [false, true] {
+        let arguments: &[&str] = if release {
+            &["build", "--release"]
+        } else {
+            &["build"]
+        };
+        let build = checked(&mut geam(&project, arguments));
+        let profile = if release { "release" } else { "debug" };
+        let executable = built_executable(
+            &build,
+            &project.join(format!(
+                "build/geam/target/{profile}/native_function_views_fixture{}",
+                std::env::consts::EXE_SUFFIX
+            )),
+        );
+        let target = deployment.join(format!(
+            "native-view-{profile}{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        fs::copy(executable, &target).unwrap();
+        binaries.push(target);
+    }
+    fs::remove_dir_all(&project).unwrap();
+    fs::remove_dir_all(root.join("provider")).unwrap();
+    for binary in binaries {
+        for _ in 0..2 {
+            let output = checked(&mut deployed(&binary, &deployment));
+            assert_eq!(output.stdout, b"native function views: 42\n");
+            assert!(output.stderr.is_empty());
+        }
+    }
+}
+
 #[test]
 fn explicit_application_statuses_survive_run_build_and_source_free_relocation() {
     let directory = tempfile::tempdir().unwrap();

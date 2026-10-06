@@ -1,12 +1,12 @@
-use super::EvaluatedCapture;
 use super::drain::DrainQueue;
+use super::{EvaluatedCapture, StoredRuntimeValue};
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone)]
 pub(crate) struct CaptureStorage {
-    releases: Arc<DrainQueue<Vec<EvaluatedCapture>>>,
+    releases: Arc<DrainQueue<CapturePayload>>,
     domain: ExecutionDomain,
 }
 
@@ -20,8 +20,14 @@ pub(in crate::runtime) struct Captures {
 pub(in crate::runtime) struct ExecutionDomain(u64);
 
 struct CaptureLease {
-    values: Vec<EvaluatedCapture>,
+    payload: CapturePayload,
     storage: CaptureStorage,
+}
+
+#[derive(Default)]
+struct CapturePayload {
+    values: Vec<EvaluatedCapture>,
+    native_source: Option<StoredRuntimeValue>,
 }
 
 impl Default for CaptureStorage {
@@ -51,10 +57,30 @@ impl CaptureStorage {
                 None
             } else {
                 Some(Arc::new(CaptureLease {
-                    values,
+                    payload: CapturePayload {
+                        values,
+                        native_source: None,
+                    },
                     storage: self.clone(),
                 }))
             },
+            domain: Some(self.domain),
+        }
+    }
+
+    pub(in crate::runtime) fn capture_native_view(
+        &self,
+        values: Vec<EvaluatedCapture>,
+        source: &StoredRuntimeValue,
+    ) -> Captures {
+        Captures {
+            lease: Some(Arc::new(CaptureLease {
+                payload: CapturePayload {
+                    values,
+                    native_source: Some(source.clone_retained()),
+                },
+                storage: self.clone(),
+            })),
             domain: Some(self.domain),
         }
     }
@@ -66,7 +92,13 @@ impl Captures {
     }
 
     pub(in crate::runtime) fn values(&self) -> &[EvaluatedCapture] {
-        self.lease.as_ref().map_or(&[], |lease| &lease.values)
+        self.lease
+            .as_ref()
+            .map_or(&[], |lease| &lease.payload.values)
+    }
+
+    pub(in crate::runtime) fn native_source(&self) -> Option<&StoredRuntimeValue> {
+        self.lease.as_ref()?.payload.native_source.as_ref()
     }
 }
 
@@ -101,10 +133,11 @@ impl ExecutionDomain {
 
 impl Drop for CaptureLease {
     fn drop(&mut self) {
-        // Descendants enqueue into this same drain without growing the drop stack.
+        // Both captures and source provenance may own descendant frames.
+        // Release them in the same drain without growing the drop stack.
         self.storage
             .releases
-            .deliver([std::mem::take(&mut self.values)], drop);
+            .deliver([std::mem::take(&mut self.payload)], drop);
     }
 }
 
@@ -112,7 +145,7 @@ impl Drop for CaptureLease {
 mod tests {
     use super::{CaptureStorage, Captures};
     use crate::plan::execution::function::{IntFunctionFunctionId, ProfiledFunctionFunctionId};
-    use crate::plan::execution::graph::IntLocalId;
+    use crate::plan::execution::graph::{IntFunctionLocalId, IntLocalId};
     use crate::runtime::state::RuntimeState;
     use crate::runtime::{EvaluatedCapture, HostCallOrigin, RetainedValues};
     use std::sync::Arc;
@@ -445,6 +478,53 @@ fn items(count: Int, result: List(Item)) {
             format!("{:?}", Captures::default()),
             "Captures { lease: None, domain: None }"
         );
+    }
+
+    #[test]
+    fn native_view_source_and_capture_values_share_the_last_owner_release() {
+        use crate::plan::execution::function::IntFunctionId;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::plan::execution::type_::{FunctionType, ValueType};
+        use crate::runtime::StoredRuntimeValue;
+        use crate::runtime::evaluated::{EvaluatedIntFunction, EvaluatedValue};
+
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { let bias = 42 fn(value: Int) { value + bias } }",
+        );
+        let storage = CaptureStorage::default();
+        let original = EvaluatedIntFunction::closure(
+            IntFunctionId(0),
+            storage.capture(vec![EvaluatedCapture::int(IntLocalId(0), 42.into())]),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        let original_lease = Arc::downgrade(original.capture_frame().lease.as_ref().unwrap());
+        let source = StoredRuntimeValue::new(
+            EvaluatedValue::Function(original.clone().into()),
+            plan.value_metadata(),
+        );
+        let view = storage.capture_native_view(
+            vec![EvaluatedCapture::int_function(
+                IntFunctionLocalId(0),
+                original.clone(),
+            )],
+            &source,
+        );
+        let alias = view.clone();
+        assert_eq!(view.domain(), Some(storage.domain()));
+        assert_eq!(view.values().len(), 1);
+        assert!(std::ptr::eq(
+            view.native_source().unwrap(),
+            alias.native_source().unwrap()
+        ));
+        assert_eq!(view.native_source().unwrap().value(), source.value());
+        drop(source);
+        drop(original);
+        drop(view);
+        assert!(original_lease.upgrade().is_some());
+        drop(alias);
+        assert!(original_lease.upgrade().is_none());
+        assert_eq!(Arc::strong_count(&storage.releases), 1);
+        assert!(storage.capture(Vec::new()).native_source().is_none());
     }
 
     #[test]

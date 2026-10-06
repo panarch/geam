@@ -1,3 +1,4 @@
+use crate::runtime::StoredRuntimeValue;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::EvaluatedCapture;
@@ -19,6 +20,33 @@ pub(crate) struct EvaluatedFunction<Id> {
     runtime_id: Id,
     captures: Captures,
     type_: FunctionType,
+}
+
+pub(in crate::runtime) enum FunctionCreation {
+    Fresh,
+    RetainedView { identity: EvaluatedFunctionIdentity },
+}
+
+impl FunctionCreation {
+    pub(in crate::runtime) fn instantiate<Id: Clone>(
+        &self,
+        runtime_id: Id,
+        captures: Captures,
+        type_: FunctionType,
+    ) -> EvaluatedFunction<Id> {
+        let identity = match self {
+            Self::Fresh => EvaluatedFunctionIdentity::Instance(FunctionInstance(
+                NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
+            )),
+            Self::RetainedView { identity } => identity.clone(),
+        };
+        EvaluatedFunction {
+            identity,
+            runtime_id,
+            captures,
+            type_,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -57,13 +85,13 @@ pub(in crate::runtime) enum ListFunctionReturnFamily {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum EvaluatedFunctionIdentity {
+pub(in crate::runtime) enum EvaluatedFunctionIdentity {
     Reference(FunctionReferenceIdentity),
     Instance(FunctionInstance),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct FunctionInstance(pub(super) u64);
+pub(in crate::runtime) struct FunctionInstance(pub(super) u64);
 
 pub(in crate::runtime) trait FunctionReferenceId {
     fn reference_identity(&self) -> FunctionReferenceIdentity;
@@ -443,19 +471,15 @@ impl<Id: Clone + FunctionReferenceId> EvaluatedFunction<Id> {
 }
 
 impl<Id: Clone> EvaluatedFunction<Id> {
+    pub(super) fn retained_parts(&self) -> (&EvaluatedFunctionIdentity, &Captures) {
+        (&self.identity, &self.captures)
+    }
     pub(in crate::runtime) fn closure(
         runtime_id: Id,
         captures: Captures,
         type_: FunctionType,
     ) -> Self {
-        Self {
-            identity: EvaluatedFunctionIdentity::Instance(FunctionInstance(
-                NEXT_FUNCTION_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
-            )),
-            runtime_id,
-            captures,
-            type_,
-        }
+        FunctionCreation::Fresh.instantiate(runtime_id, captures, type_)
     }
 
     pub(in crate::runtime) fn runtime_id(&self) -> Id {
@@ -556,13 +580,6 @@ impl EvaluatedFunctionFunction {
             Self::External(value) => Self::External(value.with_type(type_)),
         }
     }
-
-    pub(super) fn identity(&self) -> &EvaluatedFunctionIdentity {
-        match self {
-            Self::Core(value) => &value.identity,
-            Self::External(value) => &value.identity,
-        }
-    }
 }
 
 macro_rules! evaluated_function_value_from {
@@ -591,6 +608,15 @@ evaluated_function_value_from!(EvaluatedListFunction, List);
 evaluated_function_value_from!(EvaluatedFunctionFunction, Function);
 
 impl EvaluatedFunctionValue {
+    pub(in crate::runtime) fn creation_view(&self) -> FunctionCreation {
+        FunctionCreation::RetainedView {
+            identity: super::EvaluatedFunctionRef::from(self).identity().clone(),
+        }
+    }
+
+    pub(in crate::runtime) fn native_source(&self) -> Option<&StoredRuntimeValue> {
+        super::EvaluatedFunctionRef::from(self).native_source()
+    }
     pub(in crate::runtime) fn closure(
         target: crate::plan::execution::function::RuntimeFunctionId,
         captures: Captures,
@@ -717,7 +743,7 @@ mod tests {
         ParameterListListFunctionFunctionId, StringListFunctionFunctionId,
         TupleListFunctionFunctionId, UtfCodepointListFunctionFunctionId,
     };
-    use crate::plan::execution::graph::IntLocalId;
+    use crate::plan::execution::graph::{IntFunctionLocalId, IntLocalId};
     use crate::plan::execution::type_::{FunctionType, ValueType};
     use crate::runtime::state::RuntimeState;
 
@@ -1143,5 +1169,69 @@ pub fn main() {
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(first)),
             &EvaluatedValue::Function(EvaluatedFunctionValue::from(separate)),
         ));
+    }
+    #[test]
+    fn retained_provenance_shares_the_view_frame_and_stays_out_of_fresh_captures() {
+        use super::FunctionCreation;
+        use crate::plan::execution::runtime::RuntimeExecutionPlan;
+        use crate::runtime::StoredRuntimeValue;
+        use crate::runtime::captures::CaptureStorage;
+
+        let plan = crate::runtime::plan_src(
+            "pub fn main() { #(fn(value: Int) { value }, fn(value: Int) { value + 1 }) }",
+        );
+        let storage = CaptureStorage::default();
+        let type_ = FunctionType::new(vec![ValueType::Int], ValueType::Int);
+        let function = EvaluatedIntFunction::reference(
+            IntFunctionId(0),
+            storage.capture(Vec::new()),
+            type_.clone(),
+        );
+        let stored = StoredRuntimeValue::new(
+            EvaluatedValue::Function(function.clone().into()),
+            plan.value_metadata(),
+        );
+        let captures = storage.capture_native_view(
+            vec![EvaluatedCapture::int_function(
+                IntFunctionLocalId(0),
+                function.clone(),
+            )],
+            &stored,
+        );
+        let creation = FunctionCreation::RetainedView {
+            identity: function.identity.clone(),
+        };
+        let view = creation.instantiate(IntFunctionId(1), captures, type_.clone());
+        let alias = view.clone();
+        let mapped = view.clone().map_runtime_id(|_| IntFunctionId(0));
+        let refined = view.clone().with_type(type_.clone());
+        let retained = alias.capture_frame().native_source().unwrap();
+        assert_eq!(retained.value(), stored.value());
+        assert_eq!(view.identity, function.identity);
+        assert_eq!(view.runtime_id(), IntFunctionId(1));
+        for copy in [&alias, &mapped, &refined] {
+            assert!(std::ptr::eq(
+                retained,
+                copy.capture_frame().native_source().unwrap()
+            ));
+            assert!(std::ptr::eq(view.captures(), copy.captures()));
+            assert_eq!(copy.identity, function.identity);
+        }
+        let enclosing = EvaluatedIntFunction::closure(
+            IntFunctionId(2),
+            storage.capture(vec![EvaluatedCapture::int_function(
+                IntFunctionLocalId(0),
+                view,
+            )]),
+            type_,
+        );
+        assert!(enclosing.capture_frame().native_source().is_none());
+        assert_ne!(enclosing.identity, function.identity);
+        assert_eq!(enclosing.captures().len(), 1);
+        drop(stored);
+        assert_eq!(
+            alias.capture_frame().native_source().unwrap().value(),
+            &EvaluatedValue::Function(function.into())
+        );
     }
 }

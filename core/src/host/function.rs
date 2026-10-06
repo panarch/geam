@@ -24,8 +24,8 @@ pub(crate) use argument::{
 };
 pub(crate) use return_::HostNeverFunction;
 pub(crate) use return_::{
-    HostCallReturn, HostFunctionBinding, HostFunctionImplementation, HostRetainedCallback,
-    HostValueFunction,
+    HostCallReturn, HostFunctionBinding, HostFunctionImplementation, HostNativeViewFactory,
+    HostRetainedCallback, HostValueFunction, NativeViewBinding, NativeViewImplementation,
 };
 #[cfg(test)]
 pub(crate) use return_::{
@@ -225,7 +225,7 @@ pub(crate) struct RegisteredHostDefinition<Implementation> {
 pub(crate) type HostFunctionDefinition<Profile> =
     RegisteredHostDefinition<HostFunctionImplementation<Profile>>;
 
-impl<Value, Never> RegisteredHostDefinition<HostFunctionBinding<Value, Never>> {
+impl<Value, Never, Views> RegisteredHostDefinition<HostFunctionBinding<Value, Never, Views>> {
     pub(super) fn into_declaration(self) -> RegisteredHostDefinition<HostFunctionBinding<(), ()>> {
         RegisteredHostDefinition {
             schema: self.schema,
@@ -233,6 +233,7 @@ impl<Value, Never> RegisteredHostDefinition<HostFunctionBinding<Value, Never>> {
             implementation: match self.implementation {
                 HostFunctionBinding::Value(_) => HostFunctionBinding::Value(()),
                 HostFunctionBinding::Never(_) => HostFunctionBinding::Never(()),
+                HostFunctionBinding::NativeValue(_, _) => HostFunctionBinding::NativeValue((), ()),
             },
         }
     }
@@ -243,6 +244,7 @@ pub(crate) struct RegisteredHostConstructions {
     custom_schemas: Box<[crate::host::HostCustomTypeSchema]>,
     external_schemas: Box<[crate::host::HostExternalTypeSchema]>,
     native_rules: Option<Box<[crate::host::HostTypeDescriptor]>>,
+    native_sources: Box<[crate::host::HostTypeDescriptor]>,
     callables: Box<[crate::host::RegisteredCallableConstruction]>,
 }
 
@@ -368,6 +370,7 @@ impl RegisteredHostConstructions {
             custom_schemas,
             external_schemas: external_schemas.into_boxed_slice(),
             native_rules: None,
+            native_sources: Box::new([]),
             callables: Box::new([]),
         }
     }
@@ -420,6 +423,10 @@ impl RegisteredHostConstructions {
         self.native_rules.as_deref()
     }
 
+    pub(crate) fn native_sources(&self) -> &[crate::host::HostTypeDescriptor] {
+        &self.native_sources
+    }
+
     pub(crate) fn types(&self) -> &[crate::host::HostTypeDescriptor] {
         &self.types
     }
@@ -448,7 +455,7 @@ impl RegisteredHostConstructions {
 
     fn unbound_type_parameters(&self, parameter_count: usize) -> Box<[usize]> {
         let mut parameters = BTreeSet::new();
-        for type_ in &self.types {
+        for type_ in self.types.iter().chain(self.native_sources.iter()) {
             type_.collect_type_parameters(&mut parameters);
         }
         for callable in &self.callables {
@@ -695,6 +702,22 @@ impl<Profile: HostProfile> HostFunctionDefinition<Profile> {
         );
         self.constructions = self.constructions.with_callables(callables);
         self.constructions.native_rules = Some(rules);
+        self.constructions.native_sources = registration.retained_sources;
+        let mut external_schemas = self.constructions.external_schemas.into_vec();
+        let mut visited = external_schemas
+            .iter()
+            .map(|schema| {
+                (
+                    schema.package().clone(),
+                    schema.module().clone(),
+                    schema.name().clone(),
+                )
+            })
+            .collect();
+        for descriptor in &self.constructions.native_sources {
+            descriptor.collect_external_schemas(&mut external_schemas, &mut visited);
+        }
+        self.constructions.external_schemas = external_schemas.into_boxed_slice();
         self.constructions.validate_for(&self.schema)?;
         Ok(self)
     }
