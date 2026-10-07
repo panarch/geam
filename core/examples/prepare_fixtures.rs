@@ -341,6 +341,34 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (patterns, _) = ModuleBuilder::new(patterns)?
         .function(FunctionDeclaration::<(), StringValue>::new("main"))?;
 
+    let interleaved_source = include_str!("../tests/fixtures/prepared/interleaved_patterns.gleam");
+    let interleaved_patterns =
+        geam_core::compile_typed_module("example", "src/example.gleam", interleaved_source)?;
+    let (mut interleaved_patterns, _) = ModuleBuilder::new(interleaved_patterns)?
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))?;
+    interleaved_patterns.function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+        "selected_grouped",
+    ))?;
+    let interleaved_hosted = geam_core::compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new(
+                "example",
+                "src/example.gleam",
+                interleaved_source,
+            )],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([])?,
+    )?;
+    let (mut interleaved_hosted, _) = HostedModuleBuilder::new(interleaved_hosted)?
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))?;
+    interleaved_hosted.function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+        "selected_grouped",
+    ))?;
+
     let symbolic_patterns = geam_core::compile_typed_module(
         "example",
         "src/example.gleam",
@@ -884,6 +912,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("list_native.rs", list_native.prepare()?.emit_rust()),
         ("values.rs", values.prepare().emit_rust()),
         ("nested_patterns.rs", patterns.prepare().emit_rust()),
+        (
+            "interleaved_patterns.rs",
+            interleaved_patterns.prepare().emit_rust(),
+        ),
+        (
+            "interleaved_patterns_hosted.rs",
+            interleaved_hosted.prepare()?.emit_rust(),
+        ),
         (
             "symbolic_patterns.rs",
             symbolic_patterns.prepare().emit_rust(),

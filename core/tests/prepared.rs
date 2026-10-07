@@ -3626,6 +3626,12 @@ static VALUES: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/va
 static NESTED_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/nested_patterns.rs");
 
+static INTERLEAVED_PATTERNS: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/interleaved_patterns.rs");
+#[cfg(feature = "tokio")]
+static INTERLEAVED_PATTERNS_HOSTED: data::HostedModuleArtifact =
+    include!("fixtures/prepared/interleaved_patterns_hosted.rs");
+
 static SYMBOLIC_PATTERNS: data::ModuleArtifact<Infallible> =
     include!("fixtures/prepared/symbolic_patterns.rs");
 
@@ -3978,6 +3984,158 @@ fn nested_constructor_exclusions_and_bindings_preserve_dynamic_and_prepared_resu
             );
             assert!(echo.is_empty());
         }
+    }
+}
+
+#[test]
+fn interleaved_constructor_patterns_preserve_live_and_prepared_library_results() {
+    let source = include_str!("fixtures/prepared/interleaved_patterns.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (mut bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+            "selected_grouped",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/interleaved_patterns.rs").trim()
+    );
+
+    for prepared in [false, true] {
+        let (module, selected, grouped) = if prepared {
+            let mut bindings = INTERLEAVED_PATTERNS.load().unwrap();
+            let selected = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+                .unwrap();
+            let grouped = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+                    "selected_grouped",
+                ))
+                .unwrap();
+            (bindings.seal(), selected, grouped)
+        } else {
+            let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+            let (mut bindings, selected) = ModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+                .unwrap();
+            let grouped = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+                    "selected_grouped",
+                ))
+                .unwrap();
+            (bindings.seal(), selected, grouped)
+        };
+        for _ in 0..2 {
+            for (tag, expected) in [(0, 100), (1, 101), (2, 102), (3, 103), (4, 104), (5, 105)] {
+                for function in [&selected, &grouped] {
+                    let mut echo = Vec::new();
+                    assert_eq!(
+                        module.call(function, (tag.into(),), &mut echo).unwrap(),
+                        BigInt::from(expected)
+                    );
+                    assert!(echo.is_empty());
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
+fn interleaved_constructor_patterns_preserve_hosted_library_admission_and_calls() {
+    let source = include_str!("fixtures/prepared/interleaved_patterns.gleam");
+    let typed = compile_typed_host_program(
+        "example",
+        "example",
+        [PackageSource::new(
+            "example",
+            Vec::<String>::new(),
+            [ModuleSource::new("example", "src/example.gleam", source)],
+        )],
+        HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+    )
+    .unwrap();
+    let (mut bindings, _) = HostedModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+            "selected_grouped",
+        ))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().unwrap().emit_rust(),
+        include_str!("fixtures/prepared/interleaved_patterns_hosted.rs").trim()
+    );
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for prepared in [false, true] {
+        let (mut module, selected, grouped) = if prepared {
+            let mut bindings = INTERLEAVED_PATTERNS_HOSTED
+                .load(HostProviderSet::<StatelessHostProfile>::new([]).unwrap())
+                .unwrap();
+            let selected = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+                .unwrap();
+            let grouped = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+                    "selected_grouped",
+                ))
+                .unwrap();
+            (bindings.seal(), selected, grouped)
+        } else {
+            let typed = compile_typed_host_program(
+                "example",
+                "example",
+                [PackageSource::new(
+                    "example",
+                    Vec::<String>::new(),
+                    [ModuleSource::new("example", "src/example.gleam", source)],
+                )],
+                HostProviderSet::<StatelessHostProfile>::new([]).unwrap(),
+            )
+            .unwrap();
+            let (mut bindings, selected) = HostedModuleBuilder::new(typed)
+                .unwrap()
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new("selected"))
+                .unwrap();
+            let grouped = bindings
+                .function(FunctionDeclaration::<(BigInt,), BigInt>::new(
+                    "selected_grouped",
+                ))
+                .unwrap();
+            (bindings.seal().unwrap(), selected, grouped)
+        };
+        let mut echo = Vec::new();
+        runtime
+            .block_on(
+                module.with_execution(&host, &mut (), &mut echo, async |scope| {
+                    for _ in 0..2 {
+                        for (tag, expected) in
+                            [(0, 100), (1, 101), (2, 102), (3, 103), (4, 104), (5, 105)]
+                        {
+                            for function in [&selected, &grouped] {
+                                assert_eq!(
+                                    scope.call(function, (tag.into(),)).await.unwrap(),
+                                    BigInt::from(expected)
+                                );
+                            }
+                        }
+                    }
+                }),
+            )
+            .unwrap()
+            .try_into_value()
+            .unwrap();
+        assert!(echo.is_empty());
     }
 }
 
