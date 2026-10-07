@@ -24,6 +24,11 @@ pub fn computed(count: Int, value: Int) -> Int {
   repeat(count, fn() { value + 1 })
 }
 
+pub fn computed_cancellable(count: Int, value: Int) -> Int {
+  begin()
+  repeat(count, fn() { value + 1 })
+}
+
 pub fn cancellable(count: Int, value: Int) -> Int {
   begin()
   repeat(count, fn() { value })
@@ -129,6 +134,10 @@ fn observe_bool(value: Bool) -> Bool
 
 pub fn captured_bool(count: Int, value: Bool) -> Bool {
   repeat_bool(count, fn() { value })
+}
+
+pub fn computed_bool(count: Int, value: Bool) -> Bool {
+  repeat_bool(count, fn() { !value })
 }
 
 fn repeat_bool(count: Int, producer: fn() -> Bool) -> Bool {
@@ -263,7 +272,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(5)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(6)),
                                                     captures: data::Storage::Static(&[
                                                         data::graph::FunctionCapture::Int {
                                                             target: data::graph::IntLocalId(0),
@@ -278,7 +287,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::IntFunctionId(6),
+                                            function: data::function::IntFunctionId(7),
                                             site: data::source::HostCallSite::from_static("native_loop", "captured", data::source::SourceSpan::new(252, 281)),
                                         },
                                         args: data::Storage::Static(&[
@@ -347,7 +356,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(7)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(8)),
                                                     captures: data::Storage::Static(&[
                                                         data::graph::FunctionCapture::Int {
                                                             target: data::graph::IntLocalId(0),
@@ -362,7 +371,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::IntFunctionId(6),
+                                            function: data::function::IntFunctionId(7),
                                             site: data::source::HostCallSite::from_static("native_loop", "computed", data::source::SourceSpan::new(336, 369)),
                                         },
                                         args: data::Storage::Static(&[
@@ -421,7 +430,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Call {
                                                 function: data::function::NilFunctionId(2),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "cancellable", data::source::SourceSpan::new(427, 434)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "computed_cancellable", data::source::SourceSpan::new(436, 443)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -442,7 +451,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(8)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(9)),
                                                     captures: data::Storage::Static(&[
                                                         data::graph::FunctionCapture::Int {
                                                             target: data::graph::IntLocalId(0),
@@ -457,8 +466,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::IntFunctionId(6),
-                                            site: data::source::HostCallSite::from_static("native_loop", "cancellable", data::source::SourceSpan::new(437, 466)),
+                                            function: data::function::IntFunctionId(7),
+                                            site: data::source::HostCallSite::from_static("native_loop", "computed_cancellable", data::source::SourceSpan::new(446, 479)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -493,7 +502,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     blocks: data::Storage::Static(&[
                                         data::graph::BlockHeader {
                                             params: 0..2,
-                                            instructions: 0..1,
+                                            instructions: 0..2,
                                             terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
                                         },
                                     ]),
@@ -508,6 +517,17 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         },
                                     ]),
                                     instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
+                                                shape: data::type_::ValueShapeId(2),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::Call {
+                                                function: data::function::NilFunctionId(2),
+                                                args: data::Storage::Static(&[]),
+                                                site: data::source::HostCallSite::from_static("native_loop", "cancellable", data::source::SourceSpan::new(537, 544)),
+                                            }),
+                                        }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
                                             output: data::graph::ParamSlot {
                                                 local: data::graph::ParamLocal::IntFunction {
@@ -526,7 +546,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Int,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(9)),
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(10)),
                                                     captures: data::Storage::Static(&[
                                                         data::graph::FunctionCapture::Int {
                                                             target: data::graph::IntLocalId(0),
@@ -541,8 +561,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::IntFunctionId(10),
-                                            site: data::source::HostCallSite::from_static("native_loop", "retained_value", data::source::SourceSpan::new(691, 727)),
+                                            function: data::function::IntFunctionId(7),
+                                            site: data::source::HostCallSite::from_static("native_loop", "cancellable", data::source::SourceSpan::new(547, 576)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -626,7 +646,91 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::IntFunctionId(12),
-                                            site: data::source::HostCallSite::from_static("native_loop", "graph_captured", data::source::SourceSpan::new(4671, 4706)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "retained_value", data::source::SourceSpan::new(801, 837)),
+                                        },
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                        ]),
+                                        transfer: data::graph::Transfer {
+                                            families: data::Storage::Static(&[
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::Int,
+                                                    length: 1,
+                                                    steps: data::Storage::Static(&[]),
+                                                },
+                                            ]),
+                                        },
+                                    },
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 2,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::IntFunction {
+                                                    local: data::graph::IntFunctionLocalId(0),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(1),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                                family: data::function::FunctionReturnFamily::Int,
+                                                kind: data::graph::FunctionInstructionKind::Closure {
+                                                    target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(13)),
+                                                    captures: data::Storage::Static(&[
+                                                        data::graph::FunctionCapture::Int {
+                                                            target: data::graph::IntLocalId(0),
+                                                            source: data::graph::IntLocalId(1),
+                                                        },
+                                                    ]),
+                                                },
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::TailCall {
+                                        function: data::source::FunctionCallTarget {
+                                            function: data::function::IntFunctionId(14),
+                                            site: data::source::HostCallSite::from_static("native_loop", "graph_captured", data::source::SourceSpan::new(4878, 4913)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -829,7 +933,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::FunctionCall {
                                                 function: data::graph::IntFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(657, 667)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -838,11 +942,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 shape: data::type_::ValueShapeId(0),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
-                                                function: data::function::IntFunctionId(13),
+                                                function: data::function::IntFunctionId(15),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(649, 668)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -859,6 +963,44 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 },
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::Return(data::graph::IntLocalId(0)),
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 0,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..1,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                                shape: data::type_::ValueShapeId(0),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Add {
+                                                left: data::graph::IntegerOperand::Local(data::graph::IntLocalId(0)),
+                                                right: data::graph::IntegerOperand::Immediate(1),
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::IntLocalId(1)),
                                 ]),
                             },
                         })),
@@ -1105,7 +1247,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::FunctionCall {
                                                 function: data::graph::IntFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(922, 932)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1114,11 +1256,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 shape: data::type_::ValueShapeId(0),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
-                                                function: data::function::IntFunctionId(14),
+                                                function: data::function::IntFunctionId(16),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(917, 933)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1316,7 +1458,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::FunctionCall {
                                                 function: data::graph::IntFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5049, 5059)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1325,11 +1467,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 shape: data::type_::ValueShapeId(0),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Int(data::graph::IntInstruction::Call {
-                                                function: data::function::IntFunctionId(15),
+                                                function: data::function::IntFunctionId(17),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4831, 4853)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5038, 5060)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1447,7 +1589,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::FloatFunctionId(4),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_float", data::source::SourceSpan::new(1338, 1373)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_float", data::source::SourceSpan::new(1448, 1483)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -1531,7 +1673,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::FloatFunctionId(4),
-                                            site: data::source::HostCallSite::from_static("native_loop", "computed_float", data::source::SourceSpan::new(4076, 4118)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "computed_float", data::source::SourceSpan::new(4283, 4325)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -1615,7 +1757,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::FloatFunctionId(8),
-                                            site: data::source::HostCallSite::from_static("native_loop", "retained_float", data::source::SourceSpan::new(4183, 4220)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "retained_float", data::source::SourceSpan::new(4390, 4427)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -1823,7 +1965,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::FunctionCall {
                                                 function: data::graph::FloatFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1470, 1480)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1580, 1590)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -1836,7 +1978,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1456, 1481)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1566, 1591)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2111,7 +2253,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::FunctionCall {
                                                 function: data::graph::FloatFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4519, 4529)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4726, 4736)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2124,7 +2266,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2215,7 +2357,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::StringFunctionId(3),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_string", data::source::SourceSpan::new(1722, 1758)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_string", data::source::SourceSpan::new(1832, 1868)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -2299,7 +2441,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::StringFunctionId(5),
-                                            site: data::source::HostCallSite::from_static("native_loop", "retained_string", data::source::SourceSpan::new(4288, 4325)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "retained_string", data::source::SourceSpan::new(4495, 4532)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -2507,7 +2649,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1859, 1869)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1969, 1979)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2520,7 +2662,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1844, 1870)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1954, 1980)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2723,7 +2865,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::String(data::graph::StringInstruction::FunctionCall {
                                                 function: data::graph::StringFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4519, 4529)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4726, 4736)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2736,7 +2878,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -2827,7 +2969,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(3),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_bit_array", data::source::SourceSpan::new(2129, 2168)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_bit_array", data::source::SourceSpan::new(2239, 2278)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -2911,7 +3053,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::BitArrayFunctionId(5),
-                                            site: data::source::HostCallSite::from_static("native_loop", "retained_bit_array", data::source::SourceSpan::new(4400, 4437)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "retained_bit_array", data::source::SourceSpan::new(4607, 4644)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -3119,7 +3261,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
                                                 function: data::graph::BitArrayFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2279, 2289)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2389, 2399)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3132,7 +3274,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2261, 2290)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2371, 2400)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3335,7 +3477,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::BitArray(data::graph::BitArrayInstruction::FunctionCall {
                                                 function: data::graph::BitArrayFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4519, 4529)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4726, 4736)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3348,7 +3490,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3439,7 +3581,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::UtfCodepointFunctionId(2),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_utf_codepoint", data::source::SourceSpan::new(2580, 2623)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_utf_codepoint", data::source::SourceSpan::new(2690, 2733)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -3647,7 +3789,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::UtfCodepoint(data::graph::UtfCodepointInstruction::FunctionCall {
                                                 function: data::graph::UtfCodepointFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2757, 2767)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2867, 2877)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3660,7 +3802,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2735, 2768)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2845, 2878)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -3732,7 +3874,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                                 family: data::function::FunctionReturnFamily::Bool,
                                                 kind: data::graph::FunctionInstructionKind::Closure {
-                                                    target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(2)),
+                                                    target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(3)),
                                                     captures: data::Storage::Static(&[
                                                         data::graph::FunctionCapture::Bool {
                                                             target: data::graph::BoolLocalId(0),
@@ -3747,8 +3889,92 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::BoolFunctionId(3),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_bool", data::source::SourceSpan::new(3003, 3037)),
+                                            function: data::function::BoolFunctionId(4),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_bool", data::source::SourceSpan::new(3113, 3147)),
+                                        },
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            data::graph::ParamLocal::BoolFunction {
+                                                local: data::graph::BoolFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                                },
+                                            },
+                                        ]),
+                                        transfer: data::graph::Transfer {
+                                            families: data::Storage::Static(&[
+                                                data::graph::FamilyTransfer {
+                                                    family: data::graph::StorageFamily::Bool,
+                                                    length: 0,
+                                                    steps: data::Storage::Static(&[]),
+                                                },
+                                            ]),
+                                        },
+                                    },
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 2,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..2,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            shape: data::type_::ValueShapeId(0),
+                                        },
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::BoolFunction {
+                                                    local: data::graph::BoolFunctionLocalId(0),
+                                                    type_: data::type_::FunctionType {
+                                                        arguments: data::Storage::Static(&[]),
+                                                        return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                                    },
+                                                },
+                                                shape: data::type_::ValueShapeId(14),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Function(data::graph::FunctionInstruction {
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                                },
+                                                family: data::function::FunctionReturnFamily::Bool,
+                                                kind: data::graph::FunctionInstructionKind::Closure {
+                                                    target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(5)),
+                                                    captures: data::Storage::Static(&[
+                                                        data::graph::FunctionCapture::Bool {
+                                                            target: data::graph::BoolLocalId(0),
+                                                            source: data::graph::BoolLocalId(0),
+                                                        },
+                                                    ]),
+                                                },
+                                            }),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::TailCall {
+                                        function: data::source::FunctionCallTarget {
+                                            function: data::function::BoolFunctionId(4),
+                                            site: data::source::HostCallSite::from_static("native_loop", "computed_bool", data::source::SourceSpan::new(3209, 3244)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -3831,8 +4057,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
-                                            function: data::function::BoolFunctionId(4),
-                                            site: data::source::HostCallSite::from_static("native_loop", "mixed", data::source::SourceSpan::new(3714, 3749)),
+                                            function: data::function::BoolFunctionId(6),
+                                            site: data::source::HostCallSite::from_static("native_loop", "mixed", data::source::SourceSpan::new(3921, 3956)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -4040,7 +4266,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::FunctionCall {
                                                 function: data::graph::BoolFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3337, 3347)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4049,11 +4275,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 shape: data::type_::ValueShapeId(13),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
-                                                function: data::function::BoolFunctionId(5),
+                                                function: data::function::BoolFunctionId(7),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3324, 3348)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4070,6 +4296,41 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 },
                                 exits: data::Storage::Static(&[
                                     data::function::FunctionExit::Return(data::graph::BoolLocalId(0)),
+                                ]),
+                            },
+                        })),
+                        data::function::ValueFunctionEntry::Graph(data::Storage::Static(&data::function::ExecutableFunction {
+                            entry: data::function::FunctionEntry {
+                                parameter_count: 0,
+                            },
+                            body: data::function::ProfiledFunctionBody {
+                                block_graph: data::graph::ProfiledBlockGraph {
+                                    entry: data::graph::BlockId(0),
+                                    blocks: data::Storage::Static(&[
+                                        data::graph::BlockHeader {
+                                            params: 0..1,
+                                            instructions: 0..1,
+                                            terminator: data::graph::Terminator::Exit(data::graph::BlockGraphExitId(0)),
+                                        },
+                                    ]),
+                                    params: data::Storage::Static(&[
+                                        data::graph::ParamSlot {
+                                            local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                            shape: data::type_::ValueShapeId(13),
+                                        },
+                                    ]),
+                                    instructions: data::Storage::Static(&[
+                                        data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
+                                            output: data::graph::ParamSlot {
+                                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                                shape: data::type_::ValueShapeId(13),
+                                            },
+                                            kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Test(data::graph::BoolTest::Not(data::graph::BoolLocalId(0)))),
+                                        }),
+                                    ]),
+                                },
+                                exits: data::Storage::Static(&[
+                                    data::function::FunctionExit::Return(data::graph::BoolLocalId(1)),
                                 ]),
                             },
                         })),
@@ -4229,7 +4490,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Float(data::graph::FloatInstruction::FunctionCall {
                                                 function: data::graph::FloatFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(3845, 3855)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(4052, 4062)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4238,11 +4499,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 shape: data::type_::ValueShapeId(13),
                                             },
                                             kind: data::graph::ProfiledInstructionKind::Bool(data::graph::BoolInstruction::Call {
-                                                function: data::function::BoolFunctionId(6),
+                                                function: data::function::BoolFunctionId(8),
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(3831, 3856)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(4038, 4063)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4333,7 +4594,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::NilFunctionId(4),
-                                            site: data::source::HostCallSite::from_static("native_loop", "captured_nil", data::source::SourceSpan::new(3360, 3393)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "captured_nil", data::source::SourceSpan::new(3567, 3600)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -4402,7 +4663,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     data::function::FunctionExit::TailCall {
                                         function: data::source::FunctionCallTarget {
                                             function: data::function::NilFunctionId(4),
-                                            site: data::source::HostCallSite::from_static("native_loop", "literal_nil", data::source::SourceSpan::new(3980, 4011)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "literal_nil", data::source::SourceSpan::new(4187, 4218)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -4593,7 +4854,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                             kind: data::graph::ProfiledInstructionKind::Nil(data::graph::NilInstruction::FunctionCall {
                                                 function: data::graph::NilFunctionLocalId(0),
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3482, 3492)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3689, 3699)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4606,7 +4867,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 args: data::Storage::Static(&[
                                                     data::graph::ParamLocal::Nil(data::graph::NilLocalId(0)),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3470, 3493)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3677, 3700)),
                                             }),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -4757,7 +5018,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                     list_type: data::type_::ListTypeId(0),
                                                 },
                                             },
-                                            site: data::source::HostCallSite::from_static("native_loop", "compound", data::source::SourceSpan::new(957, 991)),
+                                            site: data::source::HostCallSite::from_static("native_loop", "compound", data::source::SourceSpan::new(1067, 1101)),
                                         },
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -5021,7 +5282,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                     },
                                                 },
                                                 args: data::Storage::Static(&[]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_compound", data::source::SourceSpan::new(1090, 1100)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_compound", data::source::SourceSpan::new(1200, 1210)),
                                             })),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5051,7 +5312,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                         },
                                                     }),
                                                 ]),
-                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_compound", data::source::SourceSpan::new(1085, 1101)),
+                                                site: data::source::HostCallSite::from_static("native_loop", "repeat_compound", data::source::SourceSpan::new(1195, 1211)),
                                             })),
                                         }),
                                         data::graph::ProfiledInstruction::Value(data::graph::ProfiledValueInstruction {
@@ -5130,33 +5391,28 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 enum CompiledResume {
                     Exit(data::compiled::CompiledProgress),
                 }
-                use data::compiled::calls::{BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+                use data::compiled::calls::{BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
                 enum FunctionState {
                     Int0Point0 { int0: i128, int1: i128 },
                     Int0Point1 { int0: i128, int1: i128, int_function0: IntCallable },
                     Int1Point0 { int0: i128, int1: i128 },
                     Int1Point1 { int0: i128, int1: i128, int_function0: IntCallable },
-                    Int3Point0 { int0: i128, int1: i128 },
-                    Int3Point1 { int0: i128, int1: i128, int_function0: IntCallable },
                     Int4Point0 { int0: i128, int1: i128 },
                     Int4Point1 { int0: i128, int1: i128, int_function0: IntCallable },
-                    Int5Point0 { int0: i128 },
-                    Int6Point0 { int0: i128, int_function0: IntCallable },
-                    Int6Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int6Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
-                    Int6Point3 { int0: i128 },
-                    Int6Point4 { int0: i128, int_function0: IntCallable },
-                    Int6Point5 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int7Point0 { int0: i128 },
-                    Int7Point1 { int0: i128, int1: i128 },
+                    Int5Point0 { int0: i128, int1: i128 },
+                    Int5Point1 { int0: i128, int1: i128, int_function0: IntCallable },
+                    Int6Point0 { int0: i128 },
+                    Int7Point0 { int0: i128, int_function0: IntCallable },
+                    Int7Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int7Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
+                    Int7Point3 { int0: i128 },
+                    Int7Point4 { int0: i128, int_function0: IntCallable },
+                    Int7Point5 { int0: i128, int_function0: IntCallable, int1: i128 },
                     Int8Point0 { int0: i128 },
+                    Int8Point1 { int0: i128, int1: i128 },
                     Int9Point0 { int0: i128 },
-                    Int10Point0 { int0: i128, int_function0: IntCallable },
-                    Int10Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int10Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
-                    Int10Point3 { int0: i128 },
-                    Int10Point4 { int0: i128, int_function0: IntCallable },
-                    Int10Point5 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int9Point1 { int0: i128, int1: i128 },
+                    Int10Point0 { int0: i128 },
                     Int11Point0 { int0: i128 },
                     Int12Point0 { int0: i128, int_function0: IntCallable },
                     Int12Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
@@ -5164,16 +5420,27 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     Int12Point3 { int0: i128 },
                     Int12Point4 { int0: i128, int_function0: IntCallable },
                     Int12Point5 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int15Point0 { int0: i128 },
+                    Int13Point0 { int0: i128 },
+                    Int14Point0 { int0: i128, int_function0: IntCallable },
+                    Int14Point1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int14Point2 { int0: i128, int_function0: IntCallable, int1: i128, int2: i128 },
+                    Int14Point3 { int0: i128 },
+                    Int14Point4 { int0: i128, int_function0: IntCallable },
+                    Int14Point5 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int17Point0 { int0: i128 },
                     Bool0Point0 { int0: i128, bool0: bool },
                     Bool0Point1 { int0: i128, bool0: bool, bool_function0: BoolCallable },
-                    Bool2Point0 { bool0: bool },
-                    Bool3Point0 { int0: i128, bool_function0: BoolCallable },
-                    Bool3Point1 { int0: i128, bool_function0: BoolCallable, bool0: bool },
-                    Bool3Point2 { int0: i128, bool_function0: BoolCallable, bool0: bool, bool1: bool },
-                    Bool3Point3 { bool0: bool },
-                    Bool3Point4 { int0: i128, bool_function0: BoolCallable },
-                    Bool3Point5 { int0: i128, bool_function0: BoolCallable, int1: i128 },
+                    Bool1Point0 { int0: i128, bool0: bool },
+                    Bool1Point1 { int0: i128, bool0: bool, bool_function0: BoolCallable },
+                    Bool3Point0 { bool0: bool },
+                    Bool4Point0 { int0: i128, bool_function0: BoolCallable },
+                    Bool4Point1 { int0: i128, bool_function0: BoolCallable, bool0: bool },
+                    Bool4Point2 { int0: i128, bool_function0: BoolCallable, bool0: bool, bool1: bool },
+                    Bool4Point3 { bool0: bool },
+                    Bool4Point4 { int0: i128, bool_function0: BoolCallable },
+                    Bool4Point5 { int0: i128, bool_function0: BoolCallable, int1: i128 },
+                    Bool5Point0 { bool0: bool },
+                    Bool5Point1 { bool0: bool, bool1: bool },
                     Canonical { target: data::compiled::CallTarget, point: data::compiled::CompiledCheckpoint, values: CallValues },
                 }
                 impl FunctionState {
@@ -5191,68 +5458,53 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             Self::Int1Point1 { int0, int1, int_function0 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int3Point0 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
-                            },
-                            Self::Int3Point1 { int0, int1, int_function0 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
                             Self::Int4Point0 { int0, int1 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int4Point1 { int0, int1, int_function0 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int5Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            Self::Int5Point0 { int0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Int6Point0 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
-                            Self::Int6Point1 { int0, int_function0, int1 } => {
+                            Self::Int5Point1 { int0, int1, int_function0 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int6Point2 { int0, int_function0, int1, int2 } => {
+                            Self::Int6Point0 { int0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Int7Point0 { int0, int_function0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int7Point1 { int0, int_function0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int7Point2 { int0, int_function0, int1, int2 } => {
                                 CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int6Point3 { int0 } => {
+                            Self::Int7Point3 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Int6Point4 { int0, int_function0 } => {
+                            Self::Int7Point4 { int0, int_function0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int6Point5 { int0, int_function0, int1 } => {
+                            Self::Int7Point5 { int0, int_function0, int1 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
-                            Self::Int7Point0 { int0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
-                            },
-                            Self::Int7Point1 { int0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Int8Point0 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
+                            Self::Int8Point1 { int0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
                             Self::Int9Point0 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Int10Point0 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            Self::Int9Point1 { int0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Int10Point1 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
-                            Self::Int10Point2 { int0, int_function0, int1, int2 } => {
-                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
-                            Self::Int10Point3 { int0 } => {
+                            Self::Int10Point0 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
-                            },
-                            Self::Int10Point4 { int0, int_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
-                            },
-                            Self::Int10Point5 { int0, int_function0, int1 } => {
-                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
                             Self::Int11Point0 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
@@ -5275,7 +5527,28 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             Self::Int12Point5 { int0, int_function0, int1 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
                             },
-                            Self::Int15Point0 { int0 } => {
+                            Self::Int13Point0 { int0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Int14Point0 { int0, int_function0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int14Point1 { int0, int_function0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int14Point2 { int0, int_function0, int1, int2 } => {
+                                CallValues { ints: vec![int0.into(), int1.into(), int2.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int14Point3 { int0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Int14Point4 { int0, int_function0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int14Point5 { int0, int_function0, int1 } => {
+                                CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] }
+                            },
+                            Self::Int17Point0 { int0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Bool0Point0 { int0, bool0 } => {
@@ -5284,67 +5557,71 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             Self::Bool0Point1 { int0, bool0, bool_function0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
-                            Self::Bool2Point0 { bool0 } => {
-                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            Self::Bool1Point0 { int0, bool0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Bool3Point0 { int0, bool_function0 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
-                            },
-                            Self::Bool3Point1 { int0, bool_function0, bool0 } => {
+                            Self::Bool1Point1 { int0, bool0, bool_function0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
-                            Self::Bool3Point2 { int0, bool_function0, bool0, bool1 } => {
-                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
-                            },
-                            Self::Bool3Point3 { bool0 } => {
+                            Self::Bool3Point0 { bool0 } => {
                                 CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
-                            Self::Bool3Point4 { int0, bool_function0 } => {
+                            Self::Bool4Point0 { int0, bool_function0 } => {
                                 CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
                             },
-                            Self::Bool3Point5 { int0, bool_function0, int1 } => {
+                            Self::Bool4Point1 { int0, bool_function0, bool0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                            },
+                            Self::Bool4Point2 { int0, bool_function0, bool0, bool1 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                            },
+                            Self::Bool4Point3 { bool0 } => {
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Bool4Point4 { int0, bool_function0 } => {
+                                CallValues { ints: vec![int0.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                            },
+                            Self::Bool4Point5 { int0, bool_function0, int1 } => {
                                 CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] }
+                            },
+                            Self::Bool5Point0 { bool0 } => {
+                                CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
+                            },
+                            Self::Bool5Point1 { bool0, bool1 } => {
+                                CallValues { ints: vec![], bools: vec![bool0, bool1], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }
                             },
                             Self::Canonical { values, .. } => values,
                         }
                     }
                 }
                 enum IntReturn {
-                    Int6Call0 { int0: i128, int_function0: IntCallable },
-                    Int6Call1 { int0: i128, int_function0: IntCallable, int1: i128 },
-                    Int10Call0 { int0: i128, int_function0: IntCallable },
-                    Int10Call1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int7Call0 { int0: i128, int_function0: IntCallable },
+                    Int7Call1 { int0: i128, int_function0: IntCallable, int1: i128 },
                     Int12Call0 { int0: i128, int_function0: IntCallable },
                     Int12Call1 { int0: i128, int_function0: IntCallable, int1: i128 },
+                    Int14Call0 { int0: i128, int_function0: IntCallable },
+                    Int14Call1 { int0: i128, int_function0: IntCallable, int1: i128 },
                 }
                 impl IntReturn {
                     fn site(&self) -> data::source::HostCallSite {
                         match *self {
-                            Self::Int6Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)),
-                            Self::Int6Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)),
-                            Self::Int10Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)),
-                            Self::Int10Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)),
-                            Self::Int12Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)),
-                            Self::Int12Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4831, 4853)),
+                            Self::Int7Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(657, 667)),
+                            Self::Int7Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(649, 668)),
+                            Self::Int12Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(922, 932)),
+                            Self::Int12Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(917, 933)),
+                            Self::Int14Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5049, 5059)),
+                            Self::Int14Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5038, 5060)),
                         }
                     }
                     fn small(self, result: i128) -> FunctionState {
                         match self {
-                            Self::Int6Call0 { int0, int_function0 } => {
+                            Self::Int7Call0 { int0, int_function0 } => {
                                 let int1 = result;
-                                FunctionState::Int6Point1 { int0, int_function0, int1 }
+                                FunctionState::Int7Point1 { int0, int_function0, int1 }
                             },
-                            Self::Int6Call1 { int0, int_function0, int1 } => {
+                            Self::Int7Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
-                                FunctionState::Int6Point2 { int0, int_function0, int1, int2 }
-                            },
-                            Self::Int10Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Int10Point1 { int0, int_function0, int1 }
-                            },
-                            Self::Int10Call1 { int0, int_function0, int1 } => {
-                                let int2 = result;
-                                FunctionState::Int10Point2 { int0, int_function0, int1, int2 }
+                                FunctionState::Int7Point2 { int0, int_function0, int1, int2 }
                             },
                             Self::Int12Call0 { int0, int_function0 } => {
                                 let int1 = result;
@@ -5354,6 +5631,14 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 let int2 = result;
                                 FunctionState::Int12Point2 { int0, int_function0, int1, int2 }
                             },
+                            Self::Int14Call0 { int0, int_function0 } => {
+                                let int1 = result;
+                                FunctionState::Int14Point1 { int0, int_function0, int1 }
+                            },
+                            Self::Int14Call1 { int0, int_function0, int1 } => {
+                                let int2 = result;
+                                FunctionState::Int14Point2 { int0, int_function0, int1, int2 }
+                            },
                         }
                     }
                     fn resume(self, result: CallInteger) -> FunctionState {
@@ -5361,9 +5646,9 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             return self.small(result);
                         }
                         match self {
-                            Self::Int6Call0 { int0, int_function0 } => {
+                            Self::Int7Call0 { int0, int_function0 } => {
                                 let int1 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point: data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
                                     instruction: 1,
                                     ints: 2,
@@ -5377,41 +5662,9 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     bool_functions: 0,
                                 }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
                             },
-                            Self::Int6Call1 { int0, int_function0, int1 } => {
+                            Self::Int7Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 2,
-                                    ints: 3,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
-                            },
-                            Self::Int10Call0 { int0, int_function0 } => {
-                                let int1 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 1,
-                                    ints: 2,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
-                            },
-                            Self::Int10Call1 { int0, int_function0, int1 } => {
-                                let int2 = result;
-                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: data::compiled::CompiledCheckpoint {
+                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point: data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
                                     instruction: 2,
                                     ints: 3,
@@ -5444,6 +5697,38 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             Self::Int12Call1 { int0, int_function0, int1 } => {
                                 let int2 = result;
                                 FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(12)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 2,
+                                    ints: 3,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                }, values: CallValues { ints: vec![int0.into(), int1.into(), int2], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            },
+                            Self::Int14Call0 { int0, int_function0 } => {
+                                let int1 = result;
+                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(14)), point: data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 1,
+                                    ints: 2,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                }, values: CallValues { ints: vec![int0.into(), int1], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }
+                            },
+                            Self::Int14Call1 { int0, int_function0, int1 } => {
+                                let int2 = result;
+                                FunctionState::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(14)), point: data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
                                     instruction: 2,
                                     ints: 3,
@@ -5461,25 +5746,25 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     }
                 }
                 enum BoolReturn {
-                    Bool3Call0 { int0: i128, bool_function0: BoolCallable },
-                    Bool3Call1 { int0: i128, bool_function0: BoolCallable, bool0: bool },
+                    Bool4Call0 { int0: i128, bool_function0: BoolCallable },
+                    Bool4Call1 { int0: i128, bool_function0: BoolCallable, bool0: bool },
                 }
                 impl BoolReturn {
                     fn site(&self) -> data::source::HostCallSite {
                         match *self {
-                            Self::Bool3Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)),
-                            Self::Bool3Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)),
+                            Self::Bool4Call0 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3337, 3347)),
+                            Self::Bool4Call1 { .. } => data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3324, 3348)),
                         }
                     }
                     fn small(self, result: bool) -> FunctionState {
                         match self {
-                            Self::Bool3Call0 { int0, bool_function0 } => {
+                            Self::Bool4Call0 { int0, bool_function0 } => {
                                 let bool0 = result;
-                                FunctionState::Bool3Point1 { int0, bool_function0, bool0 }
+                                FunctionState::Bool4Point1 { int0, bool_function0, bool0 }
                             },
-                            Self::Bool3Call1 { int0, bool_function0, bool0 } => {
+                            Self::Bool4Call1 { int0, bool_function0, bool0 } => {
                                 let bool1 = result;
-                                FunctionState::Bool3Point2 { int0, bool_function0, bool0, bool1 }
+                                FunctionState::Bool4Point2 { int0, bool_function0, bool0, bool1 }
                             },
                         }
                     }
@@ -5522,22 +5807,32 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     IntTail { callee: FunctionState, completed: FunctionState, point: data::compiled::CompiledCheckpoint },
                     Int { value: i128, exit: data::graph::BlockGraphExitId },
                     IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
+                    IntScalarBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: IntReturn },
                     BoolCall { callee: FunctionState, caller: BoolReturn },
                     BoolTail { callee: FunctionState, completed: FunctionState, point: data::compiled::CompiledCheckpoint },
                     Bool { value: bool, exit: data::graph::BlockGraphExitId },
                     BoolBridge { function: data::function::BoolFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: BoolReturn },
+                    BoolScalarBridge { function: data::function::BoolFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: BoolReturn },
                 }
                 struct FunctionExecution {
-                    active: Option<FunctionState>,
+                    active: Option<FunctionActive>,
                     integer_returns: Vec<IntReturn>,
                     boolean_returns: Vec<BoolReturn>,
                     integer_function_returns: Vec<IntFunctionReturn>,
                     boolean_function_returns: Vec<BoolFunctionReturn>,
                 }
+                #[allow(clippy::large_enum_variant, reason = "The suspended caller stays in its existing execution allocation.")]
+                enum FunctionActive {
+                    Running(FunctionState),
+                    IntCall { function: data::function::IntFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: IntReturn },
+                    IntReturn { caller: IntReturn, returned: CallNativeReturn<CallInteger> },
+                    BoolCall { function: data::function::BoolFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: BoolReturn },
+                    BoolReturn { caller: BoolReturn, returned: CallNativeReturn<bool> },
+                }
                 impl FunctionExecution {
                     fn new(active: FunctionState) -> Self {
                         Self {
-                            active: Some(active),
+                            active: Some(FunctionActive::Running(active)),
                             integer_returns: Vec::new(),
                             boolean_returns: Vec::new(),
                             integer_function_returns: Vec::new(),
@@ -5551,7 +5846,6 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         let active = match target {
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(0)) => calls_int_0_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(1)) => calls_int_1_state(point, values),
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(3)) => calls_int_3_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(4)) => calls_int_4_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(5)) => calls_int_5_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(6)) => calls_int_6_state(point, values),
@@ -5561,26 +5855,67 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(10)) => calls_int_10_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(11)) => calls_int_11_state(point, values),
                             data::compiled::CallTarget::Int(data::function::IntFunctionId(12)) => calls_int_12_state(point, values),
-                            data::compiled::CallTarget::Int(data::function::IntFunctionId(15)) => calls_int_15_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(13)) => calls_int_13_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(14)) => calls_int_14_state(point, values),
+                            data::compiled::CallTarget::Int(data::function::IntFunctionId(17)) => calls_int_17_state(point, values),
                             data::compiled::CallTarget::Bool(data::function::BoolFunctionId(0)) => calls_bool_0_state(point, values),
-                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)) => calls_bool_2_state(point, values),
+                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)) => calls_bool_1_state(point, values),
                             data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)) => calls_bool_3_state(point, values),
+                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)) => calls_bool_4_state(point, values),
+                            data::compiled::CallTarget::Bool(data::function::BoolFunctionId(5)) => calls_bool_5_state(point, values),
                             _ => None,
                         };
                         let Some(active) = active else { return false; };
-                        self.active = Some(active);
+                        self.active = Some(FunctionActive::Running(active));
                         true
                     }
                     fn retained_bytes(&self) -> usize {
                         std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
                     }
                     fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                        let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                        let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
+                        let mut active = match active {
+                            FunctionActive::Running(active) => active,
+                            FunctionActive::IntCall { function, site, input, caller } => {
+                                return CallProgress::Int {
+                                    function, site, arguments: input.arguments(),
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                };
+                            },
+                            FunctionActive::IntReturn { caller, returned } => {
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                    return CallProgress::Yield(self);
+                                }
+                                *budget -= 1;
+                                caller.resume(returned.into_value())
+                            },
+                            FunctionActive::BoolCall { function, site, input, caller } => {
+                                return CallProgress::Bool {
+                                    function, site, arguments: input.arguments(),
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                };
+                            },
+                            FunctionActive::BoolReturn { caller, returned } => {
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                                    return CallProgress::Yield(self);
+                                }
+                                *budget -= 1;
+                                caller.resume(returned.into_value())
+                            },
+                        };
                         loop {
                             match function_step(active, ops, budget) {
                                 FunctionStep::Next(next) => active = next,
                                 FunctionStep::Yield(active) => {
-                                    self.active = Some(active);
+                                    self.active = Some(FunctionActive::Running(active));
                                     return CallProgress::Yield(self);
                                 },
                                 FunctionStep::IntCall { callee, caller } => {
@@ -5608,9 +5943,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
                                     function, site, arguments,
                                     resume: Box::new(move |value| {
-                                        self.active = Some(caller.resume(value));
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                         self
                                     }),
+                                },
+                                FunctionStep::IntScalarBridge { function, site, input, caller } => {
+                                    return CallProgress::Int {
+                                        function, site, arguments: input.arguments(),
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                            self
+                                        }),
+                                    };
                                 },
                                 FunctionStep::BoolCall { callee, caller } => {
                                     self.boolean_returns.push(caller);
@@ -5637,9 +5981,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 FunctionStep::BoolBridge { function, site, arguments, caller } => return CallProgress::Bool {
                                     function, site, arguments,
                                     resume: Box::new(move |value| {
-                                        self.active = Some(caller.resume(value));
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                         self
                                     }),
+                                },
+                                FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+                                    return CallProgress::Bool {
+                                        function, site, arguments: input.arguments(),
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                            self
+                                        }),
+                                    };
                                 },
                                 FunctionStep::Canonical { target, point, values } => {
                                     match target {
@@ -5649,7 +6002,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return CallProgress::InterpretedInt {
                                                     function, site, point, values,
                                                     resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                         self
                                                     }),
                                                 };
@@ -5662,7 +6015,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return CallProgress::InterpretedBool {
                                                     function, site, point, values,
                                                     resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                         self
                                                     }),
                                                 };
@@ -5675,7 +6028,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return CallProgress::InterpretedIntFunction {
                                                     function, site, point, values,
                                                     resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                         self
                                                     }),
                                                 };
@@ -5688,12 +6041,257 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return CallProgress::InterpretedBoolFunction {
                                                     function, site, point, values,
                                                     resume: Box::new(move |value| {
-                                                        self.active = Some(caller.resume(value));
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                         self
                                                     }),
                                                 };
                                             }
                                             return CallProgress::Interpreted { point, values };
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                    fn advance_native(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize, native: &mut CallNativeOps<'_>) -> Result<Option<CallProgress>, CallNativeFailure> {
+                        let Some(active) = self.active.take() else { return Ok(Some(CallProgress::Yield(self))); };
+                        let mut active = match active {
+                            FunctionActive::Running(active) => active,
+                            FunctionActive::IntCall { function, site, input, caller } => {
+                                if let CallNativeOps::Int { function: target, native } = native && *target == function {
+                                    if *budget == 0 {
+                                        self.active = Some(FunctionActive::IntCall { function, site, input, caller });
+                                        return Ok(Some(CallProgress::Yield(self)));
+                                    }
+                                    *budget -= 1;
+                                    let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                    if *budget == 0 {
+                                        self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                        return Ok(Some(CallProgress::Yield(self)));
+                                    }
+                                    *budget -= 1;
+                                    caller.resume(returned.into_value())
+                                } else {
+                                    return Ok(Some(CallProgress::Int {
+                                        function, site, arguments: input.arguments(),
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                            self
+                                        }),
+                                    }));
+                                }
+                            },
+                            FunctionActive::IntReturn { caller, returned } => {
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                    return Ok(Some(CallProgress::Yield(self)));
+                                }
+                                *budget -= 1;
+                                caller.resume(returned.into_value())
+                            },
+                            FunctionActive::BoolCall { function, site, input, caller } => {
+                                if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                                    if *budget == 0 {
+                                        self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                                        return Ok(Some(CallProgress::Yield(self)));
+                                    }
+                                    *budget -= 1;
+                                    let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                    if *budget == 0 {
+                                        self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                                        return Ok(Some(CallProgress::Yield(self)));
+                                    }
+                                    *budget -= 1;
+                                    caller.resume(returned.into_value())
+                                } else {
+                                    return Ok(Some(CallProgress::Bool {
+                                        function, site, arguments: input.arguments(),
+                                        resume: Box::new(move |value| {
+                                            self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                            self
+                                        }),
+                                    }));
+                                }
+                            },
+                            FunctionActive::BoolReturn { caller, returned } => {
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                                    return Ok(Some(CallProgress::Yield(self)));
+                                }
+                                *budget -= 1;
+                                caller.resume(returned.into_value())
+                            },
+                        };
+                        loop {
+                            match function_step(active, ops, budget) {
+                                FunctionStep::Next(next) => active = next,
+                                FunctionStep::Yield(active) => {
+                                    self.active = Some(FunctionActive::Running(active));
+                                    return Ok(Some(CallProgress::Yield(self)));
+                                },
+                                FunctionStep::IntCall { callee, caller } => {
+                                    self.integer_returns.push(caller);
+                                    active = callee;
+                                },
+                                FunctionStep::IntTail { callee, completed, point } => {
+                                    if self.integer_returns.is_empty() {
+                                        return Ok(Some(CallProgress::Interpreted { point, values: completed.values() }));
+                                    }
+                                    *budget -= 1;
+                                    active = callee;
+                                },
+                                FunctionStep::Int { value, exit } => {
+                                    if let Some(caller) = self.integer_returns.pop() {
+                                        active = caller.small(value);
+                                    } else {
+                                        self.integer_returns.clear();
+                                        self.boolean_returns.clear();
+                                        self.integer_function_returns.clear();
+                                        self.boolean_function_returns.clear();
+                                        return Ok(Some(CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self }));
+                                    }
+                                },
+                                FunctionStep::IntBridge { function, site, arguments, caller } => return Ok(Some(CallProgress::Int {
+                                    function, site, arguments,
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                })),
+                                FunctionStep::IntScalarBridge { function, site, input, caller } => {
+                                    active = {
+                                        if let CallNativeOps::Int { function: target, native } = native && *target == function {
+                                            if *budget == 0 {
+                                                self.active = Some(FunctionActive::IntCall { function, site, input, caller });
+                                                return Ok(Some(CallProgress::Yield(self)));
+                                            }
+                                            *budget -= 1;
+                                            let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                            if *budget == 0 {
+                                                self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                                return Ok(Some(CallProgress::Yield(self)));
+                                            }
+                                            *budget -= 1;
+                                            caller.resume(returned.into_value())
+                                        } else {
+                                            return Ok(Some(CallProgress::Int {
+                                                function, site, arguments: input.arguments(),
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                    };
+                                },
+                                FunctionStep::BoolCall { callee, caller } => {
+                                    self.boolean_returns.push(caller);
+                                    active = callee;
+                                },
+                                FunctionStep::BoolTail { callee, completed, point } => {
+                                    if self.boolean_returns.is_empty() {
+                                        return Ok(Some(CallProgress::Interpreted { point, values: completed.values() }));
+                                    }
+                                    *budget -= 1;
+                                    active = callee;
+                                },
+                                FunctionStep::Bool { value, exit } => {
+                                    if let Some(caller) = self.boolean_returns.pop() {
+                                        active = caller.small(value);
+                                    } else {
+                                        self.integer_returns.clear();
+                                        self.boolean_returns.clear();
+                                        self.integer_function_returns.clear();
+                                        self.boolean_function_returns.clear();
+                                        return Ok(Some(CallProgress::Complete { exit, output: CallOutput::Bool(value), execution: self }));
+                                    }
+                                },
+                                FunctionStep::BoolBridge { function, site, arguments, caller } => return Ok(Some(CallProgress::Bool {
+                                    function, site, arguments,
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                })),
+                                FunctionStep::BoolScalarBridge { function, site, input, caller } => {
+                                    active = {
+                                        if let CallNativeOps::Bool { function: target, native } = native && *target == function {
+                                            if *budget == 0 {
+                                                self.active = Some(FunctionActive::BoolCall { function, site, input, caller });
+                                                return Ok(Some(CallProgress::Yield(self)));
+                                            }
+                                            *budget -= 1;
+                                            let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                            if *budget == 0 {
+                                                self.active = Some(FunctionActive::BoolReturn { caller, returned });
+                                                return Ok(Some(CallProgress::Yield(self)));
+                                            }
+                                            *budget -= 1;
+                                            caller.resume(returned.into_value())
+                                        } else {
+                                            return Ok(Some(CallProgress::Bool {
+                                                function, site, arguments: input.arguments(),
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                    };
+                                },
+                                FunctionStep::Canonical { target, point, values } => {
+                                    match target {
+                                        data::compiled::CallTarget::Int(function) => {
+                                            if let Some(caller) = self.integer_returns.pop() {
+                                                let site = caller.site();
+                                                return Ok(Some(CallProgress::InterpretedInt {
+                                                    function, site, point, values,
+                                                    resume: Box::new(move |value| {
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                        self
+                                                    }),
+                                                }));
+                                            }
+                                            return Ok(Some(CallProgress::Interpreted { point, values }));
+                                        },
+                                        data::compiled::CallTarget::Bool(function) => {
+                                            if let Some(caller) = self.boolean_returns.pop() {
+                                                let site = caller.site();
+                                                return Ok(Some(CallProgress::InterpretedBool {
+                                                    function, site, point, values,
+                                                    resume: Box::new(move |value| {
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                        self
+                                                    }),
+                                                }));
+                                            }
+                                            return Ok(Some(CallProgress::Interpreted { point, values }));
+                                        },
+                                        data::compiled::CallTarget::IntFunction(function) => {
+                                            if let Some(caller) = self.integer_function_returns.pop() {
+                                                let site = caller.site();
+                                                return Ok(Some(CallProgress::InterpretedIntFunction {
+                                                    function, site, point, values,
+                                                    resume: Box::new(move |value| {
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                        self
+                                                    }),
+                                                }));
+                                            }
+                                            return Ok(Some(CallProgress::Interpreted { point, values }));
+                                        },
+                                        data::compiled::CallTarget::BoolFunction(function) => {
+                                            if let Some(caller) = self.boolean_function_returns.pop() {
+                                                let site = caller.site();
+                                                return Ok(Some(CallProgress::InterpretedBoolFunction {
+                                                    function, site, point, values,
+                                                    resume: Box::new(move |value| {
+                                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                        self
+                                                    }),
+                                                }));
+                                            }
+                                            return Ok(Some(CallProgress::Interpreted { point, values }));
                                         },
                                     }
                                 },
@@ -5707,7 +6305,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         FunctionState::Int0Point0 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point0 { int0, int1 }); }
                             *budget -= 1;
-                            let int_function0 = ops.int_closure(data::function::IntFunctionId(5), data::type_::FunctionType {
+                            let int_function0 = ops.int_closure(data::function::IntFunctionId(6), data::type_::FunctionType {
                                 arguments: data::Storage::Static(&[]),
                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                             }, vec![CallCapture::int(data::graph::IntLocalId(0), int1)]);
@@ -5715,7 +6313,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         },
                         FunctionState::Int0Point1 { int0, int1, int_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int0Point1 { int0, int1, int_function0 }); }
-                            FunctionStep::IntTail { callee: FunctionState::Int6Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int0Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
+                            FunctionStep::IntTail { callee: FunctionState::Int7Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int0Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(0),
                                 instruction: 1,
                                 ints: 2,
@@ -5732,7 +6330,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         FunctionState::Int1Point0 { int0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point0 { int0, int1 }); }
                             *budget -= 1;
-                            let int_function0 = ops.int_closure(data::function::IntFunctionId(7), data::type_::FunctionType {
+                            let int_function0 = ops.int_closure(data::function::IntFunctionId(8), data::type_::FunctionType {
                                 arguments: data::Storage::Static(&[]),
                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                             }, vec![CallCapture::int(data::graph::IntLocalId(0), int1)]);
@@ -5740,32 +6338,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         },
                         FunctionState::Int1Point1 { int0, int1, int_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int1Point1 { int0, int1, int_function0 }); }
-                            FunctionStep::IntTail { callee: FunctionState::Int6Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int1Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
-                                block: data::graph::BlockId(0),
-                                instruction: 1,
-                                ints: 2,
-                                bools: 0,
-                                bit_arrays: 0,
-                                int_lists: 0,
-                                strings: 0,
-                                customs: 0,
-                                custom_lists: 0,
-                                int_functions: 1,
-                                bool_functions: 0,
-                            } }
-                        },
-                        FunctionState::Int3Point0 { int0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point0 { int0, int1 }); }
-                            *budget -= 1;
-                            let int_function0 = ops.int_closure(data::function::IntFunctionId(9), data::type_::FunctionType {
-                                arguments: data::Storage::Static(&[]),
-                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                            }, vec![CallCapture::int(data::graph::IntLocalId(0), int1)]);
-                            FunctionStep::Next(FunctionState::Int3Point1 { int0, int1, int_function0 })
-                        },
-                        FunctionState::Int3Point1 { int0, int1, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int3Point1 { int0, int1, int_function0 }); }
-                            FunctionStep::IntTail { callee: FunctionState::Int10Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int3Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
+                            FunctionStep::IntTail { callee: FunctionState::Int7Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int1Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(0),
                                 instruction: 1,
                                 ints: 2,
@@ -5804,45 +6377,70 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 bool_functions: 0,
                             } }
                         },
-                        FunctionState::Int5Point0 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point0 { int0 }); }
+                        FunctionState::Int5Point0 { int0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point0 { int0, int1 }); }
+                            *budget -= 1;
+                            let int_function0 = ops.int_closure(data::function::IntFunctionId(13), data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[]),
+                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                            }, vec![CallCapture::int(data::graph::IntLocalId(0), int1)]);
+                            FunctionStep::Next(FunctionState::Int5Point1 { int0, int1, int_function0 })
+                        },
+                        FunctionState::Int5Point1 { int0, int1, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int5Point1 { int0, int1, int_function0 }); }
+                            FunctionStep::IntTail { callee: FunctionState::Int14Point0 { int0, int_function0: int_function0.clone() }, completed: FunctionState::Int5Point1 { int0, int1, int_function0 }, point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 1,
+                                ints: 2,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 1,
+                                bool_functions: 0,
+                            } }
+                        },
+                        FunctionState::Int6Point0 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point0 { int0 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
                         },
-                        FunctionState::Int6Point0 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point0 { int0, int_function0 }); }
+                        FunctionState::Int7Point0 { int0, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point0 { int0, int_function0 }); }
                             *budget -= 1;
                             let callable = &int_function0;
                             let captures = callable.captures();
                             let target = callable.target();
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
-                                return FunctionStep::IntCall { callee, caller: IntReturn::Int6Call0 { int0, int_function0 } };
+                                return FunctionStep::IntCall { callee, caller: IntReturn::Int7Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int6Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(657, 667)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int7Call0 { int0, int_function0 } }
                         },
-                        FunctionState::Int6Point1 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point1 { int0, int_function0, int1 }); }
+                        FunctionState::Int7Point1 { int0, int_function0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::IntBridge { function: data::function::IntFunctionId(13), site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int6Call1 { int0, int_function0, int1 } }
+                            FunctionStep::IntScalarBridge { function: data::function::IntFunctionId(15), site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(649, 668)), input: CallNativeInput::Int(int1.into()), caller: IntReturn::Int7Call1 { int0, int_function0, int1 } }
                         },
-                        FunctionState::Int6Point2 { int0, int_function0, int1, int2 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point2 { int0, int_function0, int1, int2 }); }
+                        FunctionState::Int7Point2 { int0, int_function0, int1, int2 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point2 { int0, int_function0, int1, int2 }); }
                             *budget -= 1;
                             match int0 {
-                                1_i128 => FunctionStep::Next(FunctionState::Int6Point3 { int0: int2 }),
-                                _ => FunctionStep::Next(FunctionState::Int6Point4 { int0, int_function0: int_function0.clone() }),
+                                1_i128 => FunctionStep::Next(FunctionState::Int7Point3 { int0: int2 }),
+                                _ => FunctionStep::Next(FunctionState::Int7Point4 { int0, int_function0: int_function0.clone() }),
                             }
                         },
-                        FunctionState::Int6Point3 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point3 { int0 }); }
+                        FunctionState::Int7Point3 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point3 { int0 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
                         },
-                        FunctionState::Int6Point4 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point4 { int0, int_function0 }); }
+                        FunctionState::Int7Point4 { int0, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point4 { int0, int_function0 }); }
                             *budget -= 1;
                             let int1 = int0 - 1_i128;
-                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)), point: data::compiled::CompiledCheckpoint {
+                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(2),
                                 instruction: 1,
                                 ints: 2,
@@ -5855,18 +6453,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 int_functions: 1,
                                 bool_functions: 0,
                             }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
-                            FunctionStep::Next(FunctionState::Int6Point5 { int0, int_function0, int1 })
+                            FunctionStep::Next(FunctionState::Int7Point5 { int0, int_function0, int1 })
                         },
-                        FunctionState::Int6Point5 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int6Point5 { int0, int_function0, int1 }); }
+                        FunctionState::Int7Point5 { int0, int_function0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point5 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Int6Point0 { int0: int1, int_function0: int_function0.clone() })
+                            FunctionStep::Next(FunctionState::Int7Point0 { int0: int1, int_function0: int_function0.clone() })
                         },
-                        FunctionState::Int7Point0 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point0 { int0 }); }
+                        FunctionState::Int8Point0 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point0 { int0 }); }
                             *budget -= 1;
                             let int1 = int0 + 1_i128;
-                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)), point: data::compiled::CompiledCheckpoint {
+                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)), point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(0),
                                 instruction: 1,
                                 ints: 2,
@@ -5879,60 +6477,21 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 int_functions: 0,
                                 bool_functions: 0,
                             }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int1 }); }
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point1 { int0, int1 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
                         },
-                        FunctionState::Int7Point1 { int0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int7Point1 { int0, int1 }); }
+                        FunctionState::Int8Point1 { int0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point1 { int0, int1 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int8Point0 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int8Point0 { int0 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
                         },
                         FunctionState::Int9Point0 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point0 { int0 }); }
                             *budget -= 1;
-                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int10Point0 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point0 { int0, int_function0 }); }
-                            *budget -= 1;
-                            let callable = &int_function0;
-                            let captures = callable.captures();
-                            let target = callable.target();
-                            if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
-                                return FunctionStep::IntCall { callee, caller: IntReturn::Int10Call0 { int0, int_function0 } };
-                            }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int10Call0 { int0, int_function0 } }
-                        },
-                        FunctionState::Int10Point1 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point1 { int0, int_function0, int1 }); }
-                            *budget -= 1;
-                            FunctionStep::IntBridge { function: data::function::IntFunctionId(14), site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)), arguments: CallArguments { values: CallValues { ints: vec![int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int10Call1 { int0, int_function0, int1 } }
-                        },
-                        FunctionState::Int10Point2 { int0, int_function0, int1, int2 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point2 { int0, int_function0, int1, int2 }); }
-                            *budget -= 1;
-                            match int0 {
-                                1_i128 => FunctionStep::Next(FunctionState::Int10Point3 { int0: int2 }),
-                                _ => FunctionStep::Next(FunctionState::Int10Point4 { int0, int_function0: int_function0.clone() }),
-                            }
-                        },
-                        FunctionState::Int10Point3 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point3 { int0 }); }
-                            *budget -= 1;
-                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
-                        },
-                        FunctionState::Int10Point4 { int0, int_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point4 { int0, int_function0 }); }
-                            *budget -= 1;
-                            let int1 = int0 - 1_i128;
-                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)), point: data::compiled::CompiledCheckpoint {
-                                block: data::graph::BlockId(2),
+                            let int1 = int0 + 1_i128;
+                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(9)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
                                 instruction: 1,
                                 ints: 2,
                                 bools: 0,
@@ -5941,15 +6500,22 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 strings: 0,
                                 customs: 0,
                                 custom_lists: 0,
-                                int_functions: 1,
+                                int_functions: 0,
                                 bool_functions: 0,
-                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
-                            FunctionStep::Next(FunctionState::Int10Point5 { int0, int_function0, int1 })
-                        },
-                        FunctionState::Int10Point5 { int0, int_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point5 { int0, int_function0, int1 }); }
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] } }; }
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point1 { int0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Int10Point0 { int0: int1, int_function0: int_function0.clone() })
+                            FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
+                        },
+                        FunctionState::Int9Point1 { int0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int9Point1 { int0, int1 }); }
+                            *budget -= 1;
+                            FunctionStep::Int { value: int1, exit: data::graph::BlockGraphExitId(0) }
+                        },
+                        FunctionState::Int10Point0 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int10Point0 { int0 }); }
+                            *budget -= 1;
+                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
                         },
                         FunctionState::Int11Point0 { int0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point0 { int0 }); }
@@ -5965,12 +6531,12 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
                                 return FunctionStep::IntCall { callee, caller: IntReturn::Int12Call0 { int0, int_function0 } };
                             }
-                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int12Call0 { int0, int_function0 } }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(922, 932)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int12Call0 { int0, int_function0 } }
                         },
                         FunctionState::Int12Point1 { int0, int_function0, int1 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int12Point1 { int0, int_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::IntCall { callee: FunctionState::Int15Point0 { int0: int1 }, caller: IntReturn::Int12Call1 { int0, int_function0, int1 } }
+                            FunctionStep::IntScalarBridge { function: data::function::IntFunctionId(16), site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(917, 933)), input: CallNativeInput::Int(int1.into()), caller: IntReturn::Int12Call1 { int0, int_function0, int1 } }
                         },
                         FunctionState::Int12Point2 { int0, int_function0, int1, int2 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Int12Point2 { int0, int_function0, int1, int2 }); }
@@ -6009,15 +6575,73 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             *budget -= 1;
                             FunctionStep::Next(FunctionState::Int12Point0 { int0: int1, int_function0: int_function0.clone() })
                         },
-                        FunctionState::Int15Point0 { int0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int15Point0 { int0 }); }
+                        FunctionState::Int13Point0 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int13Point0 { int0 }); }
+                            *budget -= 1;
+                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
+                        },
+                        FunctionState::Int14Point0 { int0, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point0 { int0, int_function0 }); }
+                            *budget -= 1;
+                            let callable = &int_function0;
+                            let captures = callable.captures();
+                            let target = callable.target();
+                            if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_0(target, &captures, ()) {
+                                return FunctionStep::IntCall { callee, caller: IntReturn::Int14Call0 { int0, int_function0 } };
+                            }
+                            FunctionStep::IntBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5049, 5059)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: IntReturn::Int14Call0 { int0, int_function0 } }
+                        },
+                        FunctionState::Int14Point1 { int0, int_function0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point1 { int0, int_function0, int1 }); }
+                            *budget -= 1;
+                            FunctionStep::IntCall { callee: FunctionState::Int17Point0 { int0: int1 }, caller: IntReturn::Int14Call1 { int0, int_function0, int1 } }
+                        },
+                        FunctionState::Int14Point2 { int0, int_function0, int1, int2 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point2 { int0, int_function0, int1, int2 }); }
+                            *budget -= 1;
+                            match int0 {
+                                1_i128 => FunctionStep::Next(FunctionState::Int14Point3 { int0: int2 }),
+                                _ => FunctionStep::Next(FunctionState::Int14Point4 { int0, int_function0: int_function0.clone() }),
+                            }
+                        },
+                        FunctionState::Int14Point3 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point3 { int0 }); }
+                            *budget -= 1;
+                            FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
+                        },
+                        FunctionState::Int14Point4 { int0, int_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point4 { int0, int_function0 }); }
+                            *budget -= 1;
+                            let int1 = int0 - 1_i128;
+                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Int(data::function::IntFunctionId(14)), point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(2),
+                                instruction: 1,
+                                ints: 2,
+                                bools: 0,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 1,
+                                bool_functions: 0,
+                            }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![int_function0], bool_functions: vec![] } }; }
+                            FunctionStep::Next(FunctionState::Int14Point5 { int0, int_function0, int1 })
+                        },
+                        FunctionState::Int14Point5 { int0, int_function0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int14Point5 { int0, int_function0, int1 }); }
+                            *budget -= 1;
+                            FunctionStep::Next(FunctionState::Int14Point0 { int0: int1, int_function0: int_function0.clone() })
+                        },
+                        FunctionState::Int17Point0 { int0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Int17Point0 { int0 }); }
                             *budget -= 1;
                             FunctionStep::Int { value: int0, exit: data::graph::BlockGraphExitId(0) }
                         },
                         FunctionState::Bool0Point0 { int0, bool0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point0 { int0, bool0 }); }
                             *budget -= 1;
-                            let bool_function0 = ops.bool_closure(data::function::BoolFunctionId(2), data::type_::FunctionType {
+                            let bool_function0 = ops.bool_closure(data::function::BoolFunctionId(3), data::type_::FunctionType {
                                 arguments: data::Storage::Static(&[]),
                                 return_: data::Storage::Static(&data::type_::ValueType::Bool),
                             }, vec![CallCapture::bool(data::graph::BoolLocalId(0), bool0)]);
@@ -6025,7 +6649,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         },
                         FunctionState::Bool0Point1 { int0, bool0, bool_function0 } => {
                             if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool0Point1 { int0, bool0, bool_function0 }); }
-                            FunctionStep::BoolTail { callee: FunctionState::Bool3Point0 { int0, bool_function0: bool_function0.clone() }, completed: FunctionState::Bool0Point1 { int0, bool0, bool_function0 }, point: data::compiled::CompiledCheckpoint {
+                            FunctionStep::BoolTail { callee: FunctionState::Bool4Point0 { int0, bool_function0: bool_function0.clone() }, completed: FunctionState::Bool0Point1 { int0, bool0, bool_function0 }, point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(0),
                                 instruction: 1,
                                 ints: 1,
@@ -6039,45 +6663,70 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 bool_functions: 1,
                             } }
                         },
-                        FunctionState::Bool2Point0 { bool0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool2Point0 { bool0 }); }
+                        FunctionState::Bool1Point0 { int0, bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point0 { int0, bool0 }); }
+                            *budget -= 1;
+                            let bool_function0 = ops.bool_closure(data::function::BoolFunctionId(5), data::type_::FunctionType {
+                                arguments: data::Storage::Static(&[]),
+                                return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                            }, vec![CallCapture::bool(data::graph::BoolLocalId(0), bool0)]);
+                            FunctionStep::Next(FunctionState::Bool1Point1 { int0, bool0, bool_function0 })
+                        },
+                        FunctionState::Bool1Point1 { int0, bool0, bool_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool1Point1 { int0, bool0, bool_function0 }); }
+                            FunctionStep::BoolTail { callee: FunctionState::Bool4Point0 { int0, bool_function0: bool_function0.clone() }, completed: FunctionState::Bool1Point1 { int0, bool0, bool_function0 }, point: data::compiled::CompiledCheckpoint {
+                                block: data::graph::BlockId(0),
+                                instruction: 1,
+                                ints: 1,
+                                bools: 1,
+                                bit_arrays: 0,
+                                int_lists: 0,
+                                strings: 0,
+                                customs: 0,
+                                custom_lists: 0,
+                                int_functions: 0,
+                                bool_functions: 1,
+                            } }
+                        },
+                        FunctionState::Bool3Point0 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point0 { bool0 }); }
                             *budget -= 1;
                             FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
                         },
-                        FunctionState::Bool3Point0 { int0, bool_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point0 { int0, bool_function0 }); }
+                        FunctionState::Bool4Point0 { int0, bool_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point0 { int0, bool_function0 }); }
                             *budget -= 1;
                             let callable = &bool_function0;
                             let captures = callable.captures();
                             let target = callable.target();
                             if ops.belongs_to_execution(&captures) && let Some(callee) = calls_entry_1(target, &captures, ()) {
-                                return FunctionStep::BoolCall { callee, caller: BoolReturn::Bool3Call0 { int0, bool_function0 } };
+                                return FunctionStep::BoolCall { callee, caller: BoolReturn::Bool4Call0 { int0, bool_function0 } };
                             }
-                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool3Call0 { int0, bool_function0 } }
+                            FunctionStep::BoolBridge { function: target, site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3337, 3347)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: Some(captures.retain()) }, caller: BoolReturn::Bool4Call0 { int0, bool_function0 } }
                         },
-                        FunctionState::Bool3Point1 { int0, bool_function0, bool0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point1 { int0, bool_function0, bool0 }); }
+                        FunctionState::Bool4Point1 { int0, bool_function0, bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point1 { int0, bool_function0, bool0 }); }
                             *budget -= 1;
-                            FunctionStep::BoolBridge { function: data::function::BoolFunctionId(5), site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)), arguments: CallArguments { values: CallValues { ints: vec![], bools: vec![bool0], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: BoolReturn::Bool3Call1 { int0, bool_function0, bool0 } }
+                            FunctionStep::BoolScalarBridge { function: data::function::BoolFunctionId(7), site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3324, 3348)), input: CallNativeInput::Bool(bool0), caller: BoolReturn::Bool4Call1 { int0, bool_function0, bool0 } }
                         },
-                        FunctionState::Bool3Point2 { int0, bool_function0, bool0, bool1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point2 { int0, bool_function0, bool0, bool1 }); }
+                        FunctionState::Bool4Point2 { int0, bool_function0, bool0, bool1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point2 { int0, bool_function0, bool0, bool1 }); }
                             *budget -= 1;
                             match int0 {
-                                1_i128 => FunctionStep::Next(FunctionState::Bool3Point3 { bool0: bool1 }),
-                                _ => FunctionStep::Next(FunctionState::Bool3Point4 { int0, bool_function0: bool_function0.clone() }),
+                                1_i128 => FunctionStep::Next(FunctionState::Bool4Point3 { bool0: bool1 }),
+                                _ => FunctionStep::Next(FunctionState::Bool4Point4 { int0, bool_function0: bool_function0.clone() }),
                             }
                         },
-                        FunctionState::Bool3Point3 { bool0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point3 { bool0 }); }
+                        FunctionState::Bool4Point3 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point3 { bool0 }); }
                             *budget -= 1;
                             FunctionStep::Bool { value: bool0, exit: data::graph::BlockGraphExitId(0) }
                         },
-                        FunctionState::Bool3Point4 { int0, bool_function0 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point4 { int0, bool_function0 }); }
+                        FunctionState::Bool4Point4 { int0, bool_function0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point4 { int0, bool_function0 }); }
                             *budget -= 1;
                             let int1 = int0 - 1_i128;
-                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)), point: data::compiled::CompiledCheckpoint {
+                            if int1 < i128::from(i64::MIN) || int1 > i128::from(i64::MAX) { return FunctionStep::Canonical { target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)), point: data::compiled::CompiledCheckpoint {
                                 block: data::graph::BlockId(2),
                                 instruction: 1,
                                 ints: 2,
@@ -6090,30 +6739,45 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 int_functions: 0,
                                 bool_functions: 1,
                             }, values: CallValues { ints: vec![int0.into(), int1.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![bool_function0] } }; }
-                            FunctionStep::Next(FunctionState::Bool3Point5 { int0, bool_function0, int1 })
+                            FunctionStep::Next(FunctionState::Bool4Point5 { int0, bool_function0, int1 })
                         },
-                        FunctionState::Bool3Point5 { int0, bool_function0, int1 } => {
-                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool3Point5 { int0, bool_function0, int1 }); }
+                        FunctionState::Bool4Point5 { int0, bool_function0, int1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool4Point5 { int0, bool_function0, int1 }); }
                             *budget -= 1;
-                            FunctionStep::Next(FunctionState::Bool3Point0 { int0: int1, bool_function0: bool_function0.clone() })
+                            FunctionStep::Next(FunctionState::Bool4Point0 { int0: int1, bool_function0: bool_function0.clone() })
+                        },
+                        FunctionState::Bool5Point0 { bool0 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool5Point0 { bool0 }); }
+                            *budget -= 1;
+                            let bool1 = !bool0;
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool5Point1 { bool0, bool1 }); }
+                            *budget -= 1;
+                            FunctionStep::Bool { value: bool1, exit: data::graph::BlockGraphExitId(0) }
+                        },
+                        FunctionState::Bool5Point1 { bool0, bool1 } => {
+                            if *budget == 0 { return FunctionStep::Yield(FunctionState::Bool5Point1 { bool0, bool1 }); }
+                            *budget -= 1;
+                            FunctionStep::Bool { value: bool1, exit: data::graph::BlockGraphExitId(0) }
                         },
                     }
                 }
                 fn calls_entry_0(target: data::function::IntFunctionId, captures: &CallCaptureInputs<'_>, inputs: ()) -> Option<FunctionState> {
                     let () = inputs;
                     match target.0 {
-                        5 => Some(FunctionState::Int5Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
-                        7 => Some(FunctionState::Int7Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
+                        6 => Some(FunctionState::Int6Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
                         8 => Some(FunctionState::Int8Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
                         9 => Some(FunctionState::Int9Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
+                        10 => Some(FunctionState::Int10Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
                         11 => Some(FunctionState::Int11Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
+                        13 => Some(FunctionState::Int13Point0 { int0: captures.int(data::graph::IntLocalId(0))? }),
                         _ => None,
                     }
                 }
                 fn calls_entry_1(target: data::function::BoolFunctionId, captures: &CallCaptureInputs<'_>, inputs: ()) -> Option<FunctionState> {
                     let () = inputs;
                     match target.0 {
-                        2 => Some(FunctionState::Bool2Point0 { bool0: captures.bool(data::graph::BoolLocalId(0))? }),
+                        3 => Some(FunctionState::Bool3Point0 { bool0: captures.bool(data::graph::BoolLocalId(0))? }),
+                        5 => Some(FunctionState::Bool5Point0 { bool0: captures.bool(data::graph::BoolLocalId(0))? }),
                         _ => None,
                     }
                 }
@@ -6143,19 +6807,6 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     let active = calls_int_1_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
-                fn calls_int_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
-                    let active = match point {
-                        0 => FunctionState::Int3Point0 { int0: values.int(0)?, int1: values.int(1)? },
-                        1 => FunctionState::Int3Point1 { int0: values.int(0)?, int1: values.int(1)?, int_function0: values.int_function(0)? },
-                        _ => return None,
-                    };
-                    Some(active)
-                }
-                fn calls_int_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(3)), point, values) { return Some(execution); }
-                    let active = calls_int_3_state(point, values)?;
-                    Some(Box::new(FunctionExecution::new(active)))
-                }
                 fn calls_int_4_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
                         0 => FunctionState::Int4Point0 { int0: values.int(0)?, int1: values.int(1)? },
@@ -6171,7 +6822,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 }
                 fn calls_int_5_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => FunctionState::Int5Point0 { int0: values.int(0)? },
+                        0 => FunctionState::Int5Point0 { int0: values.int(0)?, int1: values.int(1)? },
+                        1 => FunctionState::Int5Point1 { int0: values.int(0)?, int1: values.int(1)?, int_function0: values.int_function(0)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6183,15 +6835,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 }
                 fn calls_int_6_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => {
-                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(5) | data::function::IntFunctionId(7) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(11)) { return None; }
-                            FunctionState::Int6Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
-                        },
-                        1 => FunctionState::Int6Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
-                        2 => FunctionState::Int6Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
-                        3 => FunctionState::Int6Point3 { int0: values.int(0)? },
-                        4 => FunctionState::Int6Point4 { int0: values.int(0)?, int_function0: values.int_function(0)? },
-                        5 => FunctionState::Int6Point5 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                        0 => FunctionState::Int6Point0 { int0: values.int(0)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6203,8 +6847,15 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 }
                 fn calls_int_7_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => FunctionState::Int7Point0 { int0: values.int(0)? },
-                        1 => FunctionState::Int7Point1 { int0: values.int(0)?, int1: values.int(1)? },
+                        0 => {
+                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(6) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(10) | data::function::IntFunctionId(11) | data::function::IntFunctionId(13)) { return None; }
+                            FunctionState::Int7Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
+                        },
+                        1 => FunctionState::Int7Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int7Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int7Point3 { int0: values.int(0)? },
+                        4 => FunctionState::Int7Point4 { int0: values.int(0)?, int_function0: values.int_function(0)? },
+                        5 => FunctionState::Int7Point5 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6217,6 +6868,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 fn calls_int_8_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
                         0 => FunctionState::Int8Point0 { int0: values.int(0)? },
+                        1 => FunctionState::Int8Point1 { int0: values.int(0)?, int1: values.int(1)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6229,6 +6881,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 fn calls_int_9_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
                         0 => FunctionState::Int9Point0 { int0: values.int(0)? },
+                        1 => FunctionState::Int9Point1 { int0: values.int(0)?, int1: values.int(1)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6240,15 +6893,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 }
                 fn calls_int_10_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => {
-                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(5) | data::function::IntFunctionId(7) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(11)) { return None; }
-                            FunctionState::Int10Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
-                        },
-                        1 => FunctionState::Int10Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
-                        2 => FunctionState::Int10Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
-                        3 => FunctionState::Int10Point3 { int0: values.int(0)? },
-                        4 => FunctionState::Int10Point4 { int0: values.int(0)?, int_function0: values.int_function(0)? },
-                        5 => FunctionState::Int10Point5 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                        0 => FunctionState::Int10Point0 { int0: values.int(0)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6273,7 +6918,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 fn calls_int_12_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
                         0 => {
-                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(5) | data::function::IntFunctionId(7) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(11)) { return None; }
+                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(6) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(10) | data::function::IntFunctionId(11) | data::function::IntFunctionId(13)) { return None; }
                             FunctionState::Int12Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
                         },
                         1 => FunctionState::Int12Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
@@ -6290,16 +6935,48 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     let active = calls_int_12_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
-                fn calls_int_15_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                fn calls_int_13_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => FunctionState::Int15Point0 { int0: values.int(0)? },
+                        0 => FunctionState::Int13Point0 { int0: values.int(0)? },
                         _ => return None,
                     };
                     Some(active)
                 }
-                fn calls_int_15_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(15)), point, values) { return Some(execution); }
-                    let active = calls_int_15_state(point, values)?;
+                fn calls_int_13_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(13)), point, values) { return Some(execution); }
+                    let active = calls_int_13_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_int_14_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => {
+                            if !matches!(values.int_function_target(0)?, data::function::IntFunctionId(6) | data::function::IntFunctionId(8) | data::function::IntFunctionId(9) | data::function::IntFunctionId(10) | data::function::IntFunctionId(11) | data::function::IntFunctionId(13)) { return None; }
+                            FunctionState::Int14Point0 { int0: values.int(0)?, int_function0: values.int_function(0)? }
+                        },
+                        1 => FunctionState::Int14Point1 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                        2 => FunctionState::Int14Point2 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)?, int2: values.int(2)? },
+                        3 => FunctionState::Int14Point3 { int0: values.int(0)? },
+                        4 => FunctionState::Int14Point4 { int0: values.int(0)?, int_function0: values.int_function(0)? },
+                        5 => FunctionState::Int14Point5 { int0: values.int(0)?, int_function0: values.int_function(0)?, int1: values.int(1)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_14_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(14)), point, values) { return Some(execution); }
+                    let active = calls_int_14_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_int_17_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Int17Point0 { int0: values.int(0)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_int_17_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Int(data::function::IntFunctionId(17)), point, values) { return Some(execution); }
+                    let active = calls_int_17_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
                 fn calls_bool_0_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
@@ -6315,29 +6992,22 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     let active = calls_bool_0_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
-                fn calls_bool_2_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                fn calls_bool_1_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => FunctionState::Bool2Point0 { bool0: values.bool(0)? },
+                        0 => FunctionState::Bool1Point0 { int0: values.int(0)?, bool0: values.bool(0)? },
+                        1 => FunctionState::Bool1Point1 { int0: values.int(0)?, bool0: values.bool(0)?, bool_function0: values.bool_function(0)? },
                         _ => return None,
                     };
                     Some(active)
                 }
-                fn calls_bool_2_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
-                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)), point, values) { return Some(execution); }
-                    let active = calls_bool_2_state(point, values)?;
+                fn calls_bool_1_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)), point, values) { return Some(execution); }
+                    let active = calls_bool_1_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
                 fn calls_bool_3_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
                     let active = match point {
-                        0 => {
-                            if !matches!(values.bool_function_target(0)?, data::function::BoolFunctionId(2)) { return None; }
-                            FunctionState::Bool3Point0 { int0: values.int(0)?, bool_function0: values.bool_function(0)? }
-                        },
-                        1 => FunctionState::Bool3Point1 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, bool0: values.bool(0)? },
-                        2 => FunctionState::Bool3Point2 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, bool0: values.bool(0)?, bool1: values.bool(1)? },
-                        3 => FunctionState::Bool3Point3 { bool0: values.bool(0)? },
-                        4 => FunctionState::Bool3Point4 { int0: values.int(0)?, bool_function0: values.bool_function(0)? },
-                        5 => FunctionState::Bool3Point5 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, int1: values.int(1)? },
+                        0 => FunctionState::Bool3Point0 { bool0: values.bool(0)? },
                         _ => return None,
                     };
                     Some(active)
@@ -6345,6 +7015,39 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 fn calls_bool_3_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
                     if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)), point, values) { return Some(execution); }
                     let active = calls_bool_3_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_bool_4_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => {
+                            if !matches!(values.bool_function_target(0)?, data::function::BoolFunctionId(3) | data::function::BoolFunctionId(5)) { return None; }
+                            FunctionState::Bool4Point0 { int0: values.int(0)?, bool_function0: values.bool_function(0)? }
+                        },
+                        1 => FunctionState::Bool4Point1 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, bool0: values.bool(0)? },
+                        2 => FunctionState::Bool4Point2 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, bool0: values.bool(0)?, bool1: values.bool(1)? },
+                        3 => FunctionState::Bool4Point3 { bool0: values.bool(0)? },
+                        4 => FunctionState::Bool4Point4 { int0: values.int(0)?, bool_function0: values.bool_function(0)? },
+                        5 => FunctionState::Bool4Point5 { int0: values.int(0)?, bool_function0: values.bool_function(0)?, int1: values.int(1)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_bool_4_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)), point, values) { return Some(execution); }
+                    let active = calls_bool_4_state(point, values)?;
+                    Some(Box::new(FunctionExecution::new(active)))
+                }
+                fn calls_bool_5_state(point: usize, values: CallInputs<'_>) -> Option<FunctionState> {
+                    let active = match point {
+                        0 => FunctionState::Bool5Point0 { bool0: values.bool(0)? },
+                        1 => FunctionState::Bool5Point1 { bool0: values.bool(0)?, bool1: values.bool(1)? },
+                        _ => return None,
+                    };
+                    Some(active)
+                }
+                fn calls_bool_5_start(point: usize, values: CallInputs<'_>, storage: &mut CallStorage) -> Option<Box<dyn CallExecution>> {
+                    if let Some(execution) = storage.reuse(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(5)), point, values) { return Some(execution); }
+                    let active = calls_bool_5_state(point, values)?;
                     Some(Box::new(FunctionExecution::new(active)))
                 }
 
@@ -6434,48 +7137,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     callbacks: data::compiled::CompiledCallbacks::interpreted(),
                     native_loops: data::Storage::Static(&[
                         data::compiled::CompiledFunction {
-                            function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(6)),
+                            function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(7)),
                             implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {
-                                function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(6)),
+                                function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(7)),
                                 entry: 0,
                                 contract: data::compiled::NativeLoopContract {
                                     header: data::graph::BlockId(0),
                                     finished: data::graph::BlockId(1),
                                     repeat: data::graph::BlockId(2),
                                     exit: data::graph::BlockGraphExitId(0),
-                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(13)),
+                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(15)),
                                     producer: data::compiled::NativeLoopProducer::Int(data::graph::IntFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)),
-                                },
-                                checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
-                                    block: data::graph::BlockId(0),
-                                    instruction: 0,
-                                    ints: 1,
-                                    bools: 0,
-                                    bit_arrays: 0,
-                                    int_lists: 0,
-                                    strings: 0,
-                                    customs: 0,
-                                    custom_lists: 0,
-                                    int_functions: 1,
-                                    bool_functions: 0,
-                                }]),
-                                run: data::compiled::native_loop::run,
-                            })),
-                        },
-                        data::compiled::CompiledFunction {
-                            function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(10)),
-                            implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {
-                                function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(10)),
-                                entry: 0,
-                                contract: data::compiled::NativeLoopContract {
-                                    header: data::graph::BlockId(0),
-                                    finished: data::graph::BlockId(1),
-                                    repeat: data::graph::BlockId(2),
-                                    exit: data::graph::BlockGraphExitId(0),
-                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(14)),
-                                    producer: data::compiled::NativeLoopProducer::Int(data::graph::IntFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(649, 668)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6503,9 +7176,39 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     finished: data::graph::BlockId(1),
                                     repeat: data::graph::BlockId(2),
                                     exit: data::graph::BlockGraphExitId(0),
-                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(15)),
+                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(16)),
                                     producer: data::compiled::NativeLoopProducer::Int(data::graph::IntFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4831, 4853)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(917, 933)),
+                                },
+                                checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
+                                    block: data::graph::BlockId(0),
+                                    instruction: 0,
+                                    ints: 1,
+                                    bools: 0,
+                                    bit_arrays: 0,
+                                    int_lists: 0,
+                                    strings: 0,
+                                    customs: 0,
+                                    custom_lists: 0,
+                                    int_functions: 1,
+                                    bool_functions: 0,
+                                }]),
+                                run: data::compiled::native_loop::run,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(14)),
+                            implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {
+                                function: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(14)),
+                                entry: 0,
+                                contract: data::compiled::NativeLoopContract {
+                                    header: data::graph::BlockId(0),
+                                    finished: data::graph::BlockId(1),
+                                    repeat: data::graph::BlockId(2),
+                                    exit: data::graph::BlockGraphExitId(0),
+                                    native: data::compiled::NativeLoopTarget::Int(data::function::IntFunctionId(17)),
+                                    producer: data::compiled::NativeLoopProducer::Int(data::graph::IntFunctionLocalId(0)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5038, 5060)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6535,7 +7238,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::Float(data::function::FloatFunctionId(9)),
                                     producer: data::compiled::NativeLoopProducer::Float(data::graph::FloatFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1456, 1481)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_float", data::source::SourceSpan::new(1566, 1591)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6565,7 +7268,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::Float(data::function::FloatFunctionId(10)),
                                     producer: data::compiled::NativeLoopProducer::Float(data::graph::FloatFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6595,7 +7298,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::String(data::function::StringFunctionId(6)),
                                     producer: data::compiled::NativeLoopProducer::String(data::graph::StringFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1844, 1870)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_string", data::source::SourceSpan::new(1954, 1980)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6625,7 +7328,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::String(data::function::StringFunctionId(7)),
                                     producer: data::compiled::NativeLoopProducer::String(data::graph::StringFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6655,7 +7358,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::BitArray(data::function::BitArrayFunctionId(6)),
                                     producer: data::compiled::NativeLoopProducer::BitArray(data::graph::BitArrayFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2261, 2290)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_bit_array", data::source::SourceSpan::new(2371, 2400)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6685,7 +7388,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::BitArray(data::function::BitArrayFunctionId(7)),
                                     producer: data::compiled::NativeLoopProducer::BitArray(data::graph::BitArrayFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4514, 4530)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_generic", data::source::SourceSpan::new(4721, 4737)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6715,7 +7418,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::UtfCodepoint(data::function::UtfCodepointFunctionId(3)),
                                     producer: data::compiled::NativeLoopProducer::UtfCodepoint(data::graph::UtfCodepointFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2735, 2768)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_utf_codepoint", data::source::SourceSpan::new(2845, 2878)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6734,18 +7437,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(3)),
+                            function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(4)),
                             implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {
-                                function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(3)),
+                                function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(4)),
                                 entry: 0,
                                 contract: data::compiled::NativeLoopContract {
                                     header: data::graph::BlockId(0),
                                     finished: data::graph::BlockId(1),
                                     repeat: data::graph::BlockId(2),
                                     exit: data::graph::BlockGraphExitId(0),
-                                    native: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(5)),
+                                    native: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(7)),
                                     producer: data::compiled::NativeLoopProducer::Bool(data::graph::BoolFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3324, 3348)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6764,18 +7467,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(4)),
+                            function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(6)),
                             implementation: data::compiled::CompiledImplementation::NativeLoop(data::Storage::Static(&data::compiled::NativeLoopImplementation {
-                                function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(4)),
+                                function: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(6)),
                                 entry: 0,
                                 contract: data::compiled::NativeLoopContract {
                                     header: data::graph::BlockId(0),
                                     finished: data::graph::BlockId(1),
                                     repeat: data::graph::BlockId(2),
                                     exit: data::graph::BlockGraphExitId(0),
-                                    native: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(6)),
+                                    native: data::compiled::NativeLoopTarget::Bool(data::function::BoolFunctionId(8)),
                                     producer: data::compiled::NativeLoopProducer::Float(data::graph::FloatFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(3831, 3856)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_mixed", data::source::SourceSpan::new(4038, 4063)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6805,7 +7508,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     exit: data::graph::BlockGraphExitId(0),
                                     native: data::compiled::NativeLoopTarget::Nil(data::function::NilFunctionId(6)),
                                     producer: data::compiled::NativeLoopProducer::Nil(data::graph::NilFunctionLocalId(0)),
-                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3470, 3493)),
+                                    site: data::source::HostCallSite::from_static("native_loop", "repeat_nil", data::source::SourceSpan::new(3677, 3700)),
                                 },
                                 checkpoints: data::Storage::Static(&[data::compiled::CompiledCheckpoint {
                                     block: data::graph::BlockId(0),
@@ -6886,7 +7589,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                                             },
                                         },
-                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(5)),
+                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(6)),
                                         type_: data::type_::FunctionType {
                                             arguments: data::Storage::Static(&[]),
                                             return_: data::Storage::Static(&data::type_::ValueType::Int),
@@ -6904,7 +7607,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 tails: data::Storage::Static(&[
                                     data::compiled::TailContract {
                                         point: 1,
-                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::IntFunction {
@@ -6982,7 +7685,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return_: data::Storage::Static(&data::type_::ValueType::Int),
                                             },
                                         },
-                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(7)),
+                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(8)),
                                         type_: data::type_::FunctionType {
                                             arguments: data::Storage::Static(&[]),
                                             return_: data::Storage::Static(&data::type_::ValueType::Int),
@@ -7000,7 +7703,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 tails: data::Storage::Static(&[
                                     data::compiled::TailContract {
                                         point: 1,
-                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::IntFunction {
@@ -7015,102 +7718,6 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 start: calls_int_1_start,
-                            })),
-                        },
-                        data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(3)),
-                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
-                                root: true,
-                                entry: 0,
-                                checkpoints: data::Storage::Static(&[
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(0),
-                                        instruction: 0,
-                                        ints: 2,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(0),
-                                        instruction: 1,
-                                        ints: 2,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 1,
-                                        bool_functions: 0,
-                                    },
-                                ]),
-                                locals: data::Storage::Static(&[
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                    ]),
-                                ]),
-                                calls: data::Storage::Static(&[]),
-                                creations: data::Storage::Static(&[
-                                    data::compiled::CreationContract {
-                                        point: 0,
-                                        output: data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(9)),
-                                        type_: data::type_::FunctionType {
-                                            arguments: data::Storage::Static(&[]),
-                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                        },
-                                        reference: false,
-                                        captures: data::Storage::Static(&[
-                                            data::graph::FunctionCapture::Int {
-                                                target: data::graph::IntLocalId(0),
-                                                source: data::graph::IntLocalId(1),
-                                            },
-                                        ]),
-                                    },
-                                ]),
-                                returns: data::Storage::Static(&[]),
-                                tails: data::Storage::Static(&[
-                                    data::compiled::TailContract {
-                                        point: 1,
-                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)),
-                                        args: data::Storage::Static(&[
-                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                            data::graph::ParamLocal::IntFunction {
-                                                local: data::graph::IntFunctionLocalId(0),
-                                                type_: data::type_::FunctionType {
-                                                    arguments: data::Storage::Static(&[]),
-                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                                },
-                                            },
-                                        ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "retained_value", data::source::SourceSpan::new(691, 727)),
-                                    },
-                                ]),
-                                start: calls_int_3_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -7203,7 +7810,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                             },
                                         ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "graph_captured", data::source::SourceSpan::new(4671, 4706)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "retained_value", data::source::SourceSpan::new(801, 837)),
                                     },
                                 ]),
                                 start: calls_int_4_start,
@@ -7211,6 +7818,102 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         },
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(5)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: true,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[
+                                    data::compiled::CreationContract {
+                                        point: 0,
+                                        output: data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        target: data::graph::FunctionTarget::Int(data::function::IntFunctionId(13)),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                        },
+                                        reference: false,
+                                        captures: data::Storage::Static(&[
+                                            data::graph::FunctionCapture::Int {
+                                                target: data::graph::IntLocalId(0),
+                                                source: data::graph::IntLocalId(1),
+                                            },
+                                        ]),
+                                    },
+                                ]),
+                                returns: data::Storage::Static(&[]),
+                                tails: data::Storage::Static(&[
+                                    data::compiled::TailContract {
+                                        point: 1,
+                                        target: data::compiled::CallTarget::Int(data::function::IntFunctionId(14)),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            data::graph::ParamLocal::IntFunction {
+                                                local: data::graph::IntFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                                },
+                                            },
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("native_loop", "graph_captured", data::source::SourceSpan::new(4878, 4913)),
+                                    },
+                                ]),
+                                start: calls_int_5_start,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: false,
                                 entry: 0,
@@ -7243,11 +7946,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_5_start,
+                                start: calls_int_6_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(6)),
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: true,
                                 entry: 0,
@@ -7396,16 +8099,16 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         target: data::compiled::CallContractTarget::IntValue(data::graph::IntFunctionLocalId(0)),
                                         args: data::Storage::Static(&[]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(547, 557)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(657, 667)),
                                     },
                                     data::compiled::CallContract {
                                         point: 1,
                                         output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(13))),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(15))),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(539, 558)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat", data::source::SourceSpan::new(649, 668)),
                                     },
                                 ]),
                                 creations: data::Storage::Static(&[]),
@@ -7416,11 +8119,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_6_start,
+                                start: calls_int_7_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(7)),
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: false,
                                 entry: 0,
@@ -7470,43 +8173,6 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_7_start,
-                            })),
-                        },
-                        data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(8)),
-                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
-                                root: false,
-                                entry: 0,
-                                checkpoints: data::Storage::Static(&[
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(0),
-                                        instruction: 0,
-                                        ints: 1,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                ]),
-                                locals: data::Storage::Static(&[
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                    ]),
-                                ]),
-                                calls: data::Storage::Static(&[]),
-                                creations: data::Storage::Static(&[]),
-                                returns: data::Storage::Static(&[
-                                    data::compiled::ReturnContract {
-                                        point: 0,
-                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                    },
-                                ]),
-                                tails: data::Storage::Static(&[]),
                                 start: calls_int_8_start,
                             })),
                         },
@@ -7529,18 +8195,35 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         int_functions: 0,
                                         bool_functions: 0,
                                     },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
                                 ]),
                                 locals: data::Storage::Static(&[
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                     ]),
                                 ]),
                                 calls: data::Storage::Static(&[]),
                                 creations: data::Storage::Static(&[]),
                                 returns: data::Storage::Static(&[
                                     data::compiled::ReturnContract {
-                                        point: 0,
-                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        point: 1,
+                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
@@ -7550,7 +8233,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         data::compiled::CompiledFunction {
                             function: data::compiled::CallTarget::Int(data::function::IntFunctionId(10)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
-                                root: true,
+                                root: false,
                                 entry: 0,
                                 checkpoints: data::Storage::Static(&[
                                     data::compiled::CompiledCheckpoint {
@@ -7563,156 +8246,20 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         strings: 0,
                                         customs: 0,
                                         custom_lists: 0,
-                                        int_functions: 1,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(0),
-                                        instruction: 1,
-                                        ints: 2,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 1,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(0),
-                                        instruction: 2,
-                                        ints: 3,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 1,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(1),
-                                        instruction: 0,
-                                        ints: 1,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
                                         int_functions: 0,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(2),
-                                        instruction: 0,
-                                        ints: 1,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 1,
-                                        bool_functions: 0,
-                                    },
-                                    data::compiled::CompiledCheckpoint {
-                                        block: data::graph::BlockId(2),
-                                        instruction: 1,
-                                        ints: 2,
-                                        bools: 0,
-                                        bit_arrays: 0,
-                                        int_lists: 0,
-                                        strings: 0,
-                                        customs: 0,
-                                        custom_lists: 0,
-                                        int_functions: 1,
                                         bool_functions: 0,
                                     },
                                 ]),
                                 locals: data::Storage::Static(&[
                                     data::Storage::Static(&[
                                         data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                    ]),
-                                    data::Storage::Static(&[
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                        data::graph::ParamLocal::IntFunction {
-                                            local: data::graph::IntFunctionLocalId(0),
-                                            type_: data::type_::FunctionType {
-                                                arguments: data::Storage::Static(&[]),
-                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
-                                            },
-                                        },
-                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                     ]),
                                 ]),
-                                calls: data::Storage::Static(&[
-                                    data::compiled::CallContract {
-                                        point: 0,
-                                        output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                        target: data::compiled::CallContractTarget::IntValue(data::graph::IntFunctionLocalId(0)),
-                                        args: data::Storage::Static(&[]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(812, 822)),
-                                    },
-                                    data::compiled::CallContract {
-                                        point: 1,
-                                        output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(14))),
-                                        args: data::Storage::Static(&[
-                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
-                                        ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(807, 823)),
-                                    },
-                                ]),
+                                calls: data::Storage::Static(&[]),
                                 creations: data::Storage::Static(&[]),
                                 returns: data::Storage::Static(&[
                                     data::compiled::ReturnContract {
-                                        point: 3,
+                                        point: 0,
                                         value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                     },
                                 ]),
@@ -7907,16 +8454,16 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         target: data::compiled::CallContractTarget::IntValue(data::graph::IntFunctionLocalId(0)),
                                         args: data::Storage::Static(&[]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4842, 4852)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(922, 932)),
                                     },
                                     data::compiled::CallContract {
                                         point: 1,
                                         output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
-                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(15))),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(16))),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                                         ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(4831, 4853)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_opaque", data::source::SourceSpan::new(917, 933)),
                                     },
                                 ]),
                                 creations: data::Storage::Static(&[]),
@@ -7931,7 +8478,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(15)),
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(13)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: false,
                                 entry: 0,
@@ -7964,7 +8511,217 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_int_15_start,
+                                start: calls_int_13_start,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(14)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: true,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 2,
+                                        ints: 3,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(1),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(2),
+                                        instruction: 1,
+                                        ints: 2,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 1,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::IntFunction {
+                                            local: data::graph::IntFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Int),
+                                            },
+                                        },
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[
+                                    data::compiled::CallContract {
+                                        point: 0,
+                                        output: data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        target: data::compiled::CallContractTarget::IntValue(data::graph::IntFunctionLocalId(0)),
+                                        args: data::Storage::Static(&[]),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5049, 5059)),
+                                    },
+                                    data::compiled::CallContract {
+                                        point: 1,
+                                        output: data::graph::ParamLocal::Int(data::graph::IntLocalId(2)),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Int(data::function::IntFunctionId(17))),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_graph", data::source::SourceSpan::new(5038, 5060)),
+                                    },
+                                ]),
+                                creations: data::Storage::Static(&[]),
+                                returns: data::Storage::Static(&[
+                                    data::compiled::ReturnContract {
+                                        point: 3,
+                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    },
+                                ]),
+                                tails: data::Storage::Static(&[]),
+                                start: calls_int_14_start,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Int(data::function::IntFunctionId(17)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: false,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 0,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[]),
+                                returns: data::Storage::Static(&[
+                                    data::compiled::ReturnContract {
+                                        point: 0,
+                                        value: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                    },
+                                ]),
+                                tails: data::Storage::Static(&[]),
+                                start: calls_int_17_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
@@ -8028,7 +8785,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 return_: data::Storage::Static(&data::type_::ValueType::Bool),
                                             },
                                         },
-                                        target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(2)),
+                                        target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(3)),
                                         type_: data::type_::FunctionType {
                                             arguments: data::Storage::Static(&[]),
                                             return_: data::Storage::Static(&data::type_::ValueType::Bool),
@@ -8046,7 +8803,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                 tails: data::Storage::Static(&[
                                     data::compiled::TailContract {
                                         point: 1,
-                                        target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)),
+                                        target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                                             data::graph::ParamLocal::BoolFunction {
@@ -8057,14 +8814,110 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                                 },
                                             },
                                         ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "captured_bool", data::source::SourceSpan::new(3003, 3037)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "captured_bool", data::source::SourceSpan::new(3113, 3147)),
                                     },
                                 ]),
                                 start: calls_bool_0_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(2)),
+                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(1)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: true,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 1,
+                                        bools: 1,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 1,
+                                        bools: 1,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 1,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        data::graph::ParamLocal::BoolFunction {
+                                            local: data::graph::BoolFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                            },
+                                        },
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[
+                                    data::compiled::CreationContract {
+                                        point: 0,
+                                        output: data::graph::ParamLocal::BoolFunction {
+                                            local: data::graph::BoolFunctionLocalId(0),
+                                            type_: data::type_::FunctionType {
+                                                arguments: data::Storage::Static(&[]),
+                                                return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                            },
+                                        },
+                                        target: data::graph::FunctionTarget::Bool(data::function::BoolFunctionId(5)),
+                                        type_: data::type_::FunctionType {
+                                            arguments: data::Storage::Static(&[]),
+                                            return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                        },
+                                        reference: false,
+                                        captures: data::Storage::Static(&[
+                                            data::graph::FunctionCapture::Bool {
+                                                target: data::graph::BoolLocalId(0),
+                                                source: data::graph::BoolLocalId(0),
+                                            },
+                                        ]),
+                                    },
+                                ]),
+                                returns: data::Storage::Static(&[]),
+                                tails: data::Storage::Static(&[
+                                    data::compiled::TailContract {
+                                        point: 1,
+                                        target: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)),
+                                        args: data::Storage::Static(&[
+                                            data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                            data::graph::ParamLocal::BoolFunction {
+                                                local: data::graph::BoolFunctionLocalId(0),
+                                                type_: data::type_::FunctionType {
+                                                    arguments: data::Storage::Static(&[]),
+                                                    return_: data::Storage::Static(&data::type_::ValueType::Bool),
+                                                },
+                                            },
+                                        ]),
+                                        site: data::source::HostCallSite::from_static("native_loop", "computed_bool", data::source::SourceSpan::new(3209, 3244)),
+                                    },
+                                ]),
+                                start: calls_bool_1_start,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: false,
                                 entry: 0,
@@ -8097,11 +8950,11 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_bool_2_start,
+                                start: calls_bool_3_start,
                             })),
                         },
                         data::compiled::CompiledFunction {
-                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(3)),
+                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(4)),
                             implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
                                 root: true,
                                 entry: 0,
@@ -8250,16 +9103,16 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                         output: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         target: data::compiled::CallContractTarget::BoolValue(data::graph::BoolFunctionLocalId(0)),
                                         args: data::Storage::Static(&[]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3130, 3140)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3337, 3347)),
                                     },
                                     data::compiled::CallContract {
                                         point: 1,
                                         output: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
-                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(5))),
+                                        target: data::compiled::CallContractTarget::Static(data::compiled::CallTarget::Bool(data::function::BoolFunctionId(7))),
                                         args: data::Storage::Static(&[
                                             data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                                         ]),
-                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3117, 3141)),
+                                        site: data::source::HostCallSite::from_static("native_loop", "repeat_bool", data::source::SourceSpan::new(3324, 3348)),
                                     },
                                 ]),
                                 creations: data::Storage::Static(&[]),
@@ -8270,7 +9123,61 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                                     },
                                 ]),
                                 tails: data::Storage::Static(&[]),
-                                start: calls_bool_3_start,
+                                start: calls_bool_4_start,
+                            })),
+                        },
+                        data::compiled::CompiledFunction {
+                            function: data::compiled::CallTarget::Bool(data::function::BoolFunctionId(5)),
+                            implementation: data::compiled::CompiledImplementation::FunctionCalls(data::Storage::Static(&data::compiled::FunctionCallsImplementation {
+                                root: false,
+                                entry: 0,
+                                checkpoints: data::Storage::Static(&[
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 0,
+                                        ints: 0,
+                                        bools: 1,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                    data::compiled::CompiledCheckpoint {
+                                        block: data::graph::BlockId(0),
+                                        instruction: 1,
+                                        ints: 0,
+                                        bools: 2,
+                                        bit_arrays: 0,
+                                        int_lists: 0,
+                                        strings: 0,
+                                        customs: 0,
+                                        custom_lists: 0,
+                                        int_functions: 0,
+                                        bool_functions: 0,
+                                    },
+                                ]),
+                                locals: data::Storage::Static(&[
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                    ]),
+                                    data::Storage::Static(&[
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                        data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    ]),
+                                ]),
+                                calls: data::Storage::Static(&[]),
+                                creations: data::Storage::Static(&[]),
+                                returns: data::Storage::Static(&[
+                                    data::compiled::ReturnContract {
+                                        point: 1,
+                                        value: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(1)),
+                                    },
+                                ]),
+                                tails: data::Storage::Static(&[]),
+                                start: calls_bool_5_start,
                             })),
                         },
                     ]),
@@ -8304,18 +9211,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             function_parameters: data::function::FunctionCatalog {
                 families: [
                     0..0,
-                    0..16,
-                    16..27,
-                    27..35,
-                    35..43,
-                    43..47,
+                    0..18,
+                    18..29,
+                    29..37,
+                    37..45,
+                    45..49,
                     0..0,
                     0..0,
-                    47..54,
-                    54..61,
+                    49..58,
+                    58..65,
                     0..0,
                     0..0,
-                    61..65,
+                    65..69,
                     0..0,
                     0..0,
                     0..0,
@@ -8403,46 +9310,13 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 10..10,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(0),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                shape: data::type_::ValueShapeId(0),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
                         parameters: 10..12,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(1),
+                            data::type_::ValueShapeId(0),
                         ]),
                         return_: data::type_::ValueShapeId(0),
                         captures: data::Storage::Static(&[]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 12..12,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(0),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                shape: data::type_::ValueShapeId(0),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 12..12,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(0),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
-                                shape: data::type_::ValueShapeId(0),
-                            },
-                        ]),
                     },
                     data::function::FunctionContract {
                         parameters: 12..12,
@@ -8476,6 +9350,39 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         ]),
                     },
                     data::function::FunctionContract {
+                        parameters: 14..14,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(0),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                shape: data::type_::ValueShapeId(0),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 14..14,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(0),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                shape: data::type_::ValueShapeId(0),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 14..14,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(0),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                shape: data::type_::ValueShapeId(0),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
                         parameters: 14..16,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
@@ -8485,17 +9392,21 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 16..17,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(0),
-                        ]),
+                        parameters: 16..16,
+                        parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(0),
-                        captures: data::Storage::Static(&[]),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                                shape: data::type_::ValueShapeId(0),
+                            },
+                        ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 17..18,
+                        parameters: 16..18,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
+                            data::type_::ValueShapeId(1),
                         ]),
                         return_: data::type_::ValueShapeId(0),
                         captures: data::Storage::Static(&[]),
@@ -8509,12 +9420,19 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 19..21,
+                        parameters: 19..20,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(5),
                         ]),
-                        return_: data::type_::ValueShapeId(5),
+                        return_: data::type_::ValueShapeId(0),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 20..21,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(0),
+                        ]),
+                        return_: data::type_::ValueShapeId(0),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -8536,46 +9454,13 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 25..25,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(5),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
-                                shape: data::type_::ValueShapeId(5),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
                         parameters: 25..27,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(6),
+                            data::type_::ValueShapeId(5),
                         ]),
                         return_: data::type_::ValueShapeId(5),
                         captures: data::Storage::Static(&[]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 27..27,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(5),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
-                                shape: data::type_::ValueShapeId(5),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 27..27,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(5),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
-                                shape: data::type_::ValueShapeId(5),
-                            },
-                        ]),
                     },
                     data::function::FunctionContract {
                         parameters: 27..27,
@@ -8598,28 +9483,61 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 29..30,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(5),
-                        ]),
+                        parameters: 29..29,
+                        parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(5),
-                        captures: data::Storage::Static(&[]),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
+                                shape: data::type_::ValueShapeId(5),
+                            },
+                        ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 30..31,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(5),
-                        ]),
+                        parameters: 29..29,
+                        parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(5),
-                        captures: data::Storage::Static(&[]),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
+                                shape: data::type_::ValueShapeId(5),
+                            },
+                        ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 31..33,
+                        parameters: 29..29,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(5),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Float(data::graph::FloatLocalId(0)),
+                                shape: data::type_::ValueShapeId(5),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 29..31,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(7),
+                            data::type_::ValueShapeId(6),
                         ]),
-                        return_: data::type_::ValueShapeId(7),
+                        return_: data::type_::ValueShapeId(5),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 31..32,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(5),
+                        ]),
+                        return_: data::type_::ValueShapeId(5),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 32..33,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(5),
+                        ]),
+                        return_: data::type_::ValueShapeId(5),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -8632,21 +9550,10 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 35..35,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(7),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
-                                shape: data::type_::ValueShapeId(7),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
                         parameters: 35..37,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(8),
+                            data::type_::ValueShapeId(7),
                         ]),
                         return_: data::type_::ValueShapeId(7),
                         captures: data::Storage::Static(&[]),
@@ -8672,28 +9579,39 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 39..40,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(7),
-                        ]),
+                        parameters: 39..39,
+                        parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(7),
-                        captures: data::Storage::Static(&[]),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::String(data::graph::StringLocalId(0)),
+                                shape: data::type_::ValueShapeId(7),
+                            },
+                        ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 40..41,
-                        parameter_shapes: data::Storage::Static(&[
-                            data::type_::ValueShapeId(7),
-                        ]),
-                        return_: data::type_::ValueShapeId(7),
-                        captures: data::Storage::Static(&[]),
-                    },
-                    data::function::FunctionContract {
-                        parameters: 41..43,
+                        parameters: 39..41,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(9),
+                            data::type_::ValueShapeId(8),
                         ]),
-                        return_: data::type_::ValueShapeId(9),
+                        return_: data::type_::ValueShapeId(7),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 41..42,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(7),
+                        ]),
+                        return_: data::type_::ValueShapeId(7),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 42..43,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(7),
+                        ]),
+                        return_: data::type_::ValueShapeId(7),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
@@ -8706,21 +9624,10 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 45..45,
-                        parameter_shapes: data::Storage::Static(&[]),
-                        return_: data::type_::ValueShapeId(9),
-                        captures: data::Storage::Static(&[
-                            data::graph::ParamSlot {
-                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
-                                shape: data::type_::ValueShapeId(9),
-                            },
-                        ]),
-                    },
-                    data::function::FunctionContract {
                         parameters: 45..47,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
-                            data::type_::ValueShapeId(10),
+                            data::type_::ValueShapeId(9),
                         ]),
                         return_: data::type_::ValueShapeId(9),
                         captures: data::Storage::Static(&[]),
@@ -8746,7 +9653,27 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 49..50,
+                        parameters: 49..49,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(9),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::BitArray(data::graph::BitArrayLocalId(0)),
+                                shape: data::type_::ValueShapeId(9),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 49..51,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(0),
+                            data::type_::ValueShapeId(10),
+                        ]),
+                        return_: data::type_::ValueShapeId(9),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 51..52,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(9),
                         ]),
@@ -8754,7 +9681,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 50..51,
+                        parameters: 52..53,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(9),
                         ]),
@@ -8762,7 +9689,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 51..53,
+                        parameters: 53..55,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(11),
@@ -8771,7 +9698,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 53..53,
+                        parameters: 55..55,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(11),
                         captures: data::Storage::Static(&[
@@ -8782,7 +9709,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 53..55,
+                        parameters: 55..57,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(12),
@@ -8791,7 +9718,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 55..56,
+                        parameters: 57..58,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(11),
                         ]),
@@ -8799,7 +9726,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 56..58,
+                        parameters: 58..60,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(13),
@@ -8808,7 +9735,16 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 58..60,
+                        parameters: 60..62,
+                        parameter_shapes: data::Storage::Static(&[
+                            data::type_::ValueShapeId(0),
+                            data::type_::ValueShapeId(13),
+                        ]),
+                        return_: data::type_::ValueShapeId(13),
+                        captures: data::Storage::Static(&[]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 62..64,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(5),
@@ -8817,7 +9753,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 60..60,
+                        parameters: 64..64,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(13),
                         captures: data::Storage::Static(&[
@@ -8828,7 +9764,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 60..62,
+                        parameters: 64..66,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(14),
@@ -8837,7 +9773,18 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 62..64,
+                        parameters: 66..66,
+                        parameter_shapes: data::Storage::Static(&[]),
+                        return_: data::type_::ValueShapeId(13),
+                        captures: data::Storage::Static(&[
+                            data::graph::ParamSlot {
+                                local: data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
+                                shape: data::type_::ValueShapeId(13),
+                            },
+                        ]),
+                    },
+                    data::function::FunctionContract {
+                        parameters: 66..68,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(6),
@@ -8846,7 +9793,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 64..65,
+                        parameters: 68..69,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(13),
                         ]),
@@ -8854,7 +9801,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 65..66,
+                        parameters: 69..70,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(5),
                         ]),
@@ -8862,7 +9809,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 66..68,
+                        parameters: 70..72,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(2),
@@ -8871,7 +9818,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 68..69,
+                        parameters: 72..73,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                         ]),
@@ -8879,13 +9826,13 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 69..69,
+                        parameters: 73..73,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(2),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 69..69,
+                        parameters: 73..73,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(2),
                         captures: data::Storage::Static(&[
@@ -8896,7 +9843,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 69..71,
+                        parameters: 73..75,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(15),
@@ -8905,13 +9852,13 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 71..71,
+                        parameters: 75..75,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(2),
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 71..72,
+                        parameters: 75..76,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(2),
                         ]),
@@ -8919,7 +9866,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 72..73,
+                        parameters: 76..77,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(3),
                         ]),
@@ -8927,7 +9874,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 73..73,
+                        parameters: 77..77,
                         parameter_shapes: data::Storage::Static(&[]),
                         return_: data::type_::ValueShapeId(3),
                         captures: data::Storage::Static(&[
@@ -8943,7 +9890,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         ]),
                     },
                     data::function::FunctionContract {
-                        parameters: 73..75,
+                        parameters: 77..79,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(0),
                             data::type_::ValueShapeId(4),
@@ -8952,7 +9899,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         captures: data::Storage::Static(&[]),
                     },
                     data::function::FunctionContract {
-                        parameters: 75..76,
+                        parameters: 79..80,
                         parameter_shapes: data::Storage::Static(&[
                             data::type_::ValueShapeId(3),
                         ]),
@@ -8961,6 +9908,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     },
                 ]),
                 parameters: data::Storage::Static(&[
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(1)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -9077,6 +10026,8 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                         },
                     },
                     data::graph::ParamLocal::UtfCodepoint(data::graph::UtfCodepointLocalId(0)),
+                    data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
+                    data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
                     data::graph::ParamLocal::Bool(data::graph::BoolLocalId(0)),
                     data::graph::ParamLocal::Int(data::graph::IntLocalId(0)),
@@ -9347,6 +10298,27 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     },
                     callables: data::Storage::Static(&[]),
                 },
+                data::program::LibraryFunctionEntry {
+                    function: data::function::IntFunctionId(5),
+                    inputs: data::program::LibraryInputConstructions {
+                        variants: data::Storage::Static(&[]),
+                        lists: data::program::LibraryListConstructions {
+                            ints: data::Storage::Static(&[]),
+                            floats: data::Storage::Static(&[]),
+                            strings: data::Storage::Static(&[]),
+                            bit_arrays: data::Storage::Static(&[]),
+                            utf_codepoints: data::Storage::Static(&[]),
+                            customs: data::Storage::Static(&[]),
+                            externals: data::Storage::Static(&[]),
+                            bools: data::Storage::Static(&[]),
+                            nils: data::Storage::Static(&[]),
+                            tuples: data::Storage::Static(&[]),
+                            lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
+                        },
+                    },
+                    callables: data::Storage::Static(&[]),
+                },
             ]),
             floats: data::Storage::Static(&[
                 data::program::LibraryFunctionEntry {
@@ -9569,6 +10541,27 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     },
                     callables: data::Storage::Static(&[]),
                 },
+                data::program::LibraryFunctionEntry {
+                    function: data::function::BoolFunctionId(2),
+                    inputs: data::program::LibraryInputConstructions {
+                        variants: data::Storage::Static(&[]),
+                        lists: data::program::LibraryListConstructions {
+                            ints: data::Storage::Static(&[]),
+                            floats: data::Storage::Static(&[]),
+                            strings: data::Storage::Static(&[]),
+                            bit_arrays: data::Storage::Static(&[]),
+                            utf_codepoints: data::Storage::Static(&[]),
+                            customs: data::Storage::Static(&[]),
+                            externals: data::Storage::Static(&[]),
+                            bools: data::Storage::Static(&[]),
+                            nils: data::Storage::Static(&[]),
+                            tuples: data::Storage::Static(&[]),
+                            lists: data::Storage::Static(&[]),
+                            functions: data::Storage::Static(&[]),
+                        },
+                    },
+                    callables: data::Storage::Static(&[]),
+                },
             ]),
             nils: data::Storage::Static(&[
                 data::program::LibraryFunctionEntry {
@@ -9673,7 +10666,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 slot: 1,
             },
             data::Export {
-                name: data::Text::Static("cancellable"),
+                name: data::Text::Static("computed_cancellable"),
                 signature: data::type_::FunctionMetadata {
                     arguments: data::Storage::Static(&[
                         data::type_::TypeMetadata::Int,
@@ -9684,7 +10677,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 slot: 2,
             },
             data::Export {
-                name: data::Text::Static("retained_value"),
+                name: data::Text::Static("cancellable"),
                 signature: data::type_::FunctionMetadata {
                     arguments: data::Storage::Static(&[
                         data::type_::TypeMetadata::Int,
@@ -9695,7 +10688,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 slot: 3,
             },
             data::Export {
-                name: data::Text::Static("graph_captured"),
+                name: data::Text::Static("retained_value"),
                 signature: data::type_::FunctionMetadata {
                     arguments: data::Storage::Static(&[
                         data::type_::TypeMetadata::Int,
@@ -9704,6 +10697,17 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     return_: data::Storage::Static(&data::type_::TypeMetadata::Int),
                 },
                 slot: 4,
+            },
+            data::Export {
+                name: data::Text::Static("graph_captured"),
+                signature: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::Int,
+                        data::type_::TypeMetadata::Int,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::Int),
+                },
+                slot: 5,
             },
             data::Export {
                 name: data::Text::Static("compound"),
@@ -9771,6 +10775,17 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                 slot: 0,
             },
             data::Export {
+                name: data::Text::Static("computed_bool"),
+                signature: data::type_::FunctionMetadata {
+                    arguments: data::Storage::Static(&[
+                        data::type_::TypeMetadata::Int,
+                        data::type_::TypeMetadata::Bool,
+                    ]),
+                    return_: data::Storage::Static(&data::type_::TypeMetadata::Bool),
+                },
+                slot: 1,
+            },
+            data::Export {
                 name: data::Text::Static("captured_nil"),
                 signature: data::type_::FunctionMetadata {
                     arguments: data::Storage::Static(&[
@@ -9790,7 +10805,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
                     ]),
                     return_: data::Storage::Static(&data::type_::TypeMetadata::Bool),
                 },
-                slot: 1,
+                slot: 2,
             },
             data::Export {
                 name: data::Text::Static("literal_nil"),
@@ -10108,7 +11123,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_float", data::source::SourceSpan::new(1236, 1266)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_float", data::source::SourceSpan::new(1346, 1376)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Float,
@@ -10170,7 +11185,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_string", data::source::SourceSpan::new(1614, 1646)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_string", data::source::SourceSpan::new(1724, 1756)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::String,
@@ -10232,7 +11247,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_bit_array", data::source::SourceSpan::new(2007, 2044)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_bit_array", data::source::SourceSpan::new(2117, 2154)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::BitArray,
@@ -10294,7 +11309,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_utf_codepoint", data::source::SourceSpan::new(2434, 2479)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_utf_codepoint", data::source::SourceSpan::new(2544, 2589)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::UtfCodepoint,
@@ -10356,7 +11371,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_bool", data::source::SourceSpan::new(2907, 2935)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_bool", data::source::SourceSpan::new(3017, 3045)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Bool,
@@ -10418,7 +11433,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "observe_nil", data::source::SourceSpan::new(3270, 3296)),
+            site: data::source::HostCallSite::from_static("native_loop", "observe_nil", data::source::SourceSpan::new(3477, 3503)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Nil,
@@ -10480,7 +11495,7 @@ fn repeat_graph(count: Int, producer: fn() -> Int) -> Int {
             completion: data::host::HostFunctionCompletion::Value,
             callable_entry: None,
             package: data::Text::Static("application"),
-            site: data::source::HostCallSite::from_static("native_loop", "float_to_bool", data::source::SourceSpan::new(3623, 3653)),
+            site: data::source::HostCallSite::from_static("native_loop", "float_to_bool", data::source::SourceSpan::new(3830, 3860)),
             signature: data::type_::FunctionMetadata {
                 arguments: data::Storage::Static(&[
                     data::type_::TypeMetadata::Float,

@@ -1,8 +1,10 @@
 mod calls;
 mod custom_loop;
+mod native_calls;
 mod native_loop;
 
 use self::custom_loop::CustomLoopExecution;
+use self::native_calls::NativeCallsExecution;
 use self::native_loop::NativeLoopExecution;
 
 use super::RuntimeGraphState;
@@ -68,6 +70,7 @@ pub(super) enum Activation<'plan, Plan: ExecutableRuntimePlan + 'plan> {
     },
     CustomLoop(Box<CustomLoopExecution<'plan, Plan>>),
     NativeLoop(Box<NativeLoopExecution<'plan, Plan>>),
+    NativeCalls(Box<NativeCallsExecution<'plan, Plan>>),
     FunctionCalls {
         frame: Frame<'plan, Plan>,
         execution: Box<dyn CallExecution>,
@@ -302,6 +305,9 @@ impl<'plan, Plan: ExecutableRuntimePlan> Execution<'plan, Plan> {
             }
             Activation::NativeLoop(execution) => {
                 return execution.advance(plan, storage, remaining);
+            }
+            Activation::NativeCalls(execution) => {
+                return execution.advance(plan, state, storage, remaining);
             }
             Activation::FunctionCalls { frame, execution } => {
                 calls::resume(frame, execution, plan, state, storage, remaining)?

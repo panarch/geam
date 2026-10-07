@@ -3842,7 +3842,7 @@ data::ModuleArtifact {
             },
         },
         compiled: {
-            use data::compiled::calls::{BoolCallable, CallArguments, CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
+            use data::compiled::calls::{BoolCallable, CallArguments, CallExecution, CallInputs, CallInteger, CallNativeFailure, CallNativeInput, CallNativeOps, CallNativeReturn, CallOps, CallOutput, CallProgress, CallStorage, CallValues, IntCallable};
             enum FunctionState {
                 Int4Point0 { int0: i128, int1: i128 },
                 Int4Point1 { int0: i128, int1: i128, bool0: bool },
@@ -4189,18 +4189,25 @@ data::ModuleArtifact {
                 IntCall { callee: FunctionState, caller: IntReturn },
                 Int { value: i128, exit: data::graph::BlockGraphExitId },
                 IntBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, arguments: CallArguments, caller: IntReturn },
+                IntScalarBridge { function: data::function::IntFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: IntReturn },
             }
             struct FunctionExecution {
-                active: Option<FunctionState>,
+                active: Option<FunctionActive>,
                 integer_returns: Vec<IntReturn>,
                 boolean_returns: Vec<BoolReturn>,
                 integer_function_returns: Vec<IntFunctionReturn>,
                 boolean_function_returns: Vec<BoolFunctionReturn>,
             }
+            #[allow(clippy::large_enum_variant, reason = "The suspended caller stays in its existing execution allocation.")]
+            enum FunctionActive {
+                Running(FunctionState),
+                IntCall { function: data::function::IntFunctionId, site: data::source::HostCallSite, input: CallNativeInput, caller: IntReturn },
+                IntReturn { caller: IntReturn, returned: CallNativeReturn<CallInteger> },
+            }
             impl FunctionExecution {
                 fn new(active: FunctionState) -> Self {
                     Self {
-                        active: Some(active),
+                        active: Some(FunctionActive::Running(active)),
                         integer_returns: Vec::new(),
                         boolean_returns: Vec::new(),
                         integer_function_returns: Vec::new(),
@@ -4221,19 +4228,39 @@ data::ModuleArtifact {
                         _ => None,
                     };
                     let Some(active) = active else { return false; };
-                    self.active = Some(active);
+                    self.active = Some(FunctionActive::Running(active));
                     true
                 }
                 fn retained_bytes(&self) -> usize {
                     std::mem::size_of::<Self>() + self.integer_returns.capacity() * std::mem::size_of::<IntReturn>() + self.boolean_returns.capacity() * std::mem::size_of::<BoolReturn>() + self.integer_function_returns.capacity() * std::mem::size_of::<IntFunctionReturn>() + self.boolean_function_returns.capacity() * std::mem::size_of::<BoolFunctionReturn>()
                 }
                 fn advance(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
-                    let Some(mut active) = self.active.take() else { return CallProgress::Yield(self); };
+                    let Some(active) = self.active.take() else { return CallProgress::Yield(self); };
+                    let mut active = match active {
+                        FunctionActive::Running(active) => active,
+                        FunctionActive::IntCall { function, site, input, caller } => {
+                            return CallProgress::Int {
+                                function, site, arguments: input.arguments(),
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            };
+                        },
+                        FunctionActive::IntReturn { caller, returned } => {
+                            if *budget == 0 {
+                                self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                return CallProgress::Yield(self);
+                            }
+                            *budget -= 1;
+                            caller.resume(returned.into_value())
+                        },
+                    };
                     loop {
                         match function_step(active, ops, budget) {
                             FunctionStep::Next(next) => active = next,
                             FunctionStep::Yield(active) => {
-                                self.active = Some(active);
+                                self.active = Some(FunctionActive::Running(active));
                                 return CallProgress::Yield(self);
                             },
                             FunctionStep::IntCall { callee, caller } => {
@@ -4254,9 +4281,18 @@ data::ModuleArtifact {
                             FunctionStep::IntBridge { function, site, arguments, caller } => return CallProgress::Int {
                                 function, site, arguments,
                                 resume: Box::new(move |value| {
-                                    self.active = Some(caller.resume(value));
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
                                     self
                                 }),
+                            },
+                            FunctionStep::IntScalarBridge { function, site, input, caller } => {
+                                return CallProgress::Int {
+                                    function, site, arguments: input.arguments(),
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                };
                             },
                             FunctionStep::Canonical { target, point, values } => {
                                 match target {
@@ -4266,7 +4302,7 @@ data::ModuleArtifact {
                                             return CallProgress::InterpretedInt {
                                                 function, site, point, values,
                                                 resume: Box::new(move |value| {
-                                                    self.active = Some(caller.resume(value));
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                     self
                                                 }),
                                             };
@@ -4279,7 +4315,7 @@ data::ModuleArtifact {
                                             return CallProgress::InterpretedBool {
                                                 function, site, point, values,
                                                 resume: Box::new(move |value| {
-                                                    self.active = Some(caller.resume(value));
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                     self
                                                 }),
                                             };
@@ -4292,7 +4328,7 @@ data::ModuleArtifact {
                                             return CallProgress::InterpretedIntFunction {
                                                 function, site, point, values,
                                                 resume: Box::new(move |value| {
-                                                    self.active = Some(caller.resume(value));
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                     self
                                                 }),
                                             };
@@ -4305,12 +4341,163 @@ data::ModuleArtifact {
                                             return CallProgress::InterpretedBoolFunction {
                                                 function, site, point, values,
                                                 resume: Box::new(move |value| {
-                                                    self.active = Some(caller.resume(value));
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
                                                     self
                                                 }),
                                             };
                                         }
                                         return CallProgress::Interpreted { point, values };
+                                    },
+                                }
+                            },
+                        }
+                    }
+                }
+                fn advance_native(mut self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize, native: &mut CallNativeOps<'_>) -> Result<Option<CallProgress>, CallNativeFailure> {
+                    let Some(active) = self.active.take() else { return Ok(Some(CallProgress::Yield(self))); };
+                    let mut active = match active {
+                        FunctionActive::Running(active) => active,
+                        FunctionActive::IntCall { function, site, input, caller } => {
+                            if let CallNativeOps::Int { function: target, native } = native && *target == function {
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::IntCall { function, site, input, caller });
+                                    return Ok(Some(CallProgress::Yield(self)));
+                                }
+                                *budget -= 1;
+                                let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                if *budget == 0 {
+                                    self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                    return Ok(Some(CallProgress::Yield(self)));
+                                }
+                                *budget -= 1;
+                                caller.resume(returned.into_value())
+                            } else {
+                                return Ok(Some(CallProgress::Int {
+                                    function, site, arguments: input.arguments(),
+                                    resume: Box::new(move |value| {
+                                        self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                        self
+                                    }),
+                                }));
+                            }
+                        },
+                        FunctionActive::IntReturn { caller, returned } => {
+                            if *budget == 0 {
+                                self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                return Ok(Some(CallProgress::Yield(self)));
+                            }
+                            *budget -= 1;
+                            caller.resume(returned.into_value())
+                        },
+                    };
+                    loop {
+                        match function_step(active, ops, budget) {
+                            FunctionStep::Next(next) => active = next,
+                            FunctionStep::Yield(active) => {
+                                self.active = Some(FunctionActive::Running(active));
+                                return Ok(Some(CallProgress::Yield(self)));
+                            },
+                            FunctionStep::IntCall { callee, caller } => {
+                                self.integer_returns.push(caller);
+                                active = callee;
+                            },
+                            FunctionStep::Int { value, exit } => {
+                                if let Some(caller) = self.integer_returns.pop() {
+                                    active = caller.small(value);
+                                } else {
+                                    self.integer_returns.clear();
+                                    self.boolean_returns.clear();
+                                    self.integer_function_returns.clear();
+                                    self.boolean_function_returns.clear();
+                                    return Ok(Some(CallProgress::Complete { exit, output: CallOutput::Int(value.into()), execution: self }));
+                                }
+                            },
+                            FunctionStep::IntBridge { function, site, arguments, caller } => return Ok(Some(CallProgress::Int {
+                                function, site, arguments,
+                                resume: Box::new(move |value| {
+                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                    self
+                                }),
+                            })),
+                            FunctionStep::IntScalarBridge { function, site, input, caller } => {
+                                active = {
+                                    if let CallNativeOps::Int { function: target, native } = native && *target == function {
+                                        if *budget == 0 {
+                                            self.active = Some(FunctionActive::IntCall { function, site, input, caller });
+                                            return Ok(Some(CallProgress::Yield(self)));
+                                        }
+                                        *budget -= 1;
+                                        let Some(returned) = native.call(input, site)? else { return Ok(None); };
+                                        if *budget == 0 {
+                                            self.active = Some(FunctionActive::IntReturn { caller, returned });
+                                            return Ok(Some(CallProgress::Yield(self)));
+                                        }
+                                        *budget -= 1;
+                                        caller.resume(returned.into_value())
+                                    } else {
+                                        return Ok(Some(CallProgress::Int {
+                                            function, site, arguments: input.arguments(),
+                                            resume: Box::new(move |value| {
+                                                self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                self
+                                            }),
+                                        }));
+                                    }
+                                };
+                            },
+                            FunctionStep::Canonical { target, point, values } => {
+                                match target {
+                                    data::compiled::CallTarget::Int(function) => {
+                                        if let Some(caller) = self.integer_returns.pop() {
+                                            let site = caller.site();
+                                            return Ok(Some(CallProgress::InterpretedInt {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                                    },
+                                    data::compiled::CallTarget::Bool(function) => {
+                                        if let Some(caller) = self.boolean_returns.pop() {
+                                            let site = caller.site();
+                                            return Ok(Some(CallProgress::InterpretedBool {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                                    },
+                                    data::compiled::CallTarget::IntFunction(function) => {
+                                        if let Some(caller) = self.integer_function_returns.pop() {
+                                            let site = caller.site();
+                                            return Ok(Some(CallProgress::InterpretedIntFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                        return Ok(Some(CallProgress::Interpreted { point, values }));
+                                    },
+                                    data::compiled::CallTarget::BoolFunction(function) => {
+                                        if let Some(caller) = self.boolean_function_returns.pop() {
+                                            let site = caller.site();
+                                            return Ok(Some(CallProgress::InterpretedBoolFunction {
+                                                function, site, point, values,
+                                                resume: Box::new(move |value| {
+                                                    self.active = Some(FunctionActive::Running(caller.resume(value)));
+                                                    self
+                                                }),
+                                            }));
+                                        }
+                                        return Ok(Some(CallProgress::Interpreted { point, values }));
                                     },
                                 }
                             },
@@ -4604,7 +4791,7 @@ data::ModuleArtifact {
                     FunctionState::Int11Point8 { int0, int1, int2, int3, int4, int5, int6, int7 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point8 { int0, int1, int2, int3, int4, int5, int6, int7 }); }
                         *budget -= 1;
-                        FunctionStep::IntBridge { function: data::function::IntFunctionId(2), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)), arguments: CallArguments { values: CallValues { ints: vec![int7.into()], bools: vec![], int_lists: vec![], int_functions: vec![], bool_functions: vec![] }, captures: None }, caller: IntReturn::Int11Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } }
+                        FunctionStep::IntScalarBridge { function: data::function::IntFunctionId(2), site: data::source::HostCallSite::from_static("example", "main", data::source::SourceSpan::new(2535, 2545)), input: CallNativeInput::Int(int7.into()), caller: IntReturn::Int11Call8 { int0, int1, int2, int3, int4, int5, int6, int7 } }
                     },
                     FunctionState::Int11Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 } => {
                         if *budget == 0 { return FunctionStep::Yield(FunctionState::Int11Point9 { int0, int1, int2, int3, int4, int5, int6, int7, int8 }); }

@@ -3,6 +3,7 @@ pub(crate) mod calls;
 pub(crate) mod custom;
 pub(crate) mod custom_loop;
 pub(crate) mod int_list;
+pub(crate) mod native_calls;
 pub(crate) mod native_loop;
 pub(crate) mod numeric;
 pub(crate) mod string;
