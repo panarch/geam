@@ -419,7 +419,7 @@ default features and release profile. It uploads that executable as a workflow
 artifact for the Linux embedding jobs. Each consumer downloads the same binary
 and restores its executable permission; it does not install another CLI.
 
-The `Embedding examples` matrix runs the ten guided examples in three groups.
+The `Embedding examples` matrix runs the ten guided examples in two groups.
 Each group checks, formats, tests, and lints its examples sequentially. Their
 integration tests execute each binary and compare exact output. Each example
 has a separate log section; a failure stops that example's remaining commands
@@ -541,7 +541,7 @@ Provider SDK fixture remains the canonical low-level typed-host ABI acceptance
 owner.
 
 The [Acceptance workflow](../../.github/workflows/acceptance.yml) runs the twelve
-provider examples other than `async_files` in four matrix groups. Groups
+provider examples other than `async_files` in two matrix groups. Groups
 balance observed execution times rather than following
 the guide's reading order. For each example, the job selects its exact
 `provider_examples` test, runs the independent provider's tests, verifies its
