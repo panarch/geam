@@ -395,8 +395,15 @@ jobs:
         group:
           - id: 1
             args: "--skip process_consumers::"
+            gleam_projects:
+              - tests/fixtures/raw_string_values/embedding/gleam
           - id: 2
             args: "process_consumers::"
+            gleam_projects:
+              - examples/provider/process_service/embedding/gleam
+              - tests/fixtures/otp_service/embedding/gleam
+              - tests/fixtures/selective_receive_service/embedding/gleam
+              - tests/fixtures/native_function_views/embedding/gleam
 
     steps:
       - name: Checkout
@@ -435,6 +442,17 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/selective_receive_service/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/native_function_views/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
+
+      - name: Prepare Gleam dependency cache sequentially
+        shell: bash
+        env:
+          GLEAM_PROJECTS: ${{ join(matrix.group.gleam_projects, ' ') }}
+        run: |
+          read -r -a projects <<< "$GLEAM_PROJECTS"
+          # Warm the shared Hex cache before temporary projects download in parallel.
+          for project in "${projects[@]}"; do
+            (cd "$project" && gleam deps download)
+          done
 
       - name: Verify prepared generation and source-free distribution
         run: cargo test --package geam --test prepared_embedding --locked -- ${{ matrix.group.args }}

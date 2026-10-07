@@ -111,11 +111,13 @@ jobs:
           read -r -a packages <<< "$COVERAGE_PACKAGES"
           status=0
           for package in "${packages[@]}"; do
-            package_directory="$report_directory/$package"
+            package_directory="$report_directory/${package%/Cargo.toml}"
             mkdir -p "$package_directory"
             report=(report)
-            # "default" keeps an independent consumer's existing report scope.
-            if [[ "$package" != default ]]; then
+            # Independent consumers select their workspace through its manifest.
+            if [[ "$package" == */Cargo.toml ]]; then
+              report+=(--manifest-path "$package")
+            elif [[ "$package" != default ]]; then
               report+=(--package "$package")
             fi
 
@@ -468,7 +470,7 @@ jobs:
           retention-days: 7
 
   service-consumer-coverage:
-    name: Service consumer (${{ matrix.consumer }})
+    name: Service consumers (${{ matrix.group.id }})
     if: >-
       ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all'
           || contains(fromJSON('[
@@ -486,35 +488,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        consumer: >-
+        group: >-
           ${{ fromJSON(
             github.event_name == 'workflow_dispatch' && inputs.target != 'all'
-            && format('["{0}"]', inputs.target)
+            && format('[{{"id":"{0}","directories":["{1}"]}}]',
+              inputs.target,
+              fromJSON('{
+                "process_service": "examples/provider/process_service/provider",
+                "original_otp": "tests/fixtures/otp_service/provider",
+                "charlist_service": "tests/fixtures/charlist_service/provider",
+                "dict_service": "tests/fixtures/dict_service/provider",
+                "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
+                "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
+                "application_exit": "tests/fixtures/application_exit/provider",
+                "native_function_views": "tests/fixtures/native_function_views/provider",
+                "raw_string_values": "tests/fixtures/raw_string_values/provider"
+              }')[inputs.target])
             || '[
-              "process_service",
-              "original_otp",
-              "charlist_service",
-              "dict_service",
-              "bytes_tree_service",
-              "selective_receive_service",
-              "application_exit",
-              "native_function_views",
-              "raw_string_values"
+              {
+                "id": "1",
+                "directories": [
+                  "tests/fixtures/otp_service/provider",
+                  "tests/fixtures/selective_receive_service/provider",
+                  "tests/fixtures/native_function_views/provider",
+                  "tests/fixtures/application_exit/provider"
+                ]
+              },
+              {
+                "id": "2",
+                "directories": [
+                  "examples/provider/process_service/provider",
+                  "tests/fixtures/charlist_service/provider",
+                  "tests/fixtures/dict_service/provider",
+                  "tests/fixtures/bytes_tree_service/provider",
+                  "tests/fixtures/raw_string_values/provider"
+                ]
+              }
             ]'
           ) }}
     env:
-      CONSUMER_DIRECTORY: >-
-        ${{ fromJSON('{
-          "process_service": "examples/provider/process_service/provider",
-          "original_otp": "tests/fixtures/otp_service/provider",
-          "charlist_service": "tests/fixtures/charlist_service/provider",
-          "dict_service": "tests/fixtures/dict_service/provider",
-          "bytes_tree_service": "tests/fixtures/bytes_tree_service/provider",
-          "selective_receive_service": "tests/fixtures/selective_receive_service/provider",
-          "application_exit": "tests/fixtures/application_exit/provider",
-          "native_function_views": "tests/fixtures/native_function_views/provider",
-          "raw_string_values": "tests/fixtures/raw_string_values/provider"
-        }')[matrix.consumer] }}
+      CONSUMER_DIRECTORIES: ${{ join(matrix.group.directories, ' ') }}
 
     steps:
       - name: Checkout
@@ -534,47 +547,67 @@ jobs:
           cache: false
           rustflags: ""
 
-      - name: Cache independent consumer build
+      - name: Resolve independent consumer workspaces
+        id: workspaces
+        shell: bash
+        run: |
+          read -r -a directories <<< "$CONSUMER_DIRECTORIES"
+          {
+            echo 'workspaces<<EOF'
+            for directory in "${directories[@]}"; do
+              printf '%s -> target\n' "$directory"
+            done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache independent consumer builds
         uses: Swatinem/rust-cache@v2
         with:
-          key: service-${{ matrix.consumer }}
-          workspaces: "${{ env.CONSUMER_DIRECTORY }} -> target"
+          key: service-${{ matrix.group.id }}
+          workspaces: ${{ steps.workspaces.outputs.workspaces }}
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov@0.8.7
 
-      - name: Clean independent consumer coverage artifacts
-        working-directory: ${{ env.CONSUMER_DIRECTORY }}
-        run: cargo llvm-cov clean --workspace
-
-      - name: Collect consumer coverage
+      - name: Verify independent consumer coverage
         id: collect
-        working-directory: ${{ env.CONSUMER_DIRECTORY }}
-        run: cargo llvm-cov --locked --no-report
-
-      - name: Verify consumer line and full region coverage
-        if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        working-directory: ${{ env.CONSUMER_DIRECTORY }}
-        run: cargo llvm-cov report --summary-only --fail-under-lines 100 --fail-under-regions 100
+        shell: bash
+        run: |
+          read -r -a directories <<< "$CONSUMER_DIRECTORIES"
+          manifests=()
+          for directory in "${directories[@]}"; do
+            echo "::group::$directory coverage"
+            (
+              cd "$directory"
+              cargo llvm-cov clean --workspace
+              cargo llvm-cov --locked --no-report
+            )
+            manifests+=("$directory/Cargo.toml")
+            printf 'manifests=%s\n' "${manifests[*]}" >> "$GITHUB_OUTPUT"
+            (
+              cd "$directory"
+              cargo llvm-cov report --summary-only --fail-under-lines 100 --fail-under-regions 100
+            )
+            echo "::endgroup::"
+          done
 
       - name: Export coverage diagnostics
         if: >-
           ${{ !cancelled() && github.event_name == 'workflow_dispatch'
-              && inputs.diagnostics && steps.collect.outcome == 'success' }}
-        working-directory: ${{ env.CONSUMER_DIRECTORY }}
+              && inputs.diagnostics && steps.collect.outputs.manifests != '' }}
         env:
-          COVERAGE_PACKAGES: default
+          COVERAGE_PACKAGES: ${{ steps.collect.outputs.manifests }}
         run: *coverage_diagnostics
 
       - name: Upload coverage diagnostics
         if: >-
           ${{ !cancelled() && github.event_name == 'workflow_dispatch'
-              && inputs.diagnostics && steps.collect.outcome == 'success' }}
+              && inputs.diagnostics && steps.collect.outputs.manifests != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.consumer }}-${{ github.sha }}
+          name: coverage-service-${{ matrix.group.id }}-${{ github.sha }}
           path: ${{ runner.temp }}/coverage-diagnostics
           if-no-files-found: error
           retention-days: 7
