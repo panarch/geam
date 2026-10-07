@@ -11,6 +11,13 @@ Earlier clauses also narrow Bool siblings in tuples and custom fields before
 the remaining branch reads the second list element.
 Arithmetic results also pass through captured constructor guards across small
 and arbitrary-precision integer boundaries, including promotion and demotion.
+Record guards also preserve constructor narrowing for generic, nongeneric and
+reordered variants. Source assertions cover pattern-first OR guards, aliases,
+clause scope, shadowing, nested record/tuple fields and shared-field controls.
+Typed dynamic and prepared consumers repeat True/False inputs, including a
+Fragment whose fields differ from the matched Element. These cases reproduce
+the field layout and guard used by Lustre; they do not establish full Lustre
+support.
 
 From the repository root, run:
 
