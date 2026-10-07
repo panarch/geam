@@ -580,6 +580,13 @@ fn failure_path<'pattern>(
                     fields,
                 },
             ) => {
+                // A field path is relative to its selected parent constructor.
+                // A different parent's failure says nothing about this field.
+                if assumptions.iter().any(|assumption| {
+                    assumption.path == parent.path && assumption.constructor != constructor.index
+                }) {
+                    return None;
+                }
                 requirements.push(Query {
                     block,
                     place: parent.clone(),
@@ -1280,6 +1287,168 @@ pub fn main() { inspect(Error("failed")) }
                     )
                     .is_none()
             );
+        }
+    }
+
+    #[test]
+    fn interleaved_nested_failures_keep_parent_hypotheses_and_require_every_incoming() {
+        let source = r#"
+type DataFrame { Text(Int) Binary(Int) }
+type ControlFrame { Close(Int) Ping(Int) Pong(Int) }
+type Frame { Data(DataFrame) Control(ControlFrame) Continuation(Int) }
+
+fn encode(frame: Frame) -> Int {
+  case frame {
+    Data(Text(value)) -> value
+    Control(Close(value)) -> value
+    Data(Binary(value)) -> value
+    Control(Pong(value)) -> value
+    Control(Ping(value)) -> value
+    Continuation(value) -> value
+  }
+}
+
+pub fn main() {
+  let assert 100 = encode(Data(Text(100)))
+  let assert 101 = encode(Data(Binary(101)))
+  let assert 102 = encode(Control(Close(102)))
+  let assert 103 = encode(Control(Ping(103)))
+  let assert 104 = encode(Control(Pong(104)))
+  encode(Continuation(105))
+}
+"#;
+        let typed = crate::compile_typed_module("example", "src/example.gleam", source).unwrap();
+        let plan = crate::ExecutionPlan::from_module_plan(crate::plan_module(typed).unwrap());
+        let common = &plan.program.common;
+        let types = Types::admit(
+            &common.list_types,
+            &common.custom_types,
+            &common.external_types,
+            &common.value_shapes,
+        )
+        .unwrap();
+        let graph = plan.program.functions.value_returns.int_functions[1]
+            .body()
+            .block_graph();
+        assert_eq!(graph.blocks.len(), 11);
+        let last = BlockId(10);
+        let parameter = &graph.block(last).params()[0];
+        for bypass in [false, true] {
+            let mut bodies = Vec::new();
+            for (index, block) in graph.blocks().enumerate() {
+                let mut terminator = block.terminator().clone();
+                if index == 0
+                    && bypass
+                    && let Terminator::Match(matcher) = &mut terminator
+                {
+                    // A Text success reaches the final block without exhausting Data.
+                    matcher.success.target = last;
+                    matcher.success.args =
+                        vec![MatchEdgeArgument::Value(matcher.subject.clone())].into();
+                }
+                bodies.push(ProfiledBlock::new(
+                    block.params().to_vec(),
+                    block.instructions().to_vec(),
+                    terminator,
+                ));
+            }
+            let raw: ProfiledBlockGraph<Infallible> =
+                ProfiledBlockGraph::from_parts(graph.entry, bodies);
+            let blocks = Blocks::admit(&raw).unwrap();
+            let control = Control::new(&blocks, &types);
+            assert_eq!(control.proves(last, &parameter.local, Fact::Is(2)), !bypass);
+            assert_eq!(
+                control.proves(last, &parameter.local, Fact::IsNot(0)),
+                !bypass
+            );
+            let mut locals = Locals::default();
+            locals.define(parameter, &types).unwrap();
+            control.refine(last, parameter, &mut locals);
+            assert_eq!(locals.allows_constructor(&parameter.local, 0), bypass);
+            assert!(!locals.allows_constructor(&parameter.local, 1));
+            assert!(locals.allows_constructor(&parameter.local, 2));
+        }
+    }
+
+    #[test]
+    fn nested_failure_paths_do_not_cross_a_conflicting_parent_constructor() {
+        use super::{Assumption, Place, Projection, failure_path};
+        use crate::plan::execution::graph::CustomLocalId;
+        use crate::plan::execution::type_::CustomTypeId;
+
+        let subject = Place::local(CustomLocalId(0).into());
+        let pattern = MatchPattern::Custom {
+            constructor: CustomConstructorId {
+                type_id: CustomTypeId(0),
+                index: 0,
+            },
+            fields: vec![MatchPattern::Custom {
+                constructor: CustomConstructorId {
+                    type_id: CustomTypeId(1),
+                    index: 1,
+                },
+                fields: vec![MatchPattern::Bool(true)].into(),
+            }]
+            .into(),
+        };
+        let path = [Projection::Custom(0), Projection::Custom(0)];
+        for (assumptions, expected) in [
+            (Vec::new(), true),
+            (
+                vec![Assumption {
+                    path: Vec::new(),
+                    constructor: 1,
+                }],
+                false,
+            ),
+            (
+                vec![
+                    Assumption {
+                        path: Vec::new(),
+                        constructor: 0,
+                    },
+                    Assumption {
+                        path: vec![Projection::Custom(0)],
+                        constructor: 0,
+                    },
+                ],
+                false,
+            ),
+            (
+                vec![
+                    Assumption {
+                        path: Vec::new(),
+                        constructor: 0,
+                    },
+                    Assumption {
+                        path: vec![Projection::Custom(0)],
+                        constructor: 1,
+                    },
+                    Assumption {
+                        path: vec![Projection::Custom(1)],
+                        constructor: 99,
+                    },
+                ],
+                true,
+            ),
+        ] {
+            let result = failure_path(BlockId(0), &pattern, subject.clone(), &path, &assumptions);
+            assert_eq!(result.is_some(), expected);
+            if let Some((leaf, parent, requirements)) = result {
+                assert!(matches!(leaf, MatchPattern::Bool(true)));
+                assert_eq!(
+                    parent,
+                    Place {
+                        root: subject.root,
+                        path: path.to_vec(),
+                    }
+                );
+                assert_eq!(requirements.len(), 2);
+                assert!(requirements[0].fact == Fact::Is(0));
+                assert_eq!(requirements[0].place, subject);
+                assert!(requirements[1].fact == Fact::Is(1));
+                assert_eq!(requirements[1].place.path, [Projection::Custom(0)]);
+            }
         }
     }
 
