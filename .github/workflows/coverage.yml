@@ -470,7 +470,9 @@ jobs:
           retention-days: 7
 
   service-consumer-coverage:
-    name: Service consumers (${{ matrix.group.id }})
+    name: >-
+      Service consumers ${{ github.event_name == 'workflow_dispatch' && inputs.target != 'all'
+        && format('({0})', matrix.group.id) || format('{0}/2', matrix.group.id) }}
     if: >-
       ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all'
           || contains(fromJSON('[
