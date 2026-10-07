@@ -444,6 +444,7 @@ mod control_flow {
             guard_constructor_literal,
             guard_constructor_local,
             guard_constructor_values,
+            guard_record_fields,
             literal_guard_ordering,
             variable_pattern,
             variable_pattern_ordering,
