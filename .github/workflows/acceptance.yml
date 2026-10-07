@@ -418,6 +418,11 @@ jobs:
         with:
           key: prepared-embedding
 
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.18.0"
+
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
 
@@ -434,6 +439,9 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
 
       - name: Verify prepared generation and source-free distribution
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         run: cargo test --package geam --test prepared_embedding --locked
 
   standalone-build:
@@ -467,6 +475,11 @@ jobs:
         with:
           key: standalone-build
 
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.18.0"
+
       - name: Fetch workspace dependencies for offline fixtures
         run: cargo fetch --locked
 
@@ -474,6 +487,9 @@ jobs:
         run: cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
 
       - name: Verify standalone build and source-free distribution
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         run: cargo test --package geam --test standalone_build --locked -- --test-threads=1
 
   published-provider:
