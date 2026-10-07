@@ -151,6 +151,7 @@ pub fn prepare() -> PreparedHostedModule {
         .unwrap();
     for name in [
         "computed",
+        "computed_cancellable",
         "cancellable",
         "retained_value",
         "graph_captured",
@@ -187,6 +188,11 @@ pub fn prepare() -> PreparedHostedModule {
     bindings
         .function(FunctionDeclaration::<(BigInt, bool), bool>::new(
             "captured_bool",
+        ))
+        .unwrap();
+    bindings
+        .function(FunctionDeclaration::<(BigInt, bool), bool>::new(
+            "computed_bool",
         ))
         .unwrap();
     bindings

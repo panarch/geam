@@ -59,7 +59,7 @@ pub(super) fn advance<'plan, Plan: ExecutableRuntimePlan>(
 }
 
 pub(super) fn resume<'plan, Plan: ExecutableRuntimePlan>(
-    mut frame: Frame<'plan, Plan>,
+    frame: Frame<'plan, Plan>,
     execution: Box<dyn CallExecution>,
     plan: &'plan Plan,
     state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
@@ -72,6 +72,16 @@ pub(super) fn resume<'plan, Plan: ExecutableRuntimePlan>(
         &mut budget,
     );
     *remaining = budget;
+    resume_progress(frame, progress, plan, state, storage)
+}
+
+pub(super) fn resume_progress<'plan, Plan: ExecutableRuntimePlan>(
+    mut frame: Frame<'plan, Plan>,
+    progress: CallProgress,
+    plan: &'plan Plan,
+    state: &mut impl RuntimeGraphState<Error = crate::ExecutionError>,
+    storage: &mut Storage<'plan, Plan>,
+) -> ExecutionResult<Activation<'plan, Plan>> {
     let domain = Some(state.captures().domain());
     macro_rules! call {
         ($function:expr, $site:expr, $arguments:expr, $resume:expr, $map:expr) => {

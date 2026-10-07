@@ -229,7 +229,7 @@ fn generated_and_canonical_loops_preserve_each_native_result_failure_and_cancell
             for count in [1, 2, 5, 127, 128, 129, 10_000] {
                 for (function, input, expected_retained) in [
                     (&captured, 7, if prepared && retained { count } else { 0 }),
-                    (&computed, 8, 0),
+                    (&computed, 8, if prepared && retained { count } else { 0 }),
                 ] {
                     *AUDIT.lock().unwrap() = Audit::default();
                     let result = runtime
@@ -394,6 +394,144 @@ fn generated_and_canonical_loops_preserve_each_native_result_failure_and_cancell
 
 #[cfg(feature = "tokio")]
 #[test]
+fn computed_native_calls_preserve_overflow_failure_origin_and_effect_admission() {
+    use geam_core::embedding::CallError;
+    use geam_core::execution::TokioHost;
+    use native_loop_provider::{AUDIT, Audit};
+    let _serial = native_loop_provider::TEST_LOCK.lock().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    let mut canonical_failure = None;
+    for prepared in [false, true] {
+        for retained in [false, true] {
+            let (mut module, computed, cancellable) = if prepared {
+                let mut bindings = NATIVE_LOOP
+                    .load(native_loop_provider::hosts(retained))
+                    .unwrap();
+                let computed = bindings
+                    .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                        "computed",
+                    ))
+                    .unwrap();
+                let cancellable = bindings
+                    .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                        "computed_cancellable",
+                    ))
+                    .unwrap();
+                (bindings.seal(), computed, cancellable)
+            } else {
+                let typed = compile_typed_host_program(
+                    "application",
+                    "native_loop",
+                    native_loop_provider::packages(),
+                    native_loop_provider::hosts(retained),
+                )
+                .unwrap();
+                let (mut bindings, computed) = HostedModuleBuilder::new(typed)
+                    .unwrap()
+                    .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                        "computed",
+                    ))
+                    .unwrap();
+                let cancellable = bindings
+                    .function(FunctionDeclaration::<(BigInt, BigInt), BigInt>::new(
+                        "computed_cancellable",
+                    ))
+                    .unwrap();
+                (bindings.seal().unwrap(), computed, cancellable)
+            };
+            for input in [
+                BigInt::from(i64::MAX) - 2,
+                BigInt::from(i64::MAX),
+                BigInt::from(1) << 100_u32,
+            ] {
+                *AUDIT.lock().unwrap() = Audit::default();
+                let result = runtime
+                    .block_on(module.with_execution(
+                        &host,
+                        &mut (),
+                        &mut Vec::new(),
+                        async |scope| scope.call(&computed, (5.into(), input.clone())).await,
+                    ))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap();
+                assert_eq!(result, Ok(&input + 6));
+                assert_eq!(AUDIT.lock().unwrap().inputs, vec![&input + 1; 5]);
+            }
+            for stop_at in [1, 3, 5] {
+                *AUDIT.lock().unwrap() = Audit {
+                    fail_at: Some(stop_at),
+                    ..Audit::default()
+                };
+                let failure = runtime
+                    .block_on(module.with_execution(
+                        &host,
+                        &mut (),
+                        &mut Vec::new(),
+                        async |scope| scope.call(&computed, (5.into(), 7.into())).await,
+                    ))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap()
+                    .unwrap_err();
+                if canonical_failure.is_none() {
+                    canonical_failure = Some(failure.clone());
+                }
+                // CallError equality retains the full provider, signature,
+                // source site/span and resolved source diagnostic.
+                assert_eq!(failure, canonical_failure.clone().unwrap());
+                assert_eq!(AUDIT.lock().unwrap().inputs, vec![8.into(); stop_at]);
+                assert_eq!(
+                    AUDIT.lock().unwrap().retained,
+                    if prepared && retained { stop_at } else { 0 }
+                );
+
+                *AUDIT.lock().unwrap() = Audit {
+                    cancel_at: Some(stop_at),
+                    ..Audit::default()
+                };
+                let cancelled = runtime
+                    .block_on(module.with_execution(
+                        &host,
+                        &mut (),
+                        &mut Vec::new(),
+                        async |scope| scope.call(&cancellable, (5.into(), 7.into())).await,
+                    ))
+                    .unwrap()
+                    .try_into_value()
+                    .unwrap();
+                assert_eq!(cancelled, Err(CallError::Cancelled));
+                assert_eq!(AUDIT.lock().unwrap().inputs, vec![8.into(); stop_at]);
+                assert_eq!(
+                    AUDIT.lock().unwrap().retained,
+                    if prepared && retained { stop_at } else { 0 }
+                );
+
+                *AUDIT.lock().unwrap() = Audit {
+                    panic_at: Some(stop_at),
+                    ..Audit::default()
+                };
+                let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    runtime.block_on(module.with_execution(
+                        &host,
+                        &mut (),
+                        &mut Vec::new(),
+                        async |scope| scope.call(&computed, (5.into(), 7.into())).await,
+                    ))
+                }))
+                .unwrap_err();
+                assert_eq!(panic.downcast_ref::<&str>(), Some(&"observed Rust panic"));
+                assert_eq!(AUDIT.lock().unwrap().inputs, vec![8.into(); stop_at]);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "tokio")]
+#[test]
 fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_return() {
     use geam_core::execution::TokioHost;
     use native_loop_provider::{
@@ -429,6 +567,11 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
             let boolean = $bindings
                 .function(FunctionDeclaration::<(BigInt, bool), bool>::new(
                     "captured_bool",
+                ))
+                .unwrap();
+            let computed_boolean = $bindings
+                .function(FunctionDeclaration::<(BigInt, bool), bool>::new(
+                    "computed_bool",
                 ))
                 .unwrap();
             let nil = $bindings
@@ -471,6 +614,7 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                 bits,
                 codepoint,
                 boolean,
+                computed_boolean,
                 nil,
                 mixed,
                 literal,
@@ -490,6 +634,7 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                 bits,
                 codepoint,
                 boolean,
+                computed_boolean,
                 nil,
                 mixed,
                 literal,
@@ -593,6 +738,13 @@ fn primitive_loops_select_the_shared_engine_and_preserve_each_input_and_actual_r
                     fast
                 );
                 audit_call!(&nil, (count.into(), ()), (), PrimitiveInput::Nil, fast);
+                audit_call!(
+                    &computed_boolean,
+                    (count.into(), true),
+                    count % 2 == 1,
+                    PrimitiveInput::Bool(false),
+                    fast
+                );
                 audit_call!(
                     &mixed,
                     (count.into(), 1.25),

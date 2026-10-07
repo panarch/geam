@@ -259,8 +259,11 @@ pub mod compiled {
     pub mod calls {
         pub use crate::runtime::compiled::calls::{
             BoolCallable, CallArguments, CallCapture, CallCaptureInputs, CallCaptures,
-            CallExecution, CallInputs, CallInteger, CallOps, CallOutput, CallProgress, CallResume,
-            CallStart, CallStorage, CallValues, IntCallable,
+            CallExecution, CallInputs, CallInteger, CallNativeInput, CallOps, CallOutput,
+            CallProgress, CallResume, CallStart, CallStorage, CallValues, IntCallable,
+        };
+        pub use crate::runtime::compiled::native_calls::{
+            CallNativeFailure, CallNativeOps, CallNativeReturn,
         };
     }
 
