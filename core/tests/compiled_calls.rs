@@ -42,6 +42,161 @@ fn generated_boolean_only_calls_compile_without_unused_step_variants_and_return_
     assert!(echo.is_empty());
 }
 
+static BOOLEAN_BRIDGE: data::ModuleArtifact<Infallible> =
+    include!("fixtures/prepared/boolean_bridge.rs");
+
+#[test]
+fn terminal_boolean_bridges_match_live_calls_and_keep_stable_generated_data() {
+    let source = include_str!("fixtures/prepared/boolean_bridge.gleam");
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, _) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), bool>::new("verify"))
+        .unwrap();
+    assert_eq!(
+        bindings.prepare().emit_rust(),
+        include_str!("fixtures/prepared/boolean_bridge.rs").trim()
+    );
+    let typed = compile_typed_module("example", "src/example.gleam", source).unwrap();
+    let (bindings, live_verify) = ModuleBuilder::new(typed)
+        .unwrap()
+        .function(FunctionDeclaration::<(), bool>::new("verify"))
+        .unwrap();
+    let mut prepared = BOOLEAN_BRIDGE.load().unwrap();
+    let prepared_verify = prepared
+        .function(FunctionDeclaration::<(), bool>::new("verify"))
+        .unwrap();
+    for (module, verify) in [
+        (bindings.seal(), live_verify),
+        (prepared.seal(), prepared_verify),
+    ] {
+        let mut echo = Vec::new();
+        for _ in 0..3 {
+            assert!(module.call(&verify, (), &mut echo).unwrap());
+        }
+        assert!(echo.is_empty());
+    }
+}
+
+static BRIDGE_TRACE: Mutex<Vec<(usize, usize, &'static str)>> = Mutex::new(Vec::new());
+
+struct LimitedBridge(Box<dyn CallExecution>);
+
+impl CallExecution for LimitedBridge {
+    fn restart(&mut self, target: CallTarget, point: usize, inputs: CallInputs<'_>) -> bool {
+        self.0.restart(target, point, inputs)
+    }
+
+    fn retained_bytes(&self) -> usize {
+        self.0.retained_bytes()
+    }
+
+    fn advance(self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress {
+        let offered = if BRIDGE_TRACE.lock().unwrap().is_empty() {
+            0
+        } else {
+            1.min(*budget)
+        };
+        let mut remaining = offered;
+        let progress = self.0.advance(ops, &mut remaining);
+        let consumed = offered - remaining;
+        *budget -= consumed;
+        let route = match &progress {
+            CallProgress::Yield(_) => "yield",
+            CallProgress::Bool { .. } => "bridge",
+            CallProgress::Interpreted { .. } => "canonical",
+            _ => "other",
+        };
+        BRIDGE_TRACE
+            .lock()
+            .unwrap()
+            .push((offered, consumed, route));
+        match progress {
+            CallProgress::Yield(next) => CallProgress::Yield(Box::new(Self(next))),
+            CallProgress::Bool {
+                function,
+                site,
+                arguments,
+                resume,
+            } => CallProgress::Bool {
+                function,
+                site,
+                arguments,
+                resume: Box::new(move |value| Box::new(Self(resume(value)))),
+            },
+            progress => progress,
+        }
+    }
+}
+
+fn limited_boolean_bridge(
+    point: usize,
+    inputs: CallInputs<'_>,
+    storage: &mut CallStorage,
+) -> Option<Box<dyn CallExecution>> {
+    let row = BOOLEAN_BRIDGE.program.compiled.function_calls.first()?;
+    let CompiledImplementation::FunctionCalls(implementation) = &row.implementation else {
+        return None;
+    };
+    (implementation.start)(point, inputs, storage)
+        .map(|execution| Box::new(LimitedBridge(execution)) as Box<dyn CallExecution>)
+}
+
+#[test]
+fn terminal_bridges_preserve_zero_budget_yields_and_single_step_resumption() {
+    const BASE: data::ModuleArtifact<Infallible> = include!("fixtures/prepared/boolean_bridge.rs");
+    let mut artifact = BASE;
+    let original_rows = artifact.program.compiled.function_calls.len();
+    assert_eq!(original_rows, 1);
+    artifact.program.compiled.function_calls = artifact
+        .program
+        .compiled
+        .function_calls
+        .iter()
+        .filter_map(|row| {
+            let CompiledImplementation::FunctionCalls(implementation) = &row.implementation else {
+                return None;
+            };
+            Some(CompiledFunction {
+                function: row.function,
+                implementation: CompiledImplementation::FunctionCalls(
+                    Box::new(FunctionCallsImplementation {
+                        root: implementation.root,
+                        entry: implementation.entry,
+                        checkpoints: implementation.checkpoints.clone(),
+                        locals: implementation.locals.clone(),
+                        calls: implementation.calls.clone(),
+                        creations: implementation.creations.clone(),
+                        returns: implementation.returns.clone(),
+                        tails: implementation.tails.clone(),
+                        start: limited_boolean_bridge,
+                    })
+                    .into(),
+                ),
+            })
+        })
+        .collect::<Vec<_>>()
+        .into();
+    assert_eq!(
+        artifact.program.compiled.function_calls.len(),
+        original_rows
+    );
+    let artifact = Box::leak(Box::new(artifact));
+    let mut bindings = artifact.load().unwrap();
+    let verify = bindings
+        .function(FunctionDeclaration::<(), bool>::new("verify"))
+        .unwrap();
+    let module = bindings.seal();
+    for _ in 0..2 {
+        BRIDGE_TRACE.lock().unwrap().clear();
+        assert!(module.call(&verify, (), &mut Vec::new()).unwrap());
+        assert_eq!(
+            BRIDGE_TRACE.lock().unwrap().as_slice(),
+            [(0, 0, "yield"), (1, 1, "bridge"), (1, 0, "canonical")]
+        );
+    }
+}
+
 macro_rules! select_remaining {
     ($bindings:ident, $chain:expr) => {{
         let target = $bindings
