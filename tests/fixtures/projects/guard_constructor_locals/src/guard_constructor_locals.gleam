@@ -3,6 +3,7 @@ import clip/opt
 import clip_contracts
 import gleam/io
 import gleam/option.{type Option, None, Some}
+import guard_record_fields
 import multi_subject_patterns
 import nested_constructor_remainders
 import nested_pattern_bindings
@@ -235,6 +236,14 @@ pub fn clip_cases() {
   Nil
 }
 
+pub fn guard_record_field(
+  namespace: String,
+  inline: Bool,
+  fragment: Bool,
+) -> Bool {
+  guard_record_fields.matches_namespace(namespace, inline, fragment)
+}
+
 pub fn main() {
   general_cases()
   clip_cases()
@@ -243,5 +252,6 @@ pub fn main() {
   nested_pattern_bindings.main()
   nested_constructor_remainders.main()
   nil_pattern_fallthrough.main()
+  let assert True = guard_record_fields.main()
   io.println("guard locals, multi-subject patterns and original clip: ok")
 }

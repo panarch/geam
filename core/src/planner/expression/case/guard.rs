@@ -10,7 +10,9 @@ use crate::planner::error::{
     InvalidExpressionShapeKind, InvalidExpressionType, InvalidTypedAstReason, PlanError,
 };
 use crate::planner::expression::constant;
-use crate::planner::expression::conversion::{expect_expression, value_type_from_gleam};
+use crate::planner::expression::conversion::{
+    expect_expression, refine_expression_shape, value_type_from_gleam,
+};
 use ecow::EcoString;
 use gleam_compiler_core::ast::{BinOp, ClauseGuard};
 use gleam_compiler_core::type_::Type;
@@ -56,7 +58,10 @@ fn plan_expr(
     match guard {
         ClauseGuard::Constant(value) => constant::plan_guard(value, context),
         ClauseGuard::Block { value, .. } => plan_expr(*value, context),
-        ClauseGuard::Var { name, .. } => plan_local(name, context),
+        ClauseGuard::Var { name, type_, .. } => {
+            let shape = context.value_shape_in_scope(type_.as_ref());
+            refine_expression_shape(plan_local(name, context)?, shape)
+        }
         ClauseGuard::TupleIndex {
             tuple,
             index,
@@ -366,27 +371,36 @@ fn function_local_get(
 mod tests {
     use super::{function_local_get, plan_expr, referenced_locals};
     use crate::plan::{
-        BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId, BitArrayLocalId, BoolExpr,
-        BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, CustomConstruction, CustomConstructor,
-        CustomConstructorField, CustomConstructorRefinement, CustomExpr, CustomFunctionExpr,
-        CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType, CustomLocal, CustomType,
-        CustomTypeName, CustomValueShape, Expr, ExternalExpr, ExternalFunctionExpr,
-        ExternalFunctionLocal, ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal,
-        ExternalType, ExternalTypeName, ExternalValueShape, FloatExpr, FloatFunctionExpr,
-        FloatFunctionLocalId, FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal,
-        FunctionFunctionLocalId, FunctionFunctionType, FunctionShape, FunctionType, GenericExpr,
-        GenericFunctionExpr, GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId,
-        IntLocalId, ListExpr, ListFunctionExpr, ListLocal, LocalId, NilExpr, NilFunctionExpr,
-        NilFunctionLocalId, NilLocalId, StringExpr, StringFunctionExpr, StringFunctionLocalId,
-        StringListLocalId, TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId,
-        TypeParameterId, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
+        AssertPattern, BitArrayExpr, BitArrayFunctionExpr, BitArrayFunctionLocalId,
+        BitArrayLocalId, BoolExpr, BoolFunctionExpr, BoolFunctionLocalId, BoolLocalId, BoolReturn,
+        CustomConstruction, CustomConstructor, CustomConstructorDefinition, CustomConstructorField,
+        CustomConstructorRefinement, CustomExpr, CustomFieldAccess, CustomFieldDefinition,
+        CustomFunctionExpr, CustomFunctionLocal, CustomFunctionLocalId, CustomFunctionType,
+        CustomLocal, CustomLocalId, CustomPattern, CustomType, CustomTypeDefinition,
+        CustomTypeName, CustomTypeParameterId, CustomTypePublicity, CustomTypeTemplate,
+        CustomValueShape, Expr, ExternalExpr, ExternalFunctionExpr, ExternalFunctionLocal,
+        ExternalFunctionLocalId, ExternalFunctionType, ExternalLocal, ExternalType,
+        ExternalTypeName, ExternalValueShape, FloatExpr, FloatFunctionExpr, FloatFunctionLocalId,
+        FunctionExpr, FunctionFunctionExpr, FunctionFunctionLocal, FunctionFunctionLocalId,
+        FunctionFunctionType, FunctionShape, FunctionTemplate, FunctionTemplateId,
+        FunctionTemplateSignature, FunctionType, GenericExpr, GenericFunctionExpr,
+        GenericFunctionType, IntExpr, IntFunctionExpr, IntFunctionLocalId, IntLocalId, ListExpr,
+        ListFunctionExpr, ListLocal, LocalId, ModulePlan, NilExpr, NilFunctionExpr,
+        NilFunctionLocalId, NilLocalId, Param, ParamLocal, ReturnExpr, Step, StringExpr,
+        StringFunctionExpr, StringFunctionLocalId, StringListLocalId, TotalBindingPattern,
+        TupleExpr, TupleFunctionExpr, TupleFunctionLocalId, TupleLocalId, TypeParameterId,
+        TypeScheme, UtfCodepointExpr, UtfCodepointFunctionExpr, UtfCodepointFunctionLocalId,
         UtfCodepointLocalId, ValueShape, ValueType,
     };
     use crate::planner::context::{AnonymousFunctions, FunctionLocalBinding, PlanContext};
+    use crate::planner::dsl::{
+        bool_, bool_return_block, bool_return_expr, function, local_bool, string,
+    };
+    use crate::planner::plan_module;
     use crate::planner::support::{compile, dummy_span};
     use crate::planner::{
-        InvalidExpressionShapeKind, InvalidExpressionType, InvalidModuleReferenceReason,
-        InvalidTypedAstReason, PlanError,
+        InvalidCustomTypeReason, InvalidExpressionShapeKind, InvalidExpressionType,
+        InvalidModuleReferenceReason, InvalidTypedAstReason, PlanError,
     };
     use ecow::EcoString;
     use gleam_compiler_core::ast::{BinOp, ClauseGuard, Constant, Publicity};
@@ -395,6 +409,414 @@ mod tests {
     use num_bigint::BigInt;
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
+
+    #[test]
+    fn plan_constructor_narrowed_guard_record_bool_case() {
+        for (source, generic, element_index) in [
+            (
+                r#"
+pub type Node(a) {
+  Fragment(children: List(a))
+  Element(namespace: String, children: List(a))
+}
+pub fn check(node: Node(a), inline: Bool) -> Bool {
+  case node {
+    Element(..) if !inline || node.namespace != "" -> True
+    _ -> False
+  }
+}
+pub fn main() -> Bool { False }
+"#,
+                true,
+                1,
+            ),
+            (
+                r#"
+pub type Node {
+  Fragment(children: List(Int))
+  Element(namespace: String, children: List(Int))
+}
+pub fn check(node: Node, inline: Bool) -> Bool {
+  case node {
+    Element(..) if !inline || node.namespace != "" -> True
+    _ -> False
+  }
+}
+pub fn main() -> Bool { False }
+"#,
+                false,
+                1,
+            ),
+            (
+                r#"
+pub type Node(a) {
+  Element(namespace: String, children: List(a))
+  Fragment(children: List(a))
+}
+pub fn check(node: Node(a), inline: Bool) -> Bool {
+  case node {
+    Element(..) if !inline || node.namespace != "" -> True
+    _ -> False
+  }
+}
+pub fn main() -> Bool { False }
+"#,
+                true,
+                0,
+            ),
+        ] {
+            let name = CustomTypeName::new("geam".into(), "main".into(), "Node".into());
+            let arguments = if generic {
+                vec![ValueShape::Parameter(TypeParameterId(0))]
+            } else {
+                Vec::new()
+            };
+            let any = CustomValueShape::new(
+                name.clone(),
+                arguments.clone(),
+                CustomConstructorRefinement::Any,
+            );
+            let exact = CustomValueShape::new(
+                name.clone(),
+                arguments,
+                CustomConstructorRefinement::Exact(element_index),
+            );
+            let children = ValueType::List(Box::new(if generic {
+                ValueType::Parameter(TypeParameterId(0))
+            } else {
+                ValueType::Int
+            }));
+            let element = CustomConstructor::new(
+                any.type_().clone(),
+                "Element".into(),
+                element_index,
+                vec![
+                    CustomConstructorField::new(Some("namespace".into()), ValueType::String),
+                    CustomConstructorField::new(Some("children".into()), children.clone()),
+                ],
+            );
+            let narrowed_node = Expr::custom(CustomExpr::local_get(
+                CustomLocal::from_shape(CustomLocalId(0), any.clone()),
+                "node".into(),
+            ))
+            .with_resolved_shape(ValueShape::Custom(exact))
+            .unwrap()
+            .into_custom()
+            .unwrap();
+            let condition = BoolExpr::and(
+                BoolExpr::custom_matches(
+                    CustomExpr::local_get(
+                        CustomLocal::from_shape(CustomLocalId(1), any.clone()),
+                        "<case:custom:1>".into(),
+                    ),
+                    CustomPattern::new(
+                        element,
+                        vec![AssertPattern::Discard, AssertPattern::Discard],
+                        Some(vec![
+                            TotalBindingPattern::discard(ValueType::String),
+                            TotalBindingPattern::discard(children),
+                        ]),
+                    ),
+                ),
+                BoolExpr::or(
+                    BoolExpr::not(local_bool(0, "inline").into()),
+                    BoolExpr::not_equal(
+                        Expr::custom_field_shape(
+                            CustomFieldAccess::new(narrowed_node, 0, Some("namespace".into())),
+                            ValueShape::String,
+                        ),
+                        Expr::string(string("").into()),
+                    ),
+                ),
+            );
+            let return_ = ReturnExpr::bool_body(bool_return_block(
+                [Step::let_custom(
+                    CustomLocalId(1),
+                    "<case:custom:1>".into(),
+                    CustomExpr::local_get(
+                        CustomLocal::from_shape(CustomLocalId(0), any.clone()),
+                        "node".into(),
+                    ),
+                )],
+                BoolReturn::bool_case(
+                    condition,
+                    bool_return_expr(bool_(true)),
+                    bool_return_expr(bool_(false)),
+                ),
+            ));
+            let parameter_shape = ValueShape::Custom(any.clone());
+            let check = FunctionTemplate::from_signature(
+                FunctionTemplateSignature::new(
+                    FunctionTemplateId::new(1),
+                    TypeScheme::new(usize::from(generic)),
+                    FunctionShape::new(
+                        vec![parameter_shape.clone(), ValueShape::Bool],
+                        ValueShape::Bool,
+                    ),
+                ),
+                "check".into(),
+                vec![
+                    Param::named_shape(
+                        ParamLocal::custom(CustomLocalId(0), any.type_().clone()),
+                        "node".into(),
+                        parameter_shape,
+                    ),
+                    Param::named(ParamLocal::bool(BoolLocalId(0)), "inline".into()),
+                ],
+                Vec::new(),
+                Vec::new(),
+                return_,
+            );
+            let child_template = CustomTypeTemplate::List(Box::new(if generic {
+                CustomTypeTemplate::Parameter(CustomTypeParameterId(0))
+            } else {
+                CustomTypeTemplate::Int
+            }));
+            let fragment = CustomConstructorDefinition::new(
+                "Fragment".into(),
+                1 - element_index,
+                vec![CustomFieldDefinition::new(
+                    Some("children".into()),
+                    child_template.clone(),
+                )],
+            );
+            let element = CustomConstructorDefinition::new(
+                "Element".into(),
+                element_index,
+                vec![
+                    CustomFieldDefinition::new(
+                        Some("namespace".into()),
+                        CustomTypeTemplate::String,
+                    ),
+                    CustomFieldDefinition::new(Some("children".into()), child_template),
+                ],
+            );
+            let constructors = if element_index == 0 {
+                vec![element, fragment]
+            } else {
+                vec![fragment, element]
+            };
+            let definition = CustomTypeDefinition::new(
+                name,
+                CustomTypePublicity::Public,
+                false,
+                if generic {
+                    vec![CustomTypeParameterId(0)]
+                } else {
+                    Vec::new()
+                },
+                constructors,
+            );
+            let expected = ModulePlan::new(
+                "main".into(),
+                function("main", bool_(false)).build(FunctionTemplateId::new(0)),
+                vec![check],
+            )
+            .with_custom_types(vec![definition]);
+            assert_eq!(plan_module(compile(source)), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn reject_margin_guard_record_projection_metadata() {
+        let source = r#"
+pub type Node(a) {
+  Fragment(children: List(a))
+  Element(namespace: String, children: List(a))
+}
+pub fn check(node: Node(Int)) -> Bool {
+  case node {
+    Element(..) if node.namespace == "html" -> True
+    _ -> False
+  }
+}
+pub fn main() -> Bool { False }
+"#;
+        for (index, label, field_type, constructor, reason) in [
+            (
+                2,
+                "namespace",
+                type_::string(),
+                Some(1),
+                InvalidCustomTypeReason::FieldIndex {
+                    index: 2,
+                    available: 2,
+                },
+            ),
+            (
+                0,
+                "children",
+                type_::string(),
+                Some(1),
+                InvalidCustomTypeReason::FieldLabel {
+                    index: 0,
+                    expected: Some("namespace".into()),
+                    actual: Some("children".into()),
+                },
+            ),
+            (
+                0,
+                "namespace",
+                type_::int(),
+                Some(1),
+                InvalidCustomTypeReason::FieldType {
+                    index: 0,
+                    expected: ValueType::Int,
+                    actual: ValueType::String,
+                },
+            ),
+            (
+                0,
+                "namespace",
+                type_::string(),
+                Some(99),
+                InvalidCustomTypeReason::ConstructorIndex {
+                    index: 99,
+                    available: 2,
+                },
+            ),
+            (
+                0,
+                "namespace",
+                type_::string(),
+                None,
+                InvalidCustomTypeReason::FieldLabel {
+                    index: 0,
+                    expected: Some("children".into()),
+                    actual: Some("namespace".into()),
+                },
+            ),
+        ] {
+            let mut module = compile(source);
+            let (_, _, clauses) = super::super::expect_case_statement_mut(
+                &mut module.definitions.functions[0].body[0],
+            );
+            clauses[0].guard = Some(binary(
+                BinOp::Eq,
+                ClauseGuard::FieldAccess {
+                    label_location: dummy_span(),
+                    index: Some(index),
+                    label: label.into(),
+                    type_: field_type,
+                    container: Box::new(var(
+                        "node",
+                        Arc::new(Type::Named {
+                            publicity: Publicity::Public,
+                            package: "geam".into(),
+                            module: "main".into(),
+                            name: "Node".into(),
+                            arguments: vec![type_::int()],
+                            inferred_variant: constructor,
+                        }),
+                    )),
+                },
+                ClauseGuard::Constant(Constant::String {
+                    location: dummy_span(),
+                    value: "html".into(),
+                }),
+            ));
+            assert_eq!(
+                plan_module(module),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::CustomType {
+                        package: "geam".into(),
+                        module: "main".into(),
+                        name: "Node".into(),
+                        reason: Box::new(reason),
+                    },
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn reject_margin_guard_local_incompatible_shapes_without_changing_parameter_scope() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+        let parameter = type_::generic_var(7);
+        assert_eq!(
+            context.value_shape(parameter.as_ref()),
+            ValueShape::Parameter(TypeParameterId(0)),
+        );
+        let name = CustomTypeName::new("geam".into(), module.clone(), "Node".into());
+        let source = CustomValueShape::new(
+            name.clone(),
+            vec![ValueShape::Parameter(TypeParameterId(0))],
+            CustomConstructorRefinement::Exact(0),
+        );
+        context.define_custom_local_shape("node".into(), source.clone());
+        for (type_name, argument, constructor, expected) in [
+            (
+                "Other",
+                parameter.clone(),
+                Some(0),
+                CustomValueShape::new(
+                    CustomTypeName::new("geam".into(), module.clone(), "Other".into()),
+                    vec![ValueShape::Parameter(TypeParameterId(0))],
+                    CustomConstructorRefinement::Exact(0),
+                ),
+            ),
+            (
+                "Node",
+                type_::generic_var(8),
+                Some(0),
+                CustomValueShape::new(
+                    name.clone(),
+                    vec![ValueShape::Parameter(TypeParameterId(1))],
+                    CustomConstructorRefinement::Exact(0),
+                ),
+            ),
+            (
+                "Node",
+                parameter,
+                Some(1),
+                CustomValueShape::new(
+                    name,
+                    vec![ValueShape::Parameter(TypeParameterId(0))],
+                    CustomConstructorRefinement::Exact(1),
+                ),
+            ),
+        ] {
+            let type_ = Arc::new(Type::Named {
+                publicity: Publicity::Public,
+                package: "geam".into(),
+                module: module.clone(),
+                name: type_name.into(),
+                arguments: vec![argument],
+                inferred_variant: constructor,
+            });
+            assert_eq!(
+                plan_expr(var("node", type_), &mut context),
+                Err(PlanError::InvalidTypedAst {
+                    reason: InvalidTypedAstReason::ExpressionShapeRefinement {
+                        expected: ValueType::Custom(expected.type_().clone()),
+                        actual: ValueType::Custom(source.type_().clone()),
+                    },
+                }),
+            );
+            assert_eq!(context.type_parameters().scheme(), TypeScheme::new(1));
+        }
+    }
+
+    #[test]
+    fn reject_margin_guard_variable_outside_scope_without_changing_parameters() {
+        let module = EcoString::from("main");
+        let functions = HashMap::new();
+        let mut anonymous = AnonymousFunctions::default();
+        let mut context = PlanContext::new(&module, &functions, &mut anonymous);
+
+        assert_eq!(
+            plan_expr(var("missing", type_::generic_var(7)), &mut context),
+            Err(PlanError::InvalidTypedAst {
+                reason: InvalidTypedAstReason::UnknownLocal {
+                    name: "missing".into(),
+                },
+            }),
+        );
+        assert_eq!(context.type_parameters().scheme(), TypeScheme::new(0));
+    }
 
     #[test]
     fn referenced_locals_visits_nested_projections_and_both_short_circuit_operands() {

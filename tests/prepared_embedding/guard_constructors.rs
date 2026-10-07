@@ -95,6 +95,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             assert!(!scope.call(&functions.captured_match, (7.into(), 8.into())).await?);
             assert!(scope.call(&functions.captured_match, (7.into(), 7.into())).await?);
+            for (namespace, inline, fragment, expected) in [
+                ("", true, false, false),
+                ("html", true, false, true),
+                ("", false, false, true),
+                ("html", false, true, false),
+                ("html", true, true, false),
+                ("svg", true, false, true),
+                ("", true, false, false),
+                ("html", true, false, true),
+            ] {
+                assert_eq!(scope.call(&functions.guard_record_field, (
+                    namespace.into(), inline, fragment,
+                )).await?, expected);
+            }
             Ok::<_, geam::embedding::CallError>(())
         }))?.try_into_value().unwrap()?;
         assert!(echo.is_empty());

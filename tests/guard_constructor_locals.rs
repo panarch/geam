@@ -72,6 +72,11 @@ fn typed_embedding_reuses_generic_guards_captures_and_nested_remainder_bindings(
             "arithmetic_captured_match",
         ))
         .unwrap();
+    let record_field = bindings
+        .function(FunctionDeclaration::<(StringValue, bool, bool), bool>::new(
+            "guard_record_field",
+        ))
+        .unwrap();
     let mut module = bindings.seal().unwrap();
     let host = execution_fixture::TestHost::default();
     let mut state = GleamStdlibRunState::from_seed([0; 32]);
@@ -136,6 +141,22 @@ fn typed_embedding_reuses_generic_guards_captures_and_nested_remainder_bindings(
                             .await?,
                     );
                 }
+                for (namespace, inline, fragment) in [
+                    ("", true, false),
+                    ("html", true, false),
+                    ("", false, false),
+                    ("html", false, true),
+                    ("html", true, true),
+                    ("svg", true, false),
+                    ("", true, false),
+                    ("html", true, false),
+                ] {
+                    results.push(
+                        scope
+                            .call(&record_field, (namespace.into(), inline, fragment))
+                            .await?,
+                    );
+                }
                 Ok::<_, CallError>(results)
             }),
         )
@@ -147,7 +168,8 @@ fn typed_embedding_reuses_generic_guards_captures_and_nested_remainder_bindings(
         actual,
         [
             true, false, true, true, true, false, true, false, true, true, false, false, true,
-            true, false, false, true, true, true, true, false, true, true,
+            true, false, false, true, true, true, true, false, true, true, false, true, true,
+            false, false, true, false, true,
         ]
     );
     assert!(echo.is_empty());
