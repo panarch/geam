@@ -15,6 +15,11 @@ pub fn computed(count: Int, value: Int) -> Int {
   repeat(count, fn() { value + 1 })
 }
 
+pub fn computed_cancellable(count: Int, value: Int) -> Int {
+  begin()
+  repeat(count, fn() { value + 1 })
+}
+
 pub fn cancellable(count: Int, value: Int) -> Int {
   begin()
   repeat(count, fn() { value })
@@ -120,6 +125,10 @@ fn observe_bool(value: Bool) -> Bool
 
 pub fn captured_bool(count: Int, value: Bool) -> Bool {
   repeat_bool(count, fn() { value })
+}
+
+pub fn computed_bool(count: Int, value: Bool) -> Bool {
+  repeat_bool(count, fn() { !value })
 }
 
 fn repeat_bool(count: Int, producer: fn() -> Bool) -> Bool {

@@ -37,7 +37,7 @@ pub struct HostOrigin {
     signature: FunctionType,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum HostCallOrigin {
     Entry,
     Source(HostCallSite),
@@ -338,6 +338,26 @@ mod tests {
         assert_eq!(
             HostCallOrigin::source(source.clone()).into_source_site(&declaration),
             Ok(source),
+        );
+    }
+
+    #[test]
+    fn host_call_origin_debug_preserves_entry_source_and_host_identity() {
+        assert_eq!(format!("{:?}", HostCallOrigin::Entry), "Entry");
+        let site = HostCallSite::from_static("example", "main", SourceSpan::new(16, 17));
+        assert_eq!(
+            format!("{:?}", HostCallOrigin::source(site)),
+            "Source(HostCallSite { module: \"example\", function: \"main\", span: SourceSpan { start: 16, end: 17 } })",
+        );
+        let caller = super::HostOrigin::new(
+            "application".into(),
+            "host/outer".into(),
+            "apply".into(),
+            FunctionType::new(vec![ValueType::Int], ValueType::Int),
+        );
+        assert_eq!(
+            format!("{:?}", HostCallOrigin::Host(caller)),
+            "Host(HostOrigin { package: \"application\", module: \"host/outer\", function: \"apply\", signature: FunctionType { arguments: [Int], return_: Int } })",
         );
     }
 

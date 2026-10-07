@@ -1,6 +1,9 @@
 use super::{binary_path, checked, command};
-use geam::embedding::{CallError, FunctionDeclaration, ModuleBuilder};
-use geam::{ExecutionError, PanicKind};
+use geam::embedding::{CallError, FunctionDeclaration, HostedModuleBuilder, ModuleBuilder};
+use geam::{
+    ExecutionError, HostProviderModule, HostProviderSet, ModuleSource, PackageSource, PanicKind,
+    StatelessHostProfile, compile_typed_host_program,
+};
 use std::fs;
 use std::path::Path;
 
@@ -23,7 +26,8 @@ version = '0.1.0'
 edition = '2024'
 
 [dependencies]
-geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
+geam = {{ version = '={}', default-features = false, features = ['embedding', 'tokio'] }}
+tokio = {{ version = '=1.53.1', features = ['rt'] }}
 
 [workspace]
 "#,
@@ -96,6 +100,36 @@ geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
         )
         .unwrap();
     }
+    let source = include_str!("../fixtures/prepared_call_lints/native.gleam");
+    let mut artifacts = Vec::new();
+    for _ in 0..2 {
+        let native = HostProviderModule::<StatelessHostProfile>::new("example", "example")
+            .unwrap()
+            .with_function::<(bool,), bool, _>("accepted", |value| value)
+            .unwrap();
+        let typed = compile_typed_host_program(
+            "example",
+            "example",
+            [PackageSource::new(
+                "example",
+                Vec::<String>::new(),
+                [ModuleSource::new("example", "src/example.gleam", source)],
+            )],
+            HostProviderSet::from_providers([native]).unwrap(),
+        )
+        .unwrap();
+        let (bindings, _) = HostedModuleBuilder::new(typed)
+            .unwrap()
+            .function(FunctionDeclaration::<(bool,), bool>::new("verify"))
+            .unwrap();
+        artifacts.push(bindings.prepare().unwrap().emit_rust());
+    }
+    assert_eq!(artifacts[0], artifacts[1]);
+    fs::write(
+        application.join("src/native.rs"),
+        format!("{}\n", artifacts[0]),
+    )
+    .unwrap();
     let source = include_str!("../fixtures/prepared_call_lints/recovery.gleam");
     let typed = geam::compile_typed_module("example", "src/example.gleam", source).unwrap();
     let (bindings, verify) = ModuleBuilder::new(typed)
@@ -118,12 +152,17 @@ geam = {{ version = '={}', default-features = false, features = ['embedding'] }}
 use geam::__prepared_support as data;
 use geam::embedding::{CallError, FunctionDeclaration};
 use geam::{ExecutionError, PanicKind};
+use geam::{HostProviderModule, HostProviderSet, StatelessHostProfile};
+use geam::execution::TokioHost;
 use std::convert::Infallible;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static ASSERTED: data::ModuleArtifact<Infallible> = include!("asserted.rs");
 static CASE: data::ModuleArtifact<Infallible> = include!("case.rs");
 static BOOLEAN: data::ModuleArtifact<Infallible> = include!("boolean.rs");
 static RECOVERY: data::ModuleArtifact<Infallible> = include!("recovery.rs");
+static NATIVE: data::HostedModuleArtifact = include!("native.rs");
+static ACCEPTED: AtomicUsize = AtomicUsize::new(0);
 
 fn main() {
     let mut echo = Vec::new();
@@ -149,6 +188,27 @@ fn main() {
         assert!(matches!(error, CallError::Execution(ExecutionError::Panic(ref panic)) if panic.kind() == PanicKind::LetAssert));
         assert!(module.call(&verify, (true,), &mut echo).unwrap());
     }
+    let provider = HostProviderModule::<StatelessHostProfile>::new("example", "example").unwrap()
+        .with_function::<(bool,), bool, _>("accepted", |value| {
+            ACCEPTED.fetch_add(1, Ordering::SeqCst);
+            value
+        }).unwrap();
+    let mut bindings = NATIVE.load(HostProviderSet::from_providers([provider]).unwrap()).unwrap();
+    let verify = bindings.function(FunctionDeclaration::<(bool,), bool>::new("verify")).unwrap();
+    let mut module = bindings.seal();
+    let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let host = TokioHost::new(runtime.handle().clone());
+    for _ in 0..2 {
+        let error = runtime.block_on(module.with_execution(&host, &mut (), &mut echo, async |scope| {
+            scope.call(&verify, (false,)).await
+        })).unwrap().try_into_value().unwrap().unwrap_err();
+        assert!(matches!(error, CallError::Execution(ExecutionError::Panic(ref panic)) if panic.kind() == PanicKind::LetAssert));
+        let value = runtime.block_on(module.with_execution(&host, &mut (), &mut echo, async |scope| {
+            scope.call(&verify, (true,)).await
+        })).unwrap().try_into_value().unwrap().unwrap();
+        assert!(value);
+    }
+    assert_eq!(ACCEPTED.load(Ordering::SeqCst), 6);
     assert!(echo.is_empty());
     println!("terminal bridges, looping calls, and recovery completed");
 }

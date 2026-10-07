@@ -438,6 +438,7 @@ mod tests {
         CustomType, CustomTypeName, ExternalType, ExternalTypeName, FunctionType, TypeParameterId,
         ValueType,
     };
+    use crate::runtime::compiled::native_calls::NativeCallsMachine;
     use crate::runtime::error::ExecutionResult;
     use crate::runtime::execution::invocation::Waiting;
     use crate::runtime::execution::{Domain, ServiceContext};
@@ -1021,6 +1022,15 @@ pub fn main() { #(apply_int, apply_float, integer, floating, fn() { 1.5 }) }
             _allowance: usize,
         ) -> Infallible {
             match state.binding {}
+        }
+
+        fn prepare_native_calls(
+            &self,
+            binding: Infallible,
+            _machine: NativeCallsMachine,
+            _allowance: usize,
+        ) -> Infallible {
+            match binding {}
         }
 
         fn reject_foreign_callable<'plan, Output: Send + 'plan>(

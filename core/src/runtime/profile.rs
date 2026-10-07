@@ -8,6 +8,7 @@ use crate::plan::execution::function::{
 };
 use crate::plan::execution::host::{HostedFunctionTarget, HostedValueFunction};
 use crate::plan::execution::runtime::RuntimeExecutionPlan;
+use crate::runtime::compiled::native_calls::{NativeCallsMachine, NativeCallsState};
 use crate::runtime::compiled::native_loop::{
     NativeLoopBinding, NativeLoopOps, NativeLoopProgress, NativeLoopState,
 };
@@ -43,6 +44,13 @@ pub(in crate::runtime) trait ExecutableRuntimePlan:
         state: NativeLoopState<Self::NativeLoopBinding>,
         allowance: usize,
     ) -> Self::HostInvocation<'plan, NativeLoopState<Self::NativeLoopBinding>>;
+
+    fn prepare_native_calls<'plan>(
+        &'plan self,
+        binding: Self::NativeLoopBinding,
+        machine: NativeCallsMachine,
+        allowance: usize,
+    ) -> Self::HostInvocation<'plan, NativeCallsState<Self::NativeLoopBinding>>;
 
     // Callable provenance is checked before a function-table lookup. Opaque
     // values can preserve a target from a separately sealed, now closed plan.
@@ -113,6 +121,15 @@ impl ExecutableRuntimePlan for ExecutionPlan {
         _allowance: usize,
     ) -> Infallible {
         match state.binding {}
+    }
+
+    fn prepare_native_calls(
+        &self,
+        binding: Infallible,
+        _machine: NativeCallsMachine,
+        _allowance: usize,
+    ) -> Infallible {
+        match binding {}
     }
 
     fn reject_foreign_callable<'plan, Output: Send + 'plan>(
@@ -252,6 +269,43 @@ impl<Profile: crate::HostProfile> ExecutableRuntimePlan
                     Ok(NativeReturn::Exited)
                 } else {
                     Ok(NativeReturn::Immediate(state))
+                }
+            },
+        )
+    }
+
+    fn prepare_native_calls<'plan>(
+        &'plan self,
+        binding: NativeLoopBinding,
+        machine: NativeCallsMachine,
+        allowance: usize,
+    ) -> Invocation<'plan, Self, NativeCallsState<NativeLoopBinding>> {
+        Invocation::bounded(
+            allowance,
+            move |plan: &Self, runtime, unit, mut allowance| {
+                let ops = NativeLoopOps {
+                    native: &*binding.native,
+                    unit,
+                };
+                match machine.run(
+                    runtime.captures(),
+                    runtime.lists(),
+                    plan.value_metadata(),
+                    ops,
+                    &mut allowance,
+                ) {
+                    Ok(Some(progress)) => Ok(NativeReturn::Immediate(NativeCallsState {
+                        binding,
+                        progress,
+                    })),
+                    Ok(None) => Ok(NativeReturn::Exited),
+                    Err(failure) => host::host_call_error(
+                        plan,
+                        &runtime.host().execution(),
+                        failure.origin,
+                        &binding.metadata,
+                        *failure.error,
+                    ),
                 }
             },
         )

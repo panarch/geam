@@ -11,6 +11,7 @@ use crate::plan::execution::type_::FunctionType;
 use crate::runtime::CaptureStorage;
 use crate::runtime::captures::Captures;
 use crate::runtime::compiled::int_list::{IntList, IntListOps};
+use crate::runtime::compiled::native_calls::{CallNativeFailure, CallNativeOps};
 use crate::runtime::compiled::numeric::NumericValues;
 use crate::runtime::evaluated::{
     EvaluatedBoolFunction, EvaluatedCapture, EvaluatedCaptureKind, EvaluatedFunction,
@@ -86,6 +87,15 @@ pub trait CallExecution: Send {
     fn restart(&mut self, target: CallTarget, point: usize, inputs: CallInputs<'_>) -> bool;
     fn retained_bytes(&self) -> usize;
     fn advance(self: Box<Self>, ops: &mut CallOps<'_>, budget: &mut usize) -> CallProgress;
+
+    fn advance_native(
+        self: Box<Self>,
+        ops: &mut CallOps<'_>,
+        budget: &mut usize,
+        _native: &mut CallNativeOps<'_>,
+    ) -> Result<Option<CallProgress>, CallNativeFailure> {
+        Ok(Some(self.advance(ops, budget)))
+    }
 }
 
 /// One completed generated workspace, local to an execution's graph storage.
@@ -134,6 +144,31 @@ pub enum CallOutput {
 pub struct CallArguments {
     pub values: CallValues,
     pub captures: Option<CallCaptures>,
+}
+
+/// Single scalar input, before crossing a canonical argument boundary.
+pub enum CallNativeInput {
+    Int(CallInteger),
+    Bool(bool),
+}
+
+impl CallNativeInput {
+    pub fn arguments(self) -> CallArguments {
+        let values = match self {
+            Self::Int(value) => CallValues {
+                ints: vec![value],
+                ..CallValues::default()
+            },
+            Self::Bool(value) => CallValues {
+                bools: vec![value],
+                ..CallValues::default()
+            },
+        };
+        CallArguments {
+            values,
+            captures: None,
+        }
+    }
 }
 
 /// Only a canonical boundary allocates a typed resume closure. Ordinary
@@ -470,8 +505,8 @@ impl<'execution> CallOps<'execution> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallOps,
-        CallProgress, CallStorage,
+        CallCapture, CallCaptureInputs, CallExecution, CallInputs, CallInteger, CallNativeInput,
+        CallOps, CallProgress, CallStorage,
     };
     use crate::plan::execution::compiled::CallTarget;
     use crate::plan::execution::function::{BoolFunctionId, IntFunctionId};
@@ -516,6 +551,29 @@ mod tests {
     impl Drop for IdleWorkspace {
         fn drop(&mut self) {
             self.dropped.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn scalar_native_handoff_has_one_original_argument_and_no_captures() {
+        for value in [7, i128::from(i64::MAX) + 1] {
+            let arguments = CallNativeInput::Int(value.into()).arguments();
+            assert_eq!(arguments.values.ints.len(), 1);
+            assert_eq!(arguments.values.ints[0].0, IntegerValue::from(value));
+            assert!(arguments.values.bools.is_empty());
+            assert!(arguments.values.int_lists.is_empty());
+            assert!(arguments.values.int_functions.is_empty());
+            assert!(arguments.values.bool_functions.is_empty());
+            assert!(arguments.captures.is_none());
+        }
+        for value in [false, true] {
+            let arguments = CallNativeInput::Bool(value).arguments();
+            assert_eq!(arguments.values.bools, [value]);
+            assert!(arguments.values.ints.is_empty());
+            assert!(arguments.values.int_lists.is_empty());
+            assert!(arguments.values.int_functions.is_empty());
+            assert!(arguments.values.bool_functions.is_empty());
+            assert!(arguments.captures.is_none());
         }
     }
 

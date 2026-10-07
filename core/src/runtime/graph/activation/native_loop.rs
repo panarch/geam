@@ -1,4 +1,4 @@
-use super::{Activation, Execution, Frame, Progress, Storage, calls};
+use super::{Activation, Execution, Frame, NativeCallsExecution, Progress, Storage};
 use crate::plan::execution::compiled::{NativeLoopImplementation, NativeLoopProducer};
 use crate::plan::execution::function::{
     ExecutionFunctionRef, FunctionBodyOwner, FunctionExit, NilFunctionId,
@@ -34,15 +34,15 @@ impl<'plan, Plan: ExecutableRuntimePlan> NativeLoopExecution<'plan, Plan> {
         } else {
             let active = if let Some(fallback) = plan.native_loop_fallback(implementation.function)
             {
-                calls::advance(
+                return NativeCallsExecution::enter(
                     frame,
                     fallback,
-                    fallback.entry(),
+                    &implementation.contract,
                     plan,
                     state,
                     storage,
                     remaining,
-                )
+                );
             } else {
                 frame.advance(plan, state, storage, remaining)
             };
