@@ -118,10 +118,8 @@ jobs:
       matrix:
         include:
           - group: 1
-            examples: [first_call, package, processes]
+            examples: [first_call, package, processes, data, io, provider, callables]
           - group: 2
-            examples: [data, io, provider, callables]
-          - group: 3
             examples: [async_host, session, prepared]
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
@@ -388,12 +386,24 @@ jobs:
         run: cargo test --locked
 
   prepared-embedding:
-    name: Prepared distribution (${{ matrix.os }})
+    name: Prepared distribution ${{ matrix.group.id }}/2 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        group:
+          - id: 1
+            args: "--skip process_consumers::"
+            gleam_projects:
+              - tests/fixtures/raw_string_values/embedding/gleam
+          - id: 2
+            args: "process_consumers::"
+            gleam_projects:
+              - examples/provider/process_service/embedding/gleam
+              - tests/fixtures/otp_service/embedding/gleam
+              - tests/fixtures/selective_receive_service/embedding/gleam
+              - tests/fixtures/native_function_views/embedding/gleam
 
     steps:
       - name: Checkout
@@ -433,16 +443,36 @@ jobs:
           cargo fetch --manifest-path tests/fixtures/native_function_views/embedding/Cargo.toml --locked
           cargo fetch --manifest-path tests/fixtures/raw_string_values/embedding/Cargo.toml --locked
 
+      - name: Prepare Gleam dependency cache sequentially
+        shell: bash
+        env:
+          GLEAM_PROJECTS: ${{ join(matrix.group.gleam_projects, ' ') }}
+        run: |
+          read -r -a projects <<< "$GLEAM_PROJECTS"
+          # Warm the shared Hex cache before temporary projects download in parallel.
+          for project in "${projects[@]}"; do
+            (cd "$project" && gleam deps download)
+          done
+
       - name: Verify prepared generation and source-free distribution
-        run: cargo test --package geam --test prepared_embedding --locked
+        run: cargo test --package geam --test prepared_embedding --locked -- ${{ matrix.group.args }}
 
   standalone-build:
-    name: Standalone build (${{ matrix.os }})
+    name: Standalone build ${{ matrix.group.id }}/2 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        group:
+          - id: 1
+            args: >-
+              --skip explicit_application_statuses_survive_run_build_and_source_free_relocation
+              --skip native_function_views_survive_debug_and_release_source_free_relocation
+          - id: 2
+            args: >-
+              explicit_application_statuses_survive_run_build_and_source_free_relocation
+              native_function_views_survive_debug_and_release_source_free_relocation
 
     steps:
       - name: Checkout
@@ -474,7 +504,7 @@ jobs:
         run: cargo fetch --manifest-path tests/fixtures/native_function_views/provider/Cargo.toml --locked
 
       - name: Verify standalone build and source-free distribution
-        run: cargo test --package geam --test standalone_build --locked -- --test-threads=1
+        run: cargo test --package geam --test standalone_build --locked -- --test-threads=1 --exact ${{ matrix.group.args }}
 
   published-provider:
     name: Published provider
@@ -607,6 +637,12 @@ jobs:
                 test: runs_the_documented_native_records_provider_through_dynamic_and_callbacks
               - example: process_service
                 test: runs_the_process_service_provider_on_the_builtin_mailbox
+              - example: request_ids
+                test: runs_the_documented_request_ids_provider_with_fresh_default_state
+              - example: feature_flags
+                test: runs_the_documented_feature_flags_provider_with_explicit_configuration
+              - example: call_tracing
+                test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
           - group: 2
             examples:
               - example: text_tools
@@ -615,22 +651,12 @@ jobs:
                 test: runs_the_documented_callables_provider_with_generic_and_custom_callbacks
               - example: generic_box
                 test: runs_the_documented_generic_box_provider_with_persistent_values
-          - group: 3
-            examples:
               - example: value_types
                 test: runs_the_documented_value_types_provider_without_configuration
               - example: run_metrics
                 test: runs_the_documented_run_metrics_provider_without_configuration
               - example: text_pattern
                 test: runs_the_documented_text_pattern_on_erlang_and_geam
-          - group: 4
-            examples:
-              - example: request_ids
-                test: runs_the_documented_request_ids_provider_with_fresh_default_state
-              - example: feature_flags
-                test: runs_the_documented_feature_flags_provider_with_explicit_configuration
-              - example: call_tracing
-                test: runs_the_documented_call_tracing_provider_with_fresh_callback_state
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
